@@ -1,0 +1,54 @@
+import { ImageResponse } from "next/og";
+
+export const runtime = "edge";
+
+export const size = {
+  width: 32,
+  height: 32,
+};
+export const contentType = "image/png";
+
+export default function Icon() {
+  return new ImageResponse(
+    <div
+      style={{
+        background: "#f97316",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        borderRadius: "6px",
+      }}
+    >
+      {/** biome-ignore lint/a11y/noSvgWithoutTitle: <title makes no sense here> */}
+      <svg
+        width="18"
+        height="27"
+        viewBox="0 0 22 33"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path
+          d="M20.4456 5.94912L10.1852 0.815186V3.94402L21.1289 9.41962V7.05441C21.1289 6.58606 20.8646 6.1581 20.4456 5.94862V5.94912Z"
+          fill="white"
+        />
+        <path
+          d="M14.0962 17.213V15.7062C14.0962 14.9755 13.6647 14.3136 12.9964 14.0189L0.798737 8.63754V11.7664L11.3549 16.0683L11.3589 16.4594L11.3549 16.8504L0.798737 21.1524V24.2812L12.9964 18.8999C13.6647 18.6051 14.0962 17.9432 14.0962 17.2125V17.213Z"
+          fill="white"
+        />
+        <path
+          d="M10.1852 32.1041L20.4456 26.9701C20.8641 26.7607 21.1289 26.3327 21.1289 25.8644V23.4991L10.1852 28.9747V32.1041Z"
+          fill="white"
+        />
+        <path
+          d="M20.3538 14.368C20.3538 12.7779 19.4421 11.3284 18.0086 10.6401L0.805699 2.37985V5.5087L16.8868 13.1789C17.3322 13.3914 17.6155 13.8408 17.6155 14.3341V18.5857C17.6155 19.079 17.3317 19.5284 16.8868 19.7408L0.805699 27.4111V30.5399L18.0086 22.2796C19.4421 21.5913 20.3538 20.1419 20.3538 18.5518V14.368Z"
+          fill="white"
+        />
+      </svg>
+    </div>,
+    {
+      ...size,
+    },
+  );
+}

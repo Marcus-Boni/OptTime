@@ -1,6 +1,6 @@
 "use client";
 
-import { Timer } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
 export function Footer() {
@@ -10,7 +10,12 @@ export function Footer() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500">
-            <Timer className="h-3.5 w-3.5 text-white" />
+            <Image
+              src="/logo-white.svg"
+              alt="OptSolv Logo"
+              width={9}
+              height={14}
+            />
           </div>
           <span className="font-display text-sm font-bold text-white">
             OptSolv
@@ -22,9 +27,9 @@ export function Footer() {
 
         {/* Info */}
         <div className="text-center text-xs text-white/30 md:text-right">
-          <p>Desenvolvido para o Hackathon OptSolv 2025</p>
+          <p>Desenvolvido para o Hackathon OptSolv 2026</p>
           <p className="mt-0.5">
-            © 2025 OptSolv. Todos os direitos reservados.
+            © 2026 OptSolv. Todos os direitos reservados.
           </p>
         </div>
       </div>

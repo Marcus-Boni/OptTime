@@ -31,7 +31,7 @@ export function Testimonial() {
             </p>
             <footer className="mt-8">
               <p className="text-sm font-medium text-white/60">
-                — Equipe OptSolv, 2025
+                — Equipe OptSolv, 2026
               </p>
             </footer>
           </blockquote>

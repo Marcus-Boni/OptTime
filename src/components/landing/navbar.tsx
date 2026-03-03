@@ -1,7 +1,8 @@
 "use client";
 
-import { motion, useScroll, useTransform } from "framer-motion";
-import { Menu, Timer, X } from "lucide-react";
+import { motion } from "framer-motion";
+import { Menu, X } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,12 @@ export function Navbar() {
             transition={{ duration: 0.6 }}
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500"
           >
-            <Timer className="h-4.5 w-4.5 text-white" />
+            <Image
+              src="/logo-white.svg"
+              alt="OptSolv Logo"
+              width={14}
+              height={21}
+            />
           </motion.div>
           <span className="font-display text-lg font-bold text-white">
             OptSolv

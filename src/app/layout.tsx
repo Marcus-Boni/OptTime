@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { DM_Sans, JetBrains_Mono, Sora } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -32,6 +32,11 @@ export const metadata: Metadata = {
   description:
     "Registro inteligente de tempo integrado ao Azure DevOps — feito para o time OptSolv.",
   keywords: ["time tracker", "optsolv", "horas", "azure devops"],
+};
+
+export const viewport: Viewport = {
+  themeColor: "#f97316",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({

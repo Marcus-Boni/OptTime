@@ -14,9 +14,9 @@ import {
   Pause,
   Settings,
   Square,
-  Timer,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -86,8 +86,8 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 pulse-glow">
-            <Timer className="h-5 w-5 text-brand-500" />
+          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 pulse-glow">
+            <Image src="/logo-white.svg" alt="Timer" width={14} height={21} />
           </div>
         </TooltipTrigger>
         <TooltipContent side="right">
@@ -106,7 +106,9 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
       className="mx-3 mb-2 overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/5 p-3"
     >
       <div className="flex items-center gap-2 text-brand-500">
-        <Timer className="h-4 w-4" />
+        <div className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-500">
+          <Image src="/logo-white.svg" alt="Logo" width={9} height={13} />
+        </div>
         <span className="text-xs font-medium uppercase tracking-wider">
           Timer Ativo
         </span>
@@ -187,7 +189,12 @@ export function Sidebar() {
         >
           <Link href="/dashboard" className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500">
-              <Timer className="h-4.5 w-4.5 text-white" />
+              <Image
+                src="/logo-white.svg"
+                alt="OptSolv Logo"
+                width={14}
+                height={21}
+              />
             </div>
             {!sidebarCollapsed && (
               <motion.div

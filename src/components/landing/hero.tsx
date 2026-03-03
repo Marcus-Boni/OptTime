@@ -125,7 +125,7 @@ export function Hero() {
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-500 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
                 </span>
-                Novo · Hackathon OptSolv 2025
+                Novo · Hackathon OptSolv 2026
               </span>
             </motion.div>
 

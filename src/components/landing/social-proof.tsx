@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Timer } from "lucide-react";
 import Image from "next/image";
 
 const logos = [
@@ -34,17 +33,24 @@ export function SocialProof() {
             <motion.div
               key={logo.name}
               whileHover={{ opacity: 1, scale: 1.05 }}
-              className="flex items-center gap-2 opacity-40 transition-opacity hover:opacity-100"
+              className="flex items-center gap-2 transition-opacity hover:opacity-100"
             >
               {logo.icon ? (
-                <div className="flex items-center gap-2">
+                <>
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500">
-                    <Timer className="h-4 w-4 text-white" />
+                    <Image
+                      src="/logo-white.svg"
+                      alt="OptSolv Logo"
+                      width={11}
+                      height={16}
+                    />
                   </div>
-                  <span className="font-display text-base font-bold text-white">
-                    OptSolv
-                  </span>
-                </div>
+                  <div className="opacity-40">
+                    <span className="font-display text-base font-bold text-white">
+                      OptSolv
+                    </span>
+                  </div>
+                </>
               ) : (
                 <span className="font-display text-base font-semibold text-white/80">
                   {logo.text}

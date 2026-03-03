@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Eye, EyeOff, Loader2, Timer } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -101,7 +102,12 @@ export default function LoginPage() {
         <CardHeader className="space-y-4 text-center">
           {/* Logo */}
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-500 shadow-lg shadow-brand-500/20">
-            <Timer className="h-7 w-7 text-white" />
+            <Image
+              src="/logo-white.svg"
+              alt="OptSolv Logo"
+              width={24}
+              height={36}
+            />
           </div>
 
           <div>
@@ -214,7 +220,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="text-center text-xs text-muted-foreground">
-            Uso interno OptSolv · Hackathon 2025
+            Uso interno OptSolv · Hackathon 2026
           </p>
         </CardContent>
       </Card>

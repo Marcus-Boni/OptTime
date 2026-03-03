@@ -8,9 +8,9 @@ import {
   Clock,
   Folder,
   Play,
-  Timer,
   TrendingUp,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   Bar,
@@ -21,6 +21,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +41,6 @@ import {
   getStatusColor,
 } from "@/lib/utils";
 import { useTimerStore } from "@/stores/timer.store";
-import { toast } from "sonner";
 
 const containerVariants = {
   hidden: {},
@@ -89,8 +89,8 @@ export default function DashboardPage() {
           {new Date().getHours() < 12
             ? "Bom dia"
             : new Date().getHours() < 18
-            ? "Boa tarde"
-            : "Boa noite"}
+              ? "Boa tarde"
+              : "Boa noite"}
           , {user.name?.split(" ")[0]}! 👋
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -185,7 +185,14 @@ export default function DashboardPage() {
               <CardTitle className="text-sm font-medium text-brand-400">
                 Timer Rápido
               </CardTitle>
-              <Timer className="h-4 w-4 text-brand-500" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10">
+                <Image
+                  src="/logo-white.svg"
+                  alt="Logo"
+                  width={11}
+                  height={16}
+                />
+              </div>
             </CardHeader>
             <CardContent>
               {timerStore.isRunning ? (
