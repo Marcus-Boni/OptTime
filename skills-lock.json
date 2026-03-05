@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "azure-devops-skill": {
+      "source": "julianobarbosa/claude-code-skills",
+      "sourceType": "github",
+      "computedHash": "e0926c772739e6213d7c67a8e0bf670ec359003c3886c9a0b10da39d0fd36bb5"
+    },
     "better-auth-best-practices": {
       "source": "better-auth/skills",
       "sourceType": "github",
@@ -10,6 +15,11 @@
       "source": "better-auth/skills",
       "sourceType": "github",
       "computedHash": "393e8d2d795fa5797c9a4e0665f29183ea2e140233db59746d510340a10456e6"
+    },
+    "vercel-react-best-practices": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "3ff06f0712886f7c2660d6746856c22d3127bd6568ddde29ddad8b72dbaaa226"
     }
   }
 }

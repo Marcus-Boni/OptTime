@@ -27,7 +27,7 @@ export function useChartColors(): ChartColors {
     tooltipBg: isDark ? "#171717" : "#ffffff",
     tooltipBorder: isDark ? "#262626" : "#e5e5e5",
     tooltipColor: isDark ? "#ffffff" : "#0a0a0a",
-    tooltipLabelColor: isDark ? "#e5e5e5" : "#404040", 
+    tooltipLabelColor: isDark ? "#e5e5e5" : "#404040",
     cursorFill: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)",
     ghostBarFill: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
     pieLabelFill: isDark ? "#ffffff" : "#171717",

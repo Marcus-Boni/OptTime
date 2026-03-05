@@ -90,10 +90,14 @@ export const verification = pgTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
-export const userRelations = relations(user, ({ many }) => ({
+export const userRelations = relations(user, ({ many, one }) => ({
   sessions: many(session),
   accounts: many(account),
   invitationsSent: many(invitation, { relationName: "inviter" }),
+  azureDevopsConfig: one(azureDevopsConfig, {
+    fields: [user.id],
+    references: [azureDevopsConfig.userId],
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -139,3 +143,29 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
     relationName: "inviter",
   }),
 }));
+
+export const azureDevopsConfig = pgTable("azure_devops_config", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" })
+    .unique(),
+  organizationUrl: text("organization_url").notNull(),
+  pat: text("pat").notNull(),
+  status: text("status").notNull().default("active"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const azureDevopsConfigRelations = relations(
+  azureDevopsConfig,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [azureDevopsConfig.userId],
+      references: [user.id],
+    }),
+  }),
+);
