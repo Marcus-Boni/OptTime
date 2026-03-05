@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 /** Rotas que exigem role "manager" ou "admin" */
 const MANAGER_ROUTES = [
   "/dashboard/people",
-  "/dashboard/integrations",
   "/dashboard/settings",
 ];
 

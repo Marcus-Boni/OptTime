@@ -8,6 +8,14 @@ import {
   Settings,
   AlertCircle,
   Loader2,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  Globe,
+  KeyRound,
+  ShieldCheck,
+  Copy,
+  Check,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +32,58 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
+function CodeSnippet({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/50 px-3 py-2 font-mono text-xs text-foreground">
+      <span className="flex-1 select-all">{code}</span>
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+        aria-label="Copiar"
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
+function TutorialStep({
+  step,
+  icon: Icon,
+  title,
+  children,
+}: {
+  step: number;
+  icon: React.ElementType;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex flex-col items-center">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-500/10 text-sm font-bold text-brand-500">
+          {step}
+        </div>
+        <div className="mt-1 w-px flex-1 bg-border/40" />
+      </div>
+      <div className="pb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <Icon className="h-4 w-4 text-brand-500" />
+          <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+        </div>
+        <div className="space-y-2 text-sm text-muted-foreground">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 const containerVariants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.08 } },
@@ -37,6 +97,7 @@ export default function AzureDevOpsPage() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [tutorialOpen, setTutorialOpen] = useState(true);
 
   const {
     register,
@@ -58,6 +119,7 @@ export default function AzureDevOpsPage() {
         if (res.ok) {
           const data = await res.json();
           setIsConnected(data.hasPat);
+          if (data.hasPat) setTutorialOpen(false);
           if (data.organizationUrl) {
             setValue("organizationUrl", data.organizationUrl);
           }
@@ -87,13 +149,15 @@ export default function AzureDevOpsPage() {
       }
 
       setIsConnected(true);
+      setTutorialOpen(false);
       toast.success("Integração com Azure DevOps conectada com sucesso!");
 
       // Clear the PAT input after saving for security feeling, but keep connected state
       setValue("pat", "");
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Erro ao conectar com o Azure DevOps.";
       console.error("[AzureDevOpsPage] onSubmit:", error);
-      toast.error(error.message || "Erro ao conectar com o Azure DevOps.");
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
@@ -104,25 +168,208 @@ export default function AzureDevOpsPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="max-w-2xl space-y-8"
+      className="max-w-2xl space-y-6"
     >
+      {/* Header */}
       <motion.div variants={itemVariants}>
         <h1 className="font-display text-2xl font-bold text-foreground">
           Azure DevOps
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Configure a integração com o Azure DevOps para sincronizar work items.
+          Configure a integração com o Azure DevOps para sincronizar work items
+          com seus apontamentos de horas.
         </p>
       </motion.div>
 
-      {/* Connection Status */}
+      {/* Tutorial */}
+      <motion.div variants={itemVariants}>
+        <Card className="border-border/50 bg-card/80 backdrop-blur">
+          <CardHeader className="pb-3">
+            <button
+              type="button"
+              onClick={() => setTutorialOpen((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <CardTitle className="flex items-center gap-2 font-display text-base">
+                <BookOpen className="h-4 w-4 text-brand-500" />
+                Como configurar a integração
+              </CardTitle>
+              {tutorialOpen ? (
+                <ChevronUp className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              )}
+            </button>
+          </CardHeader>
+
+          {tutorialOpen && (
+            <CardContent className="pt-0">
+              <div className="mb-4 rounded-lg border border-brand-500/20 bg-brand-500/5 px-4 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Você precisará de dois dados do Azure DevOps: a{" "}
+                  <span className="font-medium text-foreground">URL da sua organização</span>{" "}
+                  e um{" "}
+                  <span className="font-medium text-foreground">Personal Access Token (PAT)</span>.
+                  Siga os passos abaixo para obtê-los.
+                </p>
+              </div>
+
+              {/* Part 1: Organization URL */}
+              <div className="mb-6">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <Globe className="h-4 w-4 text-brand-500" />
+                  Parte 1 — URL da Organização
+                </h3>
+                <div className="space-y-0">
+                  <TutorialStep step={1} icon={Globe} title="Acesse o Azure DevOps">
+                    <p>
+                      Abra o navegador e acesse{" "}
+                      <span className="font-medium text-foreground">dev.azure.com</span>. Faça
+                      login com a conta Microsoft associada à sua organização.
+                    </p>
+                  </TutorialStep>
+
+                  <TutorialStep step={2} icon={Globe} title="Identifique o nome da organização">
+                    <p>
+                      Após o login, você será direcionado para a página inicial. O nome da
+                      organização aparece na URL do navegador logo após{" "}
+                      <span className="font-mono text-xs text-foreground">dev.azure.com/</span>.
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      <p className="text-xs text-muted-foreground">Exemplo de URL que você verá:</p>
+                      <CodeSnippet code="https://dev.azure.com/minha-empresa/" />
+                    </div>
+                  </TutorialStep>
+
+                  <TutorialStep step={3} icon={Globe} title="Monte a URL da organização">
+                    <p>
+                      Use a URL base abaixo, substituindo{" "}
+                      <span className="font-mono text-xs text-foreground">{"<organização>"}</span> pelo
+                      nome que apareceu na URL:
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      <CodeSnippet code="https://dev.azure.com/<organização>" />
+                      <p className="text-xs text-muted-foreground">
+                        Exemplo preenchido:
+                      </p>
+                      <CodeSnippet code="https://dev.azure.com/minha-empresa" />
+                    </div>
+                  </TutorialStep>
+                </div>
+              </div>
+
+              <div className="my-4 border-t border-border/40" />
+
+              {/* Part 2: PAT */}
+              <div>
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <KeyRound className="h-4 w-4 text-brand-500" />
+                  Parte 2 — Personal Access Token (PAT)
+                </h3>
+                <div className="space-y-0">
+                  <TutorialStep step={4} icon={KeyRound} title="Abra as configurações de segurança">
+                    <p>
+                      No Azure DevOps, clique na sua foto de perfil no canto superior direito e
+                      selecione{" "}
+                      <span className="font-medium text-foreground">
+                        "Personal access tokens"
+                      </span>
+                      .
+                    </p>
+                    <p className="mt-1">
+                      Alternativamente, acesse diretamente pelo link abaixo (substitua{" "}
+                      <span className="font-mono text-xs text-foreground">{"<organização>"}</span>):
+                    </p>
+                    <div className="mt-2">
+                      <CodeSnippet code="https://dev.azure.com/<organização>/_usersSettings/tokens" />
+                    </div>
+                  </TutorialStep>
+
+                  <TutorialStep step={5} icon={KeyRound} title='Clique em "New Token"'>
+                    <p>
+                      Na página de Personal Access Tokens, clique no botão{" "}
+                      <span className="font-medium text-foreground">
+                        "+ New Token"
+                      </span>{" "}
+                      para criar um novo token.
+                    </p>
+                  </TutorialStep>
+
+                  <TutorialStep step={6} icon={ShieldCheck} title="Configure as permissões">
+                    <p>
+                      Preencha o formulário com as seguintes configurações:
+                    </p>
+                    <ul className="mt-2 space-y-2">
+                      {[
+                        { label: "Nome", value: "Harvest Time Tracker" },
+                        { label: "Organização", value: "Sua organização" },
+                        { label: "Expiração", value: "90 dias ou personalizado" },
+                      ].map(({ label, value }) => (
+                        <li key={label} className="flex items-start gap-2">
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-500" />
+                          <span>
+                            <span className="font-medium text-foreground">{label}:</span>{" "}
+                            {value}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3 rounded-md border border-border/40 bg-muted/30 p-3">
+                      <p className="mb-2 text-xs font-medium text-foreground">
+                        Escopos mínimos necessários:
+                      </p>
+                      <ul className="space-y-1.5">
+                        {[
+                          { scope: "Work Items", perm: "Read & Write" },
+                          { scope: "Project and Team", perm: "Read" },
+                          { scope: "Code", perm: "Read" },
+                        ].map(({ scope, perm }) => (
+                          <li key={scope} className="flex items-center justify-between">
+                            <span className="font-mono text-xs text-foreground">{scope}</span>
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-brand-500/10 text-brand-500"
+                            >
+                              {perm}
+                            </Badge>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </TutorialStep>
+
+                  <TutorialStep step={7} icon={KeyRound} title="Copie e salve o token">
+                    <p>
+                      Clique em{" "}
+                      <span className="font-medium text-foreground">"Create"</span> e copie
+                      o token gerado imediatamente.{" "}
+                      <span className="font-medium text-foreground">
+                        Ele não será exibido novamente.
+                      </span>
+                    </p>
+                    <div className="mt-2 flex items-start gap-2 rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-500" />
+                      <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                        Guarde o token em um local seguro. Cole-o no campo abaixo logo
+                        em seguida.
+                      </p>
+                    </div>
+                  </TutorialStep>
+                </div>
+              </div>
+            </CardContent>
+          )}
+        </Card>
+      </motion.div>
+
+      {/* Connection Form */}
       <motion.div variants={itemVariants}>
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 font-display text-base">
                 <Link2 className="h-4 w-4" />
-                Status da Conexão
+                Configurar Conexão
               </CardTitle>
               {isLoadingConfig ? (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -178,8 +425,16 @@ export default function AzureDevOpsPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  O PAT precisa de permissão de leitura ("Read") em Work Items,
-                  Projects e Code.
+                  O PAT precisa de permissões de leitura em Work Items, Projects e Code.{" "}
+                  {!tutorialOpen && (
+                    <button
+                      type="button"
+                      className="text-brand-500 underline underline-offset-2 hover:text-brand-600"
+                      onClick={() => setTutorialOpen(true)}
+                    >
+                      Ver tutorial
+                    </button>
+                  )}
                 </p>
               </div>
               <Button

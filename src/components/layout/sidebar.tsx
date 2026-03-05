@@ -45,15 +45,15 @@ const navigation = [
   { name: "Calendário", href: "/dashboard/calendar", icon: Calendar },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
+  {
+    name: "Integrações",
+    href: "/dashboard/integrations",
+    icon: Link2,
+  },
 ];
 
 const managementNav = [
   { name: "Equipe", href: "/dashboard/people", icon: Users },
-  {
-    name: "Integrações",
-    href: "/dashboard/integrations/azure-devops",
-    icon: Link2,
-  },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
