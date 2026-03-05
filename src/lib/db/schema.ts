@@ -8,6 +8,9 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 
+export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
+export type InvitationRole = "admin" | "manager" | "member";
+
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -90,6 +93,7 @@ export const verification = pgTable(
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  invitationsSent: many(invitation, { relationName: "inviter" }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -103,5 +107,35 @@ export const accountRelations = relations(account, ({ one }) => ({
   user: one(user, {
     fields: [account.userId],
     references: [user.id],
+  }),
+}));
+
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: text("id").primaryKey(),
+    email: text("email").notNull(),
+    role: text("role").notNull().default("member"),
+    token: text("token").notNull().unique(),
+    invitedById: text("invited_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at").notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("invitation_token_idx").on(table.token),
+    index("invitation_email_idx").on(table.email),
+    index("invitation_invitedBy_idx").on(table.invitedById),
+  ],
+);
+
+export const invitationRelations = relations(invitation, ({ one }) => ({
+  invitedBy: one(user, {
+    fields: [invitation.invitedById],
+    references: [user.id],
+    relationName: "inviter",
   }),
 }));

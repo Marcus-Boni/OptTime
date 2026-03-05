@@ -8,9 +8,19 @@ const MANAGER_ROUTES = [
   "/dashboard/settings",
 ];
 
+/** Rotas públicas que não precisam de sessão */
+const PUBLIC_AUTH_ROUTES = ["/login", "/accept-invite"];
+
 /** Verifica se o pathname está sob uma das rotas restritas */
 function isManagerRoute(pathname: string): boolean {
   return MANAGER_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(route + "/"),
+  );
+}
+
+/** Verifica se é uma rota pública de auth */
+function isPublicAuthRoute(pathname: string): boolean {
+  return PUBLIC_AUTH_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(route + "/"),
   );
 }
@@ -31,7 +41,7 @@ export default async function middleware(
 
   const session = response.ok ? await response.json() : null;
 
-  const isAuthPage = pathname.startsWith("/login");
+  const isAuthPage = isPublicAuthRoute(pathname);
   const isDashboardPage = pathname.startsWith("/dashboard");
 
   if (!session) {
@@ -42,7 +52,9 @@ export default async function middleware(
     return NextResponse.next();
   }
 
-  if (isAuthPage) {
+  // Usuário autenticado tentando acessar login → redireciona para dashboard
+  // Mas NÃO redireciona /accept-invite (pode estar logado e aceitando convite de outra conta)
+  if (pathname.startsWith("/login")) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -59,5 +71,5 @@ export default async function middleware(
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login"],
+  matcher: ["/dashboard/:path*", "/login", "/accept-invite"],
 };
