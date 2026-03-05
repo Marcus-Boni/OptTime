@@ -1,14 +1,22 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
-import { Check, Monitor, Moon, Save, Sun, User } from "lucide-react";
+import { Check, Loader2, Monitor, Moon, Save, Sun, User } from "lucide-react";
+import { useEffect } from "react";
+import { useForm } from "react-hook-form";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { useUpdateProfile } from "@/hooks/use-update-profile";
 import { useSession } from "@/lib/auth-client";
+import {
+  type UpdateProfileInput,
+  updateProfileSchema,
+} from "@/lib/validations/profile.schema";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
 
@@ -126,10 +134,44 @@ function ThemeCard({
 
 export default function SettingsPage() {
   const { theme, setTheme } = useUIStore();
-  const { data: session } = useSession();
+  const { data: session, refetch } = useSession();
   const user = session?.user as unknown as UserType;
 
+  const { isSaving, updateProfile } = useUpdateProfile();
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isDirty },
+  } = useForm<UpdateProfileInput>({
+    resolver: zodResolver(updateProfileSchema),
+    defaultValues: {
+      name: "",
+      department: "",
+      weeklyCapacity: 40,
+    },
+  });
+
+  // Popula o form quando a sessão carrega ou muda
+  useEffect(() => {
+    if (user) {
+      reset({
+        name: user.name ?? "",
+        department: user.department ?? "",
+        weeklyCapacity: user.weeklyCapacity ?? 40,
+      });
+    }
+  }, [user, reset]);
+
   if (!user) return null;
+
+  async function handleSave(data: UpdateProfileInput) {
+    const success = await updateProfile(data);
+    if (success) {
+      await refetch();
+    }
+  }
 
   return (
     <motion.div
@@ -156,59 +198,128 @@ export default function SettingsPage() {
               Perfil
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-4">
-              <UserAvatar
-                name={user.name}
-                image={user.image}
-                size="lg"
-                className="h-16 w-16 border-2 text-lg"
-              />
-              <div>
-                <p className="font-medium text-foreground">{user.name}</p>
-                <p className="text-sm text-muted-foreground">{user.email}</p>
+          <CardContent>
+            <form onSubmit={handleSubmit(handleSave)} noValidate>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <UserAvatar
+                    name={user.name}
+                    image={user.image}
+                    size="lg"
+                    className="h-16 w-16 border-2 text-lg"
+                  />
+                  <div>
+                    <p className="font-medium text-foreground">{user.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {user.email}
+                    </p>
+                  </div>
+                </div>
+                <Separator />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {/* Nome */}
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-name">Nome</Label>
+                    <Input
+                      id="settings-name"
+                      placeholder="Seu nome"
+                      aria-describedby={
+                        errors.name ? "settings-name-error" : undefined
+                      }
+                      {...register("name")}
+                    />
+                    {errors.name && (
+                      <p
+                        id="settings-name-error"
+                        className="text-xs text-red-400"
+                        role="alert"
+                      >
+                        {errors.name.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Email — somente leitura */}
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-email">Email</Label>
+                    <Input
+                      id="settings-email"
+                      value={user.email}
+                      disabled
+                      readOnly
+                      placeholder="Seu email"
+                    />
+                  </div>
+
+                  {/* Departamento */}
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-department">Departamento</Label>
+                    <Input
+                      id="settings-department"
+                      placeholder="Ex: Analista Desenvolvedor"
+                      aria-describedby={
+                        errors.department
+                          ? "settings-department-error"
+                          : undefined
+                      }
+                      {...register("department")}
+                    />
+                    {errors.department && (
+                      <p
+                        id="settings-department-error"
+                        className="text-xs text-red-400"
+                        role="alert"
+                      >
+                        {errors.department.message}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Capacidade semanal */}
+                  <div className="space-y-2">
+                    <Label htmlFor="settings-capacity">
+                      Capacidade Semanal (h)
+                    </Label>
+                    <Input
+                      id="settings-capacity"
+                      type="number"
+                      min={1}
+                      max={168}
+                      aria-describedby={
+                        errors.weeklyCapacity
+                          ? "settings-capacity-error"
+                          : undefined
+                      }
+                      {...register("weeklyCapacity", { valueAsNumber: true })}
+                    />
+                    {errors.weeklyCapacity && (
+                      <p
+                        id="settings-capacity-error"
+                        className="text-xs text-red-400"
+                        role="alert"
+                      >
+                        {errors.weeklyCapacity.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  disabled={isSaving || !isDirty}
+                  aria-busy={isSaving}
+                  className="gap-1.5 bg-brand-500 text-white hover:bg-brand-600 disabled:opacity-50"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {isSaving ? "Salvando..." : "Salvar"}
+                </Button>
               </div>
-            </div>
-            <Separator />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome</Label>
-                <Input
-                  id="name"
-                  defaultValue={user.name}
-                  placeholder="Seu nome"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  defaultValue={user.email}
-                  disabled
-                  placeholder="Seu email"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="department">Departamento</Label>
-                <Input
-                  id="department"
-                  defaultValue={user.department}
-                  placeholder="Ex: Analista Desenvolvedor"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="capacity">Capacidade Semanal (h)</Label>
-                <Input
-                  id="capacity"
-                  type="number"
-                  defaultValue={user.weeklyCapacity}
-                />
-              </div>
-            </div>
-            <Button className="gap-1.5 bg-brand-500 text-white hover:bg-brand-600">
-              <Save className="h-4 w-4" />
-              Salvar
-            </Button>
+            </form>
           </CardContent>
         </Card>
       </motion.div>

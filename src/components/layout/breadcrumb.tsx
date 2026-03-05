@@ -18,6 +18,7 @@ const segmentLabels: Record<string, string> = {
   people: "Pessoas",
   integrations: "Integrações",
   "azure-devops": "Azure DevOps",
+  profile: "Perfil",
   settings: "Configurações",
 };
 
