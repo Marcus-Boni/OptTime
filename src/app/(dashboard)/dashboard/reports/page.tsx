@@ -455,8 +455,8 @@ export default function ReportsPage() {
                           }}
                           itemStyle={{ color: chartColors.tooltipColor }}
                           labelStyle={{ color: chartColors.tooltipLabelColor }}
-                          formatter={(value: number) => [
-                            minutesToHours(value),
+                          formatter={(value: number | undefined) => [
+                            minutesToHours(value ?? 0),
                             "Total",
                           ]}
                         />

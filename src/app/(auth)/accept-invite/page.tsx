@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
+import { Suspense } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -54,7 +55,7 @@ function getPasswordStrength(pwd: string) {
   return { score: 0, label: "Muito fraca", color: "bg-red-500" };
 }
 
-export default function AcceptInvitePage() {
+function AcceptInviteContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -471,5 +472,13 @@ export default function AcceptInvitePage() {
         </CardContent>
       </Card>
     </motion.div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense>
+      <AcceptInviteContent />
+    </Suspense>
   );
 }

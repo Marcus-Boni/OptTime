@@ -14,7 +14,6 @@
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@neondatabase/serverless": "^1.0.2",
-    "@remotion/cli": "^4.0.434",
     "@remotion/player": "^4.0.434",
     "@tanstack/react-table": "^8.21.3",
     "better-auth": "^1.5.2",
@@ -44,6 +43,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.2.0",
+    "@remotion/cli": "^4.0.434",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

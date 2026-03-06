@@ -13,6 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   Bar,
@@ -80,7 +81,7 @@ type Entry = {
   project?: { id: string; name: string; code: string; color: string | null };
 };
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -545,5 +546,13 @@ export default function DashboardPage() {
         </Card>
       </motion.div>
     </motion.div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
   );
 }

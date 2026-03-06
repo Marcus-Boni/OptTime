@@ -29,16 +29,26 @@ export default async function middleware(
 ): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  const response = await fetch(
-    new URL("/api/auth/get-session", request.nextUrl.origin),
-    {
-      headers: {
-        cookie: request.headers.get("cookie") ?? "",
+  let session: { user?: { role?: string } } | null = null;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(
+      new URL("/api/auth/get-session", request.nextUrl.origin),
+      {
+        headers: {
+          cookie: request.headers.get("cookie") ?? "",
+        },
+        signal: controller.signal,
       },
-    },
-  );
-
-  const session = response.ok ? await response.json() : null;
+    );
+    clearTimeout(timeoutId);
+    session = response.ok ? await response.json() : null;
+  } catch {
+    // Network error or timeout — fail open (let the request through)
+    // so a transient auth service issue doesn't lock users out entirely.
+    session = null;
+  }
 
   const isAuthPage = isPublicAuthRoute(pathname);
   const isDashboardPage = pathname.startsWith("/dashboard");

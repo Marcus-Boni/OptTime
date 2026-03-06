@@ -10,7 +10,7 @@ const ALGORITHM = "aes-256-gcm";
 function getEncryptionKey(): Buffer {
   const secret =
     process.env.ENCRYPTION_KEY ||
-    process.env.AUTH_SECRET ||
+    process.env.BETTER_AUTH_SECRET ||
     "default_development_secret_key_1234567890";
   // Hash the secret to ensure it's exactly 32 bytes for AES-256
   return createHash("sha256").update(secret).digest();
