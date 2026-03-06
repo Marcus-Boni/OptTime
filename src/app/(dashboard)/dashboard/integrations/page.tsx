@@ -78,11 +78,11 @@ export default function IntegrationsPage() {
                           y2="1.03"
                           gradientUnits="userSpaceOnUse"
                         >
-                          <stop offset="0" stop-color="#0078d4" />
-                          <stop offset="0.16" stop-color="#1380da" />
-                          <stop offset="0.53" stop-color="#3c91e5" />
-                          <stop offset="0.82" stop-color="#559cec" />
-                          <stop offset="1" stop-color="#5ea0ef" />
+                          <stop offset="0" stopColor="#0078d4" />
+                          <stop offset="0.16" stopColor="#1380da" />
+                          <stop offset="0.53" stopColor="#3c91e5" />
+                          <stop offset="0.82" stopColor="#559cec" />
+                          <stop offset="1" stopColor="#5ea0ef" />
                         </linearGradient>
                       </defs>
                       <path
@@ -132,14 +132,14 @@ export default function IntegrationsPage() {
                   <svg 
                     viewBox="0 0 512 512" 
                     xmlns="http://www.w3.org/2000/svg" 
-                    fill-rule="evenodd" 
-                    clip-rule="evenodd" 
-                    stroke-linejoin="round" 
-                    stroke-miterlimit="2" 
+                    fillRule="evenodd" 
+                    clipRule="evenodd" 
+                    strokeLinejoin="round" 
+                    strokeMiterlimit="2" 
                     className="h-5 w-5 fill-current"
                   >
-                    <path d="M0 128C0 57.312 57.312 0 128 0h256.001c70.688 0 128 57.312 128 128v256.001c0 70.688-57.312 128-128 128h-256C57.311 512.002 0 454.69 0 384.002v-256z" fill="#1868db" fill-rule="nonzero"/>
-                    <path d="M189.544 324.041H160.69c-43.51 0-74.72-24.483-74.72-60.321h155.115c8.043 0 13.248 5.241 13.248 12.677V419.77c-38.784 0-64.79-28.853-64.79-69.07V324.04zm76.608-71.245h-28.843c-43.51 0-74.73-24.043-74.73-59.89h155.125c8.043 0 13.718 4.81 13.718 12.236v143.373c-38.785 0-65.27-28.843-65.27-69.061v-26.658zm77.088-70.815h-28.842c-43.51 0-74.731-24.483-74.731-60.321h155.125c8.043 0 13.248 5.241 13.248 12.237v143.372c-38.784 0-64.8-28.853-64.8-69.06V181.98z" fill="#fff" fill-rule="nonzero"/>
+                    <path d="M0 128C0 57.312 57.312 0 128 0h256.001c70.688 0 128 57.312 128 128v256.001c0 70.688-57.312 128-128 128h-256C57.311 512.002 0 454.69 0 384.002v-256z" fill="#1868db" fillRule="nonzero"/>
+                    <path d="M189.544 324.041H160.69c-43.51 0-74.72-24.483-74.72-60.321h155.115c8.043 0 13.248 5.241 13.248 12.677V419.77c-38.784 0-64.79-28.853-64.79-69.07V324.04zm76.608-71.245h-28.843c-43.51 0-74.73-24.043-74.73-59.89h155.125c8.043 0 13.718 4.81 13.718 12.236v143.373c-38.785 0-65.27-28.843-65.27-69.061v-26.658zm77.088-70.815h-28.842c-43.51 0-74.731-24.483-74.731-60.321h155.125c8.043 0 13.248 5.241 13.248 12.237v143.372c-38.784 0-64.8-28.853-64.8-69.06V181.98z" fill="#fff" fillRule="nonzero"/>
                   </svg>
                   Jira Software
                 </CardTitle>

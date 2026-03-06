@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Link2,
   RefreshCw,
-  Settings,
   AlertCircle,
   Loader2,
   BookOpen,
@@ -16,12 +15,19 @@ import {
   ShieldCheck,
   Copy,
   Check,
+  ExternalLink,
+  FolderSync,
+  GitBranch,
+  Clock,
+  ArrowRight,
 } from "lucide-react";
+import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -97,12 +103,14 @@ export default function AzureDevOpsPage() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
-  const [tutorialOpen, setTutorialOpen] = useState(true);
+  // null = not yet determined (avoids open→close flash on load)
+  const [tutorialOpen, setTutorialOpen] = useState<boolean | null>(null);
 
   const {
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors },
   } = useForm<AzureDevopsConfigInput>({
     resolver: zodResolver(azureDevopsConfigSchema),
@@ -112,6 +120,8 @@ export default function AzureDevOpsPage() {
     },
   });
 
+  const watchedOrgUrl = watch("organizationUrl");
+
   useEffect(() => {
     async function fetchConfig() {
       try {
@@ -119,13 +129,17 @@ export default function AzureDevOpsPage() {
         if (res.ok) {
           const data = await res.json();
           setIsConnected(data.hasPat);
-          if (data.hasPat) setTutorialOpen(false);
+          // Open tutorial only for users that haven't connected yet
+          setTutorialOpen(!data.hasPat);
           if (data.organizationUrl) {
             setValue("organizationUrl", data.organizationUrl);
           }
+        } else {
+          setTutorialOpen(true);
         }
       } catch (error) {
         console.error("Error fetching Azure config:", error);
+        setTutorialOpen(true);
       } finally {
         setIsLoadingConfig(false);
       }
@@ -183,6 +197,9 @@ export default function AzureDevOpsPage() {
 
       {/* Tutorial */}
       <motion.div variants={itemVariants}>
+        {tutorialOpen === null ? (
+          <Skeleton className="h-14 w-full rounded-xl" />
+        ) : (
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardHeader className="pb-3">
             <button
@@ -202,7 +219,7 @@ export default function AzureDevOpsPage() {
             </button>
           </CardHeader>
 
-          {tutorialOpen && (
+          {tutorialOpen === true && (
             <CardContent className="pt-0">
               <div className="mb-4 rounded-lg border border-brand-500/20 bg-brand-500/5 px-4 py-3">
                 <p className="text-xs text-muted-foreground">
@@ -360,6 +377,7 @@ export default function AzureDevOpsPage() {
             </CardContent>
           )}
         </Card>
+        )}
       </motion.div>
 
       {/* Connection Form */}
@@ -454,35 +472,110 @@ export default function AzureDevOpsPage() {
         </Card>
       </motion.div>
 
-      {/* Sync Settings */}
+      {/* Sync Features */}
       <motion.div variants={itemVariants}>
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display text-base">
               <RefreshCw className="h-4 w-4" />
-              Sincronização
+              Recursos disponíveis
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Configure a sincronização bidirecional de horas entre o Time
-              Tracker e o Azure DevOps.
-            </p>
-            {isConnected ? (
-              <div className="rounded-lg border border-border/30 bg-muted/30 p-4">
-                <p className="text-sm">
-                  Sincronização ainda em desenvolvimento. Em breve você poderá
-                  mapear os estados e projetos entre o Time Tracker e o Azure
-                  DevOps.
-                </p>
+          <CardContent className="space-y-3">
+            {isConnected && watchedOrgUrl && (
+              <div className="flex items-center gap-2 rounded-lg border border-border/30 bg-muted/30 px-3 py-2">
+                <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="flex-1 truncate font-mono text-xs text-muted-foreground">
+                  {watchedOrgUrl}
+                </span>
+                <a
+                  href={watchedOrgUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                  aria-label="Abrir organização no Azure DevOps"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
               </div>
-            ) : (
-              <div className="rounded-lg border border-border/30 bg-muted/30 p-4 text-center">
-                <Settings className="mx-auto h-8 w-8 text-muted-foreground/50" />
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Conecte sua conta para configurar a sincronização.
-                </p>
+            )}
+
+            <div className="divide-y divide-border/40 rounded-lg border border-border/40 overflow-hidden">
+              {/* Projects */}
+              <div className="flex items-start gap-3 p-4">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10">
+                  <FolderSync className="h-4 w-4 text-brand-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">Importação de Projetos</p>
+                    <Badge variant="secondary" className="text-[10px] bg-green-500/10 text-green-500">
+                      Disponível
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Importe projetos do Azure DevOps e vincule-os a registros de horas.
+                  </p>
+                </div>
+                {isConnected ? (
+                  <Link href="/dashboard/projects">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 gap-1.5 text-xs"
+                    >
+                      Importar
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </Link>
+                ) : (
+                  <Button variant="outline" size="sm" className="shrink-0 text-xs" disabled>
+                    Importar
+                  </Button>
+                )}
               </div>
+
+              {/* Work Items */}
+              <div className="flex items-start gap-3 p-4">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <GitBranch className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">Sincronização de Work Items</p>
+                    <Badge variant="secondary" className="text-[10px]">
+                      Em breve
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Associe work items do Azure DevOps a apontamentos automaticamente.
+                  </p>
+                </div>
+              </div>
+
+              {/* Time entries */}
+              <div className="flex items-start gap-3 p-4">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">Envio de Horas</p>
+                    <Badge variant="secondary" className="text-[10px]">
+                      Em breve
+                    </Badge>
+                  </div>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Envie registros de horas diretamente para os work items do Azure DevOps.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {!isConnected && (
+              <p className="text-center text-xs text-muted-foreground">
+                Conecte sua conta acima para habilitar os recursos.
+              </p>
             )}
           </CardContent>
         </Card>
