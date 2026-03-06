@@ -10,6 +10,7 @@ const segmentLabels: Record<string, string> = {
   dashboard: "Dashboard",
   time: "Registrar Tempo",
   timesheets: "Timesheets",
+  approvals: "Aprovações",
   calendar: "Calendário",
   projects: "Projetos",
   reports: "Relatórios",
@@ -22,6 +23,10 @@ const segmentLabels: Record<string, string> = {
   settings: "Configurações",
   new: "Novo",
 };
+
+function isDynamicSegment(segment: string): boolean {
+  return /^[a-f0-9-]{8,}$/i.test(segment);
+}
 
 export function Breadcrumb() {
   const pathname = usePathname();
@@ -53,7 +58,9 @@ export function Breadcrumb() {
       {segments.map((segment, index) => {
         const href = `/${segments.slice(0, index + 1).join("/")}`;
         const isLast = index === segments.length - 1;
-        const label = segmentLabels[segment] ?? segment;
+        const label =
+          segmentLabels[segment] ??
+          (isDynamicSegment(segment) ? "Detalhe" : segment);
 
         return (
           <Fragment key={href}>

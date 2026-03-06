@@ -15,6 +15,13 @@
       "when": 1772738507798,
       "tag": "0001_famous_colossus",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772765856524,
+      "tag": "0002_open_stature",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
@@ -100,6 +101,13 @@ export const userRelations = relations(user, ({ many, one }) => ({
     fields: [user.id],
     references: [azureDevopsConfig.userId],
   }),
+  timeEntries: many(timeEntry),
+  timesheets: many(timesheet),
+  activeTimer: one(activeTimer, {
+    fields: [user.id],
+    references: [activeTimer.userId],
+  }),
+  approvalsGiven: many(timesheet, { relationName: "approver" }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -207,6 +215,7 @@ export const projectRelations = relations(project, ({ one, many }) => ({
     references: [user.id],
   }),
   members: many(projectMember),
+  timeEntries: many(timeEntry),
 }));
 
 export const projectMemberRelations = relations(projectMember, ({ one }) => ({
@@ -246,3 +255,154 @@ export const azureDevopsConfigRelations = relations(
     }),
   }),
 );
+
+// ─── Time Entry ───────────────────────────────────────────────────────
+export type AzdoSyncStatus = "none" | "pending" | "synced" | "failed";
+
+export const timeEntry = pgTable(
+  "time_entry",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    timesheetId: text("timesheet_id").references(() => timesheet.id),
+    description: text("description").notNull(),
+    /** Date in YYYY-MM-DD format */
+    date: text("date").notNull(),
+    /** Duration in minutes */
+    duration: integer("duration").notNull(),
+    billable: boolean("billable").notNull().default(true),
+    /** Azure DevOps Work Item numeric ID */
+    azureWorkItemId: integer("azure_work_item_id"),
+    /** Azure DevOps Work Item title (cached) */
+    azureWorkItemTitle: text("azure_work_item_title"),
+    /** Start time for timer-created entries */
+    startTime: timestamp("start_time"),
+    /** End time for timer-created entries */
+    endTime: timestamp("end_time"),
+    /** none | pending | synced | failed */
+    azdoSyncStatus: text("azdo_sync_status").notNull().default("none"),
+    /** Soft delete timestamp */
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("time_entry_user_date_idx").on(table.userId, table.date),
+    index("time_entry_project_date_idx").on(table.projectId, table.date),
+    index("time_entry_timesheet_idx").on(table.timesheetId),
+    index("time_entry_azure_wi_idx").on(table.azureWorkItemId),
+  ],
+);
+
+export const timeEntryRelations = relations(timeEntry, ({ one }) => ({
+  user: one(user, {
+    fields: [timeEntry.userId],
+    references: [user.id],
+  }),
+  project: one(project, {
+    fields: [timeEntry.projectId],
+    references: [project.id],
+  }),
+  timesheet: one(timesheet, {
+    fields: [timeEntry.timesheetId],
+    references: [timesheet.id],
+  }),
+}));
+
+// ─── Timesheet ────────────────────────────────────────────────────────
+export type TimesheetStatus = "open" | "submitted" | "approved" | "rejected";
+export type TimesheetPeriodType = "weekly" | "monthly";
+
+export const timesheet = pgTable(
+  "timesheet",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Period identifier: "2026-W10" for weekly, "2026-03" for monthly */
+    period: text("period").notNull(),
+    /** weekly | monthly */
+    periodType: text("period_type").notNull().default("weekly"),
+    /** Total minutes from all entries */
+    totalMinutes: integer("total_minutes").notNull().default(0),
+    /** Total billable minutes */
+    billableMinutes: integer("billable_minutes").notNull().default(0),
+    /** open | submitted | approved | rejected */
+    status: text("status").notNull().default("open"),
+    submittedAt: timestamp("submitted_at"),
+    approvedBy: text("approved_by").references(() => user.id),
+    approvedAt: timestamp("approved_at"),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("timesheet_user_period_idx").on(table.userId, table.period),
+    index("timesheet_status_idx").on(table.status),
+  ],
+);
+
+export const timesheetRelations = relations(timesheet, ({ one, many }) => ({
+  user: one(user, {
+    fields: [timesheet.userId],
+    references: [user.id],
+  }),
+  approver: one(user, {
+    fields: [timesheet.approvedBy],
+    references: [user.id],
+    relationName: "approver",
+  }),
+  entries: many(timeEntry),
+}));
+
+// ─── Active Timer ─────────────────────────────────────────────────────
+export const activeTimer = pgTable(
+  "active_timer",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" })
+      .unique(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    description: text("description").notNull().default(""),
+    /** Azure DevOps Work Item numeric ID */
+    azureWorkItemId: integer("azure_work_item_id"),
+    /** Azure DevOps Work Item title (cached) */
+    azureWorkItemTitle: text("azure_work_item_title"),
+    billable: boolean("billable").notNull().default(true),
+    /** When the timer was started */
+    startedAt: timestamp("started_at").notNull(),
+    /** When the timer was paused (null if running) */
+    pausedAt: timestamp("paused_at"),
+    /** Accumulated milliseconds from previous pause/resume cycles */
+    accumulatedMs: integer("accumulated_ms").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("active_timer_user_idx").on(table.userId)],
+);
+
+export const activeTimerRelations = relations(activeTimer, ({ one }) => ({
+  user: one(user, {
+    fields: [activeTimer.userId],
+    references: [user.id],
+  }),
+  project: one(project, {
+    fields: [activeTimer.projectId],
+    references: [project.id],
+  }),
+}));

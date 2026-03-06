@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
   Calendar,
+  CheckSquare,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -19,7 +20,6 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,16 +32,24 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useTimer } from "@/hooks/use-timer";
+import { useTimesheets } from "@/hooks/use-timesheets";
 import { useSession } from "@/lib/auth-client";
-import { cn, formatTimerDisplay } from "@/lib/utils";
-import { useTimerStore } from "@/stores/timer.store";
+import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
 
-const navigation = [
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: typeof Home;
+  badge?: number;
+}
+
+const baseNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
-  { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers, badge: 2 },
+  { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
   { name: "Calendário", href: "/dashboard/calendar", icon: Calendar },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
@@ -53,6 +61,11 @@ const navigation = [
 ];
 
 const managementNav = [
+  {
+    name: "Aprovações",
+    href: "/dashboard/timesheets/approvals",
+    icon: CheckSquare,
+  },
   { name: "Equipe", href: "/dashboard/people", icon: Users },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
@@ -60,27 +73,16 @@ const managementNav = [
 /** Live Timer Widget in sidebar */
 function TimerWidget({ collapsed }: { collapsed: boolean }) {
   const {
-    isRunning,
+    displayTime,
     isPaused,
-    projectName,
-    getElapsedMs,
-    pause,
-    resume,
-    stop,
-  } = useTimerStore();
-  const [displayTime, setDisplayTime] = useState("00:00:00");
+    hasTimer,
+    pauseTimer,
+    resumeTimer,
+    stopTimer,
+    timer,
+  } = useTimer();
 
-  useEffect(() => {
-    if (!isRunning) return;
-
-    const interval = setInterval(() => {
-      setDisplayTime(formatTimerDisplay(getElapsedMs()));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isRunning, getElapsedMs]);
-
-  if (!isRunning) return null;
+  if (!hasTimer) return null;
 
   if (collapsed) {
     return (
@@ -92,7 +94,9 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
         </TooltipTrigger>
         <TooltipContent side="right">
           <p className="font-mono font-semibold">{displayTime}</p>
-          <p className="text-xs text-muted-foreground">{projectName}</p>
+          <p className="text-xs text-muted-foreground">
+            {timer?.project?.name}
+          </p>
         </TooltipContent>
       </Tooltip>
     );
@@ -116,13 +120,15 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
       <p className="mt-1 font-mono text-xl font-bold text-foreground">
         {displayTime}
       </p>
-      <p className="truncate text-xs text-muted-foreground">{projectName}</p>
+      <p className="truncate text-xs text-muted-foreground">
+        {timer?.project?.name}
+      </p>
       <div className="mt-2 flex gap-1">
         <Button
           variant="ghost"
           size="sm"
           className="h-7 flex-1 text-xs"
-          onClick={isPaused ? resume : pause}
+          onClick={isPaused ? resumeTimer : pauseTimer}
           aria-label={isPaused ? "Retomar timer" : "Pausar timer"}
         >
           <Pause className="mr-1 h-3 w-3" />
@@ -132,7 +138,7 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
           variant="ghost"
           size="sm"
           className="h-7 flex-1 text-xs text-destructive hover:text-destructive"
-          onClick={() => stop()}
+          onClick={() => stopTimer()}
           aria-label="Parar timer"
         >
           <Square className="mr-1 h-3 w-3" />
@@ -156,10 +162,25 @@ export function Sidebar() {
   const user: UserType | null = isPending
     ? null
     : ((session?.user as unknown as UserType) ?? null);
+  const { timesheets } = useTimesheets(undefined, {
+    enabled: !isPending && !!user,
+  });
   const isManager =
     !isPending && (user?.role === "manager" || user?.role === "admin");
+  const pendingTimesheetCount = timesheets.filter(
+    (timesheet) =>
+      timesheet.status === "open" || timesheet.status === "rejected",
+  ).length;
+  const navigation = baseNavigation.map((item) =>
+    item.href === "/dashboard/timesheets"
+      ? {
+          ...item,
+          badge: pendingTimesheetCount > 0 ? pendingTimesheetCount : undefined,
+        }
+      : item,
+  );
 
-  return (
+ return (
     <TooltipProvider>
       {/* Mobile overlay */}
       <AnimatePresence>
@@ -178,7 +199,7 @@ export function Sidebar() {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-sidebar transition-all duration-300",
-          sidebarCollapsed ? "w-[72px]" : "w-[260px]",
+          sidebarCollapsed ? "w-18" : "w-[260px]",
           mobileSidebarOpen
             ? "translate-x-0"
             : "-translate-x-full lg:translate-x-0",

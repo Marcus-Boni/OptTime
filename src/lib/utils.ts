@@ -1,10 +1,15 @@
 import { type ClassValue, clsx } from "clsx";
 import {
+  addDays,
+  endOfISOWeek,
+  endOfMonth,
   format,
   formatDistanceToNow,
   isToday,
   isYesterday,
-  parseISO,
+  parse,
+  startOfISOWeek,
+  startOfMonth,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { twMerge } from "tailwind-merge";
@@ -34,9 +39,11 @@ export function formatDuration(minutes: number): string {
 /**
  * Format minutes into decimal hours string.
  * @example formatDecimalHours(90) => "1.5h"
+ * @example formatDecimalHours(15) => "0.25h"
  */
 export function formatDecimalHours(minutes: number): string {
-  return `${(minutes / 60).toFixed(1)}h`;
+  const hours = minutes / 60;
+  return `${Number(hours.toFixed(2))}h`;
 }
 
 /**
@@ -55,13 +62,22 @@ export function formatTimerDisplay(ms: number): string {
 }
 
 /**
+ * Safe local parse for YYYY-MM-DD string to local Date object (avoids UTC offset issue).
+ * @example parseLocalDate("2025-03-01") => Date(2025, 2, 1) // March 1st local
+ */
+export function parseLocalDate(dateStr: string): Date {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+/**
  * Format a date into a human-friendly label.
  * @example formatDateLabel("2025-03-01") => "Hoje"
  * @example formatDateLabel("2025-02-28") => "Ontem"
  * @example formatDateLabel("2025-02-20") => "20 de fevereiro"
  */
 export function formatDateLabel(dateStr: string): string {
-  const date = parseISO(dateStr);
+  const date = parseLocalDate(dateStr);
   if (isToday(date)) return "Hoje";
   if (isYesterday(date)) return "Ontem";
   return format(date, "d 'de' MMMM", { locale: ptBR });
@@ -72,7 +88,7 @@ export function formatDateLabel(dateStr: string): string {
  * @example formatDate(new Date()) => "01 mar 2025"
  */
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? parseISO(date) : date;
+  const d = typeof date === "string" ? parseLocalDate(date) : date;
   return format(d, "dd MMM yyyy", { locale: ptBR });
 }
 
@@ -81,7 +97,7 @@ export function formatDate(date: Date | string): string {
  * @example getRelativeTime(new Date()) => "há poucos segundos"
  */
 export function getRelativeTime(date: Date | string): string {
-  const d = typeof date === "string" ? parseISO(date) : date;
+  const d = typeof date === "string" ? parseLocalDate(date) : date;
   return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
 }
 
@@ -89,7 +105,8 @@ export function getRelativeTime(date: Date | string): string {
  * Generate initials from a display name.
  * @example getInitials("Marcus Galvão") => "MG"
  */
-export function getInitials(name: string): string {
+export function getInitials(name?: string | null): string {
+  if (!name || typeof name !== "string") return "U";
   return name
     .split(" ")
     .filter(Boolean)
@@ -141,4 +158,37 @@ export function getStatusColor(status: string): string {
     open: "bg-yellow-500/10 text-yellow-400",
   };
   return colors[status] ?? "bg-muted text-muted-foreground";
+}
+
+/**
+ * Convert a period string into a date range (ISO strings).
+ * @example getPeriodRange("2026-W10", "weekly") => { start: "2026-03-02", end: "2026-03-08" }
+ * @example getPeriodRange("2026-03", "monthly") => { start: "2026-03-01", end: "2026-03-31" }
+ */
+export function getPeriodRange(
+  period: string,
+  type: string,
+): { start: string; end: string } {
+  if (type === "monthly") {
+    const date = parse(period, "yyyy-MM", new Date());
+    return {
+      start: format(startOfMonth(date), "yyyy-MM-dd"),
+      end: format(endOfMonth(date), "yyyy-MM-dd"),
+    };
+  }
+
+  // Weekly: 2026-W10
+  const [year, week] = period.split("-W").map(Number);
+  if (!year || !week) throw new Error(`Invalid period format: ${period}`);
+
+  // date-fns doesn't have a direct "parse week string", so we find the first day of the year
+  // and move to the appropriate week. ISO weeks start on Monday.
+  const firstDay = new Date(year, 0, 4); // Jan 4th is always in the first ISO week
+  const start = addDays(startOfISOWeek(firstDay), (week - 1) * 7);
+  const end = endOfISOWeek(start);
+
+  return {
+    start: format(start, "yyyy-MM-dd"),
+    end: format(end, "yyyy-MM-dd"),
+  };
 }

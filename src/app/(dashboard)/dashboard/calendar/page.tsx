@@ -1,9 +1,12 @@
 "use client";
 
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 const containerVariants = {
@@ -17,59 +20,68 @@ const itemVariants = {
 
 const daysOfWeek = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
-function generateMockCalendar(year: number, month: number) {
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const days: { day: number; hours: number; isToday: boolean }[] = [];
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const date = new Date(year, month, d);
-    const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-    const isToday =
-      date.toISOString().split("T")[0] ===
-      new Date().toISOString().split("T")[0];
-    days.push({
-      day: d,
-      hours: isWeekend
-        ? 0
-        : Math.random() > 0.2
-          ? Math.round(Math.random() * 5 + 4)
-          : 0,
-      isToday,
-    });
-  }
-
-  return { firstDay, days };
-}
-
-function getHeatmapColor(hours: number): string {
-  if (hours === 0) return "bg-muted/30";
+function getHeatmapColor(minutes: number): string {
+  if (minutes === 0) return "bg-muted/30";
+  const hours = minutes / 60;
   if (hours < 4) return "bg-brand-500/15";
   if (hours < 6) return "bg-brand-500/30";
   if (hours < 8) return "bg-brand-500/50";
   return "bg-brand-500/70";
 }
 
+function formatHours(minutes: number): string {
+  if (minutes === 0) return "";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m === 0 ? `${h}h` : `${h}h${m}`;
+}
+
+interface DaySummary {
+  date: string;
+  totalMinutes: number;
+}
+
 export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [daySummaries, setDaySummaries] = useState<DaySummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
-  const { firstDay, days } = generateMockCalendar(year, month);
 
-  const monthNames = [
-    "Janeiro",
-    "Fevereiro",
-    "Março",
-    "Abril",
-    "Maio",
-    "Junho",
-    "Julho",
-    "Agosto",
-    "Setembro",
-    "Outubro",
-    "Novembro",
-    "Dezembro",
-  ];
+  const firstDayOfMonth = new Date(year, month, 1);
+  const lastDayOfMonth = new Date(year, month + 1, 0);
+  const firstDayOffset = firstDayOfMonth.getDay();
+  const daysInMonth = lastDayOfMonth.getDate();
+
+  const monthLabel = format(currentDate, "MMMM yyyy", { locale: ptBR });
+  const fromStr = format(firstDayOfMonth, "yyyy-MM-dd");
+  const toStr = format(lastDayOfMonth, "yyyy-MM-dd");
+
+  // Build a map: dateStr → totalMinutes
+  const minutesByDate: Record<string, number> = {};
+  for (const s of daySummaries) {
+    if (s.date) {
+      const pureDate = typeof s.date === "string" ? s.date.split("T")[0] : String(s.date);
+      minutesByDate[pureDate] = Number(s.totalMinutes) || 0;
+    }
+  }
+
+  // Fetch real data when month changes
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/time-entries/summary?groupBy=day&from=${fromStr}&to=${toStr}`)
+      .then((res) => (res.ok ? res.json() : { data: [] }))
+      .then((data) => {
+        setDaySummaries(data.data ?? []);
+      })
+      .catch(() => {
+        setDaySummaries([]);
+      })
+      .finally(() => setLoading(false));
+  }, [fromStr, toStr]);
+
+  const today = format(new Date(), "yyyy-MM-dd");
 
   const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
   const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
@@ -103,8 +115,8 @@ export default function CalendarPage() {
         >
           <ChevronLeft className="h-5 w-5" />
         </Button>
-        <h2 className="font-display text-lg font-semibold text-foreground">
-          {monthNames[month]} {year}
+        <h2 className="font-display text-lg font-semibold capitalize text-foreground">
+          {monthLabel}
         </h2>
         <Button
           variant="ghost"
@@ -126,7 +138,7 @@ export default function CalendarPage() {
           {daysOfWeek.map((day) => (
             <div
               key={day}
-              className="text-center text-xs font-medium text-muted-foreground py-2"
+              className="py-2 text-center text-xs font-medium text-muted-foreground"
             >
               {day}
             </div>
@@ -134,40 +146,63 @@ export default function CalendarPage() {
         </div>
 
         {/* Days */}
-        <div className="grid grid-cols-7 gap-1">
-          {/* Empty cells for offset */}
-          {Array.from({ length: firstDay }).map((_, i) => (
-            <div key={`empty-${i}`} className="aspect-square" />
-          ))}
+        {loading ? (
+          <div className="grid grid-cols-7 gap-1">
+            {Array.from({ length: 35 }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+              <Skeleton key={i} className="aspect-square rounded-lg" />
+            ))}
+          </div>
+        ) : (
+          <motion.div 
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-7 gap-1"
+          >
+            {Array.from({ length: firstDayOffset }).map((_, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: offset
+              <div key={`empty-${i}`} className="aspect-square" />
+            ))}
 
-          {days.map(({ day, hours, isToday }) => (
-            <motion.button
-              key={day}
-              type="button"
-              variants={itemVariants}
-              className={cn(
-                "group relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm transition-all hover:ring-2 hover:ring-brand-500/30",
-                getHeatmapColor(hours),
-                isToday && "ring-2 ring-brand-500",
-              )}
-              aria-label={`${day} de ${monthNames[month]}, ${hours}h registradas`}
-            >
-              <span
-                className={cn(
-                  "font-medium",
-                  isToday ? "text-brand-500" : "text-foreground",
-                )}
-              >
-                {day}
-              </span>
-              {hours > 0 && (
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {hours}h
-                </span>
-              )}
-            </motion.button>
-          ))}
-        </div>
+            {Array.from({ length: daysInMonth }, (_, i) => i + 1).map((day) => {
+              const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const minutes = minutesByDate[dateStr] ?? 0;
+              const isToday = dateStr === today;
+
+              return (
+                <motion.div
+                  key={day}
+                  variants={itemVariants}
+                  className={cn(
+                    "group relative flex aspect-square flex-col items-center justify-center rounded-lg text-sm transition-all",
+                    getHeatmapColor(minutes),
+                    isToday && "ring-2 ring-brand-500",
+                  )}
+                  title={
+                    minutes > 0
+                      ? `${formatHours(minutes)} registradas`
+                      : undefined
+                  }
+                >
+                  <span
+                    className={cn(
+                      "font-medium",
+                      isToday ? "text-brand-500" : "text-foreground",
+                    )}
+                  >
+                    {day}
+                  </span>
+                  {minutes > 0 && (
+                    <span className="font-mono text-[10px] text-muted-foreground">
+                      {formatHours(minutes)}
+                    </span>
+                  )}
+                </motion.div>
+              );
+            })}
+          </motion.div>
+        )}
       </motion.div>
 
       {/* Legend */}
@@ -176,22 +211,18 @@ export default function CalendarPage() {
         className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground"
       >
         <span>Intensidade:</span>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-muted/30" />
-          <span>0h</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-brand-500/30" />
-          <span>4-6h</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-brand-500/50" />
-          <span>6-8h</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <div className="h-3 w-3 rounded bg-brand-500/70" />
-          <span>8h+</span>
-        </div>
+        {[
+          { label: "0h", cls: "bg-muted/30" },
+          { label: "<4h", cls: "bg-brand-500/15" },
+          { label: "4-6h", cls: "bg-brand-500/30" },
+          { label: "6-8h", cls: "bg-brand-500/50" },
+          { label: "8h+", cls: "bg-brand-500/70" },
+        ].map(({ label, cls }) => (
+          <div key={label} className="flex items-center gap-1">
+            <div className={cn("h-3 w-3 rounded", cls)} />
+            <span>{label}</span>
+          </div>
+        ))}
       </motion.div>
     </motion.div>
   );
