@@ -13,6 +13,8 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { CommandPalette } from "@/components/layout/command-palette";
+import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,7 +31,13 @@ import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
 
 export function Header() {
-  const { theme, toggleTheme, setMobileSidebarOpen } = useUIStore();
+  const {
+    theme,
+    toggleTheme,
+    setMobileSidebarOpen,
+    openQuickEntry,
+    openCommandPalette,
+  } = useUIStore();
   const { data: session, isPending } = useSession();
   const user = isPending
     ? null
@@ -73,6 +81,7 @@ export function Header() {
           size="sm"
           className="hidden gap-1.5 bg-brand-500 text-white hover:bg-brand-600 md:flex"
           aria-label="Novo registro de tempo"
+          onClick={openQuickEntry}
         >
           <Plus className="h-4 w-4" />
           Novo Registro
@@ -83,6 +92,7 @@ export function Header() {
           size="icon"
           className="bg-brand-500 text-white hover:bg-brand-600 md:hidden"
           aria-label="Novo registro de tempo"
+          onClick={openQuickEntry}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -92,7 +102,8 @@ export function Header() {
           variant="ghost"
           size="icon"
           className="hidden md:flex"
-          aria-label="Buscar"
+          aria-label="Buscar (Ctrl+K)"
+          onClick={openCommandPalette}
         >
           <Search className="h-4.5 w-4.5" />
         </Button>
@@ -171,6 +182,9 @@ export function Header() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <QuickEntryDialog />
+      <CommandPalette />
     </header>
   );
 }

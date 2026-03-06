@@ -12,6 +12,10 @@ interface UIState {
   activeModal: string | null;
   /** Whether mobile sidebar is open */
   mobileSidebarOpen: boolean;
+  /** Whether the quick time-entry dialog is open */
+  quickEntryOpen: boolean;
+  /** Whether the command palette is open */
+  commandPaletteOpen: boolean;
 }
 
 interface UIActions {
@@ -22,15 +26,21 @@ interface UIActions {
   openModal: (id: string) => void;
   closeModal: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
+  openQuickEntry: () => void;
+  closeQuickEntry: () => void;
+  openCommandPalette: () => void;
+  closeCommandPalette: () => void;
 }
 
 export const useUIStore = create<UIState & UIActions>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       sidebarCollapsed: false,
       theme: "dark",
       activeModal: null,
       mobileSidebarOpen: false,
+      quickEntryOpen: false,
+      commandPaletteOpen: false,
 
       toggleSidebar: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -41,6 +51,10 @@ export const useUIStore = create<UIState & UIActions>()(
       openModal: (id) => set({ activeModal: id }),
       closeModal: () => set({ activeModal: null }),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
+      openQuickEntry: () => set({ quickEntryOpen: true }),
+      closeQuickEntry: () => set({ quickEntryOpen: false }),
+      openCommandPalette: () => set({ commandPaletteOpen: true }),
+      closeCommandPalette: () => set({ commandPaletteOpen: false }),
     }),
     {
       name: "optsolv-ui",
