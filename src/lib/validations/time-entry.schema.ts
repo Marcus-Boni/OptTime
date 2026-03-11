@@ -24,7 +24,8 @@ export type TimeEntryFormData = z.infer<typeof timeEntrySchema>;
 /** Server-side schema for creating a time entry via API */
 export const createTimeEntrySchema = z.object({
   projectId: z.string().min(1),
-  description: z.string().min(1).max(500),
+  // Description is optional when coming from the DevOps extension
+  description: z.string().max(500).default(""),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD"),
   duration: z.number().int().min(1).max(1440),
   billable: z.boolean().default(true),

@@ -4,11 +4,18 @@ import {
   extensionOptions,
   resolveExtensionUser,
 } from "@/lib/extension-auth";
+export const dynamic = "force-dynamic";
+
+import { and } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
-import { activeTimer, project, projectMember, timeEntry } from "@/lib/db/schema";
+import {
+  activeTimer,
+  project,
+  projectMember,
+  timeEntry,
+} from "@/lib/db/schema";
 import { startTimerSchema } from "@/lib/validations/time-entry.schema";
-import { and } from "drizzle-orm";
 
 export function OPTIONS() {
   return extensionOptions();
@@ -20,7 +27,8 @@ export function OPTIONS() {
  */
 export async function GET(req: Request): Promise<Response> {
   const extUser = await resolveExtensionUser(req);
-  if (!extUser) return extensionJson({ error: "Unauthorized" }, { status: 401 });
+  if (!extUser)
+    return extensionJson({ error: "Unauthorized" }, { status: 401 });
 
   try {
     const timer = await db.query.activeTimer.findFirst({
@@ -44,7 +52,8 @@ export async function GET(req: Request): Promise<Response> {
  */
 export async function POST(req: Request): Promise<Response> {
   const extUser = await resolveExtensionUser(req);
-  if (!extUser) return extensionJson({ error: "Unauthorized" }, { status: 401 });
+  if (!extUser)
+    return extensionJson({ error: "Unauthorized" }, { status: 401 });
 
   let body: unknown;
   try {
@@ -92,7 +101,10 @@ export async function POST(req: Request): Promise<Response> {
     });
 
     if (!proj || proj.status !== "active") {
-      return extensionJson({ error: "Projeto não encontrado." }, { status: 404 });
+      return extensionJson(
+        { error: "Projeto não encontrado." },
+        { status: 404 },
+      );
     }
 
     if (extUser.role === "member") {

@@ -19,12 +19,10 @@ import {
   KeyRound,
   Link2,
   Loader2,
-  Package,
   Plus,
   Puzzle,
   RefreshCw,
   ShieldCheck,
-  Terminal,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -128,7 +126,6 @@ export default function AzureDevOpsPage() {
   );
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [isRevokingToken, setIsRevokingToken] = useState(false);
-  const [appOrigin, setAppOrigin] = useState("");
 
   const {
     register,
@@ -145,10 +142,6 @@ export default function AzureDevOpsPage() {
   });
 
   const watchedOrgUrl = watch("organizationUrl");
-
-  useEffect(() => {
-    setAppOrigin(window.location.origin);
-  }, []);
 
   useEffect(() => {
     async function fetchExtensionToken() {
@@ -866,106 +859,6 @@ export default function AzureDevOpsPage() {
             </div>
 
             <div className="border-t border-border/40" />
-
-            {/* Installation Guide */}
-            <div className="space-y-4">
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                <Package className="h-4 w-4 text-brand-500" />
-                Instalação da Extensão
-              </h3>
-
-              <div className="space-y-0">
-                <TutorialStep
-                  step={1}
-                  icon={Terminal}
-                  title="Compile e empacote a extensão"
-                >
-                  <p>
-                    Na raiz do projeto, rode os comandos para gerar o arquivo{" "}
-                    <span className="font-mono text-xs text-foreground">
-                      .vsix
-                    </span>
-                    :
-                  </p>
-                  <div className="mt-2 space-y-1.5">
-                    <CodeSnippet code="cd azure-devops-extension && pnpm install" />
-                    <CodeSnippet code="pnpm package" />
-                  </div>
-                  <p className="mt-1">
-                    O pacote será gerado em{" "}
-                    <span className="font-mono text-xs text-foreground">
-                      azure-devops-extension/dist/vsix/
-                    </span>
-                    .
-                  </p>
-                </TutorialStep>
-
-                <TutorialStep
-                  step={2}
-                  icon={Package}
-                  title="Instale na organização do Azure DevOps"
-                >
-                  <p>
-                    Acesse{" "}
-                    <span className="font-medium text-foreground">
-                      Organization Settings → Extensions
-                    </span>{" "}
-                    na sua organização do Azure DevOps.
-                  </p>
-                  <p className="mt-1">
-                    Clique em{" "}
-                    <span className="font-medium text-foreground">
-                      "Browse local extensions"
-                    </span>{" "}
-                    e faça upload do arquivo{" "}
-                    <span className="font-mono text-xs text-foreground">
-                      .vsix
-                    </span>{" "}
-                    gerado.
-                  </p>
-                </TutorialStep>
-
-                <TutorialStep
-                  step={3}
-                  icon={KeyRound}
-                  title="Configure o painel no work item"
-                >
-                  <p>
-                    Abra qualquer work item no Azure DevOps. O painel{" "}
-                    <span className="font-medium text-foreground">
-                      Time Tracker
-                    </span>{" "}
-                    aparecerá no formulário. Cole a URL desta aplicação e o
-                    token gerado acima.
-                  </p>
-                  {appOrigin && (
-                    <div className="mt-2">
-                      <p className="mb-1.5 text-xs text-muted-foreground">
-                        URL desta aplicação:
-                      </p>
-                      <CodeSnippet code={appOrigin} />
-                    </div>
-                  )}
-                </TutorialStep>
-
-                <div className="pl-12 pt-0 pb-2">
-                  <a
-                    href="https://marketplace.visualstudio.com/azuredevops"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                      Azure Marketplace
-                    </Button>
-                  </a>
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </motion.div>

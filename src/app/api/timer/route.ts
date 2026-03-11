@@ -154,7 +154,9 @@ export async function PATCH(req: Request): Promise<Response> {
 
       const [updated] = await db
         .update(activeTimer)
-        .set({ pausedAt: now, accumulatedMs: accumulated, startedAt: now })
+        // NOTE: startedAt is intentionally NOT overwritten here.
+        // Overwriting it would corrupt the elapsed-time calculation on the next resume/poll.
+        .set({ pausedAt: now, accumulatedMs: accumulated })
         .where(eq(activeTimer.id, existing.id))
         .returning();
 

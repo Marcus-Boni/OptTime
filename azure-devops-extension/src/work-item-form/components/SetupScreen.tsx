@@ -1,4 +1,5 @@
 import { useState } from "react";
+import logoUrl from "../../assets/logo-white.svg";
 import { getMe } from "../../shared/api";
 import { saveCredentials } from "../../shared/auth";
 
@@ -107,23 +108,20 @@ export function SetupScreen({ onConfigured }: Props) {
 
 function Logo() {
   return (
-    <svg
-      width="32"
-      height="32"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
+    <div
+      style={{
+        background: "var(--brand)",
+        borderRadius: "8px",
+        width: 32,
+        height: 32,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 2px 8px rgba(249,115,22,0.3)",
+      }}
     >
-      <circle cx="12" cy="12" r="10" fill="#6366f1" opacity="0.15" />
-      <circle cx="12" cy="12" r="10" stroke="#6366f1" strokeWidth="1.5" />
-      <polyline
-        points="12,7 12,12 15,15"
-        stroke="#6366f1"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+      <img src={logoUrl} alt="OptSolv Time Tracker" width={20} height={20} />
+    </div>
   );
 }
 

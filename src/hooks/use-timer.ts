@@ -42,12 +42,15 @@ export function useTimer() {
     }
   }, []);
 
-  // Compute elapsed ms from server timer state
+  // Compute elapsed ms from server timer state.
+  // When paused, accumulatedMs already holds the total elapsed up to the pause moment —
+  // we do NOT add (now - startedAt) because startedAt is the original start, not the pause time.
+  // We clamp to 0 to guard against any clock skew between client and server.
   const getElapsedMs = useCallback((t: ActiveTimer): number => {
-    if (t.pausedAt) return t.accumulatedMs;
+    if (t.pausedAt) return Math.max(0, t.accumulatedMs);
     const now = Date.now();
     const since = new Date(t.startedAt).getTime();
-    return t.accumulatedMs + (now - since);
+    return Math.max(0, t.accumulatedMs + (now - since));
   }, []);
 
   // Poll server every 5s to stay in sync; update display every 1s locally

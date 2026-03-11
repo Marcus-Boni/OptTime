@@ -1,15 +1,38 @@
 import type { TimeEntry } from "../../shared/types";
 
-interface Props {
+interface TimeEntriesListProps {
   entries: TimeEntry[];
+  devOpsBaseUrl: string;
+  workItemId: number | null;
   onRefresh: () => void;
 }
 
-export function TimeEntriesList({ entries, onRefresh }: Props) {
+export function TimeEntriesList({
+  entries,
+  devOpsBaseUrl,
+  workItemId,
+  onRefresh,
+}: TimeEntriesListProps) {
+  const workItemUrl =
+    workItemId && devOpsBaseUrl
+      ? `${devOpsBaseUrl}/_workitems/edit/${workItemId}`
+      : null;
+
   if (entries.length === 0) {
     return (
       <div style={s.empty}>
         <span>Nenhum lançamento ainda.</span>
+        {workItemUrl && (
+          <a
+            href={workItemUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={s.wiLinkEmpty}
+            title="Abrir work item no Azure DevOps"
+          >
+            🔗 Ver work item #{workItemId}
+          </a>
+        )}
         <button type="button" style={s.refreshBtn} onClick={onRefresh}>
           ↺ Recarregar
         </button>
@@ -20,10 +43,32 @@ export function TimeEntriesList({ entries, onRefresh }: Props) {
   return (
     <div style={s.container}>
       <div style={s.topRow}>
-        <span style={s.count}>{entries.length} lançamento(s)</span>
-        <button type="button" style={s.refreshBtn} onClick={onRefresh}>
-          ↺
-        </button>
+        <span style={s.count}>
+          {entries.length} lançamento{entries.length !== 1 ? "s" : ""}
+        </span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          {workItemUrl && (
+            <a
+              href={workItemUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={s.wiLink}
+              title={`Abrir work item #${workItemId} no Azure DevOps`}
+              aria-label={`Abrir work item #${workItemId} no Azure DevOps`}
+            >
+              🔗 #{workItemId}
+            </a>
+          )}
+          <button
+            type="button"
+            style={s.refreshBtn}
+            onClick={onRefresh}
+            title="Recarregar lançamentos"
+            aria-label="Recarregar lançamentos"
+          >
+            ↺
+          </button>
+        </div>
       </div>
 
       <div style={s.list}>
@@ -42,17 +87,26 @@ function EntryRow({ entry }: { entry: TimeEntry }) {
 
   return (
     <div style={entry.isOwn ? { ...s.row, ...s.ownRow } : s.row}>
-      <div style={s.dot} data-color={entry.project.color} />
+      <div
+        style={{ ...s.dot, background: entry.project.color }}
+        aria-hidden="true"
+      />
       <div style={s.rowBody}>
-        <div style={s.rowTitle}>{entry.description}</div>
+        <div style={s.rowTitle} title={entry.description}>
+          {entry.description || <em style={{ opacity: 0.5 }}>Sem descrição</em>}
+        </div>
         <div style={s.rowMeta}>
-          <span style={{ color: entry.project.color }}>
-            {entry.project.name}
-          </span>
+          <span style={{ color: entry.project.color }}>{entry.project.name}</span>
           {" · "}
           <span>{entry.date}</span>
           {" · "}
           <span>{entry.user.name}</span>
+          {entry.billable && (
+            <>
+              {" · "}
+              <span style={s.billableTag}>$</span>
+            </>
+          )}
         </div>
       </div>
       <div
@@ -82,6 +136,19 @@ const s: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontSize: 13,
     padding: "2px 6px",
+    lineHeight: 1,
+  },
+  wiLink: {
+    color: "var(--brand)",
+    textDecoration: "none",
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  wiLinkEmpty: {
+    color: "var(--brand)",
+    textDecoration: "none",
+    fontSize: 12,
+    fontWeight: 600,
   },
   list: { display: "flex", flexDirection: "column", gap: 4 },
   row: {
@@ -94,8 +161,8 @@ const s: Record<string, React.CSSProperties> = {
     border: "1px solid var(--border)",
   },
   ownRow: {
-    borderColor: "rgba(99,102,241,0.25)",
-    background: "rgba(99,102,241,0.05)",
+    borderColor: "rgba(249,115,22,0.25)",
+    background: "rgba(249,115,22,0.05)",
   },
   dot: {
     flexShrink: 0,
@@ -103,7 +170,6 @@ const s: Record<string, React.CSSProperties> = {
     height: 6,
     borderRadius: "50%",
     marginTop: 5,
-    background: "currentColor",
   },
   rowBody: { flex: 1, minWidth: 0 },
   rowTitle: {
@@ -115,7 +181,17 @@ const s: Record<string, React.CSSProperties> = {
     textOverflow: "ellipsis",
   },
   rowMeta: { fontSize: 11, color: "var(--muted)", marginTop: 2 },
-  duration: { fontSize: 12, fontWeight: 700, flexShrink: 0 },
+  billableTag: {
+    color: "var(--green)",
+    fontWeight: 700,
+    fontSize: 10,
+  },
+  duration: {
+    fontSize: 12,
+    fontWeight: 700,
+    flexShrink: 0,
+    fontVariantNumeric: "tabular-nums",
+  },
   empty: {
     textAlign: "center",
     color: "var(--muted)",

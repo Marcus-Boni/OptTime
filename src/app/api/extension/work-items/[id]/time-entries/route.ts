@@ -1,9 +1,11 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import {
   extensionJson,
   extensionOptions,
   resolveExtensionUser,
 } from "@/lib/extension-auth";
+export const dynamic = "force-dynamic";
+
 import { db } from "@/lib/db";
 import { timeEntry } from "@/lib/db/schema";
 

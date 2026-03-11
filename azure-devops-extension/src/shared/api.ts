@@ -112,3 +112,89 @@ export async function stopTimer(): Promise<TimeEntry> {
   });
   return data.entry;
 }
+
+// ── Azure DevOps Work Item Field Sync ────────────────────────────────────────
+
+/**
+ * IWorkItemFormService subset — only the methods we actually use.
+ * Keeps the type compatible with the real SDK without importing it.
+ */
+export interface IFormServiceSubset {
+  getFieldValue: (
+    field: string,
+    options?: { returnOriginalValue: boolean },
+  ) => Promise<unknown>;
+  setFieldValue: (field: string, value: unknown) => Promise<void>;
+  /** Available in newer SDK versions — gracefully skipped if absent */
+  save?: () => Promise<void>;
+}
+
+export interface WorkItemFieldUpdate {
+  completedWork: number; // hours
+  remainingWork: number; // hours
+  saved: boolean;        // whether save() was called successfully
+}
+
+/**
+ * Reads current Completed Work & Remaining Work from the DevOps form service,
+ * applies the delta for a new time entry of `durationMinutes`, writes back the
+ * updated values, and then saves the work item.
+ *
+ * NOTE: `setFieldValue` only marks fields as dirty in the extension panel.
+ * Calling `save()` persists the changes to Azure DevOps immediately.
+ *
+ * @param formService - IWorkItemFormService (or compatible subset) from the DevOps SDK
+ * @param durationMinutes - duration of the new entry being saved
+ */
+export async function syncWorkItemFields(
+  formService: IFormServiceSubset,
+  durationMinutes: number,
+): Promise<WorkItemFieldUpdate> {
+  const durationHours = durationMinutes / 60;
+
+  // Read current values in parallel
+  const [rawCompleted, rawRemaining] = await Promise.all([
+    formService.getFieldValue("Microsoft.VSTS.Scheduling.CompletedWork", {
+      returnOriginalValue: false,
+    }),
+    formService.getFieldValue("Microsoft.VSTS.Scheduling.RemainingWork", {
+      returnOriginalValue: false,
+    }),
+  ]);
+
+  const currentCompleted =
+    typeof rawCompleted === "number" ? rawCompleted : 0;
+  const currentRemaining =
+    typeof rawRemaining === "number" ? rawRemaining : 0;
+
+  const newCompleted =
+    Math.round((currentCompleted + durationHours) * 100) / 100;
+  const newRemaining = Math.max(
+    0,
+    Math.round((currentRemaining - durationHours) * 100) / 100,
+  );
+
+  // Write both fields back
+  await formService.setFieldValue(
+    "Microsoft.VSTS.Scheduling.CompletedWork",
+    newCompleted,
+  );
+  await formService.setFieldValue(
+    "Microsoft.VSTS.Scheduling.RemainingWork",
+    newRemaining,
+  );
+
+  // Persist to DevOps — save() is required, setFieldValue alone only marks dirty
+  let saved = false;
+  if (typeof formService.save === "function") {
+    try {
+      await formService.save();
+      saved = true;
+    } catch (saveErr) {
+      console.error("[syncWorkItemFields] save() failed:", saveErr);
+      // Non-fatal — fields are still dirty in the form, user can manually save
+    }
+  }
+
+  return { completedWork: newCompleted, remainingWork: newRemaining, saved };
+}

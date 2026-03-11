@@ -82,7 +82,7 @@ export async function POST(req: Request): Promise<Response> {
       })
       .returning();
 
-    triggerCompletedWorkSync(extUser.id, [entry.azureWorkItemId]);
+    triggerCompletedWorkSync(extUser.id, [entry.azureWorkItemId], data.duration);
 
     return extensionJson({ entry }, { status: 201 });
   } catch (error) {
