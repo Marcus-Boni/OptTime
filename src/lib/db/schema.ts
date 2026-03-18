@@ -179,6 +179,8 @@ export const project = pgTable(
     azureProjectId: text("azure_project_id"),
     /** Direct link to the Azure DevOps project */
     azureProjectUrl: text("azure_project_url"),
+    /** Cover image for the project (base64 data URI or remote URL) */
+    imageUrl: text("image_url"),
     managerId: text("manager_id").references(() => user.id),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")

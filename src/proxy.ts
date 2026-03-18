@@ -2,10 +2,7 @@ import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
 /** Rotas que exigem role "manager" ou "admin" */
-const MANAGER_ROUTES = [
-  "/dashboard/people",
-  "/dashboard/settings",
-];
+const MANAGER_ROUTES = ["/dashboard/people", "/dashboard/settings"];
 
 /** Rotas públicas que não precisam de sessão */
 const PUBLIC_AUTH_ROUTES = ["/login", "/accept-invite"];

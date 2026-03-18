@@ -31,7 +31,13 @@ export async function GET(req: Request): Promise<Response> {
         where: eq(projectMember.userId, extUser.id),
         with: {
           project: {
-            columns: { id: true, name: true, code: true, color: true, status: true },
+            columns: {
+              id: true,
+              name: true,
+              code: true,
+              color: true,
+              status: true,
+            },
           },
         },
       });

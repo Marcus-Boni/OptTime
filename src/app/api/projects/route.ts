@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { project, projectMember, user } from "@/lib/db/schema";
+import { project, projectMember } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
 import { eq, inArray, like } from "drizzle-orm";
 
@@ -25,9 +25,15 @@ export async function GET(req: Request): Promise<Response> {
       projects = await db.query.project.findMany({
         with: {
           members: {
-            with: { user: { columns: { id: true, name: true, email: true, image: true } } },
+            with: {
+              user: {
+                columns: { id: true, name: true, email: true, image: true },
+              },
+            },
           },
-          manager: { columns: { id: true, name: true, email: true, image: true } },
+          manager: {
+            columns: { id: true, name: true, email: true, image: true },
+          },
         },
         orderBy: (p, { desc }) => [desc(p.updatedAt)],
       });
@@ -47,9 +53,15 @@ export async function GET(req: Request): Promise<Response> {
         where: inArray(project.id, projectIds),
         with: {
           members: {
-            with: { user: { columns: { id: true, name: true, email: true, image: true } } },
+            with: {
+              user: {
+                columns: { id: true, name: true, email: true, image: true },
+              },
+            },
           },
-          manager: { columns: { id: true, name: true, email: true, image: true } },
+          manager: {
+            columns: { id: true, name: true, email: true, image: true },
+          },
         },
         orderBy: (p, { desc }) => [desc(p.updatedAt)],
       });

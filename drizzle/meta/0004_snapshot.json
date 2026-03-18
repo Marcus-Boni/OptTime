@@ -1,6 +1,6 @@
 {
-  "id": "d8a99320-b0ce-4012-8b00-9ab927589ca9",
-  "prevId": "a98bc5d8-3265-4185-aeb1-5e1058ffc0ca",
+  "id": "aee23ebe-b7f4-4771-bbdf-ee1d72a4a9d6",
+  "prevId": "d8a99320-b0ce-4012-8b00-9ab927589ca9",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -528,6 +528,12 @@
         },
         "azure_project_url": {
           "name": "azure_project_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_url": {
+          "name": "image_url",
           "type": "text",
           "primaryKey": false,
           "notNull": false

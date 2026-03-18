@@ -472,13 +472,13 @@ export default function TeamHoursPage() {
               </div>
 
               <div className="flex flex-1 flex-col gap-4 w-full lg:max-w-4xl">
-                <div className="group flex h-12 w-full items-center gap-3 border border-border/50 bg-background/50 rounded-xl px-4 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20">
+                <div className="group flex h-12 w-full items-center gap-3 border border-input bg-transparent dark:bg-input/30 rounded-xl px-4 transition-[color,box-shadow] shadow-xs focus-within:ring-[3px] focus-within:ring-ring/50 focus-within:border-ring">
                   <Search className="h-5 w-5 shrink-0 text-muted-foreground/60" />
                   <input
                     placeholder="Buscar colaborador, projeto ou descrição..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="h-full w-full bg-transparent p-0 text-base placeholder:text-muted-foreground/60 outline-none border-none focus:ring-0 focus:outline-none"
+                    className="h-full w-full bg-transparent p-0 text-base placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground outline-none border-none focus:ring-0 focus:outline-none font-sans"
                   />
                 </div>
 

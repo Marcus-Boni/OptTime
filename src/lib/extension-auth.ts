@@ -30,7 +30,12 @@ export async function resolveExtensionUser(
 
   if (!record || !record.isActive) return null;
 
-  return { id: record.id, name: record.name, email: record.email, role: record.role };
+  return {
+    id: record.id,
+    name: record.name,
+    email: record.email,
+    role: record.role,
+  };
 }
 
 /** Standard CORS headers allowing Azure DevOps origins. */

@@ -172,7 +172,12 @@ export default function TimePage() {
               0,
             );
             return (
-              <motion.div key={dateKey} variants={itemVariants} initial="hidden" animate="visible">
+              <motion.div
+                key={dateKey}
+                variants={itemVariants}
+                initial="hidden"
+                animate="visible"
+              >
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="font-display text-sm font-semibold text-foreground">
                     {formatDateLabel(dateKey)}

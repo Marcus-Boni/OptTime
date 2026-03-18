@@ -65,9 +65,7 @@ export async function GET(req: Request): Promise<Response> {
       columns: { azureProjectId: true },
     });
     const importedIds = new Set(
-      existingProjects
-        .map((p) => p.azureProjectId)
-        .filter(Boolean),
+      existingProjects.map((p) => p.azureProjectId).filter(Boolean),
     );
 
     const projects = data.value.map((p) => ({
@@ -131,8 +129,16 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const colors = [
-      "#f97316", "#3b82f6", "#22c55e", "#8b5cf6", "#ec4899",
-      "#14b8a6", "#f59e0b", "#6366f1", "#ef4444", "#06b6d4",
+      "#f97316",
+      "#3b82f6",
+      "#22c55e",
+      "#8b5cf6",
+      "#ec4899",
+      "#14b8a6",
+      "#f59e0b",
+      "#6366f1",
+      "#ef4444",
+      "#06b6d4",
     ];
 
     const created = [];
@@ -173,7 +179,10 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     return Response.json(
-      { message: `${created.length} projeto(s) importado(s).`, projects: created },
+      {
+        message: `${created.length} projeto(s) importado(s).`,
+        projects: created,
+      },
       { status: 201 },
     );
   } catch (error) {

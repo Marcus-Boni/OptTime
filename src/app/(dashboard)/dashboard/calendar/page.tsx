@@ -62,7 +62,8 @@ export default function CalendarPage() {
   const minutesByDate: Record<string, number> = {};
   for (const s of daySummaries) {
     if (s.date) {
-      const pureDate = typeof s.date === "string" ? s.date.split("T")[0] : String(s.date);
+      const pureDate =
+        typeof s.date === "string" ? s.date.split("T")[0] : String(s.date);
       minutesByDate[pureDate] = Number(s.totalMinutes) || 0;
     }
   }
@@ -154,7 +155,7 @@ export default function CalendarPage() {
             ))}
           </div>
         ) : (
-          <motion.div 
+          <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"

@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!node_modules", "!.next", "!dist", "!build", "!azure-devops-extension"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!.next",
+      "!dist",
+      "!build",
+      "!azure-devops-extension"
+    ]
   },
   "formatter": {
     "enabled": true,

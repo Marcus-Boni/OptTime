@@ -6,8 +6,6 @@ import {
   Calendar,
   Cloud,
   ExternalLink,
-  Folder,
-  Loader2,
   Pencil,
   Users,
 } from "lucide-react";
@@ -15,7 +13,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
+import { ProjectEditDialog, type ProjectFromAPI } from "@/components/projects";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,34 +24,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth-client";
 import { cn, formatDate, getStatusColor } from "@/lib/utils";
 import type { User } from "@/types/user";
-
-// ─── Types ─────────────────────────────────────────────────────────────
-
-interface MemberUser {
-  id: string;
-  name: string;
-  email: string;
-  image: string | null;
-  role?: string;
-  department?: string;
-}
-
-interface ProjectDetail {
-  id: string;
-  name: string;
-  description: string | null;
-  clientName: string | null;
-  color: string;
-  status: string;
-  billable: boolean;
-  budget: number | null;
-  source: string;
-  azureProjectId: string | null;
-  azureProjectUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
-  members: Array<{ id: string; userId: string; user: MemberUser }>;
-}
 
 // ─── Animation ─────────────────────────────────────────────────────────
 
@@ -80,8 +50,9 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { data: session } = useSession();
-  const [project, setProject] = useState<ProjectDetail | null>(null);
+  const [project, setProject] = useState<ProjectFromAPI | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
 
   const user = session?.user as unknown as User | undefined;
   const isPrivileged = user?.role === "manager" || user?.role === "admin";
@@ -107,6 +78,10 @@ export default function ProjectDetailPage() {
   useEffect(() => {
     fetchProject();
   }, [fetchProject]);
+
+  function handleEditSuccess(updated: ProjectFromAPI) {
+    setProject(updated);
+  }
 
   // ─── Loading state ─────────────────────────────────────────────────
 
@@ -181,7 +156,11 @@ export default function ProjectDetailPage() {
           </div>
 
           {isPrivileged && (
-            <Button variant="outline" className="gap-1.5 shrink-0" disabled>
+            <Button
+              variant="outline"
+              className="gap-1.5 shrink-0"
+              onClick={() => setEditOpen(true)}
+            >
               <Pencil className="h-4 w-4" />
               Editar Projeto
             </Button>
@@ -376,10 +355,7 @@ export default function ProjectDetailPage() {
                 ) : (
                   <div className="space-y-3">
                     {project.members.map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-center gap-3"
-                      >
+                      <div key={m.id} className="flex items-center gap-3">
                         <UserAvatar
                           name={m.user.name}
                           image={m.user.image}
@@ -405,9 +381,7 @@ export default function ProjectDetailPage() {
           <motion.div variants={itemVariants}>
             <Card className="border-border/50 bg-card/80 backdrop-blur">
               <CardHeader>
-                <CardTitle className="font-display text-base">
-                  Resumo
-                </CardTitle>
+                <CardTitle className="font-display text-base">Resumo</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between text-sm">
@@ -444,6 +418,15 @@ export default function ProjectDetailPage() {
           </motion.div>
         </div>
       </div>
+
+      <ProjectEditDialog
+        project={project}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSuccess={handleEditSuccess}
+        currentUserId={user?.id ?? ""}
+        isAdmin={user?.role === "admin"}
+      />
     </motion.div>
   );
 }

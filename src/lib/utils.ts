@@ -90,7 +90,7 @@ export function parseLocalDate(dateStr: string): Date {
  */
 export function formatDateLabel(dateStr: string): string {
   const date = parseLocalDate(dateStr);
-  if (!date || isNaN(date.getTime())) return "Data inválida";
+  if (!date || Number.isNaN(date.getTime())) return "Data inválida";
   if (isToday(date)) return "Hoje";
   if (isYesterday(date)) return "Ontem";
   return format(date, "d 'de' MMMM", { locale: ptBR });
@@ -103,7 +103,7 @@ export function formatDateLabel(dateStr: string): string {
 export function formatDate(date?: Date | string | null): string {
   if (!date) return "N/A";
   const d = typeof date === "string" ? parseLocalDate(date) : date;
-  if (!d || isNaN(d.getTime())) return "Data inválida";
+  if (!d || Number.isNaN(d.getTime())) return "Data inválida";
   return format(d, "dd MMM yyyy", { locale: ptBR });
 }
 
@@ -114,7 +114,7 @@ export function formatDate(date?: Date | string | null): string {
 export function getRelativeTime(date?: Date | string | null): string {
   if (!date) return "N/A";
   const d = typeof date === "string" ? parseLocalDate(date) : date;
-  if (!d || isNaN(d.getTime())) return "Data inválida";
+  if (!d || Number.isNaN(d.getTime())) return "Data inválida";
   return formatDistanceToNow(d, { addSuffix: true, locale: ptBR });
 }
 
@@ -125,6 +125,7 @@ export function getRelativeTime(date?: Date | string | null): string {
 export function getInitials(name?: string | null): string {
   if (!name || typeof name !== "string") return "U";
   return name
+    .replace(/[^a-zA-Z0-9\s]/g, "") // Remove símbolos para evitar iniciais com "-"
     .split(" ")
     .filter(Boolean)
     .map((n) => n[0])

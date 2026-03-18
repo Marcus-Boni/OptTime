@@ -15,8 +15,12 @@ const itemVariants = {
 };
 
 export default function TimesheetApprovalsPage() {
-  const { timesheets: approvals, loading, approveTimesheet, rejectTimesheet } =
-    useTimesheetApprovals();
+  const {
+    timesheets: approvals,
+    loading,
+    approveTimesheet,
+    rejectTimesheet,
+  } = useTimesheetApprovals();
 
   const pending = approvals.filter((ts) => ts.status === "submitted");
 
@@ -57,7 +61,7 @@ export default function TimesheetApprovalsPage() {
           </p>
         </motion.div>
       ) : (
-        <motion.div 
+        <motion.div
           variants={containerVariants}
           initial="hidden"
           animate="visible"

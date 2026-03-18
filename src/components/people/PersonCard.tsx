@@ -1,7 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { MoreHorizontal, Trash2, UserCheck, UserX, FolderKanban } from "lucide-react";
+import {
+  MoreHorizontal,
+  Trash2,
+  UserCheck,
+  UserX,
+  FolderKanban,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import ManageProjectsDialog from "@/components/people/ManageProjectsDialog";
@@ -169,10 +175,10 @@ export default function PersonCard({
           )}
         >
           <CardContent className="flex items-center gap-4 pt-5 pb-5">
-            <UserAvatar 
-              name={person.name || "?"} 
-              image={person.image} 
-              size="lg" 
+            <UserAvatar
+              name={person.name || "?"}
+              image={person.image}
+              size="lg"
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-foreground">

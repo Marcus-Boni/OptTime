@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+/** Valid project status values */
+export type ProjectStatusValue = "active" | "archived" | "completed";
+
 /** Validation schema for creating/editing a project */
 export const projectSchema = z.object({
   name: z
@@ -20,9 +23,12 @@ export const projectSchema = z.object({
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "Cor deve ser um código hex válido"),
+  status: z.enum(["active", "archived", "completed"]).optional(),
   billable: z.boolean().default(true),
   budget: z.number().min(0).optional(),
   azureProjectId: z.string().optional(),
+  /** Base64 data URI or remote URL for the project cover image */
+  imageUrl: z.string().optional().nullable(),
   memberIds: z.array(z.string()).default([]),
   managerId: z.string().optional(),
 });

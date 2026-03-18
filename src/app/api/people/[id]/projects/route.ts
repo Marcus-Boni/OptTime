@@ -26,7 +26,13 @@ export async function GET(
   try {
     const [allProjects, memberships] = await Promise.all([
       db.query.project.findMany({
-        columns: { id: true, name: true, color: true, source: true, clientName: true },
+        columns: {
+          id: true,
+          name: true,
+          color: true,
+          source: true,
+          clientName: true,
+        },
         orderBy: (p, { asc }) => [asc(p.name)],
       }),
       db.query.projectMember.findMany({
@@ -73,7 +79,10 @@ export async function POST(
   const { projectId } = body as { projectId?: string };
 
   if (!projectId || typeof projectId !== "string") {
-    return Response.json({ error: "projectId é obrigatório." }, { status: 400 });
+    return Response.json(
+      { error: "projectId é obrigatório." },
+      { status: 400 },
+    );
   }
 
   try {
@@ -83,7 +92,10 @@ export async function POST(
       columns: { id: true },
     });
     if (!found) {
-      return Response.json({ error: "Projeto não encontrado." }, { status: 404 });
+      return Response.json(
+        { error: "Projeto não encontrado." },
+        { status: 404 },
+      );
     }
 
     // Idempotent — only insert if not already a member
@@ -134,7 +146,10 @@ export async function DELETE(
   const { projectId } = body as { projectId?: string };
 
   if (!projectId || typeof projectId !== "string") {
-    return Response.json({ error: "projectId é obrigatório." }, { status: 400 });
+    return Response.json(
+      { error: "projectId é obrigatório." },
+      { status: 400 },
+    );
   }
 
   try {

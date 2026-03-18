@@ -29,6 +29,13 @@
       "when": 1772826640401,
       "tag": "0003_add_extension_token",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773797495297,
+      "tag": "0004_complete_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

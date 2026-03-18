@@ -10,7 +10,8 @@ import { user } from "@/lib/db/schema";
  */
 export async function GET(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const record = await db.query.user.findFirst({
     where: eq(user.id, session.user.id),
@@ -32,7 +33,8 @@ export async function GET(req: Request): Promise<Response> {
  */
 export async function POST(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   const newToken = randomBytes(32).toString("hex");
 
@@ -50,7 +52,8 @@ export async function POST(req: Request): Promise<Response> {
  */
 export async function DELETE(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   await db
     .update(user)

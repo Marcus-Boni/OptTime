@@ -184,7 +184,9 @@ export default function ManageProjectsDialog({
                     <Switch
                       checked={p.isMember}
                       disabled={saving === p.id}
-                      onCheckedChange={() => void handleToggle(p.id, p.isMember)}
+                      onCheckedChange={() =>
+                        void handleToggle(p.id, p.isMember)
+                      }
                       aria-label={`${p.isMember ? "Remover de" : "Adicionar a"} ${p.name}`}
                     />
                   </div>

@@ -115,6 +115,8 @@ export default function NewProjectPage() {
     register,
     handleSubmit,
     control,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<CreateProjectInput>({
     resolver: zodResolver(createProjectSchema),
@@ -329,16 +331,12 @@ export default function NewProjectPage() {
                     O tempo registrado neste projeto será cobrado do cliente.
                   </p>
                 </div>
-                <Controller
-                  control={control}
-                  name="billable"
-                  render={({ field }) => (
-                    <Switch
-                      id="billable"
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  )}
+                <Switch
+                  id="billable"
+                  checked={watch("billable")}
+                  onCheckedChange={(checked) =>
+                    setValue("billable", checked, { shouldDirty: true })
+                  }
                 />
               </div>
 
@@ -428,11 +426,24 @@ export default function NewProjectPage() {
                             {person.email}
                           </p>
                         </div>
-                        <span className="pointer-events-none">
-                          <Switch
-                            checked={isSelected}
-                            tabIndex={-1}
-                            disabled={isCurrentUser}
+                        {/* Toggle indicator (decorative — interaction handled by parent div) */}
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "flex h-[1.15rem] w-8 shrink-0 items-center rounded-full border border-transparent px-[2px] transition-colors duration-200",
+                            isSelected
+                              ? "justify-end bg-primary"
+                              : "justify-start bg-neutral-300 dark:bg-neutral-600",
+                          )}
+                        >
+                          <motion.span
+                            layout
+                            transition={{
+                              type: "spring",
+                              stiffness: 700,
+                              damping: 30,
+                            }}
+                            className="block h-3.5 w-3.5 rounded-full bg-background shadow-xs"
                           />
                         </span>
                       </div>

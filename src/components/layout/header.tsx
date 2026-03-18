@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   LogOut,
   Menu,
@@ -29,7 +31,6 @@ import { signOut, useSession } from "@/lib/auth-client";
 import { MOCK_CURRENT_USER } from "@/lib/mock-data";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
-
 export function Header() {
   const {
     theme,
@@ -47,6 +48,12 @@ export function Header() {
   const currentUser = user || MOCK_CURRENT_USER;
   const router = useRouter();
 
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handleLogout = async () => {
     await signOut({
       fetchOptions: {
@@ -58,7 +65,10 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-xl md:px-6">
+    <header
+      className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/80 px-4 backdrop-blur-xl md:px-6"
+      suppressHydrationWarning
+    >
       {/* Left: Mobile menu + Breadcrumb */}
       <div className="flex items-center gap-3">
         <Button
@@ -71,7 +81,11 @@ export function Header() {
           <Menu className="h-5 w-5" />
         </Button>
 
-        <Breadcrumb />
+        {mounted ? (
+          <Breadcrumb />
+        ) : (
+          <div className="h-4 w-32 bg-muted/20 animate-pulse rounded-md" />
+        )}
       </div>
 
       {/* Right: Actions */}
@@ -114,77 +128,93 @@ export function Header() {
           size="icon"
           onClick={toggleTheme}
           aria-label={
-            theme === "dark" ? "Ativar modo claro" : "Ativar modo escuro"
+            mounted
+              ? theme === "dark"
+                ? "Ativar modo claro"
+                : "Ativar modo escuro"
+              : "Alterar tema"
           }
         >
-          {theme === "dark" ? (
-            <Sun className="h-4.5 w-4.5" />
+          {mounted ? (
+            theme === "dark" ? (
+              <Sun className="h-4.5 w-4.5" />
+            ) : (
+              <Moon className="h-4.5 w-4.5" />
+            )
           ) : (
-            <Moon className="h-4.5 w-4.5" />
+            <Sun className="h-4.5 w-4.5 opacity-50" />
           )}
         </Button>
 
         {/* User menu */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              className="relative h-9 w-9 rounded-full"
-              aria-label="Menu do usuário"
-            >
-              <UserAvatar
-                name={currentUser.name}
-                image={currentUser.image}
-                size="default"
-              />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-56" align="end">
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">
-                  {currentUser.name}
-                </p>
-                <p className="text-xs leading-none text-muted-foreground">
-                  {currentUser.email}
-                </p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link
-                href="/dashboard/profile"
-                className="flex cursor-pointer items-center gap-2"
+        {mounted ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                className="relative h-9 w-9 rounded-full"
+                aria-label="Menu do usuário"
               >
-                <User className="h-4 w-4" />
-                Perfil
-              </Link>
-            </DropdownMenuItem>
-            {isManager && (
+                <UserAvatar
+                  name={currentUser.name}
+                  image={currentUser.image}
+                  size="default"
+                />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-56" align="end">
+              <DropdownMenuLabel className="font-normal">
+                <div className="flex flex-col space-y-1">
+                  <p className="text-sm font-medium leading-none">
+                    {currentUser.name}
+                  </p>
+                  <p className="text-xs leading-none text-muted-foreground">
+                    {currentUser.email}
+                  </p>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link
-                  href="/dashboard/settings"
+                  href="/dashboard/profile"
                   className="flex cursor-pointer items-center gap-2"
                 >
-                  <Settings className="h-4 w-4" />
-                  Configurações
+                  <User className="h-4 w-4" />
+                  Perfil
                 </Link>
               </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              className="flex cursor-pointer items-center gap-2 text-destructive focus:text-destructive"
-              onClick={handleLogout}
-            >
-              <LogOut className="h-4 w-4" />
-              Sair
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {isManager && (
+                <DropdownMenuItem asChild>
+                  <Link
+                    href="/dashboard/settings"
+                    className="flex cursor-pointer items-center gap-2"
+                  >
+                    <Settings className="h-4 w-4" />
+                    Configurações
+                  </Link>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="flex cursor-pointer items-center gap-2 text-destructive focus:text-destructive"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-4 w-4" />
+                Sair
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <div className="h-9 w-9 rounded-full bg-muted/50 animate-pulse" />
+        )}
       </div>
 
-      <QuickEntryDialog />
-      <CommandPalette />
+      {mounted && (
+        <>
+          <QuickEntryDialog />
+          <CommandPalette />
+        </>
+      )}
     </header>
   );
 }

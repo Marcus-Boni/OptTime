@@ -1,21 +1,20 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Cloud,
-  Folder,
-  Loader2,
-  Plus,
-  Search,
-} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Cloud, Folder, Loader2, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-
+import type { ProjectFilterState, ProjectFromAPI } from "@/components/projects";
+import {
+  ProjectCard,
+  ProjectEditDialog,
+  ProjectFilters,
+  ProjectSkeleton,
+} from "@/components/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -24,37 +23,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth-client";
-import { cn, getStatusColor } from "@/lib/utils";
 import type { User } from "@/types/user";
 
-// ─── Types ─────────────────────────────────────────────────────────────
-
-interface ProjectMemberUser {
-  id: string;
-  name: string;
-  email: string;
-  image: string | null;
-}
-
-interface ProjectFromAPI {
-  id: string;
-  name: string;
-  description: string | null;
-  clientName: string | null;
-  color: string;
-  status: string;
-  billable: boolean;
-  budget: number | null;
-  source: string;
-  azureProjectId: string | null;
-  azureProjectUrl: string | null;
-  createdAt: string;
-  updatedAt: string;
-  members: Array<{ id: string; userId: string; user: ProjectMemberUser }>;
-}
+// ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface AzureProject {
   id: string;
@@ -66,37 +38,61 @@ interface AzureProject {
   alreadyImported: boolean;
 }
 
-// ─── Animation ─────────────────────────────────────────────────────────
+// ─── Animation ─────────────────────────────────────────────────────────────────
 
 const containerVariants = {
   hidden: {},
   visible: { transition: { staggerChildren: 0.06 } },
 };
+
 const itemVariants = {
   hidden: { opacity: 0, y: 16 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.35 } },
 };
 
-// ─── Component ─────────────────────────────────────────────────────────
+// ─── Component ─────────────────────────────────────────────────────────────────
 
 export default function ProjectsPage() {
   const router = useRouter();
   const { data: session } = useSession();
+
+  // ─── Data state ────────────────────────────────────────────────────────────
+
   const [projects, setProjects] = useState<ProjectFromAPI[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Azure import dialog
+  // ─── Filters ───────────────────────────────────────────────────────────────
+
+  const [filters, setFilters] = useState<ProjectFilterState>({
+    search: "",
+    status: "active",
+    membership: "all",
+  });
+
+  // ─── Edit dialog ───────────────────────────────────────────────────────────
+
+  const [editProject, setEditProject] = useState<ProjectFromAPI | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+
+  // ─── Azure import dialog ───────────────────────────────────────────────────
+
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [azureProjects, setAzureProjects] = useState<AzureProject[]>([]);
   const [azureLoading, setAzureLoading] = useState(false);
-  const [selectedAzureIds, setSelectedAzureIds] = useState<Set<string>>(new Set());
+  const [selectedAzureIds, setSelectedAzureIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [importing, setImporting] = useState(false);
   const [azureSearch, setAzureSearch] = useState("");
 
+  // ─── Session-derived values ────────────────────────────────────────────────
+
   const user = session?.user as unknown as User | undefined;
   const isPrivileged = user?.role === "manager" || user?.role === "admin";
+  const isAdmin = user?.role === "admin";
+  const currentUserId = user?.id ?? "";
 
-  // ─── Fetch projects ────────────────────────────────────────────────
+  // ─── Fetch projects ────────────────────────────────────────────────────────
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -115,7 +111,47 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [fetchProjects]);
 
-  // ─── Azure import ──────────────────────────────────────────────────
+  // ─── Filtered projects (client-side) ──────────────────────────────────────
+
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      // Status filter
+      if (filters.status !== "all" && p.status !== filters.status) return false;
+
+      // Membership filter (privileged only)
+      if (
+        isPrivileged &&
+        filters.membership === "member" &&
+        !p.members.some((m) => m.userId === currentUserId)
+      ) {
+        return false;
+      }
+
+      // Text search
+      if (filters.search) {
+        const q = filters.search.toLowerCase();
+        const matchesName = p.name.toLowerCase().includes(q);
+        const matchesClient = p.clientName?.toLowerCase().includes(q) ?? false;
+        const matchesDesc = p.description?.toLowerCase().includes(q) ?? false;
+        if (!matchesName && !matchesClient && !matchesDesc) return false;
+      }
+
+      return true;
+    });
+  }, [projects, filters, isPrivileged, currentUserId]);
+
+  // ─── Edit handlers ─────────────────────────────────────────────────────────
+
+  function handleEditProject(proj: ProjectFromAPI) {
+    setEditProject(proj);
+    setEditOpen(true);
+  }
+
+  function handleEditSuccess(updated: ProjectFromAPI) {
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+  }
+
+  // ─── Azure import ──────────────────────────────────────────────────────────
 
   const openImportDialog = async () => {
     setImportDialogOpen(true);
@@ -182,29 +218,24 @@ export default function ProjectsPage() {
     }
   };
 
-  // ─── Filtering ─────────────────────────────────────────────────────
-
   const filteredAzureProjects = azureProjects.filter((p) =>
     p.name.toLowerCase().includes(azureSearch.toLowerCase()),
   );
 
-  // ─── Render ────────────────────────────────────────────────────────
+  // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="space-y-8">
         <div className="flex items-center justify-between">
           <div>
-            <Skeleton className="h-8 w-32" />
-            <Skeleton className="mt-2 h-4 w-64" />
+            <div className="h-8 w-32 animate-pulse rounded bg-muted" />
+            <div className="mt-2 h-4 w-64 animate-pulse rounded bg-muted" />
           </div>
-          <Skeleton className="h-10 w-36" />
+          <div className="h-10 w-36 animate-pulse rounded bg-muted" />
         </div>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-48 rounded-xl" />
-          ))}
-        </div>
+        <div className="h-11 w-full animate-pulse rounded-lg bg-muted" />
+        <ProjectSkeleton />
       </div>
     );
   }
@@ -214,9 +245,9 @@ export default function ProjectsPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-8"
+      className="space-y-6"
     >
-      {/* Header */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <motion.div
         variants={itemVariants}
         className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
@@ -232,7 +263,6 @@ export default function ProjectsPage() {
           </p>
         </div>
 
-        {/* All users can import from Azure. Novo Projeto is privileged-only. */}
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
@@ -253,119 +283,116 @@ export default function ProjectsPage() {
         </div>
       </motion.div>
 
-      {/* Projects grid */}
-      {projects.length === 0 ? (
-        <motion.div variants={itemVariants}>
-          <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-              <Folder className="mb-4 h-12 w-12 text-muted-foreground/40" />
-              <p className="text-sm font-medium text-muted-foreground">
-                Nenhum projeto encontrado.
-              </p>
+      {/* ── Filters ─────────────────────────────────────────────────────── */}
+      <motion.div variants={itemVariants}>
+        <ProjectFilters
+          filters={filters}
+          onFiltersChange={setFilters}
+          isPrivileged={isPrivileged}
+          totalCount={projects.length}
+          filteredCount={filteredProjects.length}
+        />
+      </motion.div>
+
+      {/* ── Projects grid ───────────────────────────────────────────────── */}
+      <AnimatePresence mode="wait">
+        {filteredProjects.length === 0 ? (
+          <motion.div
+            key="empty-state"
+            variants={itemVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/5 bg-neutral-900/40 p-12 text-center backdrop-blur-md"
+          >
+            <div className="relative mb-8">
+              <div className="absolute inset-0 animate-pulse rounded-full bg-brand-500/10 blur-3xl" />
+              <div className="relative flex h-28 w-28 items-center justify-center rounded-full  bg-neutral-950 shadow-2xl transition-transform hover:scale-110">
+                {filters.search ? (
+                  <Search className="h-12 w-12 text-neutral-500" />
+                ) : (
+                  <Folder className="h-12 w-12 text-neutral-500" />
+                )}
+              </div>
+            </div>
+
+            <h3 className="font-display text-2xl font-bold text-white tracking-tight">
+              {filters.search
+                ? `Sem resultados para "${filters.search}"`
+                : filters.status !== "all" || filters.membership !== "all"
+                  ? "Nenhum projeto nestes filtros"
+                  : "Nenhum projeto encontrado"}
+            </h3>
+
+            <p className="mx-auto mt-3 max-w-sm text-base text-neutral-400 leading-relaxed font-sans">
+              {filters.search ||
+              filters.status !== "all" ||
+              filters.membership !== "all"
+                ? "Não encontramos nenhum projeto que corresponda aos filtros atuais. Tente usar outros termos ou limpe os filtros."
+                : "Ainda não existem projetos cadastrados. Comece criando um novo projeto ou importe sua organização do Azure DevOps para começar."}
+            </p>
+
+            <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:gap-3">
+              {(filters.search ||
+                filters.status !== "all" ||
+                filters.membership !== "all") && (
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    setFilters({ search: "", status: "all", membership: "all" })
+                  }
+                  className="h-12 px-8 border-neutral-800 text-neutral-300 hover:bg-white/5 rounded-xl transition-all"
+                >
+                  Limpar todos os filtros
+                </Button>
+              )}
+
               {isPrivileged && (
-                <p className="mt-1 text-xs text-muted-foreground/70">
-                  Crie um novo projeto ou importe do Azure DevOps.
+                <Link href="/dashboard/projects/new">
+                  <Button className="h-12 px-8 bg-brand-500 text-white hover:bg-brand-600 shadow-xl shadow-brand-500/10 rounded-xl transition-all hover:scale-[1.02] active:scale-[0.98]">
+                    <Plus className="mr-2 h-5 w-5" />
+                    Novo Projeto
+                  </Button>
+                </Link>
+              )}
+
+              {!isPrivileged && !filters.search && filters.status === "all" && (
+                <p className="text-xs text-neutral-500/80 italic mt-4 sm:mt-0 font-sans">
+                  Contate um administrador para acesso a novos projetos.
                 </p>
               )}
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <AnimatePresence mode="popLayout">
-          {projects.map((proj) => {
-            const usedPercent = proj.budget
-              ? Math.min(Math.round((0 / proj.budget) * 100), 100)
-              : 0;
+            </div>
+          </motion.div>
+        ) : (
+          <div
+            key="projects-grid"
+            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+          >
+            <AnimatePresence mode="popLayout">
+              {filteredProjects.map((proj) => (
+                <ProjectCard
+                  key={proj.id}
+                  project={proj}
+                  isPrivileged={isPrivileged}
+                  onEdit={handleEditProject}
+                />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </AnimatePresence>
 
-            return (
-              <motion.div
-                key={proj.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                transition={{ duration: 0.3 }}
-              >
-                <Link href={`/dashboard/projects/${proj.id}`}>
-                  <Card className="group h-full cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-4 w-4 rounded-full shrink-0"
-                            style={{ backgroundColor: proj.color }}
-                          />
-                          <CardTitle className="font-display text-base font-semibold line-clamp-1">
-                            {proj.name}
-                          </CardTitle>
-                        </div>
-                        <Badge
-                          variant="secondary"
-                          className={cn(
-                            "text-[10px] shrink-0",
-                            getStatusColor(proj.status),
-                          )}
-                        >
-                          {proj.status}
-                        </Badge>
-                      </div>
-                      <div className="ml-7 flex items-center gap-2">
-                        {proj.source === "azure-devops" && (
-                          <Badge
-                            variant="secondary"
-                            className="text-[9px] bg-blue-500/10 text-blue-400 px-1.5 py-0"
-                          >
-                            Azure DevOps
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      {proj.clientName && (
-                        <p className="text-xs text-muted-foreground">
-                          Cliente: {proj.clientName}
-                        </p>
-                      )}
-                      {proj.budget && (
-                        <div>
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="text-muted-foreground">
-                              Budget
-                            </span>
-                            <span className="font-mono text-foreground">
-                              {proj.budget}h
-                            </span>
-                          </div>
-                          <Progress
-                            value={usedPercent}
-                            className="mt-1.5 h-1.5"
-                          />
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <Folder className="h-3 w-3" />
-                        {proj.members.length} membro
-                        {proj.members.length !== 1 && "s"}
-                        {proj.billable && (
-                          <Badge
-                            variant="secondary"
-                            className="ml-auto text-[10px] bg-green-500/10 text-green-400"
-                          >
-                            Billable
-                          </Badge>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </motion.div>
-            );
-          })}
-          </AnimatePresence>
-        </div>
-      )}
+      {/* ── Edit dialog ─────────────────────────────────────────────────── */}
+      <ProjectEditDialog
+        project={editProject}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSuccess={handleEditSuccess}
+        currentUserId={currentUserId}
+        isAdmin={isAdmin}
+      />
 
-      {/* ─── Azure DevOps Import Dialog ─────────────────────────────── */}
+      {/* ── Azure DevOps Import Dialog ───────────────────────────────────── */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -388,10 +415,12 @@ export default function ProjectsPage() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  id="azure-search"
                   placeholder="Buscar projeto..."
                   className="pl-9"
                   value={azureSearch}
                   onChange={(e) => setAzureSearch(e.target.value)}
+                  aria-label="Buscar projetos do Azure DevOps"
                 />
               </div>
 
@@ -408,14 +437,13 @@ export default function ProjectsPage() {
                       type="button"
                       disabled={ap.alreadyImported}
                       onClick={() => toggleAzureProject(ap.id)}
-                      className={cn(
-                        "w-full rounded-lg border p-3 text-left transition-all",
+                      className={`w-full rounded-lg border p-3 text-left transition-all ${
                         ap.alreadyImported
                           ? "cursor-not-allowed border-border/30 opacity-50"
                           : selectedAzureIds.has(ap.id)
                             ? "border-brand-500 bg-brand-500/5"
-                            : "border-border/50 hover:border-brand-500/30",
-                      )}
+                            : "border-border/50 hover:border-brand-500/30"
+                      }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{ap.name}</span>

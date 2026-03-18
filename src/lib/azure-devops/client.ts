@@ -135,9 +135,12 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
         `${orgUrl}/_apis/wit/workitems/${workItemId}?fields=Microsoft.VSTS.Scheduling.CompletedWork,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.OriginalEstimate&api-version=7.1`,
       );
       const updatedFields = resolveSchedulingHours({
-        completedWork: current.fields["Microsoft.VSTS.Scheduling.CompletedWork"],
-        remainingWork: current.fields["Microsoft.VSTS.Scheduling.RemainingWork"],
-        originalEstimate: current.fields["Microsoft.VSTS.Scheduling.OriginalEstimate"],
+        completedWork:
+          current.fields["Microsoft.VSTS.Scheduling.CompletedWork"],
+        remainingWork:
+          current.fields["Microsoft.VSTS.Scheduling.RemainingWork"],
+        originalEstimate:
+          current.fields["Microsoft.VSTS.Scheduling.OriginalEstimate"],
         nextCompletedWork: completedWorkHours,
       });
       const patches: Array<{ op: string; path: string; value: number }> = [
@@ -172,7 +175,6 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
       return false;
     }
   }
-
 
   async function getProjectWorkItems(
     projectName: string,

@@ -14,8 +14,14 @@ const nextConfig: NextConfig = {
         source: "/api/extension/:path*",
         headers: [
           { key: "Access-Control-Allow-Origin", value: "*" },
-          { key: "Access-Control-Allow-Methods", value: "GET,POST,DELETE,OPTIONS" },
-          { key: "Access-Control-Allow-Headers", value: "Authorization,Content-Type" },
+          {
+            key: "Access-Control-Allow-Methods",
+            value: "GET,POST,DELETE,OPTIONS",
+          },
+          {
+            key: "Access-Control-Allow-Headers",
+            value: "Authorization,Content-Type",
+          },
         ],
       },
     ];
