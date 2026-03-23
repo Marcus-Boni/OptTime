@@ -1,6 +1,6 @@
 "use client";
 
-import { Edit2, ExternalLink, MoreVertical, Trash2 } from "lucide-react";
+import { Copy, Edit2, ExternalLink, MoreVertical, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,99 +16,105 @@ interface TimeEntryCardProps {
   entry: TimeEntry;
   onEdit?: (entry: TimeEntry) => void;
   onDelete?: (id: string) => void;
+  onDuplicate?: (entry: TimeEntry) => void;
 }
 
-export function TimeEntryCard({ entry, onEdit, onDelete }: TimeEntryCardProps) {
+export function TimeEntryCard({
+  entry,
+  onEdit,
+  onDelete,
+  onDuplicate,
+}: TimeEntryCardProps) {
   const isEditable =
     !entry.timesheet || ["open", "rejected"].includes(entry.timesheet.status);
 
   return (
-    <div className="group flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3 transition-colors hover:bg-accent/30">
-      {/* Project color dot */}
+    <div className="group flex items-start gap-4 border-b border-border/60 py-4 last:border-b-0">
       <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full"
         style={{ backgroundColor: entry.project.color }}
       />
 
-      {/* Description + work item */}
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-foreground">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="truncate text-base font-semibold text-foreground">
+            {entry.project.name}
+          </p>
+          {!entry.billable ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Não faturável
+            </Badge>
+          ) : null}
+        </div>
+
+        <p className="mt-1 text-sm text-foreground">
           {entry.description || (
             <span className="italic text-muted-foreground">Sem descrição</span>
           )}
         </p>
-        <div className="mt-0.5 flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {entry.project.name}
-          </span>
-          {entry.azureWorkItemId && (
-            <a
-              href={
-                entry.project.azureProjectUrl
-                  ? `${entry.project.azureProjectUrl}/_workitems/edit/${entry.azureWorkItemId}`
-                  : "#"
-              }
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-blue-600 transition-colors hover:underline dark:text-blue-400"
-            >
-              <span>#{entry.azureWorkItemId}</span>
-              {entry.azureWorkItemTitle && (
-                <span className="hidden truncate sm:inline">
-                  — {entry.azureWorkItemTitle}
-                </span>
-              )}
-              <ExternalLink className="h-3 w-3 shrink-0" />
-            </a>
-          )}
-        </div>
+
+        {entry.azureWorkItemId ? (
+          <a
+            href={
+              entry.project.azureProjectUrl
+                ? `${entry.project.azureProjectUrl}/_workitems/edit/${entry.azureWorkItemId}`
+                : "#"
+            }
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex max-w-full items-center gap-1 truncate text-xs text-blue-600 transition-colors hover:underline dark:text-blue-400"
+          >
+            <span>#{entry.azureWorkItemId}</span>
+            {entry.azureWorkItemTitle ? (
+              <span className="truncate">{entry.azureWorkItemTitle}</span>
+            ) : null}
+            <ExternalLink className="h-3 w-3 shrink-0" />
+          </a>
+        ) : null}
       </div>
 
-      {/* Badges */}
       <div className="flex shrink-0 items-center gap-2">
-        {!entry.billable && (
-          <Badge variant="outline" className="text-xs text-muted-foreground">
-            Não faturável
-          </Badge>
-        )}
-      </div>
+        <span className="font-mono text-2xl font-semibold text-foreground">
+          {formatDecimalHours(entry.duration)}
+        </span>
 
-      {/* Duration */}
-      <span className="shrink-0 font-mono text-sm font-semibold text-foreground">
-        {formatDecimalHours(entry.duration)}
-      </span>
-
-      {/* Actions (only for editable entries) */}
-      {isEditable && (onEdit || onDelete) && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-            >
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            {onEdit && (
-              <DropdownMenuItem onClick={() => onEdit(entry)}>
-                <Edit2 className="mr-2 h-3.5 w-3.5" />
-                Editar
-              </DropdownMenuItem>
-            )}
-            {onDelete && (
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => onDelete(entry.id)}
+        {isEditable && (onEdit || onDelete) ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
               >
-                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                Excluir
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {onDuplicate ? (
+                <DropdownMenuItem onClick={() => onDuplicate(entry)}>
+                  <Copy className="mr-2 h-3.5 w-3.5" />
+                  Duplicar
+                </DropdownMenuItem>
+              ) : null}
+              {onEdit ? (
+                <DropdownMenuItem onClick={() => onEdit(entry)}>
+                  <Edit2 className="mr-2 h-3.5 w-3.5" />
+                  Editar
+                </DropdownMenuItem>
+              ) : null}
+              {onDelete ? (
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onDelete(entry.id)}
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Excluir
+                </DropdownMenuItem>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -2,39 +2,18 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { CalendarIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { DurationInput } from "@/components/time/DurationInput";
-import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
+import { OutlookMeetingDrawer } from "@/components/time/OutlookMeetingDrawer";
+import { TimeEntryDialogShell } from "@/components/time/TimeEntryDialogShell";
+import {
+  TimeEntryFormFields,
+  type TimeEntryFormValues,
+} from "@/components/time/TimeEntryFormFields";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import type { TimeEntry } from "@/hooks/use-time-entries";
-import { cn, parseLocalDate } from "@/lib/utils";
+import { parseLocalDate } from "@/lib/utils";
 
 const schema = z.object({
   projectId: z.string().min(1, "Selecione um projeto"),
@@ -44,14 +23,26 @@ const schema = z.object({
   billable: z.boolean(),
 });
 
-type FormValues = z.infer<typeof schema>;
-
 interface Project {
   id: string;
   name: string;
   color: string;
   azureProjectId?: string | null;
 }
+
+export interface TimeEntryFormInitialValues
+  extends Partial<
+    Pick<
+      TimeEntry,
+      | "azureWorkItemId"
+      | "azureWorkItemTitle"
+      | "billable"
+      | "date"
+      | "description"
+      | "duration"
+      | "projectId"
+    >
+  > {}
 
 interface TimeEntryFormProps {
   open: boolean;
@@ -65,8 +56,20 @@ interface TimeEntryFormProps {
     azureWorkItemId?: number;
     azureWorkItemTitle?: string;
   }) => Promise<void>;
-  initialValues?: Partial<TimeEntry>;
+  initialValues?: TimeEntryFormInitialValues;
   mode?: "create" | "edit";
+}
+
+function getDefaultValues(
+  initialValues?: TimeEntryFormInitialValues,
+): TimeEntryFormValues {
+  return {
+    projectId: initialValues?.projectId ?? "",
+    description: initialValues?.description ?? "",
+    date: initialValues?.date ? parseLocalDate(initialValues.date) : new Date(),
+    duration: initialValues?.duration ?? 60,
+    billable: initialValues?.billable ?? true,
+  };
 }
 
 export function TimeEntryForm({
@@ -82,74 +85,51 @@ export function TimeEntryForm({
     title: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [submitMode, setSubmitMode] = useState<"close" | "continue">("close");
 
-  const form = useForm<FormValues>({
+  const form = useForm<TimeEntryFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: {
-      projectId: "",
-      description: "",
-      date: new Date(),
-      duration: 60,
-      billable: true,
-    },
+    defaultValues: getDefaultValues(initialValues),
   });
 
-  // Load projects once
   const loadProjects = useCallback(async () => {
     try {
       const res = await fetch("/api/projects?status=active&limit=100");
-      if (res.ok) {
-        const data = await res.json();
-        setProjects(data.projects ?? []);
-      }
+      if (!res.ok) return;
+
+      const data = (await res.json()) as { projects?: Project[] };
+      setProjects(data.projects ?? []);
     } catch {
       // ignore
     }
   }, []);
 
   useEffect(() => {
-    if (open) loadProjects();
-  }, [open, loadProjects]);
+    if (!open) return;
+    void loadProjects();
+  }, [loadProjects, open]);
 
-  // Populate form when editing
   useEffect(() => {
-    if (open && initialValues) {
-      form.reset({
-        projectId: initialValues.projectId ?? "",
-        description: initialValues.description ?? "",
-        date: initialValues.date
-          ? parseLocalDate(initialValues.date)
-          : new Date(),
-        duration: initialValues.duration ?? 60,
-        billable: initialValues.billable ?? true,
+    if (!open) return;
+
+    form.reset(getDefaultValues(initialValues));
+
+    if (initialValues?.azureWorkItemId && initialValues.azureWorkItemTitle) {
+      setWorkItem({
+        id: initialValues.azureWorkItemId,
+        title: initialValues.azureWorkItemTitle,
       });
-      if (initialValues.azureWorkItemId && initialValues.azureWorkItemTitle) {
-        setWorkItem({
-          id: initialValues.azureWorkItemId,
-          title: initialValues.azureWorkItemTitle,
-        });
-      } else {
-        setWorkItem(null);
-      }
-    }
-    if (open && !initialValues) {
-      form.reset({
-        projectId: "",
-        description: "",
-        date: new Date(),
-        duration: 60,
-        billable: true,
-      });
+    } else {
       setWorkItem(null);
     }
-  }, [open, initialValues, form]);
+  }, [form, initialValues, open]);
 
-  const selectedProjectId = form.watch("projectId");
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
   const selectedDate = form.watch("date");
+  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
 
-  async function handleSubmit(values: FormValues) {
+  async function handleSubmit(values: TimeEntryFormValues) {
     setSubmitting(true);
+
     try {
       await onSubmit({
         projectId: values.projectId,
@@ -160,161 +140,112 @@ export function TimeEntryForm({
         azureWorkItemId: workItem?.id,
         azureWorkItemTitle: workItem?.title,
       });
+
+      if (mode === "create" && submitMode === "continue") {
+        form.reset({
+          projectId: values.projectId,
+          description: "",
+          date: values.date,
+          duration: values.duration,
+          billable: values.billable,
+        });
+        setWorkItem(null);
+        return;
+      }
+
       onOpenChange(false);
     } finally {
       setSubmitting(false);
+      setSubmitMode("close");
     }
   }
 
+  const outlookDrawer = (
+    <OutlookMeetingDrawer
+      open={open}
+      selectedDate={selectedDateStr}
+      onSelectEvent={(event) => {
+        const parseUtc = (iso: string) =>
+          new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
+        form.setValue("description", event.subject || "", {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        form.setValue("date", parseUtc(event.start.dateTime), {
+          shouldDirty: true,
+        });
+        form.setValue(
+          "duration",
+          Math.max(
+            1,
+            Math.round(
+              (parseUtc(event.end.dateTime).getTime() -
+                parseUtc(event.start.dateTime).getTime()) /
+                60000,
+            ),
+          ),
+          {
+            shouldDirty: true,
+            shouldValidate: true,
+          },
+        );
+      }}
+    />
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>
-            {mode === "edit" ? "Editar Entrada" : "Nova Entrada de Tempo"}
-          </DialogTitle>
-        </DialogHeader>
+    <TimeEntryDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      title={mode === "edit" ? "Editar lançamento" : "Novo registro de tempo"}
+      description={
+        mode === "edit"
+          ? "Ajuste apenas o que mudou e mantenha o lançamento direto."
+          : "Preencha manualmente e use a agenda do Outlook como apoio lateral."
+      }
+      aside={outlookDrawer}
+    >
+      <form
+        onSubmit={form.handleSubmit(handleSubmit)}
+        className="flex min-h-full flex-col"
+      >
+        <div className="flex-1">
+          <TimeEntryFormFields
+            form={form}
+            projects={projects}
+            workItem={workItem}
+            onWorkItemChange={setWorkItem}
+          />
+        </div>
 
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-          {/* Project */}
-          <div className="space-y-1.5">
-            <Label>Projeto *</Label>
-            <Select
-              value={selectedProjectId}
-              onValueChange={(v) => {
-                form.setValue("projectId", v);
-                setWorkItem(null);
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione um projeto" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: p.color }}
-                      />
-                      {p.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {form.formState.errors.projectId && (
-              <p className="text-xs text-destructive">
-                {form.formState.errors.projectId.message}
-              </p>
-            )}
-          </div>
-
-          {/* Azure DevOps Work Item */}
-          <div className="space-y-1.5">
-            <Label>
-              Work Item{" "}
-              <span className="text-muted-foreground">(opcional)</span>
-            </Label>
-            <WorkItemCombobox
-              projectName={
-                selectedProject?.azureProjectId ? selectedProject.name : null
-              }
-              value={workItem}
-              onChange={setWorkItem}
-              disabled={!selectedProject?.azureProjectId}
-            />
-          </div>
-
-          {/* Description */}
-          <div className="space-y-1.5">
-            <Label>Descrição *</Label>
-            <Textarea
-              {...form.register("description")}
-              placeholder="O que você trabalhou?"
-              rows={2}
-            />
-            {form.formState.errors.description && (
-              <p className="text-xs text-destructive">
-                {form.formState.errors.description.message}
-              </p>
-            )}
-          </div>
-
-          {/* Date + Duration row */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label>Data *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !selectedDate && "text-muted-foreground",
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate
-                      ? format(selectedDate, "dd/MM/yyyy")
-                      : "Selecione"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(d) => d && form.setValue("date", d)}
-                    initialFocus
-                    locale={ptBR}
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-
-            <div className="space-y-1.5">
-              <Label>Duração *</Label>
-              <DurationInput
-                value={form.watch("duration")}
-                onChange={(v) => form.setValue("duration", v)}
-              />
-              {form.formState.errors.duration && (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.duration.message}
-                </p>
-              )}
-            </div>
-          </div>
-
-          {/* Billable toggle */}
-          <div className="flex items-center justify-between rounded-lg border border-border px-4 py-3">
-            <div>
-              <p className="text-sm font-medium">Faturável</p>
-              <p className="text-xs text-muted-foreground">
-                Incluir este tempo na cobrança ao cliente
-              </p>
-            </div>
-            <Switch
-              checked={form.watch("billable")}
-              onCheckedChange={(v) => form.setValue("billable", v)}
-            />
-          </div>
-
-          <DialogFooter>
+        <div className="border-t border-border/60 bg-background/90 px-5 py-4 sm:px-6">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
             <Button
               type="button"
               variant="outline"
+              className="rounded-full"
               onClick={() => onOpenChange(false)}
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Salvando…" : mode === "edit" ? "Salvar" : "Criar"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
+                onClick={() => setSubmitMode("close")}
+              >
+                {submitting && submitMode === "close"
+                  ? "Salvando..."
+                  : mode === "edit"
+                    ? "Salvar alterações"
+                    : "Criar lançamento"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </TimeEntryDialogShell>
   );
 }

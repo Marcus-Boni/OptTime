@@ -1,6 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  dispatchTimeEntriesUpdated,
+  TIME_ENTRIES_UPDATED_EVENT,
+} from "@/lib/time-events";
 
 export interface TimeEntryProject {
   id: string;
@@ -87,6 +91,7 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
       }
       const result = await res.json();
       await fetchEntries();
+      dispatchTimeEntriesUpdated();
       return result.entry as TimeEntry;
     },
     [fetchEntries],
@@ -115,6 +120,7 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
         throw new Error(err.error ?? "Falha ao atualizar entrada");
       }
       await fetchEntries();
+      dispatchTimeEntriesUpdated();
     },
     [fetchEntries],
   );
@@ -127,9 +133,21 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
         throw new Error(err.error ?? "Falha ao excluir entrada");
       }
       await fetchEntries();
+      dispatchTimeEntriesUpdated();
     },
     [fetchEntries],
   );
+
+  useEffect(() => {
+    const handleUpdated = () => {
+      void fetchEntries();
+    };
+
+    window.addEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
+    return () => {
+      window.removeEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
+    };
+  }, [fetchEntries]);
 
   return {
     entries,

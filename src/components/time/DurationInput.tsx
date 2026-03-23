@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { formatDuration } from "@/lib/utils";
-import { parseDuration } from "@/lib/validations/time-entry.schema";
 
 interface DurationInputProps {
   value: number; // minutes
@@ -48,6 +47,8 @@ export function DurationInput({
     }
   }
 
+  const parsedLive = parseInput(raw);
+
   return (
     <div className="relative">
       <Input
@@ -64,9 +65,9 @@ export function DurationInput({
           error ? "border-destructive focus-visible:ring-destructive" : ""
         }
       />
-      {value > 0 && !error && (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
-          {formatDuration(value)}
+      {parsedLive !== null && !error && (
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground transition-opacity">
+          {formatDuration(parsedLive)}
         </span>
       )}
     </div>

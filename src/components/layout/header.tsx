@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
 import {
   LogOut,
   Menu,
@@ -13,7 +11,8 @@ import {
   User,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
@@ -34,6 +33,7 @@ import type { User as UserType } from "@/types/user";
 export function Header() {
   const {
     theme,
+    timePageDate,
     toggleTheme,
     setMobileSidebarOpen,
     openQuickEntry,
@@ -47,6 +47,7 @@ export function Header() {
     !isPending && (user?.role === "manager" || user?.role === "admin");
   const currentUser = user || MOCK_CURRENT_USER;
   const router = useRouter();
+  const pathname = usePathname();
 
   const [mounted, setMounted] = useState(false);
 
@@ -61,6 +62,18 @@ export function Header() {
           router.push("/");
         },
       },
+    });
+  };
+
+  const openRichQuickEntry = () => {
+    const date =
+      pathname.startsWith("/dashboard/time") && timePageDate
+        ? timePageDate
+        : undefined;
+
+    openQuickEntry({
+      date,
+      source: pathname.startsWith("/dashboard/time") ? "time-header" : "header",
     });
   };
 
@@ -95,7 +108,7 @@ export function Header() {
           size="sm"
           className="hidden gap-1.5 bg-brand-500 text-white hover:bg-brand-600 md:flex"
           aria-label="Novo registro de tempo"
-          onClick={openQuickEntry}
+          onClick={openRichQuickEntry}
         >
           <Plus className="h-4 w-4" />
           Novo Registro
@@ -106,7 +119,7 @@ export function Header() {
           size="icon"
           className="bg-brand-500 text-white hover:bg-brand-600 md:hidden"
           aria-label="Novo registro de tempo"
-          onClick={openQuickEntry}
+          onClick={openRichQuickEntry}
         >
           <Plus className="h-4 w-4" />
         </Button>

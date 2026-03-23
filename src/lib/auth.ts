@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
+import { refreshMicrosoftAccessToken } from "./microsoft-oauth";
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -49,6 +50,15 @@ export const auth = betterAuth({
       clientId: process.env.MICROSOFT_CLIENT_ID as string,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET as string,
       tenantId: "common",
+      scope: [
+        "openid",
+        "profile",
+        "email",
+        "User.Read",
+        "Calendars.Read",
+        "offline_access",
+      ],
+      refreshAccessToken: refreshMicrosoftAccessToken,
     },
   },
   databaseHooks: {
@@ -69,5 +79,11 @@ export const auth = betterAuth({
   },
   onAPIError: {
     errorURL: "/login",
+  },
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ["microsoft"],
+    },
   },
 });

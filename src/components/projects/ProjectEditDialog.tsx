@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-
+import type { ProjectFromAPI, TeamMember } from "@/components/projects/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,7 +41,6 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, getInitials } from "@/lib/utils";
-import type { ProjectFromAPI, TeamMember } from "@/components/projects/types";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -400,7 +399,7 @@ export function ProjectEditDialog({
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto w-full min-h-0 bg-neutral-900/40">
+        <div className="flex-1 overflow-y-auto w-full min-h-0 bg-muted/30 dark:bg-neutral-900/40">
           <form
             id="project-edit-form"
             onSubmit={handleSubmit(onSubmit)}

@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Read(//c/Users/mgalv/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/skills/brainstorming/scripts/**)",
+      "Read(//c/Users/mgalv/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/**)",
+      "Bash(C:/Users/mgalv/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/scripts/start-server.sh --project-dir \"C:/Users/mgalv/Projetos-Programacao/Projetos-Treino/harvest\")",
+      "Bash(cat \"C:/Users/mgalv/Projetos-Programacao/Projetos-Treino/harvest/.superpowers/brainstorm/\"*\"/.server-info\")"
+    ]
+  }
+}

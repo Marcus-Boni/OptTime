@@ -2,10 +2,11 @@
 
 import { toast } from "sonner";
 import { TimeEntryForm } from "@/components/time/TimeEntryForm";
+import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
 import { useUIStore } from "@/stores/ui.store";
 
 export function QuickEntryDialog() {
-  const { quickEntryOpen, closeQuickEntry } = useUIStore();
+  const { quickEntryContext, quickEntryOpen, closeQuickEntry } = useUIStore();
 
   const handleSubmit = async (data: {
     projectId: string;
@@ -28,6 +29,7 @@ export function QuickEntryDialog() {
     }
 
     toast.success("Registro de tempo criado com sucesso!");
+    dispatchTimeEntriesUpdated();
     closeQuickEntry();
   };
 
@@ -36,6 +38,10 @@ export function QuickEntryDialog() {
       open={quickEntryOpen}
       onOpenChange={(open) => !open && closeQuickEntry()}
       onSubmit={handleSubmit}
+      initialValues={{
+        ...quickEntryContext?.initialValues,
+        date: quickEntryContext?.initialValues?.date ?? quickEntryContext?.date,
+      }}
       mode="create"
     />
   );

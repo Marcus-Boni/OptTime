@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BarChart3,
-  Calendar,
   CheckSquare,
   ChevronLeft,
   ChevronRight,
@@ -50,7 +49,6 @@ const baseNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
-  { name: "Calendário", href: "/dashboard/calendar", icon: Calendar },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
   {
@@ -75,7 +73,6 @@ const managementNav = [
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
 
-/** Live Timer Widget in sidebar */
 function TimerWidget({ collapsed }: { collapsed: boolean }) {
   const {
     displayTime,
@@ -93,7 +90,7 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500 pulse-glow">
+          <div className="pulse-glow mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500">
             <Image src="/logo-white.svg" alt="Timer" width={14} height={21} />
           </div>
         </TooltipTrigger>
@@ -163,7 +160,7 @@ export function Sidebar() {
     mobileSidebarOpen,
     setMobileSidebarOpen,
   } = useUIStore();
-  // Nunca usa MOCK durante loading — evita renderizar itens de gestão antes da sessão resolver
+
   const user: UserType | null = isPending
     ? null
     : ((session?.user as unknown as UserType) ?? null);
@@ -187,9 +184,8 @@ export function Sidebar() {
 
   return (
     <TooltipProvider>
-      {/* Mobile overlay */}
       <AnimatePresence>
-        {mobileSidebarOpen && (
+        {mobileSidebarOpen ? (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -197,10 +193,9 @@ export function Sidebar() {
             className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
             onClick={() => setMobileSidebarOpen(false)}
           />
-        )}
+        ) : null}
       </AnimatePresence>
 
-      {/* Sidebar container */}
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-sidebar transition-all duration-300",
@@ -210,7 +205,6 @@ export function Sidebar() {
             : "-translate-x-full lg:translate-x-0",
         )}
       >
-        {/* Logo */}
         <div
           className={cn(
             "relative flex h-16 items-center px-4",
@@ -228,7 +222,7 @@ export function Sidebar() {
                 height={21}
               />
             </div>
-            {!sidebarCollapsed && (
+            {!sidebarCollapsed ? (
               <motion.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: "auto" }}
@@ -243,10 +237,9 @@ export function Sidebar() {
                   Time
                 </span>
               </motion.div>
-            )}
+            ) : null}
           </Link>
 
-          {/* Toggle Button — Floating on the border for better symmetry and usability */}
           <Button
             variant="outline"
             size="icon"
@@ -271,10 +264,8 @@ export function Sidebar() {
 
         <div className="min-h-0 flex-1 overflow-hidden">
           <ScrollArea className="h-full py-3">
-            {/* Active Timer Widget */}
             <TimerWidget collapsed={sidebarCollapsed} />
 
-            {/* Main Navigation */}
             <nav className="px-2" aria-label="Navegação principal">
               <ul className="space-y-1">
                 {navigation.map((item) => {
@@ -297,19 +288,19 @@ export function Sidebar() {
                           isActive ? "text-brand-500" : "",
                         )}
                       />
-                      {!sidebarCollapsed && (
+                      {!sidebarCollapsed ? (
                         <>
                           <span className="flex-1">{item.name}</span>
-                          {item.badge && (
+                          {item.badge ? (
                             <Badge
                               variant="secondary"
                               className="h-5 min-w-5 justify-center bg-brand-500 px-1.5 text-[10px] font-bold text-white"
                             >
                               {item.badge}
                             </Badge>
-                          )}
+                          ) : null}
                         </>
-                      )}
+                      ) : null}
                     </Link>
                   );
 
@@ -320,11 +311,11 @@ export function Sidebar() {
                           <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
                           <TooltipContent side="right">
                             <span>{item.name}</span>
-                            {item.badge && (
+                            {item.badge ? (
                               <Badge className="ml-2 h-4 bg-brand-500 text-[10px] text-white">
                                 {item.badge}
                               </Badge>
-                            )}
+                            ) : null}
                           </TooltipContent>
                         </Tooltip>
                       ) : (
@@ -336,21 +327,20 @@ export function Sidebar() {
               </ul>
             </nav>
 
-            {/* Manager / Admin Section */}
-            {isManager && (
+            {isManager ? (
               <>
                 <Separator className="mx-4 my-3" />
-                {!sidebarCollapsed && (
+                {!sidebarCollapsed ? (
                   <p className="px-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
                     Gestão
                   </p>
-                )}
+                ) : null}
                 <nav className="mt-1 px-2" aria-label="Navegação de gestão">
                   <ul className="space-y-1">
                     {managementNav.map((item) => {
                       const isActive =
                         pathname === item.href ||
-                        pathname.startsWith(item.href + "/");
+                        pathname.startsWith(`${item.href}/`);
                       const linkContent = (
                         <Link
                           href={item.href}
@@ -369,7 +359,7 @@ export function Sidebar() {
                               isActive ? "text-brand-500" : "",
                             )}
                           />
-                          {!sidebarCollapsed && <span>{item.name}</span>}
+                          {!sidebarCollapsed ? <span>{item.name}</span> : null}
                         </Link>
                       );
 
@@ -393,7 +383,7 @@ export function Sidebar() {
                   </ul>
                 </nav>
               </>
-            )}
+            ) : null}
           </ScrollArea>
         </div>
 
@@ -406,12 +396,12 @@ export function Sidebar() {
               )}
             >
               <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
-              {!sidebarCollapsed && (
+              {!sidebarCollapsed ? (
                 <div className="flex-1 space-y-1.5">
                   <Skeleton className="h-3 w-24 rounded" />
                   <Skeleton className="h-3 w-16 rounded" />
                 </div>
-              )}
+              ) : null}
             </div>
           ) : (
             <div
@@ -425,7 +415,7 @@ export function Sidebar() {
                 image={user?.image}
                 size="default"
               />
-              {!sidebarCollapsed && (
+              {!sidebarCollapsed ? (
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">
                     {user?.name}
@@ -434,7 +424,7 @@ export function Sidebar() {
                     {user?.role}
                   </p>
                 </div>
-              )}
+              ) : null}
             </div>
           )}
         </div>

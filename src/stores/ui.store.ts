@@ -14,8 +14,24 @@ interface UIState {
   mobileSidebarOpen: boolean;
   /** Whether the quick time-entry dialog is open */
   quickEntryOpen: boolean;
+  /** Context used to prefill the quick time-entry dialog */
+  quickEntryContext: {
+    date?: string;
+    initialValues?: {
+      azureWorkItemId?: number;
+      azureWorkItemTitle?: string;
+      billable?: boolean;
+      date?: string;
+      description?: string;
+      duration?: number;
+      projectId?: string;
+    };
+    source?: string;
+  } | null;
   /** Whether the command palette is open */
   commandPaletteOpen: boolean;
+  /** Currently selected date in the time workspace */
+  timePageDate: string | null;
 }
 
 interface UIActions {
@@ -26,10 +42,11 @@ interface UIActions {
   openModal: (id: string) => void;
   closeModal: () => void;
   setMobileSidebarOpen: (open: boolean) => void;
-  openQuickEntry: () => void;
+  openQuickEntry: (context?: UIState["quickEntryContext"]) => void;
   closeQuickEntry: () => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
+  setTimePageDate: (date: string | null) => void;
 }
 
 export const useUIStore = create<UIState & UIActions>()(
@@ -40,7 +57,9 @@ export const useUIStore = create<UIState & UIActions>()(
       activeModal: null,
       mobileSidebarOpen: false,
       quickEntryOpen: false,
+      quickEntryContext: null,
       commandPaletteOpen: false,
+      timePageDate: null,
 
       toggleSidebar: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
@@ -51,10 +70,13 @@ export const useUIStore = create<UIState & UIActions>()(
       openModal: (id) => set({ activeModal: id }),
       closeModal: () => set({ activeModal: null }),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
-      openQuickEntry: () => set({ quickEntryOpen: true }),
-      closeQuickEntry: () => set({ quickEntryOpen: false }),
+      openQuickEntry: (context) =>
+        set({ quickEntryOpen: true, quickEntryContext: context ?? null }),
+      closeQuickEntry: () =>
+        set({ quickEntryOpen: false, quickEntryContext: null }),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
+      setTimePageDate: (date) => set({ timePageDate: date }),
     }),
     {
       name: "optsolv-ui",

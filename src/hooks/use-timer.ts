@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
 import { formatTimerDisplay } from "@/lib/utils";
 
 export interface ActiveTimer {
@@ -139,6 +140,7 @@ export function useTimer() {
     }
     const result = await res.json();
     setTimer(null);
+    dispatchTimeEntriesUpdated();
     return result.entry;
   }, []);
 
