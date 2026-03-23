@@ -2,7 +2,7 @@ import { format, getISOWeek } from "date-fns";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { timeEntry, timesheet } from "@/lib/db/schema";
+import { timeEntry, timesheet, user } from "@/lib/db/schema";
 import { getPeriodRange } from "@/lib/utils";
 
 /**
@@ -14,6 +14,13 @@ export async function GET(req: Request): Promise<Response> {
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // Buscar capacidade semanal do usuário
+  const userRecord = await db.query.user.findFirst({
+    where: eq(user.id, session.user.id),
+    columns: { weeklyCapacity: true, createdAt: true },
+  });
+  const weeklyCapacity = userRecord?.weeklyCapacity ?? 40;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
@@ -55,9 +62,9 @@ export async function GET(req: Request): Promise<Response> {
     // Enriquecer timesheets abertos/rejeitados com os totais atuais baseados nas entradas
     const enrichedTimesheets = await Promise.all(
       timesheets.map(async (ts) => {
-        if (ts.status === "open" || ts.status === "rejected") {
-          const { start, end } = getPeriodRange(ts.period, ts.periodType);
+        const { start, end } = getPeriodRange(ts.period, ts.periodType);
 
+        if (ts.status === "open" || ts.status === "rejected") {
           const result = await db
             .select({
               totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)`,
@@ -81,9 +88,18 @@ export async function GET(req: Request): Promise<Response> {
             ...ts,
             totalMinutes: Number(result[0]?.totalMinutes || 0),
             billableMinutes: Number(result[0]?.billableMinutes || 0),
+            weeklyCapacity,
+            periodStart: start,
+            periodEnd: end,
           };
         }
-        return ts;
+
+        return {
+          ...ts,
+          weeklyCapacity,
+          periodStart: start,
+          periodEnd: end,
+        };
       }),
     );
 
@@ -114,6 +130,26 @@ export async function POST(req: Request): Promise<Response> {
         { error: "Período é obrigatório." },
         { status: 400 },
       );
+    }
+
+    // Validar que o período solicitado não é anterior ao ingresso do usuário
+    const userForValidation = await db.query.user.findFirst({
+      where: eq(user.id, session.user.id),
+      columns: { createdAt: true },
+    });
+
+    if (userForValidation) {
+      const joinDate = new Date(userForValidation.createdAt);
+      const joinWeek = `${format(joinDate, "yyyy")}-W${getISOWeek(joinDate).toString().padStart(2, "0")}`;
+
+      // Comparação lexicográfica funciona para formato "YYYY-WNN"
+      // NOTA: .padStart(2, "0") é essencial — sem ele "2026-W9" > "2026-W10" na comparação de string
+      if (period < joinWeek) {
+        return Response.json(
+          { error: "Período anterior ao ingresso no sistema" },
+          { status: 403 },
+        );
+      }
     }
 
     // Check if already exists

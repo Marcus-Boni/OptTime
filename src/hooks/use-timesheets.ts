@@ -26,6 +26,9 @@ export interface Timesheet {
   rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
+  weeklyCapacity: number;
+  periodStart: string;
+  periodEnd: string;
   approver?: { id: string; name: string } | null;
   user?: {
     id: string;
