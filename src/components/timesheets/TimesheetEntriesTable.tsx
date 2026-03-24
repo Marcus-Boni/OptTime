@@ -260,7 +260,100 @@ export function TimesheetEntriesTable({ entries }: TimesheetEntriesTableProps) {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-card/60">
+      <div className="space-y-3 md:hidden">
+        {filteredEntries.length === 0 ? (
+          <div className="rounded-xl border border-border/60 bg-card/60 p-6 text-center">
+            <p className="font-medium text-foreground">
+              Nenhuma entrada encontrada
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Ajuste o filtro ou registre horas para este período.
+            </p>
+          </div>
+        ) : (
+          filteredEntries.map((entry) => {
+            const date = parseLocalDate(entry.date);
+            const workItemHref = entry.project.azureProjectUrl
+              ? `${entry.project.azureProjectUrl}/_workitems/edit/${entry.azureWorkItemId}`
+              : null;
+
+            return (
+              <div
+                key={entry.id}
+                className="rounded-xl border border-border/60 bg-card/60 p-4"
+              >
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        {format(date, "EEEE", { locale: ptBR })}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(date, "dd/MM/yyyy", { locale: ptBR })}
+                      </p>
+                    </div>
+                    <p className="font-mono text-sm font-semibold text-foreground">
+                      {formatDecimalHours(entry.duration)}
+                    </p>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {entry.description || "Sem descrição"}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: entry.project.color }}
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        {entry.project.name}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        entry.billable
+                          ? "border-green-300 bg-green-500/10 text-green-700 dark:text-green-400"
+                          : "border-border text-muted-foreground",
+                      )}
+                    >
+                      {entry.billable ? "Faturável" : "Não faturável"}
+                    </Badge>
+
+                    {entry.azureWorkItemId ? (
+                      workItemHref ? (
+                        <a
+                          href={workItemHref}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-blue-600 transition-colors hover:text-blue-500 hover:underline dark:text-blue-400"
+                        >
+                          WI #{entry.azureWorkItemId}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-xs text-foreground">
+                          WI #{entry.azureWorkItemId}
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Sem vínculo
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-xl border border-border/60 bg-card/60 md:block">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (

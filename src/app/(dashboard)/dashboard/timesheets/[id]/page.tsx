@@ -245,7 +245,7 @@ export default function TimesheetDetailPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-6"
+      className="min-w-0 space-y-6"
     >
       <motion.div variants={itemVariants} className="space-y-4">
         <Link
@@ -402,8 +402,8 @@ export default function TimesheetDetailPage() {
         </Card>
       </motion.div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <motion.div variants={itemVariants} className="space-y-6">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+        <motion.div variants={itemVariants} className="min-w-0 space-y-6">
           <Card className="border-border/60 bg-card/80">
             <CardHeader>
               <CardTitle className="font-display text-lg">
@@ -416,13 +416,13 @@ export default function TimesheetDetailPage() {
                 faturáveis.
               </CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+            <CardContent className="grid min-w-0 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               {days.map((day) => (
                 <div
                   key={day.dateKey}
                   className="rounded-xl border border-border/60 bg-background/50 p-4"
                 >
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
                         {format(day.date, "EEEE", { locale: ptBR })}
@@ -489,7 +489,7 @@ export default function TimesheetDetailPage() {
           </Card>
         </motion.div>
 
-        <motion.div variants={itemVariants} className="space-y-6">
+        <motion.div variants={itemVariants} className="min-w-0 space-y-6">
           <Card className="border-border/60 bg-card/80">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-display text-lg">
@@ -513,7 +513,7 @@ export default function TimesheetDetailPage() {
 
                   return (
                     <div key={project.id} className="space-y-2">
-                      <div className="flex items-start justify-between gap-3">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <span
@@ -531,7 +531,7 @@ export default function TimesheetDetailPage() {
                               : "registros"}
                           </p>
                         </div>
-                        <div className="text-right">
+                        <div className="shrink-0 text-left sm:text-right">
                           <p className="font-mono text-sm font-semibold text-foreground">
                             {formatDuration(project.totalMinutes)}
                           </p>
@@ -559,51 +559,51 @@ export default function TimesheetDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Período</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {parsePeriodLabel(timesheet.period, timesheet.periodType)}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Intervalo</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {formatRangeLabel(start, end)}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Criado em</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {formatTimestamp(timesheet.createdAt)}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">
                   Última atualização
                 </span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {formatTimestamp(timesheet.updatedAt)}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Submetido em</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {timesheet.submittedAt
                     ? formatTimestamp(timesheet.submittedAt)
                     : "Ainda não submetido"}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Aprovado em</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {timesheet.approvedAt
                     ? formatTimestamp(timesheet.approvedAt)
                     : "Pendente"}
                 </span>
               </div>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Aprovador</span>
-                <span className="text-right font-medium text-foreground">
+                <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
                   {timesheet.approver?.name ?? "Não definido"}
                 </span>
               </div>
