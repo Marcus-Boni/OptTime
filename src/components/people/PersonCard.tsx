@@ -2,15 +2,16 @@
 
 import { motion } from "framer-motion";
 import {
+  FolderKanban,
   MoreHorizontal,
   Trash2,
   UserCheck,
   UserX,
-  FolderKanban,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import ManageProjectsDialog from "@/components/people/ManageProjectsDialog";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,7 +22,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -53,6 +53,11 @@ interface PersonCardProps {
   onUpdate: () => void;
 }
 
+type PendingAction =
+  | { type: "role"; role: string }
+  | { type: "active"; nextIsActive: boolean }
+  | null;
+
 const roleColors: Record<string, string> = {
   admin: "bg-purple-500/10 text-purple-400 border-purple-500/20",
   manager: "bg-blue-500/10 text-blue-400 border-blue-500/20",
@@ -75,6 +80,7 @@ export default function PersonCard({
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isManageProjectsOpen, setIsManageProjectsOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
   const canManage = sessionRole === "admin" || sessionRole === "manager";
   const isSelf = person.id === sessionUserId;
@@ -159,6 +165,67 @@ export default function PersonCard({
       setIsUpdating(false);
     }
   }
+
+  function getPendingActionCopy(action: PendingAction) {
+    if (!action) {
+      return {
+        title: "Confirmar alteração",
+        description: "Confirme para continuar.",
+        confirmLabel: "Confirmar",
+      };
+    }
+
+    if (action.type === "role") {
+      const roleLabel = roleLabels[action.role] ?? action.role;
+      return {
+        title: "Confirmar mudança de cargo",
+        description: (
+          <>
+            Você está prestes a alterar o cargo de{" "}
+            <strong className="text-foreground">
+              {person.name || person.email}
+            </strong>{" "}
+            para <strong className="text-foreground">{roleLabel}</strong>.
+          </>
+        ),
+        confirmLabel: "Confirmar mudança",
+      };
+    }
+
+    return {
+      title: action.nextIsActive
+        ? "Confirmar reativação de acesso"
+        : "Confirmar desativação de acesso",
+      description: (
+        <>
+          {action.nextIsActive
+            ? "Você está prestes a reativar o acesso de "
+            : "Você está prestes a desativar o acesso de "}
+          <strong className="text-foreground">
+            {person.name || person.email}
+          </strong>
+          .
+        </>
+      ),
+      confirmLabel: action.nextIsActive
+        ? "Reativar acesso"
+        : "Desativar acesso",
+    };
+  }
+
+  async function handleConfirmPendingAction() {
+    if (!pendingAction) return;
+
+    if (pendingAction.type === "role") {
+      await handleUpdateRole(pendingAction.role);
+    } else {
+      await handleToggleActive();
+    }
+
+    setPendingAction(null);
+  }
+
+  const pendingActionCopy = getPendingActionCopy(pendingAction);
 
   return (
     <>
@@ -249,7 +316,9 @@ export default function PersonCard({
                   <DropdownMenuSeparator />
                   {sessionRole === "admin" && (
                     <DropdownMenuItem
-                      onClick={() => void handleUpdateRole("admin")}
+                      onClick={() =>
+                        setPendingAction({ type: "role", role: "admin" })
+                      }
                       disabled={isUpdating || person.role === "admin"}
                       className="text-xs justify-between"
                     >
@@ -260,7 +329,9 @@ export default function PersonCard({
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
-                    onClick={() => void handleUpdateRole("manager")}
+                    onClick={() =>
+                      setPendingAction({ type: "role", role: "manager" })
+                    }
                     disabled={isUpdating || person.role === "manager"}
                     className="text-xs justify-between"
                   >
@@ -270,7 +341,9 @@ export default function PersonCard({
                     )}
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    onClick={() => void handleUpdateRole("member")}
+                    onClick={() =>
+                      setPendingAction({ type: "role", role: "member" })
+                    }
                     disabled={isUpdating || person.role === "member"}
                     className="text-xs justify-between"
                   >
@@ -286,7 +359,12 @@ export default function PersonCard({
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() => void handleToggleActive()}
+                    onClick={() =>
+                      setPendingAction({
+                        type: "active",
+                        nextIsActive: !person.isActive,
+                      })
+                    }
                     disabled={isUpdating}
                     className="text-xs"
                   >
@@ -317,6 +395,36 @@ export default function PersonCard({
           </CardContent>
         </Card>
       </motion.div>
+
+      <AlertDialog
+        open={pendingAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingAction(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{pendingActionCopy.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingActionCopy.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUpdating}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleConfirmPendingAction();
+              }}
+              disabled={isUpdating}
+            >
+              {isUpdating ? "Processando..." : pendingActionCopy.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={isDeleteDialogOpen}

@@ -4,6 +4,16 @@ import { Check, X } from "lucide-react";
 import { useState } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { TimesheetStatusBadge } from "@/components/timesheets/TimesheetStatusBadge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -54,6 +64,7 @@ export function ApprovalCard({
   onApprove,
   onReject,
 }: ApprovalCardProps) {
+  const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
@@ -62,6 +73,7 @@ export function ApprovalCard({
     setLoading(true);
     try {
       await onApprove(timesheet.id);
+      setApproveOpen(false);
     } finally {
       setLoading(false);
     }
@@ -128,7 +140,7 @@ export function ApprovalCard({
               <Button
                 size="sm"
                 className="bg-green-600 text-white hover:bg-green-700"
-                onClick={handleApprove}
+                onClick={() => setApproveOpen(true)}
                 disabled={loading}
               >
                 <Check className="mr-1.5 h-3.5 w-3.5" />
@@ -148,6 +160,35 @@ export function ApprovalCard({
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar aprovação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a aprovar o timesheet de{" "}
+              <strong className="text-foreground">
+                {user?.name ?? "Usuário"}
+              </strong>{" "}
+              referente a {parsePeriod(timesheet.period)}. Esta ação altera o
+              status para aprovado.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleApprove();
+              }}
+              disabled={loading}
+              className="bg-green-600 text-white hover:bg-green-700 focus:ring-green-600/20"
+            >
+              {loading ? "Aprovando..." : "Confirmar aprovação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Reject dialog */}
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
