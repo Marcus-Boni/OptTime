@@ -110,6 +110,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
     references: [activeTimer.userId],
   }),
   approvalsGiven: many(timesheet, { relationName: "approver" }),
+  timeSuggestionFeedback: many(timeSuggestionFeedback),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -410,3 +411,46 @@ export const activeTimerRelations = relations(activeTimer, ({ one }) => ({
     references: [project.id],
   }),
 }));
+
+// ─── Time Suggestion Feedback ────────────────────────────────────────
+export type TimeSuggestionAction = "accepted" | "edited" | "rejected";
+
+export const timeSuggestionFeedback = pgTable(
+  "time_suggestion_feedback",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Date in YYYY-MM-DD format */
+    date: text("date").notNull(),
+    suggestionFingerprint: text("suggestion_fingerprint").notNull(),
+    /** accepted | edited | rejected */
+    action: text("action").notNull(),
+    /** Comma-separated field names changed by the user */
+    editedFields: text("edited_fields"),
+    /** JSON serialized source breakdown metadata */
+    sourceBreakdown: text("source_breakdown"),
+    score: integer("score"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("time_suggestion_feedback_user_date_idx").on(
+      table.userId,
+      table.date,
+    ),
+    index("time_suggestion_feedback_fingerprint_idx").on(
+      table.suggestionFingerprint,
+    ),
+  ],
+);
+
+export const timeSuggestionFeedbackRelations = relations(
+  timeSuggestionFeedback,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [timeSuggestionFeedback.userId],
+      references: [user.id],
+    }),
+  }),
+);

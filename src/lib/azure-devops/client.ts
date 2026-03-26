@@ -1,4 +1,6 @@
 import type {
+  AzureDevOpsCommit,
+  AzureDevOpsRepository,
   AzureDevOpsWorkItem,
   WorkItemSearchResult,
   WorkItemState,
@@ -18,6 +20,20 @@ export class AzureDevOpsError extends Error {
 
 function buildAuthHeader(pat: string): string {
   return `Basic ${Buffer.from(`:${pat}`).toString("base64")}`;
+}
+
+function parseWorkItemIdsFromText(text: string) {
+  const matches = text.match(/(?:AB#|#)(\d{1,9})/gi) ?? [];
+  const ids = new Set<number>();
+
+  for (const match of matches) {
+    const numeric = Number.parseInt(match.replace(/[^0-9]/g, ""), 10);
+    if (Number.isFinite(numeric)) {
+      ids.add(numeric);
+    }
+  }
+
+  return [...ids];
 }
 
 export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
@@ -213,10 +229,149 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     }));
   }
 
+  async function listRepositories(
+    projectName: string,
+    top = 30,
+  ): Promise<AzureDevOpsRepository[]> {
+    const repositoriesResult = await fetchApi<{
+      value: Array<{
+        id: string;
+        name: string;
+        remoteUrl?: string;
+      }>;
+    }>(
+      `${orgUrl}/${encodeURIComponent(projectName)}/_apis/git/repositories?api-version=7.1`,
+    );
+
+    return repositoriesResult.value.slice(0, top).map((repository) => ({
+      id: repository.id,
+      name: repository.name,
+      remoteUrl: repository.remoteUrl,
+    }));
+  }
+
+  async function getRecentCommits(
+    projectRef: string,
+    options: {
+      author?: string;
+      authorAliases?: string[];
+      fromDate: string;
+      toDate: string;
+      top?: number;
+      projectLabel?: string;
+    },
+  ): Promise<AzureDevOpsCommit[]> {
+    const repositories = await listRepositories(projectRef, 10);
+    const projectLabel = options.projectLabel ?? projectRef;
+    const authorCandidates = Array.from(
+      new Set(
+        [options.author, ...(options.authorAliases ?? [])]
+          .map((candidate) => candidate?.trim())
+          .filter((candidate): candidate is string => Boolean(candidate)),
+      ),
+    );
+
+    const perRepoTop = Math.max(
+      5,
+      Math.floor((options.top ?? 40) / Math.max(1, repositories.length)),
+    );
+
+    async function fetchRepoCommits(
+      repository: AzureDevOpsRepository,
+      authorCandidate?: string,
+    ) {
+      const params = new URLSearchParams({
+        "searchCriteria.fromDate": options.fromDate,
+        "searchCriteria.toDate": options.toDate,
+        "searchCriteria.$top": String(perRepoTop),
+        "api-version": "7.1",
+      });
+
+      if (authorCandidate) {
+        params.set("searchCriteria.author", authorCandidate);
+      }
+
+      const result = await fetchApi<{
+        value: Array<{
+          commitId: string;
+          comment?: string;
+          author?: { date?: string; email?: string; name?: string };
+          committer?: { date?: string };
+          remoteUrl?: string;
+        }>;
+      }>(
+        `${orgUrl}/${encodeURIComponent(projectRef)}/_apis/git/repositories/${encodeURIComponent(repository.id)}/commits?${params.toString()}`,
+      );
+
+      return result.value.map((commit) => {
+        const text = commit.comment ?? "";
+        const workItemIds = parseWorkItemIdsFromText(text);
+        const branch =
+          text.match(
+            /(?:branch|refs\/heads\/|feature\/|bugfix\/|hotfix\/)([\w/-]+)/i,
+          )?.[1] ?? null;
+
+        return {
+          id: `${repository.id}:${commit.commitId}`,
+          commitId: commit.commitId,
+          repositoryId: repository.id,
+          repositoryName: repository.name,
+          projectName: projectLabel,
+          message: text.split("\n")[0] ?? "",
+          comment: text,
+          authorEmail: commit.author?.email ?? null,
+          authorName: commit.author?.name ?? null,
+          branch,
+          timestamp:
+            commit.author?.date ??
+            commit.committer?.date ??
+            new Date().toISOString(),
+          workItemIds,
+        } satisfies AzureDevOpsCommit;
+      });
+    }
+
+    let commitBuckets: AzureDevOpsCommit[][] = [];
+
+    for (const authorCandidate of authorCandidates) {
+      const batch = await Promise.all(
+        repositories.map((repository) =>
+          fetchRepoCommits(repository, authorCandidate),
+        ),
+      );
+
+      if (batch.some((commits) => commits.length > 0)) {
+        commitBuckets = batch;
+        break;
+      }
+    }
+
+    if (commitBuckets.length === 0) {
+      commitBuckets = await Promise.all(
+        repositories.map((repository) => fetchRepoCommits(repository)),
+      );
+    }
+
+    const deduped = new Map<string, AzureDevOpsCommit>();
+
+    for (const commit of commitBuckets.flat()) {
+      deduped.set(commit.id, commit);
+    }
+
+    return [...deduped.values()]
+      .sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+      )
+      .slice(0, options.top ?? 40);
+  }
+
   return {
     searchWorkItems,
     getWorkItem,
     updateCompletedWork,
     getProjectWorkItems,
+    listRepositories,
+    getRecentCommits,
   };
 }

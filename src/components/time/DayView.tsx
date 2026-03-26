@@ -22,14 +22,17 @@ import {
   Zap,
 } from "lucide-react";
 import { useMemo } from "react";
+import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
 import { TimeEntryCard } from "@/components/time/TimeEntryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import {
   type OutlookEvent,
   useOutlookEvents,
 } from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
+import type { TimeSuggestion } from "@/hooks/use-time-suggestions";
 import { cn, formatDuration } from "@/lib/utils";
 
 interface DayViewProps {
@@ -41,6 +44,15 @@ interface DayViewProps {
   onDuplicate: (entry: TimeEntry) => void;
   onCreateFromOutlook: (event: OutlookEvent) => void;
   onOpenCreate: () => void;
+  assistantEnabled: boolean;
+  suggestions: TimeSuggestion[];
+  suggestionsLoading: boolean;
+  suggestionsError: string | null;
+  onAssistantEnabledChange: (enabled: boolean) => void;
+  onRetrySuggestions: () => void;
+  onApplySuggestion: (suggestion: TimeSuggestion) => void;
+  onEditSuggestion: (suggestion: TimeSuggestion) => void;
+  onIgnoreSuggestion: (suggestion: TimeSuggestion) => void;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -58,6 +70,15 @@ export function DayView({
   onDuplicate,
   onCreateFromOutlook,
   onOpenCreate,
+  assistantEnabled,
+  suggestions,
+  suggestionsLoading,
+  suggestionsError,
+  onAssistantEnabledChange,
+  onRetrySuggestions,
+  onApplySuggestion,
+  onEditSuggestion,
+  onIgnoreSuggestion,
 }: DayViewProps) {
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
   const weekDays = eachDayOfInterval({
@@ -73,7 +94,8 @@ export function DayView({
     (sum, entry) => sum + entry.duration,
     0,
   );
-  const percentage = dailyTarget > 0 ? Math.min(totalMinutes / dailyTarget, 1) : 0;
+  const percentage =
+    dailyTarget > 0 ? Math.min(totalMinutes / dailyTarget, 1) : 0;
   const remainingMinutes = dailyTarget - totalMinutes;
   const isComplete = remainingMinutes <= 0;
 
@@ -170,7 +192,8 @@ export function DayView({
               const selected = isSameDay(day, selectedDate);
               const today = isToday(day);
               const weekend = isWeekend(day);
-              const dayPct = dailyTarget > 0 ? Math.min(dayMinutes / dailyTarget, 1) : 0;
+              const dayPct =
+                dailyTarget > 0 ? Math.min(dayMinutes / dailyTarget, 1) : 0;
               const dayComplete = dayPct >= 1;
 
               return (
@@ -210,7 +233,9 @@ export function DayView({
                   <span
                     className={cn(
                       "text-[10px] font-medium",
-                      dayMinutes > 0 ? "text-foreground/70" : "text-muted-foreground/40",
+                      dayMinutes > 0
+                        ? "text-foreground/70"
+                        : "text-muted-foreground/40",
                     )}
                   >
                     {dayMinutes > 0 ? formatDuration(dayMinutes) : "—"}
@@ -227,7 +252,9 @@ export function DayView({
                             ? "bg-brand-500"
                             : "bg-transparent",
                       )}
-                      style={{ width: `${Math.max(dayPct * 100, dayMinutes > 0 ? 10 : 0)}%` }}
+                      style={{
+                        width: `${Math.max(dayPct * 100, dayMinutes > 0 ? 10 : 0)}%`,
+                      }}
                     />
                   </div>
                 </button>
@@ -268,7 +295,35 @@ export function DayView({
             </div>
           </div>
         </div>
+
+        <div className="border-t border-border/60 px-6 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <span
+              id="time-assistant-toggle-label"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Assistente inteligente de horas
+            </span>
+            <Switch
+              checked={assistantEnabled}
+              onCheckedChange={onAssistantEnabledChange}
+              aria-label="Ativar assistente inteligente de horas"
+              aria-labelledby="time-assistant-toggle-label"
+            />
+          </div>
+        </div>
       </section>
+
+      <SmartSuggestionsPanel
+        enabled={assistantEnabled}
+        suggestions={suggestions}
+        loading={suggestionsLoading}
+        error={suggestionsError}
+        onRetry={onRetrySuggestions}
+        onApply={onApplySuggestion}
+        onEditAndApply={onEditSuggestion}
+        onIgnore={onIgnoreSuggestion}
+      />
 
       {/* Meeting indicator */}
       {outlook.connected !== false && pendingMeetings.length > 0 && (

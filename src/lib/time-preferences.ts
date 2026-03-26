@@ -9,6 +9,7 @@ export interface TimePreferences {
   defaultBillable: boolean;
   defaultDuration: number;
   submitMode: TimeSubmitModePreference;
+  assistantEnabled: boolean;
 }
 
 const STORAGE_KEY = "harvest:time-preferences";
@@ -19,6 +20,7 @@ const DEFAULT_PREFERENCES: TimePreferences = {
   defaultBillable: true,
   defaultDuration: 60,
   submitMode: "close",
+  assistantEnabled: true,
 };
 
 export function getTimePreferences(): TimePreferences {

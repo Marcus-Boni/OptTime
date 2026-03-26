@@ -39,6 +39,27 @@ export interface AzureDevOpsConfig {
   defaultProjectId?: string;
 }
 
+export interface AzureDevOpsRepository {
+  id: string;
+  name: string;
+  remoteUrl?: string;
+}
+
+export interface AzureDevOpsCommit {
+  id: string;
+  commitId: string;
+  repositoryId: string;
+  repositoryName: string;
+  projectName: string;
+  message: string;
+  comment: string;
+  authorEmail: string | null;
+  authorName: string | null;
+  branch: string | null;
+  timestamp: string;
+  workItemIds: number[];
+}
+
 /** Search result for work item autocomplete */
 export interface WorkItemSearchResult {
   id: number;

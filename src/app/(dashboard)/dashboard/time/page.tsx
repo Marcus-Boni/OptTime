@@ -11,6 +11,7 @@ import {
 } from "date-fns";
 import { motion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { DayView } from "@/components/time/DayView";
 import { MonthView } from "@/components/time/MonthView";
 import { TimeEntryForm } from "@/components/time/TimeEntryForm";
@@ -23,6 +24,10 @@ import {
   type OutlookEvent,
 } from "@/hooks/use-outlook-events";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
+import {
+  type TimeSuggestion,
+  useTimeSuggestions,
+} from "@/hooks/use-time-suggestions";
 import { useTimesheets } from "@/hooks/use-timesheets";
 import { useSession } from "@/lib/auth-client";
 import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
@@ -73,6 +78,11 @@ export default function TimePage() {
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [projects, setProjects] = useState<Project[]>([]);
   const [editTarget, setEditTarget] = useState<TimeEntry | undefined>();
+  const [ignoredSuggestionFingerprints, setIgnoredSuggestionFingerprints] =
+    useState<string[]>([]);
+  const [assistantEnabled, setAssistantEnabled] = useState(() => {
+    return getTimePreferences().assistantEnabled;
+  });
   const [weekTimesheet, setWeekTimesheet] = useState<{
     id: string;
     status: string;
@@ -176,6 +186,34 @@ export default function TimePage() {
   }, [activeView, getOrCreateTimesheet, selectedDate]);
 
   const latestEntry = entries[0];
+  const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const assistantFeatureEnabled =
+    process.env.NEXT_PUBLIC_TIME_ASSISTANT_ENABLED !== "false";
+  const shouldLoadAssistant =
+    activeView === "day" && assistantFeatureEnabled && assistantEnabled;
+
+  const {
+    suggestions,
+    loading: suggestionsLoading,
+    error: suggestionsError,
+    refetch: refetchSuggestions,
+    sendFeedback,
+  } = useTimeSuggestions({
+    date: selectedDateStr,
+    timezone,
+    enabled: shouldLoadAssistant,
+  });
+
+  const visibleSuggestions = useMemo(
+    () =>
+      suggestions.filter(
+        (suggestion) =>
+          !ignoredSuggestionFingerprints.includes(suggestion.fingerprint),
+      ),
+    [ignoredSuggestionFingerprints, suggestions],
+  );
+
   const dailyTargetMinutes = Math.round((weeklyCapacityHours * 60) / 5);
   const weekEntryCount = entries.length;
   const weekTotalMinutes = entries.reduce(
@@ -280,6 +318,88 @@ export default function TimePage() {
     setActiveView("day");
   }, []);
 
+  useEffect(() => {
+    if (!selectedDateStr) {
+      return;
+    }
+
+    setIgnoredSuggestionFingerprints([]);
+  }, [selectedDateStr]);
+
+  const handleAssistantEnabledChange = useCallback((enabled: boolean) => {
+    setAssistantEnabled(enabled);
+    saveTimePreference("assistantEnabled", enabled);
+  }, []);
+
+  const hideSuggestion = useCallback((fingerprint: string) => {
+    setIgnoredSuggestionFingerprints((current) => {
+      if (current.includes(fingerprint)) {
+        return current;
+      }
+      return [...current, fingerprint];
+    });
+  }, []);
+
+  const handleApplySuggestion = useCallback(
+    async (suggestion: TimeSuggestion) => {
+      if (!suggestion.payload) {
+        openCreate({
+          billable: suggestion.billable,
+          date: suggestion.date,
+          description: suggestion.description,
+          duration: suggestion.duration,
+          azureWorkItemId: suggestion.azureWorkItemId ?? undefined,
+          azureWorkItemTitle: suggestion.azureWorkItemTitle ?? undefined,
+        });
+        toast.message("Selecione um projeto para concluir a sugestão.");
+        return;
+      }
+
+      try {
+        await createEntry(suggestion.payload);
+        await sendFeedback(suggestion, "accepted");
+        hideSuggestion(suggestion.fingerprint);
+        toast.success("Sugestão aplicada com sucesso!");
+      } catch {
+        toast.error("Não foi possível aplicar a sugestão.");
+      }
+    },
+    [createEntry, hideSuggestion, openCreate, sendFeedback],
+  );
+
+  const handleEditSuggestion = useCallback(
+    (suggestion: TimeSuggestion) => {
+      const source = suggestion.payload ?? {
+        billable: suggestion.billable,
+        date: suggestion.date,
+        description: suggestion.description,
+        duration: suggestion.duration,
+        projectId: undefined,
+        azureWorkItemId: suggestion.azureWorkItemId ?? undefined,
+        azureWorkItemTitle: suggestion.azureWorkItemTitle ?? undefined,
+      };
+
+      openCreate({
+        billable: source.billable,
+        date: source.date,
+        description: source.description,
+        duration: source.duration,
+        projectId: source.projectId,
+        azureWorkItemId: source.azureWorkItemId,
+        azureWorkItemTitle: source.azureWorkItemTitle,
+      });
+    },
+    [openCreate],
+  );
+
+  const handleIgnoreSuggestion = useCallback(
+    (suggestion: TimeSuggestion) => {
+      hideSuggestion(suggestion.fingerprint);
+      void sendFeedback(suggestion, "rejected");
+    },
+    [hideSuggestion, sendFeedback],
+  );
+
   const handleMoveEntry = useCallback(
     async (entryId: string, newDate: string) => {
       await updateEntry(entryId, { date: newDate });
@@ -362,6 +482,19 @@ export default function TimePage() {
             onDuplicate={handleDuplicate}
             onCreateFromOutlook={handleCreateFromOutlook}
             onOpenCreate={() => openCreate()}
+            assistantEnabled={assistantFeatureEnabled && assistantEnabled}
+            suggestions={visibleSuggestions}
+            suggestionsLoading={suggestionsLoading}
+            suggestionsError={suggestionsError}
+            onAssistantEnabledChange={handleAssistantEnabledChange}
+            onRetrySuggestions={() => {
+              void refetchSuggestions();
+            }}
+            onApplySuggestion={(suggestion) => {
+              void handleApplySuggestion(suggestion);
+            }}
+            onEditSuggestion={handleEditSuggestion}
+            onIgnoreSuggestion={handleIgnoreSuggestion}
           />
         ) : activeView === "week" ? (
           <WeekView
