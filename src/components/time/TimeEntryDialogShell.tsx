@@ -1,14 +1,16 @@
 "use client";
 
+import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
-  DialogPortal,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { cn } from "@/lib/utils";
 
 interface TimeEntryDialogShellProps {
   open: boolean;
@@ -17,6 +19,7 @@ interface TimeEntryDialogShellProps {
   description: string;
   children: ReactNode;
   aside?: ReactNode;
+  asideOpen?: boolean;
 }
 
 export function TimeEntryDialogShell({
@@ -26,30 +29,75 @@ export function TimeEntryDialogShell({
   description,
   children,
   aside,
+  asideOpen,
 }: TimeEntryDialogShellProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] max-w-[min(720px,calc(100vw-1rem))] gap-0 overflow-hidden border-border/60 p-0 min-[1360px]:left-[calc(50%-150px)] min-[1700px]:left-[calc(50%-180px)]"
+        showCloseButton={false}
+        className={cn(
+          "max-h-[90vh] overflow-visible border-none bg-transparent p-0 shadow-none transition-all duration-300 ease-out md:flex md:flex-row md:items-start md:justify-center",
+          asideOpen ? "md:max-w-[1056px] gap-4" : "md:max-w-[720px] gap-0",
+          "w-full max-w-[calc(100vw-1rem)]",
+        )}
         onInteractOutside={(e) => {
           if ((e.target as Element).closest("[data-outlook-drawer]")) {
             e.preventDefault();
           }
         }}
       >
-        <DialogHeader className="border-b border-border/60 px-5 py-4 text-left sm:px-6">
-          <DialogTitle className="font-display text-xl font-semibold">
-            {title}
-          </DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+        {/* FORMULARIO PRINCIPAL */}
+        <div
+          className={cn(
+            "relative flex max-h-[90vh] min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg transition-all duration-300",
+            asideOpen ? "md:w-[720px]" : "w-full",
+          )}
+        >
+          <DialogHeader className="border-b border-border/60 px-5 py-4 text-left sm:px-6 pr-12">
+            <DialogTitle className="font-display text-xl font-semibold">
+              {title}
+            </DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
 
-        <div className="max-h-[calc(90vh-88px)] overflow-y-auto">
-          {children}
+          <DialogClose className="absolute right-5 top-5 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground">
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </DialogClose>
+
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            <div className="flex-1">{children}</div>
+
+            {/* MOBILE ONLY ASIDE (Animação de altura fluída) */}
+            <div
+              className={cn(
+                "grid transition-all duration-300 ease-out md:hidden",
+                asideOpen && aside
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0",
+              )}
+            >
+              <div className="overflow-hidden">
+                <div className="border-t border-border/60 bg-muted/10 flex flex-col">
+                  {aside}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* AGENDA OUTLOOK DESKTOP (Animação de largura e clip) */}
+        <div
+          className={cn(
+            "hidden transform-gpu shrink-0 overflow-hidden transition-all duration-300 ease-out md:block",
+            asideOpen && aside ? "w-[320px] opacity-100" : "w-0 opacity-0",
+          )}
+        >
+          <div className="flex h-full max-h-[90vh] min-h-0 w-[320px] flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg">
+            {aside}
+          </div>
         </div>
       </DialogContent>
-
-      {aside && <DialogPortal>{aside}</DialogPortal>}
     </Dialog>
   );
 }

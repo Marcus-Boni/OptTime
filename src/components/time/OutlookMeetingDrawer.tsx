@@ -5,51 +5,56 @@ import { ptBR } from "date-fns/locale";
 import {
   CalendarClock,
   Link2,
+  PanelLeftClose,
   RefreshCw,
   Sparkles,
   TriangleAlert,
-  X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { OutlookEventsList } from "@/components/time/OutlookEventsList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import {
   type OutlookEvent,
   useOutlookEvents,
 } from "@/hooks/use-outlook-events";
 import { useTimeEntries } from "@/hooks/use-time-entries";
+import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 
 interface OutlookMeetingDrawerProps {
   open: boolean;
+  onOpenChange: (open: boolean) => void;
   selectedDate: string;
   onSelectEvent: (event: OutlookEvent) => void;
-  mobileSheetOpen?: boolean;
-  onMobileSheetOpenChange?: (open: boolean) => void;
 }
 
 export function OutlookMeetingDrawer({
   open,
+  onOpenChange,
   selectedDate,
   onSelectEvent,
-  mobileSheetOpen = false,
-  onMobileSheetOpenChange,
 }: OutlookMeetingDrawerProps) {
   const outlook = useOutlookEvents({
     startDate: selectedDate,
     endDate: selectedDate,
-    enabled: open || mobileSheetOpen,
+    enabled: open,
   });
   const { entries } = useTimeEntries({
     from: selectedDate,
     to: selectedDate,
   });
 
-  if (!open && !mobileSheetOpen) return null;
+  const [defaultOpen, setDefaultOpen] = useState(false);
+
+  useEffect(() => {
+    setDefaultOpen(getTimePreferences().outlookDrawerDefaultOpen);
+  }, []);
+
+  const handleDefaultOpenChange = (checked: boolean) => {
+    setDefaultOpen(checked);
+    saveTimePreference("outlookDrawerDefaultOpen", checked);
+  };
 
   const formattedDate = format(
     new Date(`${selectedDate}T12:00:00`),
@@ -101,6 +106,21 @@ export function OutlookMeetingDrawer({
         </div>
       </div>
 
+      <div className="mt-3 flex items-center justify-between rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+        <div className="pr-4">
+          <p className="text-sm font-medium text-foreground">
+            Abrir junto com lançamento
+          </p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Exibir esta agenda aberta por padrão no modal de registro.
+          </p>
+        </div>
+        <Switch
+          checked={defaultOpen}
+          onCheckedChange={handleDefaultOpenChange}
+        />
+      </div>
+
       {outlook.status === "needs_reconnect" && (
         <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
           <div className="flex items-start gap-2">
@@ -131,7 +151,7 @@ export function OutlookMeetingDrawer({
 
   const eventsList = (
     <div
-      className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5"
+      className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6"
       onWheel={(e) => e.stopPropagation()}
     >
       <OutlookEventsList
@@ -147,78 +167,37 @@ export function OutlookMeetingDrawer({
     </div>
   );
 
+  if (!open) return null;
+
   return (
-    <>
-      {/* Painel lateral flutuante — apenas em telas largas */}
-      {open && (
-        <div
-          data-outlook-drawer
-          className="pointer-events-none fixed inset-0 z-60 hidden min-[1360px]:block"
-        >
-          <aside className="pointer-events-auto fixed left-[calc(50%+190px)] top-[5vh] flex h-[90vh] w-[320px] flex-col overflow-hidden rounded-[28px] border border-border/60 bg-background/96 shadow-2xl backdrop-blur min-[1500px]:left-[calc(50%+210px)] min-[1500px]:w-90 min-[1700px]:left-[calc(50%+230px)] min-[1700px]:w-95">
-            {/* Header do aside desktop */}
-            <div className="border-b border-border/60 px-4 py-4 sm:px-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    Agenda do Outlook
-                  </div>
-                  <h3 className="mt-2 font-display text-lg font-semibold capitalize text-foreground">
-                    {formattedDate}
-                  </h3>
-                </div>
-                {eventCountBadge}
-              </div>
-              {drawerMeta}
+    <div className="flex h-full min-h-0 flex-col bg-muted/5 md:bg-background/95">
+      <div className="border-b border-border/60 px-5 pb-5 pt-6 sm:px-6">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              <CalendarClock className="h-3.5 w-3.5" />
+              Agenda do Outlook
             </div>
-            {eventsList}
-          </aside>
-        </div>
-      )}
-
-      {/* Sheet para telas pequenas — sem o X padrão do Radix, cabeçalho integrado */}
-      <Sheet open={mobileSheetOpen} onOpenChange={onMobileSheetOpenChange}>
-        <SheetContent
-          side="bottom"
-          showCloseButton={false}
-          className="flex h-[80vh] flex-col rounded-t-[24px] p-0"
-          data-outlook-drawer
-        >
-          {/* Título acessível para screen readers */}
-          <SheetTitle className="sr-only">Agenda do Outlook</SheetTitle>
-
-          {/* Header do sheet mobile com fechar integrado */}
-          <div className="border-b border-border/60 px-4 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                  <CalendarClock className="h-3.5 w-3.5" />
-                  Agenda do Outlook
-                </div>
-                <h3 className="mt-1.5 font-display text-base font-semibold capitalize text-foreground">
-                  {formattedDate}
-                </h3>
-              </div>
-
-              {/* Badge + fechar lado a lado, sem sobreposição */}
-              <div className="flex shrink-0 items-center gap-2">
-                {eventCountBadge}
-                <button
-                  type="button"
-                  onClick={() => onMobileSheetOpenChange?.(false)}
-                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
-                  aria-label="Fechar agenda"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            {drawerMeta}
+            <h3 className="mt-1.5 font-display text-base font-semibold capitalize text-foreground">
+              {formattedDate}
+            </h3>
           </div>
-          {eventsList}
-        </SheetContent>
-      </Sheet>
-    </>
+
+          <div className="flex shrink-0 items-center gap-2">
+            {eventCountBadge}
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+              aria-label="Minimizar agenda"
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        {drawerMeta}
+      </div>
+      {eventsList}
+    </div>
   );
 }

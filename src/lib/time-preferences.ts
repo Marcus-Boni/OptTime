@@ -10,6 +10,7 @@ export interface TimePreferences {
   defaultDuration: number;
   submitMode: TimeSubmitModePreference;
   assistantEnabled: boolean;
+  outlookDrawerDefaultOpen: boolean;
 }
 
 const STORAGE_KEY = "harvest:time-preferences";
@@ -21,6 +22,7 @@ const DEFAULT_PREFERENCES: TimePreferences = {
   defaultDuration: 60,
   submitMode: "close",
   assistantEnabled: true,
+  outlookDrawerDefaultOpen: false,
 };
 
 export function getTimePreferences(): TimePreferences {

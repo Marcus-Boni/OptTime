@@ -2,7 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { CalendarClock } from "lucide-react";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import {
   type TimeEntryFormValues,
 } from "@/components/time/TimeEntryFormFields";
 import { Button } from "@/components/ui/button";
+import type { OutlookEvent } from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 import { parseLocalDate } from "@/lib/utils";
@@ -89,7 +90,7 @@ export function TimeEntryForm({
     title: string;
   } | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  const [outlookOpen, setOutlookOpen] = useState(false);
   const submitModeRef = useRef<"close" | "continue">(
     getTimePreferences().submitMode,
   );
@@ -118,13 +119,17 @@ export function TimeEntryForm({
 
   useEffect(() => {
     if (!open) {
-      setMobileSheetOpen(false);
+      setOutlookOpen(false);
       return;
     }
 
     const preferences = getTimePreferences();
     submitModeRef.current = preferences.submitMode;
     form.reset(getDefaultValues(initialValues));
+
+    if (preferences.outlookDrawerDefaultOpen) {
+      setOutlookOpen(true);
+    }
 
     if (initialValues?.azureWorkItemId && initialValues.azureWorkItemTitle) {
       setWorkItem({
@@ -140,7 +145,7 @@ export function TimeEntryForm({
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
 
   const handleOutlookEvent = useCallback(
-    (event: { subject: string; start: { dateTime: string }; end: { dateTime: string } }) => {
+    (event: OutlookEvent) => {
       const parseUtc = (iso: string) =>
         new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
       form.setValue("description", event.subject || "", {
@@ -163,7 +168,7 @@ export function TimeEntryForm({
         { shouldDirty: true, shouldValidate: true },
       );
       // Fecha o sheet mobile após selecionar a reunião
-      setMobileSheetOpen(false);
+      setOutlookOpen(false);
     },
     [form],
   );
@@ -209,11 +214,10 @@ export function TimeEntryForm({
 
   const outlookDrawer = (
     <OutlookMeetingDrawer
-      open={open}
+      open={outlookOpen}
+      onOpenChange={setOutlookOpen}
       selectedDate={selectedDateStr}
       onSelectEvent={handleOutlookEvent}
-      mobileSheetOpen={mobileSheetOpen}
-      onMobileSheetOpenChange={setMobileSheetOpen}
     />
   );
 
@@ -221,13 +225,16 @@ export function TimeEntryForm({
     <TimeEntryDialogShell
       open={open}
       onOpenChange={onOpenChange}
-      title={mode === "edit" ? "Editar lançamento" : "Novo registro de tempo"}
+      title={
+        mode === "create" ? "Registrar horas trabalhadas" : "Editar horas"
+      }
       description={
-        mode === "edit"
-          ? "Ajuste apenas o que mudou e mantenha o lançamento direto."
-          : "Preencha manualmente e use a agenda do Outlook como apoio lateral."
+        mode === "create"
+          ? "Preencha os dados abaixo para registrar seu tempo."
+          : "Altere os dados do seu registro de tempo."
       }
       aside={outlookDrawer}
+      asideOpen={outlookOpen}
     >
       <form
         onSubmit={form.handleSubmit(handleSubmit)}
@@ -239,33 +246,20 @@ export function TimeEntryForm({
             projects={projects}
             workItem={workItem}
             onWorkItemChange={setWorkItem}
+            onOpenAgenda={() => setOutlookOpen(true)}
           />
         </div>
 
         <div className="border-t border-border/60 bg-background/90 px-5 py-4 sm:px-6">
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-full"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-
-              {/* Botão agenda — icon-only para não causar overflow no mobile */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:text-foreground min-[1360px]:hidden"
-                onClick={() => setMobileSheetOpen(true)}
-                title="Abrir agenda do Outlook"
-              >
-                <CalendarClock className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full"
+              onClick={() => onOpenChange(false)}
+            >
+              Cancelar
+            </Button>
 
             {mode === "create" ? (
               <div className="flex flex-col gap-2 sm:flex-row">

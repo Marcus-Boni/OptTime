@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { BriefcaseBusiness, CalendarIcon } from "lucide-react";
+import { CalendarIcon, CalendarClock } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { DurationInput } from "@/components/time/DurationInput";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
@@ -55,6 +55,7 @@ interface TimeEntryFormFieldsProps {
   projects: Project[];
   workItem: { id: number; title: string } | null;
   onWorkItemChange: (value: { id: number; title: string } | null) => void;
+  onOpenAgenda?: () => void;
 }
 
 export function TimeEntryFormFields({
@@ -62,6 +63,7 @@ export function TimeEntryFormFields({
   projects,
   workItem,
   onWorkItemChange,
+  onOpenAgenda,
 }: TimeEntryFormFieldsProps) {
   const selectedProjectId = form.watch("projectId");
   const selectedProject = projects.find(
@@ -129,13 +131,25 @@ export function TimeEntryFormFields({
           className="rounded-md bg-background/80"
         />
         {form.formState.errors.description ? (
-          <p className="text-xs text-destructive">
+          <p className="text-xs text-destructive mt-1.5">
             {form.formState.errors.description.message}
           </p>
         ) : (
-          <p className="text-xs text-muted-foreground">
-            A agenda do Outlook pode preencher esse campo automaticamente.
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5 mt-1.5 min-h-[22px]">
+            <p className="text-xs text-muted-foreground mr-2">
+              A agenda do Outlook pode preencher esse campo automaticamente.
+            </p>
+            {onOpenAgenda && (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-500 hover:text-brand-600 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500 rounded-sm"
+                onClick={onOpenAgenda}
+              >
+                <CalendarClock className="h-3.5 w-3.5" />
+                <span>Integração Outlook</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
 
