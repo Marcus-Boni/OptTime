@@ -587,7 +587,9 @@ export default function AzureDevOpsPage() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="commitAuthor">Autor dos commits</Label>
+                <Label htmlFor="commitAuthor">
+                  Autor dos commits (opcional)
+                </Label>
                 <Input
                   id="commitAuthor"
                   placeholder="email@empresa.com"
@@ -602,8 +604,8 @@ export default function AzureDevOpsPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Use o mesmo identificador do Git configurado no Azure DevOps.
-                  O mais confiavel e o valor de{" "}
+                  Preencha apenas se este usuario precisar de sugestoes
+                  inteligentes baseadas em commits. O valor mais confiavel e{" "}
                   <code>git config user.email</code>.
                 </p>
               </div>

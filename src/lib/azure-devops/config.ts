@@ -14,7 +14,7 @@ type SaveAzureDevopsConfigInput = {
   organizationUrl: string;
   pat: string;
   status?: string;
-  commitAuthor: string;
+  commitAuthor?: string | null;
 };
 
 export async function hasCommitAuthorColumn() {
@@ -89,6 +89,10 @@ export async function saveAzureDevopsConfig({
   commitAuthor,
 }: SaveAzureDevopsConfigInput) {
   const includeCommitAuthor = await hasCommitAuthorColumn();
+  const normalizedCommitAuthor =
+    typeof commitAuthor === "string" && commitAuthor.trim().length > 0
+      ? commitAuthor.trim()
+      : null;
 
   const result = includeCommitAuthor
     ? await dbPool.query<StoredAzureDevopsConfig>(
@@ -116,7 +120,14 @@ export async function saveAzureDevopsConfig({
             status,
             commit_author as "commitAuthor"
         `,
-        [crypto.randomUUID(), userId, organizationUrl, pat, commitAuthor, status],
+        [
+          crypto.randomUUID(),
+          userId,
+          organizationUrl,
+          pat,
+          normalizedCommitAuthor,
+          status,
+        ],
       )
     : await dbPool.query<
         Omit<StoredAzureDevopsConfig, "commitAuthor"> & {

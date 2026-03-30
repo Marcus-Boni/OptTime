@@ -123,7 +123,7 @@ export async function GET(req: Request): Promise<Response> {
 
   if (!parseResult.success) {
     return Response.json(
-      { error: "Parâmetros inválidos", details: parseResult.error.flatten() },
+      { error: "Parametros invalidos", details: parseResult.error.flatten() },
       { status: 400 },
     );
   }
@@ -274,59 +274,48 @@ export async function GET(req: Request): Promise<Response> {
       meetings = [];
     }
 
+    let commits: NormalizedCommitActivity[] = [];
     const config = await findAzureDevopsConfigByUserId(session.user.id);
 
-    if (!config) {
-      return Response.json(
-        {
-          error:
-            "Configure a integração do Azure DevOps na página de Integrações para habilitar sugestões inteligentes baseadas nos seus commits.",
-        },
-        { status: 409 },
-      );
-    }
+    if (config?.commitAuthor) {
+      try {
+        const pat = decrypt(config.pat);
+        if (pat) {
+          const client = createAzureDevOpsClient(config.organizationUrl, pat);
+          const dayBounds = toIsoDayBounds(date);
+          const authorCandidates = buildCommitAuthorCandidates({
+            configuredAuthor: config.commitAuthor,
+          });
 
-    let commits: NormalizedCommitActivity[] = [];
+          const commitBuckets = await Promise.all(
+            projects.slice(0, 8).map(async (internalProject) => {
+              try {
+                return await client.getRecentCommits(
+                  internalProject.azureProjectId ?? internalProject.name,
+                  {
+                    authorCandidates,
+                    fromDate: dayBounds.start,
+                    toDate: dayBounds.end,
+                    top: 20,
+                    projectLabel: internalProject.name,
+                  },
+                );
+              } catch {
+                return [];
+              }
+            }),
+          );
 
-    try {
-      const pat = decrypt(config.pat);
-      if (pat) {
-        const client = createAzureDevOpsClient(config.organizationUrl, pat);
-        const dayBounds = toIsoDayBounds(date);
-        const authorCandidates = buildCommitAuthorCandidates({
-          configuredAuthor: config.commitAuthor,
-          fallbackEmail: session.user.email,
-          fallbackName: session.user.name,
+          commits = commitBuckets.flat();
+        }
+      } catch (error) {
+        console.warn("[time_suggestions][azure_commits_failed]", {
+          userId: session.user.id,
+          date,
+          error: error instanceof Error ? error.message : "unknown",
         });
-
-        const commitBuckets = await Promise.all(
-          projects.slice(0, 8).map(async (internalProject) => {
-            try {
-              return await client.getRecentCommits(
-                internalProject.azureProjectId ?? internalProject.name,
-                {
-                  authorCandidates,
-                  fromDate: dayBounds.start,
-                  toDate: dayBounds.end,
-                  top: 20,
-                  projectLabel: internalProject.name,
-                },
-              );
-            } catch {
-              return [];
-            }
-          }),
-        );
-
-        commits = commitBuckets.flat();
+        commits = [];
       }
-    } catch (error) {
-      console.warn("[time_suggestions][azure_commits_failed]", {
-        userId: session.user.id,
-        date,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-      commits = [];
     }
 
     const suggestions = buildDeterministicSuggestions({

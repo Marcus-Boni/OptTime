@@ -4,13 +4,10 @@ export const azureDevopsConfigSchema = z.object({
   organizationUrl: z
     .string()
     .trim()
-    .url("A URL da organização deve ser válida.")
-    .min(1, "URL da organização e obrigatória."),
-  pat: z.string().trim().min(1, "O Personal Access Token (PAT) e obrigatório."),
-  commitAuthor: z
-    .string()
-    .trim()
-    .min(1, "Informe o e-mail ou usuário usado nos commits do Azure DevOps."),
+    .url("A URL da organizacao deve ser valida.")
+    .min(1, "URL da organizacao e obrigatoria."),
+  pat: z.string().trim().min(1, "O Personal Access Token (PAT) e obrigatorio."),
+  commitAuthor: z.string().trim(),
 });
 
 export type AzureDevopsConfigInput = z.infer<typeof azureDevopsConfigSchema>;

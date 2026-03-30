@@ -70,9 +70,11 @@ export async function GET(req: Request): Promise<Response> {
     const client = createAzureDevOpsClient(config.organizationUrl, pat);
     const authorCandidates = buildCommitAuthorCandidates({
       configuredAuthor: config.commitAuthor,
-      fallbackEmail: session.user.email,
-      fallbackName: session.user.name,
     });
+
+    if (authorCandidates.length === 0) {
+      return Response.json({ connected: true, commits: [] });
+    }
 
     const commitBuckets = await Promise.all(
       projects.slice(0, 8).map(async (internalProject) => {

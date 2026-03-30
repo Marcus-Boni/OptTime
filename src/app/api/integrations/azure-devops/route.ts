@@ -20,9 +20,10 @@ export async function GET(req: Request): Promise<Response> {
     if (!config) {
       return Response.json({
         organizationUrl: "",
-        commitAuthor: session.user.email ?? "",
+        commitAuthor: "",
         commitAuthorPersistenceAvailable,
         hasPat: false,
+        warning: null,
       });
     }
 
@@ -95,7 +96,7 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json(
       {
         organizationUrl: result.organizationUrl,
-        commitAuthor: result.commitAuthor ?? parsed.data.commitAuthor,
+        commitAuthor: result.commitAuthor ?? parsed.data.commitAuthor ?? "",
         commitAuthorPersistenceAvailable,
         hasPat: true,
         warning: commitAuthorPersistenceAvailable
