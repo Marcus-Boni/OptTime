@@ -14,6 +14,7 @@ interface WorkItemComboboxProps {
   value?: { id: number; title: string } | null;
   onChange: (item: { id: number; title: string } | null) => void;
   disabled?: boolean;
+  unavailableMessage?: string;
 }
 
 const typeColors: Record<WorkItemType, string> = {
@@ -29,10 +30,11 @@ export function WorkItemCombobox({
   value,
   onChange,
   disabled,
+  unavailableMessage,
 }: WorkItemComboboxProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { query, results, loading, setQuery } = useWorkItems(
+  const { query, results, loading, error, refresh, setQuery } = useWorkItems(
     !value ? projectName : null,
   );
 
@@ -53,7 +55,7 @@ export function WorkItemCombobox({
   if (!projectName) {
     return (
       <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-sm text-muted-foreground">
-        Selecione um projeto primeiro
+        {unavailableMessage ?? "Selecione um projeto primeiro"}
       </div>
     );
   }
@@ -102,9 +104,24 @@ export function WorkItemCombobox({
             <div className="p-3 text-center text-sm text-muted-foreground">
               Buscando…
             </div>
+          ) : error ? (
+            <div className="space-y-2 p-3">
+              <p className="text-sm text-destructive">{error.message}</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7"
+                onClick={() => refresh()}
+              >
+                Tentar novamente
+              </Button>
+            </div>
           ) : results.length === 0 ? (
             <div className="p-3 text-center text-sm text-muted-foreground">
-              {query ? "Nenhum resultado" : "Sem work items no projeto"}
+              {query
+                ? "Nenhum work item encontrado para esta busca"
+                : "Nenhum work item disponível neste projeto"}
             </div>
           ) : (
             <ul className="max-h-60 overflow-auto py-1">

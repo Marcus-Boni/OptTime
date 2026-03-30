@@ -43,10 +43,15 @@ import {
 
 function CodeSnippet({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
-  function handleCopy() {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      toast.success("Conteudo copiado para a area de transferencia.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Nao foi possivel copiar o conteudo.");
+    }
   }
   return (
     <div className="flex items-center gap-2 rounded-md border border-border/50 bg-muted/50 px-3 py-2 font-mono text-xs text-foreground">

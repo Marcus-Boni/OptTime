@@ -17,19 +17,28 @@ export function QuickEntryDialog() {
     azureWorkItemId?: number;
     azureWorkItemTitle?: string;
   }) => {
-    const res = await fetch("/api/time-entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
+    try {
+      const res = await fetch("/api/time-entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error ?? "Falha ao criar registro");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Falha ao criar registro");
+      }
+
+      toast.success("Registro de tempo criado com sucesso!");
+      dispatchTimeEntriesUpdated();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel criar o registro de tempo.",
+      );
+      throw error;
     }
-
-    toast.success("Registro de tempo criado com sucesso!");
-    dispatchTimeEntriesUpdated();
   };
 
   return (

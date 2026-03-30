@@ -9,6 +9,7 @@ import {
   TimerReset,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -83,17 +84,34 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
   const selectedProject = projects.find(
     (project) => project.id === (timer?.projectId ?? projectId),
   );
+  const workItemUnavailableMessage = !projectId
+    ? "Selecione um projeto para buscar work items"
+    : !selectedProject?.azureProjectId
+      ? "Este projeto não está vinculado ao Azure DevOps"
+      : undefined;
 
   const handleStart = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId) {
+      toast.error("Selecione um projeto para iniciar o timer.");
+      return;
+    }
 
-    await startTimer({
-      projectId,
-      description,
-      billable,
-      azureWorkItemId: workItem?.id,
-      azureWorkItemTitle: workItem?.title,
-    });
+    try {
+      await startTimer({
+        projectId,
+        description,
+        billable,
+        azureWorkItemId: workItem?.id,
+        azureWorkItemTitle: workItem?.title,
+      });
+      toast.success("Timer iniciado com sucesso.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel iniciar o timer.",
+      );
+    }
   }, [billable, description, projectId, startTimer, workItem]);
 
   const handleStop = useCallback(async () => {
@@ -103,10 +121,43 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
       onEntrySaved?.();
       setDescription("");
       setWorkItem(null);
+      toast.success("Timer encerrado e registro salvo com sucesso.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel encerrar o timer.",
+      );
     } finally {
       setStopping(false);
     }
   }, [onEntrySaved, stopTimer]);
+
+  const handlePause = useCallback(async () => {
+    try {
+      await pauseTimer();
+      toast.success("Timer pausado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel pausar o timer.",
+      );
+    }
+  }, [pauseTimer]);
+
+  const handleResume = useCallback(async () => {
+    try {
+      await resumeTimer();
+      toast.success("Timer retomado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel retomar o timer.",
+      );
+    }
+  }, [resumeTimer]);
 
   if (loading) {
     return (
@@ -197,7 +248,9 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                     size="icon"
                     variant="outline"
                     className="h-9 w-9"
-                    onClick={pauseTimer}
+                    onClick={() => {
+                      void handlePause();
+                    }}
                   >
                     <Pause className="h-4 w-4" />
                   </Button>
@@ -206,7 +259,9 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                     size="icon"
                     variant="outline"
                     className="h-9 w-9"
-                    onClick={resumeTimer}
+                    onClick={() => {
+                      void handleResume();
+                    }}
                   >
                     <Play className="h-4 w-4" />
                   </Button>
@@ -277,6 +332,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                     }
                     value={workItem}
                     onChange={setWorkItem}
+                    unavailableMessage={workItemUnavailableMessage}
                   />
 
                   <Input

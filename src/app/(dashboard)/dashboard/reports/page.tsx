@@ -23,6 +23,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -191,36 +192,46 @@ export default function ReportsPage() {
   ).length;
 
   function handleExportExcel() {
-    exportSummaryByProjectToExcel(
-      projectSummaries.map((p) => ({
-        projectName: p.projectName,
-        totalMinutes: p.totalMinutes,
-        billableMinutes: p.billableMinutes,
-        entryCount: p.entryCount,
-      })),
-      {
-        filename: `relatorio-${from}-${to}`,
-        period: label,
-        totalMinutes,
-        billableMinutes,
-      },
-    );
+    try {
+      exportSummaryByProjectToExcel(
+        projectSummaries.map((p) => ({
+          projectName: p.projectName,
+          totalMinutes: p.totalMinutes,
+          billableMinutes: p.billableMinutes,
+          entryCount: p.entryCount,
+        })),
+        {
+          filename: `relatorio-${from}-${to}`,
+          period: label,
+          totalMinutes,
+          billableMinutes,
+        },
+      );
+      toast.success("Relatorio em Excel exportado com sucesso.");
+    } catch {
+      toast.error("Nao foi possivel exportar o relatorio em Excel.");
+    }
   }
 
   function handleExportPDF() {
-    exportSummaryByProjectToPDF({
-      projectData: projectSummaries.map((p) => ({
-        projectName: p.projectName,
-        totalMinutes: p.totalMinutes,
-        billableMinutes: p.billableMinutes,
-        entryCount: p.entryCount,
-      })),
-      title: "Relatório de Horas",
-      period: label,
-      filename: `relatorio-${from}-${to}`,
-      totalMinutes,
-      billableMinutes,
-    });
+    try {
+      exportSummaryByProjectToPDF({
+        projectData: projectSummaries.map((p) => ({
+          projectName: p.projectName,
+          totalMinutes: p.totalMinutes,
+          billableMinutes: p.billableMinutes,
+          entryCount: p.entryCount,
+        })),
+        title: "Relatório de Horas",
+        period: label,
+        filename: `relatorio-${from}-${to}`,
+        totalMinutes,
+        billableMinutes,
+      });
+      toast.success("Relatorio em PDF exportado com sucesso.");
+    } catch {
+      toast.error("Nao foi possivel exportar o relatorio em PDF.");
+    }
   }
 
   return (

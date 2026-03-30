@@ -328,6 +328,7 @@ export default function TimesheetsPage() {
       setSubmitting(id);
       try {
         await submitTimesheet(id);
+        toast.success("Timesheet submetido com sucesso.");
       } catch (err) {
         toast.error(
           err instanceof Error

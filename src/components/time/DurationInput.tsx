@@ -14,6 +14,7 @@ interface DurationInputProps {
  * Smart duration input. Accepts:
  * - "2" → 120 min
  * - "2.5" → 150 min
+ * - "2,5" → 150 min
  * - "2h30" → 150 min
  * - "150m" → 150 min
  * - "1:30" → 90 min
@@ -111,10 +112,10 @@ function parseInput(raw: string): number | null {
     return total >= 1 && total <= 1440 ? total : null;
   }
 
-  // "2.5" decimal hours
-  const decimalMatch = s.match(/^(\d+(?:\.\d+)?)$/);
+  // "2.5" or "2,5" decimal hours
+  const decimalMatch = s.match(/^(\d+(?:[.,]\d+)?)$/);
   if (decimalMatch) {
-    const hours = Number.parseFloat(decimalMatch[1]);
+    const hours = Number.parseFloat(decimalMatch[1].replace(",", "."));
     const total = Math.round(hours * 60);
     return total >= 1 && total <= 1440 ? total : null;
   }

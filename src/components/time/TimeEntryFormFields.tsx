@@ -2,7 +2,7 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarIcon, CalendarClock } from "lucide-react";
+import { CalendarClock, CalendarIcon } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { DurationInput } from "@/components/time/DurationInput";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
@@ -69,6 +69,11 @@ export function TimeEntryFormFields({
   const selectedProject = projects.find(
     (project) => project.id === selectedProjectId,
   );
+  const workItemUnavailableMessage = !selectedProjectId
+    ? "Selecione um projeto para buscar work items"
+    : !selectedProject?.azureProjectId
+      ? "Este projeto não está vinculado ao Azure DevOps"
+      : undefined;
   const selectedDate = form.watch("date");
   const selectedDuration = form.watch("duration");
   const billable = form.watch("billable");
@@ -119,6 +124,7 @@ export function TimeEntryFormFields({
           value={workItem}
           onChange={onWorkItemChange}
           disabled={!selectedProject?.azureProjectId}
+          unavailableMessage={workItemUnavailableMessage}
         />
       </div>
 

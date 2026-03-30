@@ -1,6 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useCallback } from "react";
+import { toast } from "sonner";
 import { ApprovalCard } from "@/components/timesheets/ApprovalCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTimesheetApprovals } from "@/hooks/use-timesheets";
@@ -23,6 +25,40 @@ export default function TimesheetApprovalsPage() {
   } = useTimesheetApprovals();
 
   const pending = approvals.filter((ts) => ts.status === "submitted");
+
+  const handleApprove = useCallback(
+    async (id: string) => {
+      try {
+        await approveTimesheet(id);
+        toast.success("Timesheet aprovado com sucesso.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel aprovar o timesheet.",
+        );
+        throw error;
+      }
+    },
+    [approveTimesheet],
+  );
+
+  const handleReject = useCallback(
+    async (id: string, reason: string) => {
+      try {
+        await rejectTimesheet(id, reason);
+        toast.success("Timesheet rejeitado com sucesso.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel rejeitar o timesheet.",
+        );
+        throw error;
+      }
+    },
+    [rejectTimesheet],
+  );
 
   return (
     <motion.div
@@ -71,8 +107,8 @@ export default function TimesheetApprovalsPage() {
             <motion.div key={ts.id} variants={itemVariants}>
               <ApprovalCard
                 timesheet={ts}
-                onApprove={approveTimesheet}
-                onReject={rejectTimesheet}
+                onApprove={handleApprove}
+                onReject={handleReject}
               />
             </motion.div>
           ))}

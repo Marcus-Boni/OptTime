@@ -265,8 +265,17 @@ export default function TimePage() {
     }) => {
       if (!editTarget) return;
 
-      await updateEntry(editTarget.id, data);
-      setEditTarget(undefined);
+      try {
+        await updateEntry(editTarget.id, data);
+        toast.success("Registro atualizado com sucesso.");
+        setEditTarget(undefined);
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel atualizar o registro.",
+        );
+      }
     },
     [editTarget, updateEntry],
   );
@@ -277,7 +286,16 @@ export default function TimePage() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      await deleteEntry(id);
+      try {
+        await deleteEntry(id);
+        toast.success("Registro excluido com sucesso.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel excluir o registro.",
+        );
+      }
     },
     [deleteEntry],
   );
