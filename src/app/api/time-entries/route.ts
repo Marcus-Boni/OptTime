@@ -1,5 +1,9 @@
 import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import {
+  canAccessProject,
+  getActiveSession,
+  getActorContext,
+} from "@/lib/access-control";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { project, projectMember, timeEntry } from "@/lib/db/schema";
@@ -7,10 +11,10 @@ import { createTimeEntrySchema } from "@/lib/validations/time-entry.schema";
 
 /**
  * GET - List time entries for the current user.
- * Query params: from, to (YYYY-MM-DD), projectId, status
+ * Query params: from, to (YYYY-MM-DD), projectId
  */
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -62,7 +66,7 @@ export async function GET(req: Request): Promise<Response> {
  * POST - Create a new time entry.
  */
 export async function POST(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -79,29 +83,35 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const data = parsed.data;
+    const actor = getActorContext(session.user);
 
-    // Verify user has access to the project
-    const proj = await db.query.project.findFirst({
+    const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
-      columns: { id: true, managerId: true },
+      columns: { id: true, status: true },
     });
 
-    if (!proj) {
+    if (!targetProject || targetProject.status !== "active") {
       return Response.json(
         { error: "Projeto não encontrado." },
         { status: 404 },
       );
     }
 
-    // Check membership if not manager/admin
-    const userRole = session.user.role as string;
-    if (userRole === "member") {
+    if (!(await canAccessProject(actor, data.projectId))) {
+      return Response.json(
+        { error: "Você não pode lançar horas neste projeto." },
+        { status: 403 },
+      );
+    }
+
+    if (actor.role === "member") {
       const membership = await db.query.projectMember.findFirst({
         where: and(
           eq(projectMember.projectId, data.projectId),
           eq(projectMember.userId, session.user.id),
         ),
       });
+
       if (!membership) {
         return Response.json(
           { error: "Você não é membro deste projeto." },

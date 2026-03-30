@@ -25,7 +25,7 @@ interface SmartSuggestionsPanelProps {
 
 const confidenceLabel: Record<TimeSuggestion["confidence"], string> = {
   high: "Alta",
-  medium: "Média",
+  medium: "Media",
   low: "Baixa",
 };
 
@@ -50,7 +50,7 @@ export function SmartSuggestionsPanel({
     return (
       <section className="rounded-[28px] border border-border/60 bg-card/80 p-5 shadow-sm">
         <p className="text-sm text-muted-foreground">
-          Assistente inteligente desativado para este usuário.
+          Assistente inteligente desativado para este usuario.
         </p>
       </section>
     );
@@ -93,9 +93,7 @@ export function SmartSuggestionsPanel({
           </div>
         ) : error ? (
           <div className="rounded-2xl border border-destructive/30 bg-destructive/10 p-4">
-            <p className="text-sm text-foreground">
-              Não foi possível carregar as sugestões.
-            </p>
+            <p className="text-sm text-foreground">Sugestões indisponíveis.</p>
             <p className="mt-1 text-xs text-muted-foreground">{error}</p>
             <Button
               onClick={onRetry}

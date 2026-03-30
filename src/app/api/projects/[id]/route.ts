@@ -1,25 +1,36 @@
-import { auth } from "@/lib/auth";
+import { eq } from "drizzle-orm";
+import {
+  canAccessProject,
+  canManageProject,
+  ensureManagerAssignableUsers,
+  getActiveSession,
+  getActorContext,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
-import { eq } from "drizzle-orm";
 
 /**
  * GET /api/projects/[id]
- * Returns full project details. Members can only view projects they belong to.
+ * Returns full project details inside the actor scope.
  */
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const actor = getActorContext(session.user);
   const { id } = await params;
 
   try {
+    if (!(await canAccessProject(actor, id))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const found = await db.query.project.findFirst({
       where: eq(project.id, id),
       with: {
@@ -56,14 +67,6 @@ export async function GET(
       );
     }
 
-    // Members can only view projects they belong to
-    if (session.user.role === "member") {
-      const isMember = found.members.some((m) => m.userId === session.user.id);
-      if (!isMember) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
-      }
-    }
-
     return Response.json({ project: found });
   } catch (error) {
     console.error("[GET /api/projects/[id]]:", error);
@@ -73,18 +76,19 @@ export async function GET(
 
 /**
  * PUT /api/projects/[id]
- * Updates a project fully (including status and imageUrl). Restricted to manager / admin.
+ * Updates a project fully (including status and imageUrl). Restricted to project manager / admin.
  */
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "manager" && session.user.role !== "admin") {
+  const actor = getActorContext(session.user);
+  if (actor.role !== "manager" && actor.role !== "admin") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -105,40 +109,52 @@ export async function PUT(
       );
     }
 
-    const data = parsed.data;
-    const managerId = data.managerId || session.user.id;
-
-    await db
-      .update(project)
-      .set({
-        name: data.name,
-        code: data.code ?? existing.code,
-        description: data.description ?? null,
-        clientName: data.clientName ?? null,
-        color: data.color,
-        status: data.status ?? existing.status,
-        billable: data.billable,
-        budget: data.budget ?? null,
-        azureProjectId: data.azureProjectId ?? null,
-        imageUrl: data.imageUrl ?? null,
-        managerId,
-      })
-      .where(eq(project.id, id));
-
-    // Sync members: clear and re-add
-    await db.delete(projectMember).where(eq(projectMember.projectId, id));
-
-    const memberSet = new Set([managerId, ...data.memberIds]);
-    for (const userId of memberSet) {
-      await db.insert(projectMember).values({
-        id: crypto.randomUUID(),
-        projectId: id,
-        userId,
-      });
+    if (!(await canManageProject(actor, id))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Return full project details matched with GET route structure
-    const updatedWithMembers = await db.query.project.findFirst({
+    const data = parsed.data;
+    const managerId =
+      actor.role === "manager" ? actor.userId : data.managerId || existing.managerId || actor.userId;
+    const assigneeIds = [...new Set([managerId, ...data.memberIds])];
+
+    if (!(await ensureManagerAssignableUsers(actor, assigneeIds))) {
+      return Response.json(
+        { error: "Gerentes só podem atribuir a si mesmos e aos seus liderados." },
+        { status: 403 },
+      );
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(project)
+        .set({
+          name: data.name,
+          code: data.code ?? existing.code,
+          description: data.description ?? null,
+          clientName: data.clientName ?? null,
+          color: data.color,
+          status: data.status ?? existing.status,
+          billable: data.billable,
+          budget: data.budget ?? null,
+          azureProjectId: data.azureProjectId ?? null,
+          imageUrl: data.imageUrl ?? null,
+          managerId,
+        })
+        .where(eq(project.id, id));
+
+      await tx.delete(projectMember).where(eq(projectMember.projectId, id));
+
+      for (const userId of assigneeIds) {
+        await tx.insert(projectMember).values({
+          id: crypto.randomUUID(),
+          projectId: id,
+          userId,
+        });
+      }
+    });
+
+    const updatedProject = await db.query.project.findFirst({
       where: eq(project.id, id),
       with: {
         members: {
@@ -167,7 +183,7 @@ export async function PUT(
       },
     });
 
-    return Response.json({ project: updatedWithMembers });
+    return Response.json({ project: updatedProject });
   } catch (error) {
     console.error("[PUT /api/projects/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
@@ -182,12 +198,13 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin") {
+  const actor = getActorContext(session.user);
+  if (actor.role !== "admin") {
     return Response.json(
       { error: "Forbidden — apenas administradores podem arquivar projetos" },
       { status: 403 },

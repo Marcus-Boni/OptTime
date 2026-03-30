@@ -44,12 +44,13 @@ export interface MicrosoftAccountSnapshot {
   scope: string | null;
   userId: string;
   hasRefreshToken: boolean;
+  updatedAt: Date;
 }
 
 export async function getMicrosoftAccountSnapshot(
   userId: string,
 ): Promise<MicrosoftAccountSnapshot | null> {
-  const [msAccount] = await db
+  const microsoftAccounts = await db
     .select({
       accessTokenExpiresAt: account.accessTokenExpiresAt,
       accountId: account.accountId,
@@ -58,15 +59,38 @@ export async function getMicrosoftAccountSnapshot(
       refreshToken: account.refreshToken,
       refreshTokenExpiresAt: account.refreshTokenExpiresAt,
       scope: account.scope,
+      updatedAt: account.updatedAt,
       userId: account.userId,
     })
     .from(account)
-    .where(and(eq(account.userId, userId), eq(account.providerId, "microsoft")))
-    .limit(1);
+    .where(and(eq(account.userId, userId), eq(account.providerId, "microsoft")));
 
-  if (!msAccount) {
+  if (microsoftAccounts.length === 0) {
     return null;
   }
+
+  const msAccount = [...microsoftAccounts].sort((left, right) => {
+    const leftHasRefreshToken = Boolean(left.refreshToken);
+    const rightHasRefreshToken = Boolean(right.refreshToken);
+
+    if (leftHasRefreshToken !== rightHasRefreshToken) {
+      return leftHasRefreshToken ? -1 : 1;
+    }
+
+    const leftRefreshExpiry = left.refreshTokenExpiresAt?.getTime() ?? 0;
+    const rightRefreshExpiry = right.refreshTokenExpiresAt?.getTime() ?? 0;
+    if (leftRefreshExpiry !== rightRefreshExpiry) {
+      return rightRefreshExpiry - leftRefreshExpiry;
+    }
+
+    const leftAccessExpiry = left.accessTokenExpiresAt?.getTime() ?? 0;
+    const rightAccessExpiry = right.accessTokenExpiresAt?.getTime() ?? 0;
+    if (leftAccessExpiry !== rightAccessExpiry) {
+      return rightAccessExpiry - leftAccessExpiry;
+    }
+
+    return right.updatedAt.getTime() - left.updatedAt.getTime();
+  })[0];
 
   return {
     accessTokenExpiresAt: msAccount.accessTokenExpiresAt,
@@ -75,6 +99,7 @@ export async function getMicrosoftAccountSnapshot(
     providerId: msAccount.providerId,
     refreshTokenExpiresAt: msAccount.refreshTokenExpiresAt,
     scope: msAccount.scope,
+    updatedAt: msAccount.updatedAt,
     userId: msAccount.userId,
     hasRefreshToken: Boolean(msAccount.refreshToken),
   };

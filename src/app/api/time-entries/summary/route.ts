@@ -1,5 +1,9 @@
 import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import {
+  getActiveSession,
+  getActorContext,
+  isDirectReport,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, timeEntry } from "@/lib/db/schema";
 
@@ -13,7 +17,7 @@ import { project, timeEntry } from "@/lib/db/schema";
  *   userId? (manager/admin only — defaults to session user)
  */
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -26,11 +30,20 @@ export async function GET(req: Request): Promise<Response> {
   const requestedUserId = searchParams.get("userId");
 
   // Role check for querying other users
-  const role = session.user.role as string;
+  const actor = getActorContext(session.user);
+  const role = actor.role;
   const targetUserId =
     requestedUserId && ["manager", "admin"].includes(role)
       ? requestedUserId
       : session.user.id;
+
+  if (
+    role === "manager" &&
+    requestedUserId &&
+    !(await isDirectReport(actor.userId, requestedUserId))
+  ) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   try {
     const conditions = [

@@ -11,6 +11,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { OutlookEventsList } from "@/components/time/OutlookEventsList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
   useOutlookEvents,
 } from "@/hooks/use-outlook-events";
 import { useTimeEntries } from "@/hooks/use-time-entries";
+import { signIn } from "@/lib/auth-client";
 import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 
 interface OutlookMeetingDrawerProps {
@@ -46,6 +48,7 @@ export function OutlookMeetingDrawer({
   });
 
   const [defaultOpen, setDefaultOpen] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
     setDefaultOpen(getTimePreferences().outlookDrawerDefaultOpen);
@@ -55,6 +58,33 @@ export function OutlookMeetingDrawer({
     setDefaultOpen(checked);
     saveTimePreference("outlookDrawerDefaultOpen", checked);
   };
+
+  async function handleReconnectMicrosoft() {
+    setIsReconnecting(true);
+
+    try {
+      const callbackURL =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/dashboard/time";
+
+      const { error } = await signIn.social({
+        provider: "microsoft",
+        callbackURL,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Erro ao reconectar com Microsoft");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erro ao reconectar com Microsoft",
+      );
+      setIsReconnecting(false);
+    }
+  }
 
   const formattedDate = format(
     new Date(`${selectedDate}T12:00:00`),
@@ -85,12 +115,12 @@ export function OutlookMeetingDrawer({
               : outlook.status === "connected"
                 ? "Conectado"
                 : outlook.status === "empty"
-                  ? "Sem reuniões"
+                  ? "Sem reunioes"
                   : outlook.status === "needs_reconnect"
                     ? "Reconectar"
                     : outlook.status === "not_connected"
-                      ? "Não conectado"
-                      : "Falha transitória"}
+                      ? "Nao conectado"
+                      : "Falha transitoria"}
           </p>
         </div>
 
@@ -100,8 +130,7 @@ export function OutlookMeetingDrawer({
             No dia
           </div>
           <p className="mt-2 text-sm font-medium text-foreground">
-            {entries.length}{" "}
-            {entries.length === 1 ? "lançamento" : "lançamentos"}
+            {entries.length} {entries.length === 1 ? "lancamento" : "lancamentos"}
           </p>
         </div>
       </div>
@@ -109,10 +138,10 @@ export function OutlookMeetingDrawer({
       <div className="mt-3 flex items-center justify-between rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
         <div className="pr-4">
           <p className="text-sm font-medium text-foreground">
-            Abrir junto com lançamento
+            Abrir junto com lancamento
           </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Exibir esta agenda aberta por padrão no modal de registro.
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Exibir esta agenda aberta por padrao no modal de registro.
           </p>
         </div>
         <Switch
@@ -125,10 +154,23 @@ export function OutlookMeetingDrawer({
         <div className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
           <div className="flex items-start gap-2">
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-            <p className="text-muted-foreground">
-              A conexão Microsoft foi encontrada, mas o refresh token não está
-              mais utilizável. Reconecte a integração.
-            </p>
+            <div className="space-y-3">
+              <p className="text-muted-foreground">
+                A conexao Microsoft foi encontrada, mas o refresh token nao
+                esta mais utilizavel. Reconecte a integracao.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleReconnectMicrosoft()}
+                disabled={isReconnecting}
+              >
+                <RefreshCw
+                  className={`mr-2 h-4 w-4 ${isReconnecting ? "animate-spin" : ""}`}
+                />
+                {isReconnecting ? "Redirecionando..." : "Reconectar Microsoft"}
+              </Button>
+            </div>
           </div>
         </div>
       )}

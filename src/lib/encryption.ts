@@ -1,17 +1,19 @@
 import {
   createCipheriv,
   createDecipheriv,
-  randomBytes,
   createHash,
+  randomBytes,
 } from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 
 function getEncryptionKey(): Buffer {
-  const secret =
-    process.env.ENCRYPTION_KEY ||
-    process.env.BETTER_AUTH_SECRET ||
-    "default_development_secret_key_1234567890";
+  const secret = process.env.ENCRYPTION_KEY?.trim();
+  if (!secret) {
+    throw new Error(
+      "ENCRYPTION_KEY is required. Define it in the environment before encrypting or decrypting Azure DevOps credentials.",
+    );
+  }
   // Hash the secret to ensure it's exactly 32 bytes for AES-256
   return createHash("sha256").update(secret).digest();
 }
@@ -42,8 +44,9 @@ export function encrypt(text: string): string {
 export function decrypt(encryptedText: string): string {
   if (!encryptedText || !encryptedText.includes(":")) return encryptedText;
 
+  const key = getEncryptionKey();
+
   try {
-    const key = getEncryptionKey();
     const [ivHex, authTagHex, encrypted] = encryptedText.split(":");
 
     if (!ivHex || !authTagHex || !encrypted) {

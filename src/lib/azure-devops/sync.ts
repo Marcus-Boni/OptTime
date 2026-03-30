@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
+import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
-import { azureDevopsConfig, timeEntry } from "@/lib/db/schema";
+import { timeEntry } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
 import { createAzureDevOpsClient } from "./client";
 
@@ -37,9 +38,7 @@ export async function syncCompletedWorkToAzDO(
   workItemId: number,
 ): Promise<void> {
   try {
-    const config = await db.query.azureDevopsConfig.findFirst({
-      where: eq(azureDevopsConfig.userId, userId),
-    });
+    const config = await findAzureDevopsConfigByUserId(userId);
 
     if (!config) return;
 

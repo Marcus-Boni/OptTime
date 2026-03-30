@@ -6,6 +6,7 @@ import type {
   WorkItemState,
   WorkItemType,
 } from "@/types/azure-devops";
+import { matchesCommitAuthor } from "./commit-author";
 import { resolveSchedulingHours } from "./scheduling";
 
 export class AzureDevOpsError extends Error {
@@ -253,8 +254,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
   async function getRecentCommits(
     projectRef: string,
     options: {
-      author?: string;
-      authorAliases?: string[];
+      authorCandidates: string[];
       fromDate: string;
       toDate: string;
       top?: number;
@@ -265,11 +265,15 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     const projectLabel = options.projectLabel ?? projectRef;
     const authorCandidates = Array.from(
       new Set(
-        [options.author, ...(options.authorAliases ?? [])]
+        options.authorCandidates
           .map((candidate) => candidate?.trim())
           .filter((candidate): candidate is string => Boolean(candidate)),
       ),
     );
+
+    if (authorCandidates.length === 0) {
+      return [];
+    }
 
     const perRepoTop = Math.max(
       5,
@@ -303,32 +307,34 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
         `${orgUrl}/${encodeURIComponent(projectRef)}/_apis/git/repositories/${encodeURIComponent(repository.id)}/commits?${params.toString()}`,
       );
 
-      return result.value.map((commit) => {
-        const text = commit.comment ?? "";
-        const workItemIds = parseWorkItemIdsFromText(text);
-        const branch =
-          text.match(
-            /(?:branch|refs\/heads\/|feature\/|bugfix\/|hotfix\/)([\w/-]+)/i,
-          )?.[1] ?? null;
+      return result.value
+        .map((commit) => {
+          const text = commit.comment ?? "";
+          const workItemIds = parseWorkItemIdsFromText(text);
+          const branch =
+            text.match(
+              /(?:branch|refs\/heads\/|feature\/|bugfix\/|hotfix\/)([\w/-]+)/i,
+            )?.[1] ?? null;
 
-        return {
-          id: `${repository.id}:${commit.commitId}`,
-          commitId: commit.commitId,
-          repositoryId: repository.id,
-          repositoryName: repository.name,
-          projectName: projectLabel,
-          message: text.split("\n")[0] ?? "",
-          comment: text,
-          authorEmail: commit.author?.email ?? null,
-          authorName: commit.author?.name ?? null,
-          branch,
-          timestamp:
-            commit.author?.date ??
-            commit.committer?.date ??
-            new Date().toISOString(),
-          workItemIds,
-        } satisfies AzureDevOpsCommit;
-      });
+          return {
+            id: `${repository.id}:${commit.commitId}`,
+            commitId: commit.commitId,
+            repositoryId: repository.id,
+            repositoryName: repository.name,
+            projectName: projectLabel,
+            message: text.split("\n")[0] ?? "",
+            comment: text,
+            authorEmail: commit.author?.email ?? null,
+            authorName: commit.author?.name ?? null,
+            branch,
+            timestamp:
+              commit.author?.date ??
+              commit.committer?.date ??
+              new Date().toISOString(),
+            workItemIds,
+          } satisfies AzureDevOpsCommit;
+        })
+        .filter((commit) => matchesCommitAuthor(commit, authorCandidates));
     }
 
     let commitBuckets: AzureDevOpsCommit[][] = [];
@@ -344,12 +350,6 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
         commitBuckets = batch;
         break;
       }
-    }
-
-    if (commitBuckets.length === 0) {
-      commitBuckets = await Promise.all(
-        repositories.map((repository) => fetchRepoCommits(repository)),
-      );
     }
 
     const deduped = new Map<string, AzureDevOpsCommit>();

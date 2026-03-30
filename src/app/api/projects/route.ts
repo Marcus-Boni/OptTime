@@ -1,71 +1,52 @@
-import { auth } from "@/lib/auth";
+import { and, desc, eq, inArray, like } from "drizzle-orm";
+import {
+  ensureManagerAssignableUsers,
+  getAccessibleProjectIds,
+  getActiveSession,
+  getActorContext,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
-import { eq, inArray, like } from "drizzle-orm";
 
 /**
  * GET /api/projects
- * - admin / manager → all projects
- * - member → only projects where the user is a member
+ * - admin -> all projects
+ * - manager -> projects que gerencia ou dos quais participa
+ * - member -> only projects where the user is a member
  */
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const isPrivileged =
-      session.user.role === "manager" || session.user.role === "admin";
+    const actor = getActorContext(session.user);
+    const accessibleProjectIds = await getAccessibleProjectIds(actor);
 
-    let projects;
-
-    if (isPrivileged) {
-      projects = await db.query.project.findMany({
-        with: {
-          members: {
-            with: {
-              user: {
-                columns: { id: true, name: true, email: true, image: true },
-              },
-            },
-          },
-          manager: {
-            columns: { id: true, name: true, email: true, image: true },
-          },
-        },
-        orderBy: (p, { desc }) => [desc(p.updatedAt)],
-      });
-    } else {
-      // Find project IDs the user is a member of
-      const memberships = await db.query.projectMember.findMany({
-        where: eq(projectMember.userId, session.user.id),
-        columns: { projectId: true },
-      });
-
-      const projectIds = memberships.map((m) => m.projectId);
-      if (projectIds.length === 0) {
-        return Response.json({ projects: [] });
-      }
-
-      projects = await db.query.project.findMany({
-        where: inArray(project.id, projectIds),
-        with: {
-          members: {
-            with: {
-              user: {
-                columns: { id: true, name: true, email: true, image: true },
-              },
-            },
-          },
-          manager: {
-            columns: { id: true, name: true, email: true, image: true },
-          },
-        },
-        orderBy: (p, { desc }) => [desc(p.updatedAt)],
-      });
+    if (accessibleProjectIds && accessibleProjectIds.length === 0) {
+      return Response.json({ projects: [] });
     }
+
+    const projects = await db.query.project.findMany({
+      where: accessibleProjectIds
+        ? inArray(project.id, accessibleProjectIds)
+        : undefined,
+      with: {
+        members: {
+          with: {
+            user: {
+              columns: { id: true, name: true, email: true, image: true },
+            },
+          },
+        },
+        manager: {
+          columns: { id: true, name: true, email: true, image: true },
+        },
+      },
+      orderBy: (table, { desc }) => [desc(table.updatedAt)],
+    });
 
     return Response.json({ projects });
   } catch (error) {
@@ -79,12 +60,13 @@ export async function GET(req: Request): Promise<Response> {
  * Creates a new project. Restricted to manager / admin.
  */
 export async function POST(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "manager" && session.user.role !== "admin") {
+  const actor = getActorContext(session.user);
+  if (actor.role !== "manager" && actor.role !== "admin") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -94,10 +76,18 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const projectId = crypto.randomUUID();
     const data = parsed.data;
+    const managerId =
+      actor.role === "manager" ? actor.userId : data.managerId || actor.userId;
 
-    // Auto-generate code from name if not provided
+    const assigneeIds = [...new Set([managerId, ...data.memberIds])];
+    if (!(await ensureManagerAssignableUsers(actor, assigneeIds))) {
+      return Response.json(
+        { error: "Gerentes só podem atribuir a si mesmos e aos seus liderados." },
+        { status: 403 },
+      );
+    }
+
     let code = data.code;
     if (!code) {
       const base = data.name
@@ -106,49 +96,50 @@ export async function POST(req: Request): Promise<Response> {
         .replace(/^-|-$/g, "")
         .slice(0, 20);
 
-      // Check for duplicates and append suffix if needed
       const existing = await db.query.project.findMany({
         where: like(project.code, `${base}%`),
         columns: { code: true },
       });
-      const existingCodes = new Set(existing.map((p) => p.code));
+
+      const existingCodes = new Set(existing.map((existingProject) => existingProject.code));
       code = base;
       let suffix = 1;
       while (existingCodes.has(code)) {
         code = `${base.slice(0, 17)}-${suffix}`;
-        suffix++;
+        suffix += 1;
       }
     }
 
-    const managerId = data.managerId || session.user.id;
+    const newProject = await db.transaction(async (tx) => {
+      const projectId = crypto.randomUUID();
+      const [createdProject] = await tx
+        .insert(project)
+        .values({
+          id: projectId,
+          name: data.name,
+          code,
+          description: data.description || null,
+          clientName: data.clientName || null,
+          color: data.color,
+          status: "active",
+          billable: data.billable,
+          budget: data.budget || null,
+          source: "manual",
+          azureProjectId: data.azureProjectId || null,
+          managerId,
+        })
+        .returning();
 
-    const [newProject] = await db
-      .insert(project)
-      .values({
-        id: projectId,
-        name: data.name,
-        code,
-        description: data.description || null,
-        clientName: data.clientName || null,
-        color: data.color,
-        status: "active",
-        billable: data.billable,
-        budget: data.budget || null,
-        source: "manual",
-        azureProjectId: data.azureProjectId || null,
-        managerId,
-      })
-      .returning();
+      for (const userId of assigneeIds) {
+        await tx.insert(projectMember).values({
+          id: crypto.randomUUID(),
+          projectId,
+          userId,
+        });
+      }
 
-    // Add members (always include the manager/creator)
-    const memberSet = new Set([managerId, ...data.memberIds]);
-    for (const userId of memberSet) {
-      await db.insert(projectMember).values({
-        id: crypto.randomUUID(),
-        projectId,
-        userId,
-      });
-    }
+      return createdProject;
+    });
 
     return Response.json({ project: newProject }, { status: 201 });
   } catch (error) {

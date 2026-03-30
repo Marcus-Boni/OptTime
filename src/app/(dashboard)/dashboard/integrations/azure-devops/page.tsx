@@ -117,6 +117,7 @@ export default function AzureDevOpsPage() {
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [configWarning, setConfigWarning] = useState<string | null>(null);
   // null = not yet determined (avoids open→close flash on load)
   const [tutorialOpen, setTutorialOpen] = useState<boolean | null>(null);
 
@@ -143,6 +144,7 @@ export default function AzureDevOpsPage() {
     defaultValues: {
       organizationUrl: "",
       pat: "",
+      commitAuthor: "",
     },
   });
 
@@ -172,10 +174,14 @@ export default function AzureDevOpsPage() {
         if (res.ok) {
           const data = await res.json();
           setIsConnected(data.hasPat);
+          setConfigWarning(data.warning ?? null);
           // Open tutorial only for users that haven't connected yet
           setTutorialOpen(!data.hasPat);
           if (data.organizationUrl) {
             setValue("organizationUrl", data.organizationUrl);
+          }
+          if (data.commitAuthor) {
+            setValue("commitAuthor", data.commitAuthor);
           }
         } else {
           setTutorialOpen(true);
@@ -249,6 +255,10 @@ export default function AzureDevOpsPage() {
 
       setIsConnected(true);
       setTutorialOpen(false);
+      setConfigWarning(result.warning ?? null);
+      if (result.warning) {
+        toast.warning(result.warning);
+      }
       toast.success("Integração com Azure DevOps conectada com sucesso!");
 
       // Clear the PAT input after saving for security feeling, but keep connected state
@@ -554,6 +564,11 @@ export default function AzureDevOpsPage() {
             </div>
           </CardHeader>
           <CardContent>
+            {configWarning ? (
+              <div className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                {configWarning}
+              </div>
+            ) : null}
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="organizationUrl">URL da Organização</Label>
@@ -570,6 +585,27 @@ export default function AzureDevOpsPage() {
                     {errors.organizationUrl.message}
                   </p>
                 )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="commitAuthor">Autor dos commits</Label>
+                <Input
+                  id="commitAuthor"
+                  placeholder="email@empresa.com"
+                  disabled={isLoadingConfig || isSaving}
+                  {...register("commitAuthor")}
+                  className={cn(errors.commitAuthor && "border-red-500")}
+                />
+                {errors.commitAuthor && (
+                  <p className="flex items-center gap-1 text-xs text-red-500">
+                    <AlertCircle className="h-3 w-3" />
+                    {errors.commitAuthor.message}
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Use o mesmo identificador do Git configurado no Azure DevOps.
+                  O mais confiavel e o valor de{" "}
+                  <code>git config user.email</code>.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="pat">Personal Access Token (PAT)</Label>

@@ -1,20 +1,22 @@
-import { auth } from "@/lib/auth";
+import { buildScopedUserWhere, getActiveSession, getActorContext } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 
 /** GET /api/people — lista todos os usuários ativos (apenas manager/admin) */
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = session.user.role as string;
+  const actor = getActorContext(session.user);
+  const role = actor.role;
   if (role !== "admin" && role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   try {
+    const where = await buildScopedUserWhere(actor);
     const people = await db
       .select({
         id: user.id,
@@ -28,6 +30,7 @@ export async function GET(req: Request): Promise<Response> {
         createdAt: user.createdAt,
       })
       .from(user)
+      .where(where)
       .orderBy(user.name);
 
     return Response.json(people);

@@ -1,21 +1,16 @@
 import { eq } from "drizzle-orm";
+import { canAccessProject } from "@/lib/access-control";
+import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
+import { db } from "@/lib/db";
+import { activeTimer, project, timeEntry } from "@/lib/db/schema";
 import {
   extensionJson,
   extensionOptions,
   resolveExtensionUser,
 } from "@/lib/extension-auth";
-export const dynamic = "force-dynamic";
-
-import { and } from "drizzle-orm";
-import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
-import { db } from "@/lib/db";
-import {
-  activeTimer,
-  project,
-  projectMember,
-  timeEntry,
-} from "@/lib/db/schema";
 import { startTimerSchema } from "@/lib/validations/time-entry.schema";
+
+export const dynamic = "force-dynamic";
 
 export function OPTIONS() {
   return extensionOptions();
@@ -27,8 +22,9 @@ export function OPTIONS() {
  */
 export async function GET(req: Request): Promise<Response> {
   const extUser = await resolveExtensionUser(req);
-  if (!extUser)
+  if (!extUser) {
     return extensionJson({ error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const timer = await db.query.activeTimer.findFirst({
@@ -46,14 +42,13 @@ export async function GET(req: Request): Promise<Response> {
 
 /**
  * POST /api/extension/timer
- * Starts a new timer for the authenticated user.
- * Body: { action: "start", projectId, description?, billable?, azureWorkItemId?, azureWorkItemTitle? }
- *   or  { action: "stop" }
+ * Starts or stops the timer for the authenticated user.
  */
 export async function POST(req: Request): Promise<Response> {
   const extUser = await resolveExtensionUser(req);
-  if (!extUser)
+  if (!extUser) {
     return extensionJson({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: unknown;
   try {
@@ -64,7 +59,6 @@ export async function POST(req: Request): Promise<Response> {
 
   const action = (body as Record<string, unknown>).action as string;
 
-  // ── STOP ────────────────────────────────────────────────────────────────
   if (action === "stop") {
     try {
       const existing = await db.query.activeTimer.findFirst({
@@ -83,7 +77,6 @@ export async function POST(req: Request): Promise<Response> {
     }
   }
 
-  // ── START ────────────────────────────────────────────────────────────────
   const parsed = startTimerSchema.safeParse(body);
   if (!parsed.success) {
     return extensionJson(
@@ -95,34 +88,36 @@ export async function POST(req: Request): Promise<Response> {
   const data = parsed.data;
 
   try {
-    const proj = await db.query.project.findFirst({
+    const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
       columns: { id: true, status: true },
     });
 
-    if (!proj || proj.status !== "active") {
+    if (!targetProject || targetProject.status !== "active") {
       return extensionJson(
         { error: "Projeto não encontrado." },
         { status: 404 },
       );
     }
 
-    if (extUser.role === "member") {
-      const membership = await db.query.projectMember.findFirst({
-        where: and(
-          eq(projectMember.projectId, data.projectId),
-          eq(projectMember.userId, extUser.id),
-        ),
-      });
-      if (!membership) {
-        return extensionJson(
-          { error: "Você não é membro deste projeto." },
-          { status: 403 },
-        );
-      }
+    if (
+      !(await canAccessProject(
+        {
+          role:
+            extUser.role === "admin" || extUser.role === "manager"
+              ? extUser.role
+              : "member",
+          userId: extUser.id,
+        },
+        data.projectId,
+      ))
+    ) {
+      return extensionJson(
+        { error: "Você não pode iniciar timer neste projeto." },
+        { status: 403 },
+      );
     }
 
-    // Stop existing timer first
     const existing = await db.query.activeTimer.findFirst({
       where: eq(activeTimer.userId, extUser.id),
     });
@@ -165,26 +160,31 @@ async function stopTimerAndSave(
   const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
   const dateStr = now.toISOString().slice(0, 10);
 
-  const entryId = crypto.randomUUID();
-  const [entry] = await db
-    .insert(timeEntry)
-    .values({
-      id: entryId,
-      userId,
-      projectId: timer.projectId,
-      description: timer.description || "Timer",
-      date: dateStr,
-      duration: durationMinutes,
-      billable: timer.billable,
-      azureWorkItemId: timer.azureWorkItemId,
-      azureWorkItemTitle: timer.azureWorkItemTitle,
-      startTime: timer.startedAt,
-      endTime: now,
-      azdoSyncStatus: timer.azureWorkItemId ? "pending" : "none",
-    })
-    .returning();
+  const entry = await db.transaction(async (tx) => {
+    const entryId = crypto.randomUUID();
+    const [createdEntry] = await tx
+      .insert(timeEntry)
+      .values({
+        id: entryId,
+        userId,
+        projectId: timer.projectId,
+        description: timer.description || "Timer",
+        date: dateStr,
+        duration: durationMinutes,
+        billable: timer.billable,
+        azureWorkItemId: timer.azureWorkItemId,
+        azureWorkItemTitle: timer.azureWorkItemTitle,
+        startTime: timer.startedAt,
+        endTime: now,
+        azdoSyncStatus: timer.azureWorkItemId ? "pending" : "none",
+      })
+      .returning();
 
-  await db.delete(activeTimer).where(eq(activeTimer.userId, userId));
+    await tx.delete(activeTimer).where(eq(activeTimer.userId, userId));
+
+    return createdEntry;
+  });
+
   triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
 
   return entry;

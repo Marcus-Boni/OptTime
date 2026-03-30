@@ -1,8 +1,9 @@
-import { auth } from "@/lib/auth";
-import { db } from "@/lib/db";
-import { azureDevopsConfig, project, projectMember } from "@/lib/db/schema";
-import { decrypt } from "@/lib/encryption";
 import { eq } from "drizzle-orm";
+import { getActiveSession, getActorContext } from "@/lib/access-control";
+import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import { db } from "@/lib/db";
+import { project, projectMember } from "@/lib/db/schema";
+import { decrypt } from "@/lib/encryption";
 
 interface AzureProject {
   id: string;
@@ -13,24 +14,23 @@ interface AzureProject {
   lastUpdateTime: string;
 }
 
-/**
- * GET - List all projects from the user's Azure DevOps organization.
- * Requires a configured Azure DevOps integration.
- */
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const actor = getActorContext(session.user);
+  if (actor.role !== "admin" && actor.role !== "manager") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   try {
-    const config = await db.query.azureDevopsConfig.findFirst({
-      where: eq(azureDevopsConfig.userId, session.user.id),
-    });
+    const config = await findAzureDevopsConfigByUserId(actor.userId);
 
     if (!config) {
       return Response.json(
-        { error: "Integração com Azure DevOps não configurada." },
+        { error: "Integracao com Azure DevOps nao configurada." },
         { status: 400 },
       );
     }
@@ -59,24 +59,21 @@ export async function GET(req: Request): Promise<Response> {
     }
 
     const data = (await res.json()) as { value: AzureProject[] };
-
-    // Map already-imported projects to mark them in the response
     const existingProjects = await db.query.project.findMany({
       columns: { azureProjectId: true },
     });
     const importedIds = new Set(
-      existingProjects.map((p) => p.azureProjectId).filter(Boolean),
+      existingProjects.map((item) => item.azureProjectId).filter(Boolean),
     );
 
-    const projects = data.value.map((p) => ({
-      id: p.id,
-      name: p.name,
-      description: p.description || "",
-      // Construct the browser-friendly web URL instead of the REST API URL
-      url: `${orgUrl}/${encodeURIComponent(p.name)}`,
-      state: p.state,
-      lastUpdateTime: p.lastUpdateTime,
-      alreadyImported: importedIds.has(p.id),
+    const projects = data.value.map((item) => ({
+      id: item.id,
+      name: item.name,
+      description: item.description || "",
+      url: `${orgUrl}/${encodeURIComponent(item.name)}`,
+      state: item.state,
+      lastUpdateTime: item.lastUpdateTime,
+      alreadyImported: importedIds.has(item.id),
     }));
 
     return Response.json({ projects });
@@ -86,14 +83,15 @@ export async function GET(req: Request): Promise<Response> {
   }
 }
 
-/**
- * POST - Import one or more Azure DevOps projects into the platform.
- * Body: { projects: Array<{ id, name, description, url }> }
- */
 export async function POST(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const actor = getActorContext(session.user);
+  if (actor.role !== "admin" && actor.role !== "manager") {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const body = await req.json();
@@ -106,24 +104,23 @@ export async function POST(req: Request): Promise<Response> {
 
   if (!Array.isArray(projectsToImport) || projectsToImport.length === 0) {
     return Response.json(
-      { error: "Nenhum projeto selecionado para importação." },
+      { error: "Nenhum projeto selecionado para importacao." },
       { status: 400 },
     );
   }
 
   try {
-    // Check which are already imported
     const existingProjects = await db.query.project.findMany({
       columns: { azureProjectId: true },
     });
     const importedIds = new Set(
-      existingProjects.map((p) => p.azureProjectId).filter(Boolean),
+      existingProjects.map((item) => item.azureProjectId).filter(Boolean),
     );
 
-    const toInsert = projectsToImport.filter((p) => !importedIds.has(p.id));
+    const toInsert = projectsToImport.filter((item) => !importedIds.has(item.id));
     if (toInsert.length === 0) {
       return Response.json(
-        { message: "Todos os projetos selecionados já foram importados." },
+        { message: "Todos os projetos selecionados ja foram importados." },
         { status: 200 },
       );
     }
@@ -141,42 +138,46 @@ export async function POST(req: Request): Promise<Response> {
       "#06b6d4",
     ];
 
-    const created = [];
-    for (let i = 0; i < toInsert.length; i++) {
-      const p = toInsert[i];
-      const projectId = crypto.randomUUID();
-      const code = p.name
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 20);
+    const created = await db.transaction(async (tx) => {
+      const createdProjects = [];
 
-      const [newProject] = await db
-        .insert(project)
-        .values({
-          id: projectId,
-          name: p.name,
-          code,
-          description: p.description || null,
-          color: colors[i % colors.length],
-          status: "active",
-          billable: true,
-          source: "azure-devops",
-          azureProjectId: p.id,
-          azureProjectUrl: p.url || null,
-          managerId: session.user.id,
-        })
-        .returning();
+      for (let i = 0; i < toInsert.length; i++) {
+        const item = toInsert[i];
+        const projectId = crypto.randomUUID();
+        const code = item.name
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 20);
 
-      // Also add the current user as a project member
-      await db.insert(projectMember).values({
-        id: crypto.randomUUID(),
-        projectId,
-        userId: session.user.id,
-      });
+        const [newProject] = await tx
+          .insert(project)
+          .values({
+            id: projectId,
+            name: item.name,
+            code,
+            description: item.description || null,
+            color: colors[i % colors.length],
+            status: "active",
+            billable: true,
+            source: "azure-devops",
+            azureProjectId: item.id,
+            azureProjectUrl: item.url || null,
+            managerId: actor.userId,
+          })
+          .returning();
 
-      created.push(newProject);
-    }
+        await tx.insert(projectMember).values({
+          id: crypto.randomUUID(),
+          projectId,
+          userId: actor.userId,
+        });
+
+        createdProjects.push(newProject);
+      }
+
+      return createdProjects;
+    });
 
     return Response.json(
       {

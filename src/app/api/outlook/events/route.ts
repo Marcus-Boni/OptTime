@@ -29,6 +29,60 @@ type AccessTokenResult = {
   accessTokenExpiresAt?: Date | string;
 };
 
+function isTokenRecoveryError(error: unknown) {
+  const message = getErrorMessage(error).toLowerCase();
+  return (
+    isReconnectableAuthError(error) ||
+    message.includes("failed to get a valid access token") ||
+    message.includes("failed to refresh access token")
+  );
+}
+
+async function refreshMicrosoftToken(
+  headers: Headers,
+  accountId?: string,
+) {
+  try {
+    return (await auth.api.refreshToken({
+      body: {
+        providerId: "microsoft",
+        accountId,
+      },
+      headers,
+    })) as AccessTokenResult;
+  } catch (error) {
+    if (isTokenRecoveryError(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+async function getMicrosoftToken(headers: Headers, accountId?: string) {
+  try {
+    const tokenResponse = (await auth.api.getAccessToken({
+      body: {
+        providerId: "microsoft",
+        accountId,
+      },
+      headers,
+    })) as AccessTokenResult;
+
+    if (tokenResponse.accessToken) {
+      return tokenResponse;
+    }
+
+    return await refreshMicrosoftToken(headers, accountId);
+  } catch (error) {
+    if (isTokenRecoveryError(error)) {
+      return await refreshMicrosoftToken(headers, accountId);
+    }
+
+    throw error;
+  }
+}
+
 export async function GET(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
@@ -70,14 +124,12 @@ export async function GET(req: Request): Promise<Response> {
   );
 
   try {
-    const tokenResponse = (await auth.api.getAccessToken({
-      body: {
-        providerId: "microsoft",
-      },
-      headers: req.headers,
-    })) as AccessTokenResult;
+    const tokenResponse = await getMicrosoftToken(
+      req.headers,
+      snapshot.accountId,
+    );
 
-    if (!tokenResponse.accessToken) {
+    if (!tokenResponse?.accessToken) {
       return Response.json(
         {
           connected: true,
@@ -107,14 +159,12 @@ export async function GET(req: Request): Promise<Response> {
         error instanceof MicrosoftConnectionError &&
         error.code === "graph_auth_failed"
       ) {
-        const refreshed = (await auth.api.refreshToken({
-          body: {
-            providerId: "microsoft",
-          },
-          headers: req.headers,
-        })) as AccessTokenResult;
+        const refreshed = await refreshMicrosoftToken(
+          req.headers,
+          snapshot.accountId,
+        );
 
-        if (!refreshed.accessToken) {
+        if (!refreshed?.accessToken) {
           return Response.json({
             connected: true,
             events: [],
@@ -140,7 +190,7 @@ export async function GET(req: Request): Promise<Response> {
       throw error;
     }
   } catch (error) {
-    if (isReconnectableAuthError(error)) {
+    if (isTokenRecoveryError(error)) {
       return Response.json({
         connected: true,
         events: [],

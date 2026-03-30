@@ -1,11 +1,12 @@
-import { and, eq, or } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
+import { getAccessibleProjectIds } from "@/lib/access-control";
+import { db } from "@/lib/db";
+import { project } from "@/lib/db/schema";
 import {
   extensionJson,
   extensionOptions,
   resolveExtensionUser,
 } from "@/lib/extension-auth";
-import { db } from "@/lib/db";
-import { project, projectMember } from "@/lib/db/schema";
 
 export function OPTIONS() {
   return extensionOptions();
@@ -13,8 +14,7 @@ export function OPTIONS() {
 
 /**
  * GET /api/extension/projects
- * Returns the list of active projects the authenticated user is a member of
- * (or all active projects for managers/admins).
+ * Returns the list of active projects inside the extension user scope.
  */
 export async function GET(req: Request): Promise<Response> {
   const extUser = await resolveExtensionUser(req);
@@ -23,43 +23,31 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    let projects: { id: string; name: string; code: string; color: string }[];
+    const accessibleProjectIds = await getAccessibleProjectIds({
+      role:
+        extUser.role === "admin" || extUser.role === "manager"
+          ? extUser.role
+          : "member",
+      userId: extUser.id,
+    });
 
-    if (extUser.role === "member") {
-      // Only projects the user is explicitly a member of
-      const memberships = await db.query.projectMember.findMany({
-        where: eq(projectMember.userId, extUser.id),
-        with: {
-          project: {
-            columns: {
-              id: true,
-              name: true,
-              code: true,
-              color: true,
-              status: true,
-            },
-          },
-        },
-      });
-      projects = memberships
-        .filter((m) => m.project.status === "active")
-        .map((m) => ({
-          id: m.project.id,
-          name: m.project.name,
-          code: m.project.code,
-          color: m.project.color,
-        }));
-    } else {
-      // Managers/admins see all active projects
-      const all = await db.query.project.findMany({
-        where: eq(project.status, "active"),
-        columns: { id: true, name: true, code: true, color: true },
-        orderBy: (p, { asc }) => [asc(p.name)],
-      });
-      projects = all;
+    if (accessibleProjectIds && accessibleProjectIds.length === 0) {
+      return extensionJson({ projects: [] });
     }
 
-    return extensionJson({ projects });
+    const projects = await db.query.project.findMany({
+      where: accessibleProjectIds
+        ? inArray(project.id, accessibleProjectIds)
+        : eq(project.status, "active"),
+      columns: { id: true, name: true, code: true, color: true, status: true },
+      orderBy: (table, { asc }) => [asc(table.name)],
+    });
+
+    return extensionJson({
+      projects: projects
+        .filter((item) => item.status === "active")
+        .map(({ status: _status, ...projectSummary }) => projectSummary),
+    });
   } catch (error) {
     console.error("[GET /api/extension/projects]:", error);
     return extensionJson({ error: "Internal Server Error" }, { status: 500 });

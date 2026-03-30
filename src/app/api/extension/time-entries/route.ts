@@ -1,7 +1,8 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
+import { canAccessProject } from "@/lib/access-control";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
-import { project, projectMember, timeEntry } from "@/lib/db/schema";
+import { project, timeEntry } from "@/lib/db/schema";
 import {
   extensionJson,
   extensionOptions,
@@ -41,31 +42,34 @@ export async function POST(req: Request): Promise<Response> {
   const data = parsed.data;
 
   try {
-    const proj = await db.query.project.findFirst({
+    const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
       columns: { id: true, status: true },
     });
 
-    if (!proj || proj.status !== "active") {
+    if (!targetProject || targetProject.status !== "active") {
       return extensionJson(
         { error: "Projeto não encontrado." },
         { status: 404 },
       );
     }
 
-    if (extUser.role === "member") {
-      const membership = await db.query.projectMember.findFirst({
-        where: and(
-          eq(projectMember.projectId, data.projectId),
-          eq(projectMember.userId, extUser.id),
-        ),
-      });
-      if (!membership) {
-        return extensionJson(
-          { error: "Você não é membro deste projeto." },
-          { status: 403 },
-        );
-      }
+    if (
+      !(await canAccessProject(
+        {
+          role:
+            extUser.role === "admin" || extUser.role === "manager"
+              ? extUser.role
+              : "member",
+          userId: extUser.id,
+        },
+        data.projectId,
+      ))
+    ) {
+      return extensionJson(
+        { error: "Você não pode lançar horas neste projeto." },
+        { status: 403 },
+      );
     }
 
     const id = crypto.randomUUID();

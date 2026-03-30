@@ -1,13 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import {
-  FolderKanban,
-  MoreHorizontal,
-  Trash2,
-  UserCheck,
-  UserX,
-} from "lucide-react";
+import { FolderKanban, MoreHorizontal, UserCheck, UserX } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import ManageProjectsDialog from "@/components/people/ManageProjectsDialog";
@@ -78,7 +72,6 @@ export default function PersonCard({
   onUpdate,
 }: PersonCardProps) {
   const [isUpdating, setIsUpdating] = useState(false);
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isManageProjectsOpen, setIsManageProjectsOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
@@ -96,14 +89,16 @@ export default function PersonCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !person.isActive }),
       });
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || "Erro ao alterar status");
       }
+
       toast.success(
         person.isActive
-          ? "Usuário desativado com sucesso."
-          : "Usuário reativado com sucesso.",
+          ? "Acesso desativado com sucesso."
+          : "Acesso reativado com sucesso.",
       );
       onUpdate();
     } catch (err: unknown) {
@@ -111,7 +106,7 @@ export default function PersonCard({
       toast.error(
         err instanceof Error
           ? err.message
-          : "Erro ao alterar status do usuário.",
+          : "Erro ao alterar status do usuario.",
       );
     } finally {
       setIsUpdating(false);
@@ -120,6 +115,7 @@ export default function PersonCard({
 
   async function handleUpdateRole(newRole: string) {
     if (person.role === newRole) return;
+
     setIsUpdating(true);
     try {
       const res = await fetch(`/api/people/${person.id}`, {
@@ -127,10 +123,12 @@ export default function PersonCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
       });
+
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         throw new Error(errorData.error || "Erro ao alterar cargo");
       }
+
       toast.success(`Cargo alterado para ${roleLabels[newRole] || newRole}.`);
       onUpdate();
     } catch (err: unknown) {
@@ -143,33 +141,10 @@ export default function PersonCard({
     }
   }
 
-  async function handleDelete() {
-    setIsUpdating(true);
-    try {
-      const res = await fetch(`/api/people/${person.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Erro ao excluir usuário");
-      }
-      toast.success("Usuário excluído com sucesso.");
-      setIsDeleteDialogOpen(false);
-      onUpdate();
-    } catch (err: unknown) {
-      console.error("[PersonCard] handleDelete:", err);
-      toast.error(
-        err instanceof Error ? err.message : "Erro ao excluir usuário.",
-      );
-    } finally {
-      setIsUpdating(false);
-    }
-  }
-
   function getPendingActionCopy(action: PendingAction) {
     if (!action) {
       return {
-        title: "Confirmar alteração",
+        title: "Confirmar alteracao",
         description: "Confirme para continuar.",
         confirmLabel: "Confirmar",
       };
@@ -178,38 +153,36 @@ export default function PersonCard({
     if (action.type === "role") {
       const roleLabel = roleLabels[action.role] ?? action.role;
       return {
-        title: "Confirmar mudança de cargo",
+        title: "Confirmar mudanca de cargo",
         description: (
           <>
-            Você está prestes a alterar o cargo de{" "}
+            Voce esta prestes a alterar o cargo de{" "}
             <strong className="text-foreground">
               {person.name || person.email}
             </strong>{" "}
             para <strong className="text-foreground">{roleLabel}</strong>.
           </>
         ),
-        confirmLabel: "Confirmar mudança",
+        confirmLabel: "Confirmar mudanca",
       };
     }
 
     return {
       title: action.nextIsActive
-        ? "Confirmar reativação de acesso"
-        : "Confirmar desativação de acesso",
+        ? "Confirmar reativacao de acesso"
+        : "Confirmar desativacao de acesso",
       description: (
         <>
           {action.nextIsActive
-            ? "Você está prestes a reativar o acesso de "
-            : "Você está prestes a desativar o acesso de "}
+            ? "Voce esta prestes a reativar o acesso de "
+            : "Voce esta prestes a desativar o acesso de "}
           <strong className="text-foreground">
             {person.name || person.email}
           </strong>
           .
         </>
       ),
-      confirmLabel: action.nextIsActive
-        ? "Reativar acesso"
-        : "Desativar acesso",
+      confirmLabel: action.nextIsActive ? "Reativar acesso" : "Desativar acesso",
     };
   }
 
@@ -249,7 +222,7 @@ export default function PersonCard({
             />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-foreground">
-                {person.name || "Usuário"}
+                {person.name || "Usuario"}
               </p>
               <p className="truncate text-xs text-muted-foreground">
                 {person.email}
@@ -269,7 +242,7 @@ export default function PersonCard({
                     variant="outline"
                     className="text-[10px] bg-brand-500/10 text-brand-500 border-brand-500/20"
                   >
-                    Você
+                    Voce
                   </Badge>
                 )}
                 {!person.isActive && (
@@ -291,28 +264,25 @@ export default function PersonCard({
             {canAct && (
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent hover:border-border/50 hover:bg-muted text-muted-foreground transition-colors disabled:opacity-50"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:border-border/50 hover:bg-muted disabled:opacity-50"
                   disabled={isUpdating}
                 >
                   <MoreHorizontal className="h-4 w-4" />
-                  <span className="sr-only">Ações</span>
+                  <span className="sr-only">Acoes</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuLabel className="text-xs">
-                    Ações
-                  </DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs">Acoes</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => setIsManageProjectsOpen(true)}
                     className="text-xs"
                   >
                     <FolderKanban className="mr-2 h-3.5 w-3.5" />
-                    Gerenciar Projetos
+                    Gerenciar projetos
                   </DropdownMenuItem>
+
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs">
-                    Cargo
-                  </DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs">Cargo</DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {sessionRole === "admin" && (
                     <DropdownMenuItem
@@ -320,7 +290,7 @@ export default function PersonCard({
                         setPendingAction({ type: "role", role: "admin" })
                       }
                       disabled={isUpdating || person.role === "admin"}
-                      className="text-xs justify-between"
+                      className="justify-between text-xs"
                     >
                       <span>Admin</span>
                       {person.role === "admin" && (
@@ -333,7 +303,7 @@ export default function PersonCard({
                       setPendingAction({ type: "role", role: "manager" })
                     }
                     disabled={isUpdating || person.role === "manager"}
-                    className="text-xs justify-between"
+                    className="justify-between text-xs"
                   >
                     <span>Gerente</span>
                     {person.role === "manager" && (
@@ -345,7 +315,7 @@ export default function PersonCard({
                       setPendingAction({ type: "role", role: "member" })
                     }
                     disabled={isUpdating || person.role === "member"}
-                    className="text-xs justify-between"
+                    className="justify-between text-xs"
                   >
                     <span>Membro</span>
                     {person.role === "member" && (
@@ -380,15 +350,6 @@ export default function PersonCard({
                       </>
                     )}
                   </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onClick={() => setIsDeleteDialogOpen(true)}
-                    disabled={isUpdating}
-                    className="text-xs text-red-500 focus:text-red-500 focus:bg-red-500/10"
-                  >
-                    <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    Excluir usuário
-                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
@@ -410,9 +371,7 @@ export default function PersonCard({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isUpdating}>
-              Cancelar
-            </AlertDialogCancel>
+            <AlertDialogCancel disabled={isUpdating}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => {
                 e.preventDefault();
@@ -426,46 +385,11 @@ export default function PersonCard({
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={isDeleteDialogOpen}
-        onOpenChange={setIsDeleteDialogOpen}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esta ação não pode ser desfeita. Isso excluirá permanentemente a
-              conta de{" "}
-              <strong className="text-foreground">
-                {person.name || person.email}
-              </strong>{" "}
-              e removerá os dados de autenticação e sessão. O histórico de horas
-              associado a este usuário pode ser impactado.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isUpdating}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                void handleDelete();
-              }}
-              disabled={isUpdating}
-              className="bg-red-500 text-white hover:bg-red-600 focus:ring-red-500/20"
-            >
-              {isUpdating ? "Excluindo..." : "Sim, excluir"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <ManageProjectsDialog
         open={isManageProjectsOpen}
         onOpenChange={setIsManageProjectsOpen}
         userId={person.id}
-        userName={person.name || "Usuário"}
+        userName={person.name || "Usuario"}
       />
     </>
   );

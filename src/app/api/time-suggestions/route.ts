@@ -1,15 +1,16 @@
 import { subDays } from "date-fns";
 import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import {
+  getAccessibleProjectIds,
+  getActiveSession,
+  getActorContext,
+} from "@/lib/access-control";
 import { auth } from "@/lib/auth";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
+import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
+import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
-import {
-  azureDevopsConfig,
-  project,
-  projectMember,
-  timeEntry,
-  timeSuggestionFeedback,
-} from "@/lib/db/schema";
+import { project, timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
 import { fetchOutlookEvents } from "@/lib/microsoft-graph";
 import {
@@ -109,7 +110,7 @@ function toIsoDayBounds(date: string) {
 }
 
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -136,8 +137,8 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const isPrivileged =
-      session.user.role === "manager" || session.user.role === "admin";
+    const actor = getActorContext(session.user);
+    const accessibleProjectIds = await getAccessibleProjectIds(actor);
 
     let projects: Array<{
       id: string;
@@ -146,7 +147,7 @@ export async function GET(req: Request): Promise<Response> {
       azureProjectId: string | null;
     }> = [];
 
-    if (isPrivileged) {
+    if (accessibleProjectIds === null) {
       projects = await db.query.project.findMany({
         where: eq(project.status, "active"),
         columns: {
@@ -156,26 +157,19 @@ export async function GET(req: Request): Promise<Response> {
           azureProjectId: true,
         },
       });
-    } else {
-      const memberships = await db.query.projectMember.findMany({
-        where: eq(projectMember.userId, session.user.id),
-        columns: { projectId: true },
+    } else if (accessibleProjectIds.length > 0) {
+      projects = await db.query.project.findMany({
+        where: and(
+          inArray(project.id, accessibleProjectIds),
+          eq(project.status, "active"),
+        ),
+        columns: {
+          id: true,
+          name: true,
+          billable: true,
+          azureProjectId: true,
+        },
       });
-      const projectIds = memberships.map((membership) => membership.projectId);
-      if (projectIds.length > 0) {
-        projects = await db.query.project.findMany({
-          where: and(
-            inArray(project.id, projectIds),
-            eq(project.status, "active"),
-          ),
-          columns: {
-            id: true,
-            name: true,
-            billable: true,
-            azureProjectId: true,
-          },
-        });
-      }
     }
 
     const dayEntries = await db.query.timeEntry.findMany({
@@ -280,48 +274,59 @@ export async function GET(req: Request): Promise<Response> {
       meetings = [];
     }
 
+    const config = await findAzureDevopsConfigByUserId(session.user.id);
+
+    if (!config) {
+      return Response.json(
+        {
+          error:
+            "Configure a integração do Azure DevOps na página de Integrações para habilitar sugestões inteligentes baseadas nos seus commits.",
+        },
+        { status: 409 },
+      );
+    }
+
     let commits: NormalizedCommitActivity[] = [];
-    const config = await db.query.azureDevopsConfig.findFirst({
-      where: eq(azureDevopsConfig.userId, session.user.id),
-    });
 
-    if (config) {
-      try {
-        const pat = decrypt(config.pat);
-        if (pat) {
-          const client = createAzureDevOpsClient(config.organizationUrl, pat);
-          const dayBounds = toIsoDayBounds(date);
-
-          const commitBuckets = await Promise.all(
-            projects.slice(0, 8).map(async (internalProject) => {
-              try {
-                return await client.getRecentCommits(
-                  internalProject.azureProjectId ?? internalProject.name,
-                  {
-                    author: session.user.email,
-                    authorAliases: [session.user.name],
-                    fromDate: dayBounds.start,
-                    toDate: dayBounds.end,
-                    top: 20,
-                    projectLabel: internalProject.name,
-                  },
-                );
-              } catch {
-                return [];
-              }
-            }),
-          );
-
-          commits = commitBuckets.flat();
-        }
-      } catch (error) {
-        console.warn("[time_suggestions][azure_commits_failed]", {
-          userId: session.user.id,
-          date,
-          error: error instanceof Error ? error.message : "unknown",
+    try {
+      const pat = decrypt(config.pat);
+      if (pat) {
+        const client = createAzureDevOpsClient(config.organizationUrl, pat);
+        const dayBounds = toIsoDayBounds(date);
+        const authorCandidates = buildCommitAuthorCandidates({
+          configuredAuthor: config.commitAuthor,
+          fallbackEmail: session.user.email,
+          fallbackName: session.user.name,
         });
-        commits = [];
+
+        const commitBuckets = await Promise.all(
+          projects.slice(0, 8).map(async (internalProject) => {
+            try {
+              return await client.getRecentCommits(
+                internalProject.azureProjectId ?? internalProject.name,
+                {
+                  authorCandidates,
+                  fromDate: dayBounds.start,
+                  toDate: dayBounds.end,
+                  top: 20,
+                  projectLabel: internalProject.name,
+                },
+              );
+            } catch {
+              return [];
+            }
+          }),
+        );
+
+        commits = commitBuckets.flat();
       }
+    } catch (error) {
+      console.warn("[time_suggestions][azure_commits_failed]", {
+        userId: session.user.id,
+        date,
+        error: error instanceof Error ? error.message : "unknown",
+      });
+      commits = [];
     }
 
     const suggestions = buildDeterministicSuggestions({

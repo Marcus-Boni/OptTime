@@ -26,7 +26,7 @@ export default async function middleware(
 ): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
 
-  let session: { user?: { role?: string } } | null = null;
+  let session: { user?: { role?: string; isActive?: boolean } } | null = null;
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -52,6 +52,13 @@ export default async function middleware(
 
   if (!session) {
     if (isAuthPage) return NextResponse.next();
+    if (isDashboardPage) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  if (session.user?.isActive === false) {
     if (isDashboardPage) {
       return NextResponse.redirect(new URL("/login", request.url));
     }

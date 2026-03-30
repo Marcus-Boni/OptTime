@@ -4,8 +4,7 @@ import {
   AzureDevOpsError,
   createAzureDevOpsClient,
 } from "@/lib/azure-devops/client";
-import { db } from "@/lib/db";
-import { azureDevopsConfig } from "@/lib/db/schema";
+import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { decrypt } from "@/lib/encryption";
 
 /**
@@ -40,9 +39,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const config = await db.query.azureDevopsConfig.findFirst({
-      where: eq(azureDevopsConfig.userId, session.user.id),
-    });
+    const config = await findAzureDevopsConfigByUserId(session.user.id);
 
     if (!config) {
       return Response.json(

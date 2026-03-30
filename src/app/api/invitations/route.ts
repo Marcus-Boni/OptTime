@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import { auth } from "@/lib/auth";
+import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { invitation, user } from "@/lib/db/schema";
 import { sendInvitationEmail } from "@/lib/email";
@@ -10,19 +10,16 @@ import { createInvitationSchema } from "@/lib/validations/invitation.schema";
 const INVITE_EXPIRY_HOURS = 72;
 
 export async function POST(req: Request): Promise<Response> {
-  // 1. Auth check
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // 2. RBAC — apenas manager ou admin podem convidar
-  const inviterRole = session.user.role as string;
-  if (inviterRole !== "admin" && inviterRole !== "manager") {
+  const actor = getActorContext(session.user);
+  if (actor.role !== "admin" && actor.role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // 3. Parse & validate body
   let body: unknown;
   try {
     body = await req.json();
@@ -39,65 +36,59 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const { email, role } = parsed.data;
-
-  // 4. Manager não pode convidar admin
-  if (inviterRole === "manager" && role === "admin") {
+  if (actor.role === "manager" && role === "admin") {
     return Response.json(
-      { error: "Gerentes não podem convidar administradores" },
+      { error: "Gerentes nao podem convidar administradores" },
       { status: 403 },
     );
   }
 
   try {
-    // 5. Verificar se usuário já existe
-    const [existingUser] = await db
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.email, email))
-      .limit(1);
-
-    if (existingUser) {
-      return Response.json(
-        { error: "Este e-mail já está cadastrado no sistema" },
-        { status: 409 },
-      );
-    }
-
-    // 6. Verificar se já existe convite pendente para este email
-    const [existingInvite] = await db
-      .select({ id: invitation.id })
-      .from(invitation)
-      .where(and(eq(invitation.email, email), eq(invitation.status, "pending")))
-      .limit(1);
-
-    if (existingInvite) {
-      return Response.json(
-        { error: "Já existe um convite pendente para este e-mail" },
-        { status: 409 },
-      );
-    }
-
-    // 7. Gerar token seguro e criar convite
     const token = randomBytes(32).toString("hex");
     const expiresAt = new Date(
       Date.now() + INVITE_EXPIRY_HOURS * 60 * 60 * 1000,
     );
     const id = randomBytes(16).toString("hex");
 
-    const [created] = await db
-      .insert(invitation)
-      .values({
-        id,
-        email,
-        role,
-        token,
-        invitedById: session.user.id,
-        status: "pending",
-        expiresAt,
-      })
-      .returning();
+    const created = await db.transaction(async (tx) => {
+      const [existingUser] = await tx
+        .select({ id: user.id })
+        .from(user)
+        .where(eq(user.email, email))
+        .limit(1);
 
-    // 8. Enviar email — se falhar, reverte o convite para não deixar registro órfão
+      if (existingUser) {
+        throw new Error("USER_ALREADY_EXISTS");
+      }
+
+      const [existingInvite] = await tx
+        .select({ id: invitation.id })
+        .from(invitation)
+        .where(
+          and(eq(invitation.email, email), eq(invitation.status, "pending")),
+        )
+        .limit(1);
+
+      if (existingInvite) {
+        throw new Error("INVITATION_ALREADY_EXISTS");
+      }
+
+      const [newInvitation] = await tx
+        .insert(invitation)
+        .values({
+          id,
+          email,
+          role,
+          token,
+          invitedById: actor.userId,
+          status: "pending",
+          expiresAt,
+        })
+        .returning();
+
+      return newInvitation;
+    });
+
     const appUrl =
       process.env.BETTER_AUTH_URL ??
       process.env.NEXT_PUBLIC_APP_URL ??
@@ -114,7 +105,6 @@ export async function POST(req: Request): Promise<Response> {
         expiresInHours: INVITE_EXPIRY_HOURS,
       });
     } catch (emailErr) {
-      // Rollback: remove convite criado para permitir nova tentativa
       await db.delete(invitation).where(eq(invitation.id, created.id));
 
       console.error(
@@ -140,20 +130,35 @@ export async function POST(req: Request): Promise<Response> {
       { status: 201 },
     );
   } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === "USER_ALREADY_EXISTS") {
+        return Response.json(
+          { error: "Este e-mail ja esta cadastrado no sistema" },
+          { status: 409 },
+        );
+      }
+
+      if (err.message === "INVITATION_ALREADY_EXISTS") {
+        return Response.json(
+          { error: "Ja existe um convite pendente para este e-mail" },
+          { status: 409 },
+        );
+      }
+    }
+
     console.error("[POST /api/invitations]", err);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 
 export async function GET(req: Request): Promise<Response> {
-  // Lista convites pendentes (apenas manager/admin)
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const inviterRole = session.user.role as string;
-  if (inviterRole !== "admin" && inviterRole !== "manager") {
+  const actor = getActorContext(session.user);
+  if (actor.role !== "admin" && actor.role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -169,6 +174,11 @@ export async function GET(req: Request): Promise<Response> {
         invitedById: invitation.invitedById,
       })
       .from(invitation)
+      .where(
+        actor.role === "admin"
+          ? undefined
+          : eq(invitation.invitedById, actor.userId),
+      )
       .orderBy(invitation.createdAt);
 
     return Response.json(invitations);

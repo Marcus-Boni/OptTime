@@ -243,6 +243,7 @@ export const azureDevopsConfig = pgTable("azure_devops_config", {
     .unique(),
   organizationUrl: text("organization_url").notNull(),
   pat: text("pat").notNull(),
+  commitAuthor: text("commit_author"),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at")

@@ -1,15 +1,20 @@
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
-import { auth } from "@/lib/auth";
+import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import {
+  getActiveSession,
+  getActorContext,
+  getDirectReportIds,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
 
 export async function GET(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const role = session.user.role as string;
+  const actor = getActorContext(session.user);
+  const role = actor.role;
   if (role !== "admin" && role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -37,6 +42,19 @@ export async function GET(req: Request): Promise<Response> {
     }
     if (userId) {
       filters.push(eq(timeEntry.userId, userId));
+    }
+
+    if (role === "manager") {
+      const directReportIds = await getDirectReportIds(actor.userId);
+      if (directReportIds.length === 0) {
+        return Response.json({ entries: [] });
+      }
+
+      if (userId && !directReportIds.includes(userId)) {
+        return Response.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      filters.push(inArray(timeEntry.userId, directReportIds));
     }
 
     const whereCondition = filters.length > 0 ? and(...filters) : undefined;

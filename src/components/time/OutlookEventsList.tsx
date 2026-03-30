@@ -1,12 +1,14 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { OutlookEventCard } from "@/components/time/OutlookEventCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { OutlookEvent } from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
+import { signIn } from "@/lib/auth-client";
 
 interface OutlookEventsListProps {
   existingEntries: TimeEntry[];
@@ -39,6 +41,8 @@ export function OutlookEventsList({
   error,
   onRetry,
 }: OutlookEventsListProps) {
+  const [isReconnecting, setIsReconnecting] = useState(false);
+
   const importedDescriptions = useMemo(
     () =>
       new Set(existingEntries.map((entry) => normalizeText(entry.description))),
@@ -67,6 +71,33 @@ export function OutlookEventsList({
     [events, importedDescriptions],
   );
 
+  async function handleReconnect() {
+    setIsReconnecting(true);
+
+    try {
+      const callbackURL =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "/dashboard/time";
+
+      const { error } = await signIn.social({
+        provider: "microsoft",
+        callbackURL,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Erro ao reconectar com Microsoft");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erro ao reconectar com Microsoft",
+      );
+      setIsReconnecting(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -80,7 +111,7 @@ export function OutlookEventsList({
   if (connected === false) {
     return (
       <div className="rounded-[24px] border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground">
-        Faça login com Microsoft para usar a agenda como acelerador de
+        Faca login com Microsoft para usar a agenda como acelerador de
         preenchimento.
       </div>
     );
@@ -88,9 +119,24 @@ export function OutlookEventsList({
 
   if (needsReconnect) {
     return (
-      <div className="rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-muted-foreground">
-        A conta Microsoft foi encontrada, mas o token não pôde ser renovado.
-        Reconecte a integração para continuar usando a agenda.
+      <div className="space-y-3 rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-muted-foreground">
+        <p>
+          A conta Microsoft foi encontrada, mas o token nao pode ser renovado.
+          Reconecte a integracao para continuar usando a agenda.
+        </p>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleReconnect()}
+            disabled={isReconnecting}
+          >
+            <RefreshCw
+              className={`mr-2 h-4 w-4 ${isReconnecting ? "animate-spin" : ""}`}
+            />
+            {isReconnecting ? "Redirecionando..." : "Reconectar Microsoft"}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -99,7 +145,7 @@ export function OutlookEventsList({
     return (
       <div className="space-y-3 rounded-[24px] border border-border bg-card/80 p-5">
         <p className="text-sm text-foreground">
-          Não foi possível carregar os eventos do Outlook.
+          Nao foi possivel carregar os eventos do Outlook.
         </p>
         <p className="text-sm text-muted-foreground">{error}</p>
         {onRetry ? (
@@ -117,7 +163,7 @@ export function OutlookEventsList({
   if (sortedEvents.length === 0) {
     return (
       <div className="rounded-[24px] border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground">
-        Nenhuma reunião encontrada para esta data.
+        Nenhuma reuniao encontrada para esta data.
       </div>
     );
   }

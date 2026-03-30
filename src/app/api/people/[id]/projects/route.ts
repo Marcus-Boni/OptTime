@@ -1,7 +1,13 @@
-import { auth } from "@/lib/auth";
+import {
+  canManageProject,
+  canManageUser,
+  getActiveSession,
+  getActorContext,
+  getManagedProjectIds,
+} from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
 /**
  * GET /api/people/[id]/projects
@@ -12,20 +18,36 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin" && session.user.role !== "manager") {
+  const actor = getActorContext(session.user);
+
+  if (actor.role !== "admin" && actor.role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { id: targetUserId } = await params;
 
   try {
+    const allowed = await canManageUser(actor, targetUserId);
+    if (!allowed) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const managedProjectIds = await getManagedProjectIds(actor);
+    const projectWhere =
+      managedProjectIds === null
+        ? undefined
+        : managedProjectIds.length > 0
+          ? inArray(project.id, managedProjectIds)
+          : inArray(project.id, ["__no_project__"]);
+
     const [allProjects, memberships] = await Promise.all([
       db.query.project.findMany({
+        where: projectWhere,
         columns: {
           id: true,
           name: true,
@@ -65,12 +87,14 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin" && session.user.role !== "manager") {
+  const actor = getActorContext(session.user);
+
+  if (actor.role !== "admin" && actor.role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -86,6 +110,11 @@ export async function POST(
   }
 
   try {
+    const allowed = await canManageUser(actor, targetUserId);
+    if (!allowed || !(await canManageProject(actor, projectId))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Ensure project exists
     const found = await db.query.project.findFirst({
       where: eq(project.id, projectId),
@@ -132,12 +161,14 @@ export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers });
+  const session = await getActiveSession(req.headers);
   if (!session) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  if (session.user.role !== "admin" && session.user.role !== "manager") {
+  const actor = getActorContext(session.user);
+
+  if (actor.role !== "admin" && actor.role !== "manager") {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -153,6 +184,11 @@ export async function DELETE(
   }
 
   try {
+    const allowed = await canManageUser(actor, targetUserId);
+    if (!allowed || !(await canManageProject(actor, projectId))) {
+      return Response.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     await db
       .delete(projectMember)
       .where(
