@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Generate a minimal Node.js server output for self-hosted environments
+  // such as Azure App Service.
+  output: "standalone",
+
   // Exclude heavy server-only packages from the Edge/client bundle.
   // remotion/cli is a dev tool; remotion itself is only used for the
   // Remotion Player (client-side dynamic import) and local video rendering.

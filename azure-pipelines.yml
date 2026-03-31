@@ -1,0 +1,101 @@
+trigger:
+- main
+
+pr:
+- main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  nodeVersion: 24.x
+  runtimeStack: NODE|24-lts
+  azureServiceConnection: sc-opt-time
+  webAppName: dev-opt-time
+  packagePath: $(Build.ArtifactStagingDirectory)/app.zip
+  deployFolder: $(Build.ArtifactStagingDirectory)/deploy
+
+stages:
+- stage: Build
+  displayName: Build
+  jobs:
+  - job: BuildAndPackage
+    displayName: Build and package Next.js standalone
+    steps:
+    - task: UseNode@1
+      displayName: Use Node.js $(nodeVersion)
+      inputs:
+        version: $(nodeVersion)
+
+    - script: |
+        corepack enable
+        corepack prepare pnpm@latest --activate
+        pnpm --version
+      displayName: Setup pnpm
+
+    - task: Cache@2
+      displayName: Restore pnpm store cache
+      inputs:
+        key: 'pnpm | "$(Agent.OS)" | pnpm-lock.yaml'
+        path: $(Pipeline.Workspace)/.pnpm-store
+
+    - script: pnpm config set store-dir $(Pipeline.Workspace)/.pnpm-store
+      displayName: Configure pnpm store
+
+    - script: pnpm install --frozen-lockfile
+      displayName: Install dependencies
+
+    - script: pnpm run build
+      displayName: Build app
+
+    - script: |
+        mkdir -p "$(deployFolder)/.next"
+        cp -R .next/standalone/* "$(deployFolder)/"
+        cp -R .next/static "$(deployFolder)/.next/static"
+        cp -R public "$(deployFolder)/public"
+      displayName: Prepare standalone package
+
+    - task: ArchiveFiles@2
+      displayName: Archive package
+      inputs:
+        rootFolderOrFile: $(deployFolder)
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: $(packagePath)
+        replaceExistingArchive: true
+
+    - publish: $(packagePath)
+      artifact: drop
+      displayName: Publish artifact
+
+- stage: Deploy
+  displayName: Deploy
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: DeployToProduction
+    displayName: Deploy to Azure App Service
+    environment: production
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+
+          - task: AzureWebApp@1
+            displayName: Deploy package to web app
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              appType: webAppLinux
+              appName: $(webAppName)
+              package: $(Pipeline.Workspace)/drop/app.zip
+              runtimeStack: $(runtimeStack)
+              startUpCommand: node server.js
+
+          - script: |
+              set -e
+              HEALTH_URL="https://$(webAppName).azurewebsites.net/api/health"
+              echo "Checking health endpoint: ${HEALTH_URL}"
+              curl --fail --silent --show-error "${HEALTH_URL}" | tee health.json
+            displayName: Smoke test /api/health
