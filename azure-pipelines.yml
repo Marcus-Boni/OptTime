@@ -10,7 +10,7 @@ pool:
 variables:
   nodeVersion: 24.x
   runtimeStack: NODE|24-lts
-  azureServiceConnection: sc-opt-time
+  azureServiceConnection: opt-time
   webAppName: dev-opt-time
   packagePath: $(Build.ArtifactStagingDirectory)/app.zip
   deployFolder: $(Build.ArtifactStagingDirectory)/deploy
