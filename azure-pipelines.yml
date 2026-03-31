@@ -69,6 +69,11 @@ stages:
         cp package.json pnpm-lock.yaml "$(deployFolder)/"
         CI=true pnpm install --prod --frozen-lockfile --dir "$(deployFolder)" --config.node-linker=hoisted
         cp -R .next "$(deployFolder)/.next"
+        if [ -d ".next/node_modules" ]; then
+          rm -rf "$(deployFolder)/.next/node_modules"
+          mkdir -p "$(deployFolder)/.next/node_modules"
+          cp -RL .next/node_modules/. "$(deployFolder)/.next/node_modules/"
+        fi
         cp -R public "$(deployFolder)/public"
       displayName: Prepare deploy package
 
@@ -78,6 +83,7 @@ stages:
         test -f "node_modules/styled-jsx/package.json"
         test -f "node_modules/pg/package.json"
         test -f "node_modules/pg-protocol/dist/index.js"
+        find ".next/node_modules" -maxdepth 2 -name "package.json" | head -n 20
         node -e "const { createRequire } = require('node:module'); const req = createRequire(process.cwd() + '/package.json'); console.log(req.resolve('styled-jsx/package.json')); console.log(req.resolve('pg-protocol/dist/index.js'));"
       displayName: Validate runtime dependencies
 
