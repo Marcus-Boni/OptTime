@@ -12,8 +12,7 @@ variables:
   runtimeStack: NODE|24-lts
   azureServiceConnection: opt-time
   webAppName: dev-opt-time
-  # Fallback used only when DATABASE_URL is not configured in pipeline variables.
-  # Production runtime must still use the real DATABASE_URL in App Service settings.
+  publicAppUrl: https://dev-opt-time-c4g0hjf0bgcae7ec.brazilsouth-01.azurewebsites.net
   buildDatabaseUrlFallback: postgresql://build:build@127.0.0.1:5432/build?sslmode=require
   packagePath: $(Build.ArtifactStagingDirectory)/app.zip
   deployFolder: $(Build.ArtifactStagingDirectory)/deploy
@@ -51,14 +50,15 @@ stages:
     - script: |
         set -e
         export DATABASE_URL="${DATABASE_URL:-$(buildDatabaseUrlFallback)}"
-        export BETTER_AUTH_URL="${BETTER_AUTH_URL:-https://build.local}"
+        export NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-$(publicAppUrl)}"
+        export BETTER_AUTH_URL="${BETTER_AUTH_URL:-$(publicAppUrl)}"
         export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-build-only-secret-123456789012345678901234567890}"
         export ENCRYPTION_KEY="${ENCRYPTION_KEY:-build-only-encryption-key-123456789012345678901234567890}"
         export RESEND_API_KEY="${RESEND_API_KEY:-re_build_placeholder}"
         export RESEND_FROM_EMAIL="${RESEND_FROM_EMAIL:-OptSolv Time <noreply@optsolv.com.br>}"
         export MICROSOFT_CLIENT_ID="${MICROSOFT_CLIENT_ID:-build-client-id}"
         export MICROSOFT_CLIENT_SECRET="${MICROSOFT_CLIENT_SECRET:-build-client-secret}"
-        echo "DATABASE_URL configured for build step."
+        echo "Build configured for ${NEXT_PUBLIC_APP_URL}."
         pnpm run build
       displayName: Build app
 
@@ -119,7 +119,7 @@ stages:
 
           - script: |
               set -e
-              HEALTH_URL="https://$(webAppName).azurewebsites.net/api/health"
+              HEALTH_URL="$(publicAppUrl)/api/health"
               echo "Checking health endpoint: ${HEALTH_URL}"
               curl --fail --silent --show-error "${HEALTH_URL}" | tee health.json
             displayName: Smoke test /api/health
