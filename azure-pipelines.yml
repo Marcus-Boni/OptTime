@@ -51,6 +51,13 @@ stages:
     - script: |
         set -e
         export DATABASE_URL="${DATABASE_URL:-$(buildDatabaseUrlFallback)}"
+        export BETTER_AUTH_URL="${BETTER_AUTH_URL:-https://build.local}"
+        export BETTER_AUTH_SECRET="${BETTER_AUTH_SECRET:-build-only-secret-123456789012345678901234567890}"
+        export ENCRYPTION_KEY="${ENCRYPTION_KEY:-build-only-encryption-key-123456789012345678901234567890}"
+        export RESEND_API_KEY="${RESEND_API_KEY:-re_build_placeholder}"
+        export RESEND_FROM_EMAIL="${RESEND_FROM_EMAIL:-OptSolv Time <noreply@optsolv.com.br>}"
+        export MICROSOFT_CLIENT_ID="${MICROSOFT_CLIENT_ID:-build-client-id}"
+        export MICROSOFT_CLIENT_SECRET="${MICROSOFT_CLIENT_SECRET:-build-client-secret}"
         echo "DATABASE_URL configured for build step."
         pnpm run build
       displayName: Build app

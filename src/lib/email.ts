@@ -1,6 +1,13 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResendClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is required to send invitation e-mails.");
+  }
+
+  return new Resend(apiKey);
+}
 
 export interface InvitationEmailData {
   to: string;
@@ -20,6 +27,7 @@ const roleLabels: Record<string, string> = {
 export async function sendInvitationEmail(
   data: InvitationEmailData,
 ): Promise<void> {
+  const resend = getResendClient();
   const roleLabel = roleLabels[data.role] ?? data.role;
 
   const { error } = await resend.emails.send({
