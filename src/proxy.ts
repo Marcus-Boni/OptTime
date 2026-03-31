@@ -21,6 +21,15 @@ function isPublicAuthRoute(pathname: string): boolean {
   );
 }
 
+function buildLoginRedirect(
+  request: NextRequest,
+  reason: "missing-session" | "inactive-user",
+): NextResponse {
+  const url = new URL("/login", request.url);
+  url.searchParams.set("reason", reason);
+  return NextResponse.redirect(url);
+}
+
 export default async function middleware(
   request: NextRequest,
 ): Promise<NextResponse> {
@@ -53,14 +62,20 @@ export default async function middleware(
   if (!session) {
     if (isAuthPage) return NextResponse.next();
     if (isDashboardPage) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      console.warn("[proxy] Redirecting to login: missing session", {
+        pathname,
+      });
+      return buildLoginRedirect(request, "missing-session");
     }
     return NextResponse.next();
   }
 
   if (session.user?.isActive === false) {
     if (isDashboardPage) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      console.warn("[proxy] Redirecting to login: inactive user", {
+        pathname,
+      });
+      return buildLoginRedirect(request, "inactive-user");
     }
     return NextResponse.next();
   }

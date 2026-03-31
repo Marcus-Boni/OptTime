@@ -29,6 +29,7 @@ export default function LoginPage() {
     const timer = setTimeout(() => {
       const urlParams = new URLSearchParams(window.location.search);
       const error = urlParams.get("error");
+      const reason = urlParams.get("reason");
 
       if (error) {
         if (
@@ -46,6 +47,30 @@ export default function LoginPage() {
           toast.error("Ocorreu um erro na autenticação. Tente novamente.", {
             id: "auth-generic-error",
           });
+        }
+
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname,
+        );
+        return;
+      }
+
+      if (reason) {
+        if (reason === "inactive-user") {
+          toast.error("Sua conta está inativa. Fale com um administrador.", {
+            id: "auth-inactive-user",
+            duration: 6000,
+          });
+        } else if (reason === "missing-session") {
+          toast.error(
+            "O login foi concluído, mas a sessão não foi reconhecida pela aplicação.",
+            {
+              id: "auth-missing-session",
+              duration: 6000,
+            },
+          );
         }
 
         window.history.replaceState(
