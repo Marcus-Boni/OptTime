@@ -73,9 +73,9 @@ stages:
 
     - script: |
         cd "$(deployFolder)"
-        test -f "node_modules/styled-jsx/package.json"
-        test -f "node_modules/pg-protocol/dist/index.js"
-        node -e "const { createRequire } = require('node:module'); const req = createRequire(process.cwd() + '/package.json'); console.log(req.resolve('styled-jsx/package.json')); console.log(req.resolve('pg-protocol/dist/index.js'));"
+        test -f "node_modules/next/package.json"
+        test -f "node_modules/pg/package.json"
+        node -e "const { createRequire } = require('node:module'); const nextReq = createRequire(process.cwd() + '/node_modules/next/package.json'); const pgReq = createRequire(process.cwd() + '/node_modules/pg/package.json'); console.log(nextReq.resolve('styled-jsx/package.json')); console.log(pgReq.resolve('pg-protocol/dist/index.js'));"
       displayName: Validate runtime dependencies
 
     - task: ArchiveFiles@2
