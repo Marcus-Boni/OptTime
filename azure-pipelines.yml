@@ -65,10 +65,19 @@ stages:
     - script: |
         rm -rf "$(deployFolder)"
         mkdir -p "$(deployFolder)/.next"
-        cp -RL .next/standalone/. "$(deployFolder)/"
+        cp -R .next/standalone/. "$(deployFolder)/"
+        if [ -d "$(deployFolder)/node_modules/.pnpm/node_modules" ]; then
+          cp -RL "$(deployFolder)/node_modules/.pnpm/node_modules/." "$(deployFolder)/node_modules/"
+        fi
         cp -R .next/static "$(deployFolder)/.next/static"
         cp -R public "$(deployFolder)/public"
       displayName: Prepare standalone package
+
+    - script: |
+        test -f "$(deployFolder)/node_modules/styled-jsx/package.json"
+        NODE_PATH="$(deployFolder)/node_modules" \
+          node -e "require.resolve('styled-jsx/package.json')"
+      displayName: Validate standalone runtime dependencies
 
     - task: ArchiveFiles@2
       displayName: Archive package
