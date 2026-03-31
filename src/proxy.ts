@@ -1,23 +1,18 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-/** Rotas que exigem role "manager" ou "admin" */
 const MANAGER_ROUTES = ["/dashboard/people", "/dashboard/settings"];
-
-/** Rotas públicas que não precisam de sessão */
 const PUBLIC_AUTH_ROUTES = ["/login", "/accept-invite"];
 
-/** Verifica se o pathname está sob uma das rotas restritas */
 function isManagerRoute(pathname: string): boolean {
   return MANAGER_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + "/"),
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
 
-/** Verifica se é uma rota pública de auth */
 function isPublicAuthRoute(pathname: string): boolean {
   return PUBLIC_AUTH_ROUTES.some(
-    (route) => pathname === route || pathname.startsWith(route + "/"),
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
 
@@ -36,23 +31,63 @@ export default async function middleware(
   const { pathname } = request.nextUrl;
 
   let session: { user?: { role?: string; isActive?: boolean } } | null = null;
+
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const forwardedHeaders = new Headers();
+    const cookieHeader = request.headers.get("cookie");
+    const hostHeader = request.headers.get("host");
+    const forwardedHostHeader =
+      request.headers.get("x-forwarded-host") ?? hostHeader;
+    const forwardedProtoHeader =
+      request.headers.get("x-forwarded-proto") ??
+      request.nextUrl.protocol.replace(":", "");
+
+    if (cookieHeader) {
+      forwardedHeaders.set("cookie", cookieHeader);
+    }
+    if (hostHeader) {
+      forwardedHeaders.set("host", hostHeader);
+    }
+    if (forwardedHostHeader) {
+      forwardedHeaders.set("x-forwarded-host", forwardedHostHeader);
+    }
+    if (forwardedProtoHeader) {
+      forwardedHeaders.set("x-forwarded-proto", forwardedProtoHeader);
+    }
+    forwardedHeaders.set("accept", "application/json");
+
     const response = await fetch(
       new URL("/api/auth/get-session", request.nextUrl.origin),
       {
-        headers: {
-          cookie: request.headers.get("cookie") ?? "",
-        },
+        headers: forwardedHeaders,
+        cache: "no-store",
         signal: controller.signal,
       },
     );
+
     clearTimeout(timeoutId);
-    session = response.ok ? await response.json() : null;
-  } catch {
-    // Network error or timeout — fail open (let the request through)
-    // so a transient auth service issue doesn't lock users out entirely.
+
+    if (!response.ok) {
+      console.warn("[proxy] Session lookup failed", {
+        pathname,
+        status: response.status,
+        hasCookie: Boolean(cookieHeader),
+        host: hostHeader,
+        forwardedHost: forwardedHostHeader,
+        forwardedProto: forwardedProtoHeader,
+      });
+      session = null;
+    } else {
+      session = await response.json();
+    }
+  } catch (error) {
+    console.warn("[proxy] Session lookup threw", {
+      pathname,
+      message: error instanceof Error ? error.message : String(error),
+    });
     session = null;
   }
 
@@ -80,8 +115,6 @@ export default async function middleware(
     return NextResponse.next();
   }
 
-  // Usuário autenticado tentando acessar login → redireciona para dashboard
-  // Mas NÃO redireciona /accept-invite (pode estar logado e aceitando convite de outra conta)
   if (pathname.startsWith("/login")) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
