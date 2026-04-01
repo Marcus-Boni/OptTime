@@ -1,7 +1,13 @@
 import { useState } from "react";
 import logoUrl from "../../assets/logo-white.svg";
 import { getMe } from "../../shared/api";
-import { saveCredentials } from "../../shared/auth";
+import {
+  clearCredentials,
+  getStoredApiUrl,
+  getStoredToken,
+  resolveCanonicalApiUrl,
+  saveCredentials,
+} from "../../shared/auth";
 
 interface Props {
   onConfigured: () => void;
@@ -21,15 +27,36 @@ export function SetupScreen({ onConfigured }: Props) {
     }
 
     setLoading(true);
+    const previousApiUrl = getStoredApiUrl();
+    const previousToken = getStoredToken();
+
     try {
-      // Save credentials first so the api client can use them
-      saveCredentials(apiUrl.trim(), token.trim());
+      const canonicalApiUrl = await resolveCanonicalApiUrl(apiUrl);
+
+      // Persist only the canonical origin so pasted paths or host redirects
+      // do not break authenticated requests inside the extension iframe.
+      saveCredentials(canonicalApiUrl, token.trim());
 
       // Validate by calling /api/extension/me
       await getMe();
       onConfigured();
-    } catch {
-      setError("Token inválido ou URL incorreta. Verifique e tente novamente.");
+    } catch (error) {
+      if (previousApiUrl && previousToken) {
+        saveCredentials(previousApiUrl, previousToken);
+      } else {
+        clearCredentials();
+      }
+
+      if (error instanceof Error && error.message === "INVALID_API_URL") {
+        setError(
+          "Informe uma URL válida, como https://opt-time.optsolv.com.br.",
+        );
+        return;
+      }
+
+      setError(
+        "Token inválido ou URL incorreta. Verifique se a URL aponta para a raiz da aplicação e tente novamente.",
+      );
     } finally {
       setLoading(false);
     }
@@ -37,7 +64,6 @@ export function SetupScreen({ onConfigured }: Props) {
 
   return (
     <div style={s.container}>
-      {/* Header */}
       <div style={s.header}>
         <Logo />
         <div>
@@ -46,20 +72,21 @@ export function SetupScreen({ onConfigured }: Props) {
         </div>
       </div>
 
-      {/* Instructions */}
       <div style={s.infoBox}>
         <strong>Como configurar:</strong>
         <ol style={s.list}>
           <li>
             Acesse a aplicação OptSolv Time Tracker e vá em{" "}
-            <strong>Integrações → Azure DevOps → Extensão</strong>.
+            <strong>
+              Integrações {"→"} Azure DevOps {"→"} Extensão
+            </strong>
+            .
           </li>
           <li>Gere um Token de Extensão e copie-o.</li>
           <li>Preencha os campos abaixo e clique em Conectar.</li>
         </ol>
       </div>
 
-      {/* Form */}
       <div style={s.form}>
         <div style={s.field}>
           <label style={s.label} htmlFor="apiUrl">
@@ -69,7 +96,7 @@ export function SetupScreen({ onConfigured }: Props) {
             id="apiUrl"
             style={s.input}
             type="url"
-            placeholder="https://app.optsolv.com"
+            placeholder="https://opt-time.optsolv.com.br"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
             disabled={loading}
@@ -99,7 +126,7 @@ export function SetupScreen({ onConfigured }: Props) {
           onClick={handleSave}
           disabled={loading}
         >
-          {loading ? "Conectando…" : "Conectar"}
+          {loading ? "Conectando..." : "Conectar"}
         </button>
       </div>
     </div>

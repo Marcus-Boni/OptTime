@@ -13,8 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -117,12 +116,15 @@ function DashboardContent() {
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
     try {
-      const [todayRes, weekRes, projectsRes] = await Promise.all([
+      const [todayRes, weekRes, weekProjectsRes, projectsRes] = await Promise.all([
         fetch(
           `/api/time-entries/summary?groupBy=day&from=${TODAY}&to=${TODAY}`,
         ),
         fetch(
           `/api/time-entries/summary?groupBy=day&from=${WEEK_START}&to=${WEEK_END}`,
+        ),
+        fetch(
+          `/api/time-entries/summary?groupBy=project&from=${SEVEN_DAYS_AGO}&to=${TODAY}`,
         ),
         fetch("/api/projects?status=active&limit=10"),
       ]);
@@ -133,6 +135,9 @@ function DashboardContent() {
       const weekData = weekRes.ok
         ? await weekRes.json()
         : { data: [], totals: { totalMinutes: 0 } };
+      const weekProjData = weekProjectsRes.ok
+        ? await weekProjectsRes.json()
+        : { data: [] };
       const projData = projectsRes.ok
         ? await projectsRes.json()
         : { projects: [] };
@@ -152,10 +157,33 @@ function DashboardContent() {
         Math.round(((weekData.totals?.totalMinutes ?? 0) / 60) * 10) / 10,
       );
 
-      const projects: Project[] = projData.projects ?? [];
-      setActiveProjects(projects.slice(0, 4));
+      const activeFromApi: Project[] = projData.projects ?? [];
+      const workedProjectsData = weekProjData.data ?? [];
+
+      const combinedProjectsMap = new Map<string, Project>();
+
+      for (const p of workedProjectsData) {
+        combinedProjectsMap.set(p.projectId, {
+          id: p.projectId,
+          name: p.projectName,
+          code: p.projectCode,
+          color: p.projectColor,
+        });
+      }
+
+      for (const p of activeFromApi) {
+        if (!combinedProjectsMap.has(p.id)) {
+          combinedProjectsMap.set(p.id, p);
+        }
+        if (combinedProjectsMap.size >= 4) break;
+      }
+
+      const finalProjects = Array.from(combinedProjectsMap.values()).slice(0, 4);
+      setActiveProjects(finalProjects);
+
+      const allKnownProjects = [...finalProjects, ...activeFromApi];
       const colorMap: Record<string, string> = {};
-      for (const p of projects) colorMap[p.id] = p.color ?? "#888";
+      for (const p of allKnownProjects) colorMap[p.id] = p.color ?? "#888";
       setProjectColorMap(colorMap);
     } catch {
       /* noop */
@@ -193,9 +221,12 @@ function DashboardContent() {
     100,
   );
   const user = session?.user;
-  const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const [greeting, setGreeting] = useState("Olá");
+
+  useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite");
+  }, []);
 
   return (
     <motion.div
@@ -207,7 +238,7 @@ function DashboardContent() {
       {/* Page Header */}
       <motion.div variants={itemVariants}>
         <h1 className="font-display text-2xl font-bold text-foreground md:text-3xl">
-          {greeting}, {user?.name?.split(" ")[0]}! 👋
+          {greeting}{user?.name ? `, ${user.name.split(" ")[0]}` : ""}! 👋
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Aqui está o resumo do seu dia de trabalho.
@@ -438,7 +469,7 @@ function DashboardContent() {
         {/* Timesheets Alert + Active Projects */}
         <motion.div variants={itemVariants} className="space-y-4">
           <Card className="border-border/50 bg-card/80 backdrop-blur">
-            <CardHeader className="pb-3">
+            <CardHeader>
               <CardTitle className="font-display text-base font-semibold">
                 Projetos Ativos
               </CardTitle>

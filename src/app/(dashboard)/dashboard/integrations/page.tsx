@@ -3,9 +3,9 @@
 import { motion } from "framer-motion";
 import { ArrowRight, Settings } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 const containerVariants = {

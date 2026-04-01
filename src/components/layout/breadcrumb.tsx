@@ -23,6 +23,7 @@ const segmentLabels: Record<string, string> = {
   settings: "Configurações",
   new: "Novo",
   "team-hours": "Horas da Equipe",
+  suggestions: "Sugestões",
 };
 
 function isDynamicSegment(segment: string): boolean {

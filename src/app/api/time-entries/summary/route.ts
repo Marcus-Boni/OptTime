@@ -73,6 +73,7 @@ export async function GET(req: Request): Promise<Response> {
         .select({
           projectId: timeEntry.projectId,
           projectName: project.name,
+          projectCode: project.code,
           projectColor: project.color,
           totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::integer`,
           billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)::integer`,
@@ -81,7 +82,7 @@ export async function GET(req: Request): Promise<Response> {
         .from(timeEntry)
         .innerJoin(project, eq(timeEntry.projectId, project.id))
         .where(and(...conditions))
-        .groupBy(timeEntry.projectId, project.name, project.color)
+        .groupBy(timeEntry.projectId, project.name, project.code, project.color)
         .orderBy(sql`SUM(${timeEntry.duration}) DESC`);
     } else {
       // Default: day-level (same as "day")

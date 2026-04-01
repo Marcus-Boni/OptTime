@@ -4,9 +4,9 @@ export const azureDevopsConfigSchema = z.object({
   organizationUrl: z
     .string()
     .trim()
-    .url("A URL da organizacao deve ser valida.")
-    .min(1, "URL da organizacao e obrigatoria."),
-  pat: z.string().trim().min(1, "O Personal Access Token (PAT) e obrigatorio."),
+    .url("A URL da organização deve ser válida.")
+    .min(1, "URL da organização é obrigatória."),
+  pat: z.string().trim().min(1, "O Personal Access Token (PAT) é obrigatório."),
   commitAuthor: z.string().trim(),
 });
 

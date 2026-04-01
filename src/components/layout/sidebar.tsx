@@ -10,6 +10,7 @@ import {
   Folder,
   Home,
   Layers,
+  Lightbulb,
   Link2,
   Pause,
   Settings,
@@ -55,6 +56,11 @@ const baseNavigation: NavigationItem[] = [
     name: "Integrações",
     href: "/dashboard/integrations",
     icon: Link2,
+  },
+  {
+    name: "Sugestões",
+    href: "/dashboard/suggestions",
+    icon: Lightbulb,
   },
 ];
 

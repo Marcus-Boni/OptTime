@@ -9,6 +9,13 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+export type SuggestionStatus =
+  | "pending"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "implemented";
+
 export type InvitationStatus = "pending" | "accepted" | "expired" | "revoked";
 export type InvitationRole = "admin" | "manager" | "member";
 
@@ -111,6 +118,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   }),
   approvalsGiven: many(timesheet, { relationName: "approver" }),
   timeSuggestionFeedback: many(timeSuggestionFeedback),
+  suggestions: many(suggestion),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -455,3 +463,45 @@ export const timeSuggestionFeedbackRelations = relations(
     }),
   }),
 );
+
+// ─── Suggestions ─────────────────────────────────────────────────────
+export const suggestion = pgTable(
+  "suggestion",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    /** pending | in_review | approved | rejected | implemented */
+    status: text("status").notNull().default("pending"),
+    /** Optional admin notes/response */
+    adminNotes: text("admin_notes"),
+    /** Admin who last updated the status */
+    reviewedById: text("reviewed_by_id").references(() => user.id),
+    reviewedAt: timestamp("reviewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("suggestion_user_idx").on(table.userId),
+    index("suggestion_status_idx").on(table.status),
+    index("suggestion_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const suggestionRelations = relations(suggestion, ({ one }) => ({
+  user: one(user, {
+    fields: [suggestion.userId],
+    references: [user.id],
+  }),
+  reviewedBy: one(user, {
+    fields: [suggestion.reviewedById],
+    references: [user.id],
+    relationName: "reviewer",
+  }),
+}));

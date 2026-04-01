@@ -5,13 +5,12 @@
 
 import type { Project } from "@/types/project";
 import type { TimeEntry } from "@/types/time-entry";
-import type { Timesheet } from "@/types/timesheet";
 import type { User } from "@/types/user";
 
 export const MOCK_CURRENT_USER: User = {
   id: "user-1",
-  email: "marcus@optsolv.com",
-  name: "Marcus Galvão",
+  email: "[EMAIL_ADDRESS]",
+  name: "[NAME]",
   image: undefined,
   role: "manager",
   department: "Engenharia",

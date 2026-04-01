@@ -21,6 +21,11 @@ export async function GET(req: Request): Promise<Response> {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(req.url);
+  const statusParam = searchParams.get("status");
+  const limitParam = searchParams.get("limit");
+  const limit = limitParam ? parseInt(limitParam, 10) : undefined;
+
   try {
     const actor = getActorContext(session.user);
     const accessibleProjectIds = await getAccessibleProjectIds(actor);
@@ -29,10 +34,17 @@ export async function GET(req: Request): Promise<Response> {
       return Response.json({ projects: [] });
     }
 
+    let whereClause = accessibleProjectIds
+      ? inArray(project.id, accessibleProjectIds)
+      : undefined;
+
+    if (statusParam) {
+      const statusFilter = eq(project.status, statusParam);
+      whereClause = whereClause ? and(whereClause, statusFilter) : statusFilter;
+    }
+
     const projects = await db.query.project.findMany({
-      where: accessibleProjectIds
-        ? inArray(project.id, accessibleProjectIds)
-        : undefined,
+      where: whereClause,
       with: {
         members: {
           with: {
@@ -46,6 +58,7 @@ export async function GET(req: Request): Promise<Response> {
         },
       },
       orderBy: (table, { desc }) => [desc(table.updatedAt)],
+      limit,
     });
 
     return Response.json({ projects });

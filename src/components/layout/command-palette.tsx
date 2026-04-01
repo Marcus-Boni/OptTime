@@ -8,6 +8,7 @@ import {
   Folder,
   Home,
   Layers,
+  Lightbulb,
   Link2,
   Moon,
   Plus,
@@ -32,10 +33,10 @@ const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
-  { name: "Calendário", href: "/dashboard/calendar", icon: Calendar },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
   { name: "Integrações", href: "/dashboard/integrations", icon: Link2 },
+  { name: "Sugestões", href: "/dashboard/suggestions", icon: Lightbulb }
 ];
 
 const managementItems = [
@@ -44,6 +45,7 @@ const managementItems = [
     href: "/dashboard/timesheets/approvals",
     icon: CheckSquare,
   },
+  { name: "Horas da Equipe", href: "/dashboard/team-hours", icon: Clock },
   { name: "Equipe", href: "/dashboard/people", icon: Users },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];

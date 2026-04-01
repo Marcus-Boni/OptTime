@@ -28,10 +28,7 @@ function buildLoginRedirect(
 function hasAuthSessionCookie(request: NextRequest): boolean {
   return request.cookies.getAll().some(({ name }) => {
     const normalizedName = name.toLowerCase();
-    return (
-      normalizedName.includes("better-auth") ||
-      normalizedName.includes("session_token")
-    );
+    return normalizedName.includes("session_token");
   });
 }
 
@@ -91,7 +88,7 @@ export default async function middleware(
         forwardedHost: forwardedHostHeader,
         forwardedProto: forwardedProtoHeader,
       });
-      session = hasAuthCookie ? { user: {} } : null;
+      session = null;
     } else {
       session = await response.json();
       sessionVerified = true;
@@ -102,7 +99,7 @@ export default async function middleware(
       message: error instanceof Error ? error.message : String(error),
       hasAuthCookie,
     });
-    session = hasAuthCookie ? { user: {} } : null;
+    session = null;
   }
 
   const isAuthPage = isPublicAuthRoute(pathname);
