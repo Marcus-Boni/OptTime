@@ -541,3 +541,75 @@ export const appReleaseRelations = relations(appRelease, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── Reminder Schedule ────────────────────────────────────────────────────────
+export type ReminderCondition = "all" | "not_submitted";
+export type ReminderTargetScope = "all" | "direct_reports";
+export type ReminderTriggeredBy = "manual" | "schedule";
+
+export const reminderSchedule = pgTable("reminder_schedule", {
+  id: text("id").primaryKey(),
+  createdById: text("created_by_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  daysOfWeek: integer("days_of_week").array().notNull(),
+  hour: integer("hour").notNull().default(16),
+  minute: integer("minute").notNull().default(0),
+  timezone: text("timezone").notNull().default("America/Sao_Paulo"),
+  /** "all" | "not_submitted" */
+  condition: text("condition").notNull().default("not_submitted"),
+  /** "all" | "direct_reports" */
+  targetScope: text("target_scope").notNull().default("direct_reports"),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const reminderLog = pgTable(
+  "reminder_log",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id").references(() => reminderSchedule.id, {
+      onDelete: "set null",
+    }),
+    /** "manual" | "schedule" */
+    triggeredBy: text("triggered_by").notNull(),
+    triggeredById: text("triggered_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    personalNote: text("personal_note"),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    failedCount: integer("failed_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("reminder_log_schedule_idx").on(table.scheduleId),
+    index("reminder_log_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const reminderScheduleRelations = relations(
+  reminderSchedule,
+  ({ one, many }) => ({
+    createdBy: one(user, {
+      fields: [reminderSchedule.createdById],
+      references: [user.id],
+    }),
+    logs: many(reminderLog),
+  }),
+);
+
+export const reminderLogRelations = relations(reminderLog, ({ one }) => ({
+  schedule: one(reminderSchedule, {
+    fields: [reminderLog.scheduleId],
+    references: [reminderSchedule.id],
+  }),
+  triggeredByUser: one(user, {
+    fields: [reminderLog.triggeredById],
+    references: [user.id],
+  }),
+}));
