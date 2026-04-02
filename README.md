@@ -9,7 +9,7 @@
 
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black?logo=next.js&style=for-the-badge)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-%23007ACC.svg?logo=typescript&logoColor=white&style=for-the-badge)](https://www.typescriptlang.org/)
-[![Neon PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-00e599?logo=postgresql&logoColor=blue&style=for-the-badge)](https://neon.tech/)
+[![Azure PostgreSQL](https://img.shields.io/badge/Azure-PostgreSQL-0078D4?logo=microsoftazure&logoColor=white&style=for-the-badge)](https://azure.microsoft.com/products/postgresql)
 [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-%2338B2AC.svg?logo=tailwind-css&logoColor=white&style=for-the-badge)](https://tailwindcss.com/)
 [![Better Auth](https://img.shields.io/badge/Better_Auth-000000?style=for-the-badge)](https://betterauth.io/)
 
@@ -43,16 +43,16 @@ Com uma experiência de usuário (UX) focada em desenvolvedores, o tracker garan
 
 OptSolv Time Tracker adota as melhores e mais recentes tecnologias do mercado, sendo estruturado segundo a arquitetura \`Feature-Sliced\` e otimizado para o Vercel Edge.
 
-| Camada             | Tecnologia                    | Propósito                                               |
-| ------------------ | ----------------------------- | ------------------------------------------------------- |
-| **Framework**      | Next.js 16 (App Router + RSC) | SSR, API Routes, otimização de performance nativa       |
-| **Linguagem**      | TypeScript (Strict Mode)      | Type safety ponta a ponta e redução de bugs no runtime  |
-| **Banco de Dados** | Neon PostgreSQL + Drizzle ORM | DB Serverless de alta performance, tipado no TypeScript |
-| **Autenticação**   | Better Auth                   | Autenticação completa e integração com Microsoft SSO    |
-| **Estilização**    | Tailwind CSS v4 + shadcn/ui   | UI ágil, acessível e 100% customizável (Design System)  |
-| **Padrões UI/UX**  | Framer Motion & Lucide React  | Animações fluidas zero-CLS, Iconografia padronizada     |
-| **Estado Global**  | Zustand (v5)                  | Gerenciamento amigável e sem boilerplate de estados     |
-| **Formulários**    | React Hook Form + Zod         | Validações seguras e schemas tipados compartilhados     |
+| Camada             | Tecnologia                                  | Propósito                                              |
+| ------------------ | ------------------------------------------- | ------------------------------------------------------ |
+| **Framework**      | Next.js 16 (App Router + RSC)               | SSR, API Routes, otimização de performance nativa      |
+| **Linguagem**      | TypeScript (Strict Mode)                    | Type safety ponta a ponta e redução de bugs no runtime |
+| **Banco de Dados** | Azure Database for PostgreSQL + Drizzle ORM | PostgreSQL gerenciado no Azure, tipado no TypeScript   |
+| **Autenticação**   | Better Auth                                 | Autenticação completa e integração com Microsoft SSO   |
+| **Estilização**    | Tailwind CSS v4 + shadcn/ui                 | UI ágil, acessível e 100% customizável (Design System) |
+| **Padrões UI/UX**  | Framer Motion & Lucide React                | Animações fluidas zero-CLS, Iconografia padronizada    |
+| **Estado Global**  | Zustand (v5)                                | Gerenciamento amigável e sem boilerplate de estados    |
+| **Formulários**    | React Hook Form + Zod                       | Validações seguras e schemas tipados compartilhados    |
 
 ---
 
@@ -71,7 +71,7 @@ A separação é clara e modularizada, agrupando código por **Features** visuai
 │ ├── layout/ # Componentes de infra visual (Sidebar, Header)
 │ └── {feature}/ # Organismos e moléculas exclusivos para cada domínio
 ├── lib/
-│ ├── db/ # Conexão Neon, Schema Drizzle e Queries
+│ ├── db/ # Conexão Azure PostgreSQL, Schema Drizzle e Queries
 │ ├── auth/ # Configuração do banco para o Better Auth
 │ ├── azure-devops/ # Instância e Controllers do Client REST AzDO
 │ └── validations/ # Regras de validação (Zod)
@@ -98,7 +98,7 @@ Este projeto segue rigorosas regras para garantir Escalabilidade e Segurança em
 
 - **Node.js**: v20+
 - **PNPM**: Para o gerenciamento ágil de pacotes \`npm i -g pnpm\`
-- **PostgreSQL**: Recomendada uma instância no [Neon](https://neon.tech) para paridade com produção.
+- **PostgreSQL**: Utilize o [Azure Database for PostgreSQL](https://azure.microsoft.com/products/postgresql) para paridade com produção.
 
 ### Passo 1: Clone o Repositório e instale dependências
 
@@ -116,7 +116,7 @@ Utilize o modelo \`env.example\` na raiz para configurar seu \`.env.local\`:
 
 # Banco de Dados
 
-DATABASE_URL="postgresql://user:password@endpoint.neon.tech/neondb?sslmode=require"
+DATABASE_URL="postgresql://app_user:password@my-server.postgres.database.azure.com:5432/opt-timer?sslmode=require"
 
 # Autenticação
 
@@ -132,7 +132,7 @@ MICROSOFT_CLIENT_SECRET="..."
 ### Passo 3: Inicie o Banco de Dados e Migrations (Drizzle)
 
 ```bash
-pnpm exec drizzle-kit push # Sincroniza o schema com o Neon
+pnpm exec drizzle-kit push # Sincroniza o schema com o Azure PostgreSQL
 pnpm exec drizzle-kit studio # Visualizar dados locais em interface amigável (Drizzle Studio)
 ```
 

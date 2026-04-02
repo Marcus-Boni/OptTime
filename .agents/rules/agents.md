@@ -13,7 +13,7 @@ trigger: always_on
 ## 1. Identidade do Projeto
 
 **OptSolv Time Tracker** — sistema interno de registro e gestão de horas de trabalho.
-Stack: Next.js 16 App Router · TypeScript strict · TailwindCSS v4 · shadcn/ui · Better Auth · Neon + Drizzle ORM · Zustand · Framer Motion · Biome.
+Stack: Next.js 16 App Router · TypeScript strict · TailwindCSS v4 · shadcn/ui · Better Auth · Azure Database for PostgreSQL + Drizzle ORM · Zustand · Framer Motion · Biome.
 Referência de PRD completo: `PRD.md` na raiz do projeto.
 
 ---
@@ -73,7 +73,7 @@ Estas regras se aplicam a **todo e qualquer** arquivo gerado. Sem exceção.
 
 ## Stack
 
-Next.js 15 App Router · TypeScript strict · TailwindCSS v4 · shadcn/ui · Better Auth · Neon + Drizzle ORM · Zustand · Framer Motion · Biome · Vercel
+Next.js 15 App Router · TypeScript strict · TailwindCSS v4 · shadcn/ui · Better Auth · Azure Database for PostgreSQL + Drizzle ORM · Zustand · Framer Motion · Biome · Vercel
 
 ---
 
@@ -95,18 +95,23 @@ Next.js 15 App Router · TypeScript strict · TailwindCSS v4 · shadcn/ui · Bet
 
 ```typescript
 export async function POST(req: Request): Promise<Response> {
-  const session = await auth.api.getSession({ headers: req.headers })
-  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const parsed = mySchema.safeParse(await req.json())
-  if (!parsed.success) return Response.json({ error: parsed.error.flatten() }, { status: 400 })
+  const parsed = mySchema.safeParse(await req.json());
+  if (!parsed.success)
+    return Response.json({ error: parsed.error.flatten() }, { status: 400 });
 
   try {
-    const result = await db.insert(table).values({ ...parsed.data, userId: session.user.id }).returning()
-    return Response.json(result[0], { status: 201 })
+    const result = await db
+      .insert(table)
+      .values({ ...parsed.data, userId: session.user.id })
+      .returning();
+    return Response.json(result[0], { status: 201 });
   } catch (err) {
-    console.error('[POST /api/x]', err)
-    return Response.json({ error: 'Internal Server Error' }, { status: 500 })
+    console.error("[POST /api/x]", err);
+    return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
 ```
@@ -162,14 +167,14 @@ export default function MyComponent({ resourceId, onSuccess }: MyComponentProps)
 
 ```typescript
 export const createTimeEntrySchema = z.object({
-  projectId:   z.string().uuid(),
+  projectId: z.string().uuid(),
   description: z.string().min(3).max(500),
-  date:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  duration:    z.number().int().min(1).max(1440), // minutos
-  billable:    z.boolean().default(true),
-})
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  duration: z.number().int().min(1).max(1440), // minutos
+  billable: z.boolean().default(true),
+});
 // Sempre inferir tipos — nunca definir manualmente
-export type CreateTimeEntryInput = z.infer<typeof createTimeEntrySchema>
+export type CreateTimeEntryInput = z.infer<typeof createTimeEntrySchema>;
 ```
 
 ---
@@ -178,15 +183,36 @@ export type CreateTimeEntryInput = z.infer<typeof createTimeEntrySchema>
 
 ```typescript
 // Stagger (listas de cards)
-const container = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } }
-const item = { hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } } }
+const container = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
+};
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
+  },
+};
 
 // Page transition
-const page = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0 } }
+const page = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0 },
+};
 // transition: { duration: 0.3, ease: 'easeOut' }
 
 // Scroll reveal — whileInView="visible" initial="hidden" viewport={{ once: true, amount: 0.2 }}
-const reveal = { hidden: { opacity: 0, y: 40 }, visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } } }
+const reveal = {
+  hidden: { opacity: 0, y: 40 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] },
+  },
+};
 
 // Cards/botões — whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
 // transition={{ type: 'spring', stiffness: 400, damping: 25 }}

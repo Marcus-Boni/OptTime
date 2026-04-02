@@ -6,35 +6,36 @@
 
 **Architecture:** New Drizzle tables (`reminderSchedule`, `reminderLog`) + shared utility for recipient resolution + Resend batch email + four API routes + three React UI components integrated into the People page.
 
-**Tech Stack:** Next.js 15 App Router, TypeScript, Drizzle ORM + Neon PostgreSQL, Resend batch email, shadcn/ui (Dialog, Sheet, Switch), Zod, Framer Motion, Sonner toasts.
+**Tech Stack:** Next.js 15 App Router, TypeScript, Drizzle ORM + Azure Database for PostgreSQL, Resend batch email, shadcn/ui (Dialog, Sheet, Switch), Zod, Framer Motion, Sonner toasts.
 
 ---
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/lib/db/schema.ts` | Modify | Add `reminderSchedule` + `reminderLog` tables and relations |
-| `src/lib/validations/reminder.schema.ts` | Create | Zod schemas for schedule config and manual send |
-| `src/lib/notifications/resolve-recipients.ts` | Create | `getISOWeekPeriod()` + `resolveReminderRecipients()` |
-| `src/lib/email.ts` | Modify | Add `sendHoursReminderBatch()` + HTML template builder |
-| `src/app/api/notifications/reminders/route.ts` | Create | `POST` — manual reminder send |
-| `src/app/api/notifications/schedule/route.ts` | Create | `GET` / `PUT` — schedule configuration |
-| `src/app/api/notifications/schedule/logs/route.ts` | Create | `GET` — send history (paginated) |
-| `src/app/api/cron/reminders/route.ts` | Create | `POST` — cron-triggered batch send |
-| `src/components/people/ReminderSingleModal.tsx` | Create | Single-user reminder dialog |
-| `src/components/people/ReminderBulkModal.tsx` | Create | Bulk team reminder dialog |
-| `src/components/people/ReminderScheduleDrawer.tsx` | Create | Schedule config + history sheet |
-| `src/components/people/PersonCard.tsx` | Modify | Add Bell icon button + ReminderSingleModal |
-| `src/app/(dashboard)/dashboard/people/page.tsx` | Modify | Add bulk + schedule action buttons |
-| `.env.example` | Modify | Add `CRON_SECRET` |
-| `.github/workflows/reminder-cron.yml` | Create | GitHub Actions cron trigger |
+| File                                               | Action | Responsibility                                              |
+| -------------------------------------------------- | ------ | ----------------------------------------------------------- |
+| `src/lib/db/schema.ts`                             | Modify | Add `reminderSchedule` + `reminderLog` tables and relations |
+| `src/lib/validations/reminder.schema.ts`           | Create | Zod schemas for schedule config and manual send             |
+| `src/lib/notifications/resolve-recipients.ts`      | Create | `getISOWeekPeriod()` + `resolveReminderRecipients()`        |
+| `src/lib/email.ts`                                 | Modify | Add `sendHoursReminderBatch()` + HTML template builder      |
+| `src/app/api/notifications/reminders/route.ts`     | Create | `POST` — manual reminder send                               |
+| `src/app/api/notifications/schedule/route.ts`      | Create | `GET` / `PUT` — schedule configuration                      |
+| `src/app/api/notifications/schedule/logs/route.ts` | Create | `GET` — send history (paginated)                            |
+| `src/app/api/cron/reminders/route.ts`              | Create | `POST` — cron-triggered batch send                          |
+| `src/components/people/ReminderSingleModal.tsx`    | Create | Single-user reminder dialog                                 |
+| `src/components/people/ReminderBulkModal.tsx`      | Create | Bulk team reminder dialog                                   |
+| `src/components/people/ReminderScheduleDrawer.tsx` | Create | Schedule config + history sheet                             |
+| `src/components/people/PersonCard.tsx`             | Modify | Add Bell icon button + ReminderSingleModal                  |
+| `src/app/(dashboard)/dashboard/people/page.tsx`    | Modify | Add bulk + schedule action buttons                          |
+| `.env.example`                                     | Modify | Add `CRON_SECRET`                                           |
+| `.github/workflows/reminder-cron.yml`              | Create | GitHub Actions cron trigger                                 |
 
 ---
 
 ## Task 1: Schema — Add reminderSchedule and reminderLog tables
 
 **Files:**
+
 - Modify: `src/lib/db/schema.ts`
 
 - [ ] **Step 1: Add the two tables and their relations to schema.ts**
@@ -135,6 +136,7 @@
 ## Task 2: Database Migration
 
 **Files:**
+
 - `drizzle/` (auto-generated)
 
 - [ ] **Step 1: Generate migration file**
@@ -165,6 +167,7 @@
 ## Task 3: Zod Validation Schemas
 
 **Files:**
+
 - Create: `src/lib/validations/reminder.schema.ts`
 
 - [ ] **Step 1: Create the validation file**
@@ -183,10 +186,7 @@
 
   export const updateScheduleSchema = z.object({
     enabled: z.boolean(),
-    daysOfWeek: z
-      .array(z.number().int().min(0).max(6))
-      .min(0)
-      .max(7),
+    daysOfWeek: z.array(z.number().int().min(0).max(6)).min(0).max(7),
     hour: z.number().int().min(0).max(23),
     minute: z.number().int().min(0).max(59),
     timezone: z.string().min(1).max(100),
@@ -209,6 +209,7 @@
 ## Task 4: Recipient Resolution Utility
 
 **Files:**
+
 - Create: `src/lib/notifications/resolve-recipients.ts`
 
 - [ ] **Step 1: Create the utility file**
@@ -271,9 +272,7 @@
       const rows = await db
         .select({ id: user.id, name: user.name, email: user.email })
         .from(user)
-        .where(
-          and(eq(user.managerId, actorId), eq(user.isActive, true)),
-        );
+        .where(and(eq(user.managerId, actorId), eq(user.isActive, true)));
       candidates = rows;
     }
 
@@ -315,6 +314,7 @@
 ## Task 5: Email Template — sendHoursReminderBatch
 
 **Files:**
+
 - Modify: `src/lib/email.ts`
 
 - [ ] **Step 1: Add the interface, batch function, and HTML builder to email.ts**
@@ -327,7 +327,7 @@
   export interface HoursReminderEmailData {
     to: string;
     recipientName: string;
-    period: string;         // e.g. "2026-W14"
+    period: string; // e.g. "2026-W14"
     condition: "all" | "not_submitted";
     senderName: string;
     personalNote?: string;
@@ -350,8 +350,7 @@
   ): Promise<{ sent: number; failed: number }> {
     const resend = getResendClient();
     const from =
-      process.env.RESEND_FROM_EMAIL ??
-      "OptSolv Time <noreply@optsolv.com.br>";
+      process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <noreply@optsolv.com.br>";
 
     const BATCH_SIZE = 100;
     let sent = 0;
@@ -422,7 +421,7 @@
       <tr>
         <td align="center">
           <table width="600" cellpadding="0" cellspacing="0" style="background-color:#141414;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;max-width:600px;width:100%;">
-
+  
             <!-- Header -->
             <tr>
               <td style="padding:32px 40px 28px;background:linear-gradient(135deg,#f97316 0%,#c2410c 100%);">
@@ -437,7 +436,7 @@
                 <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">${data.period}</p>
               </td>
             </tr>
-
+  
             <!-- Greeting -->
             <tr>
               <td style="padding:32px 40px 20px;">
@@ -445,9 +444,9 @@
                 <p style="margin:0;color:#a3a3a3;font-size:14px;line-height:1.7;">${bodyText}</p>
               </td>
             </tr>
-
+  
             ${noteBlock}
-
+  
             <!-- CTA -->
             <tr>
               <td style="padding:0 40px 32px;">
@@ -462,7 +461,7 @@
                 </table>
               </td>
             </tr>
-
+  
             <!-- Footer -->
             <tr>
               <td style="padding:20px 40px 28px;border-top:1px solid rgba(255,255,255,0.06);">
@@ -472,7 +471,7 @@
                 </p>
               </td>
             </tr>
-
+  
           </table>
         </td>
       </tr>
@@ -503,6 +502,7 @@
 ## Task 6: API Route — POST /api/notifications/reminders
 
 **Files:**
+
 - Create: `src/app/api/notifications/reminders/route.ts`
 
 - [ ] **Step 1: Create the route file**
@@ -516,7 +516,10 @@
   import { db } from "@/lib/db";
   import { reminderLog } from "@/lib/db/schema";
   import { sendHoursReminderBatch } from "@/lib/email";
-  import { getISOWeekPeriod, resolveReminderRecipients } from "@/lib/notifications/resolve-recipients";
+  import {
+    getISOWeekPeriod,
+    resolveReminderRecipients,
+  } from "@/lib/notifications/resolve-recipients";
   import { sendReminderSchema } from "@/lib/validations/reminder.schema";
 
   export async function POST(req: Request): Promise<Response> {
@@ -549,9 +552,7 @@
 
     // Managers are always restricted to direct_reports
     const scope =
-      actor.role === "admin"
-        ? (requestedScope ?? "all")
-        : "direct_reports";
+      actor.role === "admin" ? (requestedScope ?? "all") : "direct_reports";
 
     const recipients = await resolveReminderRecipients({
       actorId: actor.userId,
@@ -587,7 +588,10 @@
         failedCount: failed,
       });
     } catch (dbErr) {
-      console.error("[POST /api/notifications/reminders] log insert failed:", dbErr);
+      console.error(
+        "[POST /api/notifications/reminders] log insert failed:",
+        dbErr,
+      );
     }
 
     if (sent === 0 && failed > 0) {
@@ -619,6 +623,7 @@
 ## Task 7: API Route — GET + PUT /api/notifications/schedule
 
 **Files:**
+
 - Create: `src/app/api/notifications/schedule/route.ts`
 
 - [ ] **Step 1: Create the route file**
@@ -753,6 +758,7 @@
 ## Task 8: API Route — GET /api/notifications/schedule/logs
 
 **Files:**
+
 - Create: `src/app/api/notifications/schedule/logs/route.ts`
 
 - [ ] **Step 1: Create the route file**
@@ -776,10 +782,7 @@
     }
 
     const url = new URL(req.url);
-    const limit = Math.min(
-      Number(url.searchParams.get("limit") ?? "20"),
-      100,
-    );
+    const limit = Math.min(Number(url.searchParams.get("limit") ?? "20"), 100);
     const offset = Number(url.searchParams.get("offset") ?? "0");
 
     try {
@@ -810,6 +813,7 @@
 ## Task 9: API Route — POST /api/cron/reminders
 
 **Files:**
+
 - Create: `src/app/api/cron/reminders/route.ts`
 
 - [ ] **Step 1: Create the route file**
@@ -846,14 +850,22 @@
     });
 
     const dayMap: Record<string, number> = {
-      Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
+      Sun: 0,
+      Mon: 1,
+      Tue: 2,
+      Wed: 3,
+      Thu: 4,
+      Fri: 5,
+      Sat: 6,
     };
     const dayStr = dayFormatter.format(now);
     const dayOfWeek = dayMap[dayStr] ?? 0;
 
     const parts = timeFormatter.formatToParts(now);
     const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
+    const minute = parseInt(
+      parts.find((p) => p.type === "minute")?.value ?? "0",
+    );
 
     return { dayOfWeek, hour, minute };
   }
@@ -881,7 +893,11 @@
     });
 
     if (!schedule) {
-      return Response.json({ triggered: 0, skipped: 1, message: "No enabled schedule" });
+      return Response.json({
+        triggered: 0,
+        skipped: 1,
+        message: "No enabled schedule",
+      });
     }
 
     // Idempotency: skip if triggered in the last 50 minutes
@@ -918,7 +934,12 @@
     });
 
     if (recipients.length === 0) {
-      return Response.json({ triggered: 1, skipped: 0, totalSent: 0, totalFailed: 0 });
+      return Response.json({
+        triggered: 1,
+        skipped: 0,
+        totalSent: 0,
+        totalFailed: 0,
+      });
     }
 
     const timesheetUrl = `${getServerAppUrl()}/dashboard/time`;
@@ -948,7 +969,12 @@
       failedCount: failed,
     });
 
-    return Response.json({ triggered: 1, skipped: 0, totalSent: sent, totalFailed: failed });
+    return Response.json({
+      triggered: 1,
+      skipped: 0,
+      totalSent: sent,
+      totalFailed: failed,
+    });
   }
   ```
 
@@ -970,6 +996,7 @@
 ## Task 10: ReminderSingleModal Component
 
 **Files:**
+
 - Create: `src/components/people/ReminderSingleModal.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -1131,6 +1158,7 @@
 ## Task 11: ReminderBulkModal Component
 
 **Files:**
+
 - Create: `src/components/people/ReminderBulkModal.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -1333,6 +1361,7 @@
 ## Task 12: ReminderScheduleDrawer Component
 
 **Files:**
+
 - Create: `src/components/people/ReminderScheduleDrawer.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -1734,6 +1763,7 @@
 ## Task 13: Update PersonCard — Add Per-User Reminder Button
 
 **Files:**
+
 - Modify: `src/components/people/PersonCard.tsx`
 
 - [ ] **Step 1: Add Bell import, state, and ReminderSingleModal**
@@ -1741,21 +1771,31 @@
   In `src/components/people/PersonCard.tsx`:
 
   **a) Update the lucide-react import** — add `Bell`:
+
   ```typescript
-  import { Bell, FolderKanban, MoreHorizontal, UserCheck, UserX } from "lucide-react";
+  import {
+    Bell,
+    FolderKanban,
+    MoreHorizontal,
+    UserCheck,
+    UserX,
+  } from "lucide-react";
   ```
 
   **b) Add ReminderSingleModal import** after the ManageProjectsDialog import:
+
   ```typescript
   import ReminderSingleModal from "@/components/people/ReminderSingleModal";
   ```
 
   **c) Add state** inside the component function, after the existing `useState` declarations:
+
   ```typescript
   const [isReminderOpen, setIsReminderOpen] = useState(false);
   ```
 
   **d) Add reminder dropdown item** inside `<DropdownMenuContent>`, after the "Gerenciar projetos" item and its separator:
+
   ```typescript
   <DropdownMenuItem
     onClick={() => setIsReminderOpen(true)}
@@ -1767,6 +1807,7 @@
   ```
 
   **e) Add ReminderSingleModal** at the end of the returned JSX, after the `<ManageProjectsDialog>`:
+
   ```typescript
   <ReminderSingleModal
     open={isReminderOpen}
@@ -1794,6 +1835,7 @@
 ## Task 14: Update PeoplePage — Add Bulk Reminder and Schedule Buttons
 
 **Files:**
+
 - Modify: `src/app/(dashboard)/dashboard/people/page.tsx`
 
 - [ ] **Step 1: Add imports**
@@ -1866,20 +1908,22 @@
   At the end of the returned `<motion.div>`, before its closing tag, add:
 
   ```tsx
-  {canInvite && (
-    <>
-      <ReminderBulkModal
-        open={isReminderBulkOpen}
-        onOpenChange={setIsReminderBulkOpen}
-        scope={sessionRole === "admin" ? "all" : "direct_reports"}
-      />
-      <ReminderScheduleDrawer
-        open={isScheduleDrawerOpen}
-        onOpenChange={setIsScheduleDrawerOpen}
-        sessionRole={sessionRole}
-      />
-    </>
-  )}
+  {
+    canInvite && (
+      <>
+        <ReminderBulkModal
+          open={isReminderBulkOpen}
+          onOpenChange={setIsReminderBulkOpen}
+          scope={sessionRole === "admin" ? "all" : "direct_reports"}
+        />
+        <ReminderScheduleDrawer
+          open={isScheduleDrawerOpen}
+          onOpenChange={setIsScheduleDrawerOpen}
+          sessionRole={sessionRole}
+        />
+      </>
+    );
+  }
   ```
 
 - [ ] **Step 5: Verify TypeScript compiles**
@@ -1900,6 +1944,7 @@
 ## Task 15: Environment Variables and GitHub Actions Cron
 
 **Files:**
+
 - Modify: `.env.example`
 - Create: `.github/workflows/reminder-cron.yml`
 
@@ -1964,20 +2009,20 @@
 
 After writing, verify spec coverage:
 
-| Spec Requirement | Task |
-|---|---|
-| Manual individual reminder (People page, per-user) | Task 13, 10 |
-| Manual bulk reminder (People page, whole team) | Task 14, 11 |
-| Optional personal note | Tasks 10, 11, 6 |
-| Template padrão + nota opcional | Task 5 |
-| Agendamento automático desabilitado por padrão | Task 7 (`enabled: false`) |
-| Dias da semana + horário + condição | Tasks 3, 7, 9, 12 |
-| Condition `not_submitted` filters by current week timesheet | Task 4 |
-| Batch send via Resend batch API | Task 5 |
-| CRON_SECRET protection | Task 9, 15 |
-| Idempotência (50-min window) | Task 9 |
-| reminderLog histórico | Tasks 6, 8, 9 |
-| Histórico de disparos na UI | Task 12 |
-| Dark email template (#0a0a0a, #f97316) | Task 5 |
-| role-based scoping (manager = direct_reports only) | Tasks 6, 7, 14 |
-| .env.example + GitHub Actions workflow | Task 15 |
+| Spec Requirement                                            | Task                      |
+| ----------------------------------------------------------- | ------------------------- |
+| Manual individual reminder (People page, per-user)          | Task 13, 10               |
+| Manual bulk reminder (People page, whole team)              | Task 14, 11               |
+| Optional personal note                                      | Tasks 10, 11, 6           |
+| Template padrão + nota opcional                             | Task 5                    |
+| Agendamento automático desabilitado por padrão              | Task 7 (`enabled: false`) |
+| Dias da semana + horário + condição                         | Tasks 3, 7, 9, 12         |
+| Condition `not_submitted` filters by current week timesheet | Task 4                    |
+| Batch send via Resend batch API                             | Task 5                    |
+| CRON_SECRET protection                                      | Task 9, 15                |
+| Idempotência (50-min window)                                | Task 9                    |
+| reminderLog histórico                                       | Tasks 6, 8, 9             |
+| Histórico de disparos na UI                                 | Task 12                   |
+| Dark email template (#0a0a0a, #f97316)                      | Task 5                    |
+| role-based scoping (manager = direct_reports only)          | Tasks 6, 7, 14            |
+| .env.example + GitHub Actions workflow                      | Task 15                   |

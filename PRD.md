@@ -47,11 +47,11 @@ Uma aplicação Next.js 16 full-stack com design premium (dark mode, identidade 
 
 ### 1.4 Personas e Usuários
 
-| Persona | Perfil | Necessidades Principais |
-|---|---|---|
-| **Colaborador (Member)** | Dev/Designer, 25-40 anos, usa Azure DevOps diariamente | Timer rápido, vincular horas a tasks, submeter semana com 1 clique |
-| **Gerente (Manager)** | Tech Lead ou PM, responsável por 5-15 pessoas | Aprovar/rejeitar timesheets, ver relatório da equipe, exportar horas |
-| **Administrador (Admin)** | Gestor operacional, configura o sistema | CRUD de projetos/usuários, configurar integração Azure, exportar dados |
+| Persona                   | Perfil                                                 | Necessidades Principais                                                |
+| ------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------- |
+| **Colaborador (Member)**  | Dev/Designer, 25-40 anos, usa Azure DevOps diariamente | Timer rápido, vincular horas a tasks, submeter semana com 1 clique     |
+| **Gerente (Manager)**     | Tech Lead ou PM, responsável por 5-15 pessoas          | Aprovar/rejeitar timesheets, ver relatório da equipe, exportar horas   |
+| **Administrador (Admin)** | Gestor operacional, configura o sistema                | CRUD de projetos/usuários, configurar integração Azure, exportar dados |
 
 ### 1.5 Objetivos de Negócio
 
@@ -222,24 +222,24 @@ DRAFT → SUBMITTED → APPROVED
 
 ### 3.1 Stack Tecnológica
 
-| Camada | Tecnologia | Versão | Justificativa |
-|---|---|---|---|
-| Framework | Next.js | 16 — App Router + RSC | SSR/SSG nativo, Route Handlers, edge-ready |
-| Linguagem | TypeScript | strict mode | Segurança de tipos em toda a codebase |
-| Estilização | TailwindCSS + shadcn/ui | v4 + tema customizado | Design system extensível e consistente |
-| Autenticação | Better Auth | credentials + Azure AD | SSO corporativo Microsoft |
-| Banco de Dados | Neon + Drizzle ORM | PostgreSQL serverless | SQL tipado, migrações versionadas |
-| Estado Global | Zustand | v5 | Leve, sem boilerplate, tipado |
-| Formulários | React Hook Form + Zod | v7 + v3 | Validação runtime + type-safe schemas |
-| Animações | Framer Motion | v11 | Animações declarativas de alta performance |
-| Gráficos | Recharts | v2 | Charts React-native, responsivos |
-| Tabelas | TanStack Table | v8 | Virtualização, sort, filter, headless |
-| Export | SheetJS + jsPDF | xlsx + autotable | Client-side, sem overhead de servidor |
-| Ícones | Lucide React | v0.4+ | SVG tree-shakeable |
-| Datas | date-fns | v3 | Leve, funcional, i18n pt-BR |
-| Toast | Sonner | v1 | Notificações elegantes e acessíveis |
-| Linter/Formatter | Biome | latest | Substitui ESLint + Prettier num único binário |
-| Deploy | Vercel | Pro | Deploy zero-config, edge network global |
+| Camada           | Tecnologia                                  | Versão                         | Justificativa                                 |
+| ---------------- | ------------------------------------------- | ------------------------------ | --------------------------------------------- |
+| Framework        | Next.js                                     | 16 — App Router + RSC          | SSR/SSG nativo, Route Handlers, edge-ready    |
+| Linguagem        | TypeScript                                  | strict mode                    | Segurança de tipos em toda a codebase         |
+| Estilização      | TailwindCSS + shadcn/ui                     | v4 + tema customizado          | Design system extensível e consistente        |
+| Autenticação     | Better Auth                                 | credentials + Azure AD         | SSO corporativo Microsoft                     |
+| Banco de Dados   | Azure Database for PostgreSQL + Drizzle ORM | PostgreSQL gerenciado no Azure | SQL tipado, migrações versionadas             |
+| Estado Global    | Zustand                                     | v5                             | Leve, sem boilerplate, tipado                 |
+| Formulários      | React Hook Form + Zod                       | v7 + v3                        | Validação runtime + type-safe schemas         |
+| Animações        | Framer Motion                               | v11                            | Animações declarativas de alta performance    |
+| Gráficos         | Recharts                                    | v2                             | Charts React-native, responsivos              |
+| Tabelas          | TanStack Table                              | v8                             | Virtualização, sort, filter, headless         |
+| Export           | SheetJS + jsPDF                             | xlsx + autotable               | Client-side, sem overhead de servidor         |
+| Ícones           | Lucide React                                | v0.4+                          | SVG tree-shakeable                            |
+| Datas            | date-fns                                    | v3                             | Leve, funcional, i18n pt-BR                   |
+| Toast            | Sonner                                      | v1                             | Notificações elegantes e acessíveis           |
+| Linter/Formatter | Biome                                       | latest                         | Substitui ESLint + Prettier num único binário |
+| Deploy           | Vercel                                      | Pro                            | Deploy zero-config, edge network global       |
 
 ### 3.2 Estrutura de Diretórios
 
@@ -285,7 +285,7 @@ optsolv-time-tracker/
 │   └── landing/                 # Hero, FeaturesBento, HowItWorks, etc.
 ├── lib/
 │   ├── db/
-│   │   ├── index.ts             # Neon client + Drizzle instance
+│   │   ├── index.ts             # Azure PostgreSQL client + Drizzle instance
 │   │   ├── schema.ts            # Drizzle schema (todas as tabelas)
 │   │   └── migrations/          # Drizzle Kit migrations
 │   ├── auth/
@@ -312,103 +312,121 @@ optsolv-time-tracker/
 └── next.config.ts
 ```
 
-### 3.3 Modelo de Dados — Neon PostgreSQL (Drizzle ORM)
+### 3.3 Modelo de Dados — Azure Database for PostgreSQL (Drizzle ORM)
 
 #### Tabela: `time_entries`
 
 ```typescript
-export const timeEntries = pgTable('time_entries', {
-  id:              uuid('id').primaryKey().defaultRandom(),
-  userId:          uuid('user_id').notNull().references(() => users.id),
-  projectId:       uuid('project_id').notNull().references(() => projects.id),
-  description:     text('description').notNull(),
-  date:            date('date').notNull(),
-  duration:        integer('duration').notNull(), // minutos
-  billable:        boolean('billable').notNull().default(true),
-  status:          entryStatusEnum('status').notNull().default('draft'),
-  azureWorkItemId: integer('azure_work_item_id'),
-  startTime:       timestamp('start_time', { withTimezone: true }),
-  endTime:         timestamp('end_time', { withTimezone: true }),
-  timesheetId:     uuid('timesheet_id').references(() => timesheets.id),
-  createdAt:       timestamp('created_at').notNull().defaultNow(),
-  updatedAt:       timestamp('updated_at').notNull().defaultNow(),
-  deletedAt:       timestamp('deleted_at'), // soft delete
+export const timeEntries = pgTable("time_entries", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id),
+  description: text("description").notNull(),
+  date: date("date").notNull(),
+  duration: integer("duration").notNull(), // minutos
+  billable: boolean("billable").notNull().default(true),
+  status: entryStatusEnum("status").notNull().default("draft"),
+  azureWorkItemId: integer("azure_work_item_id"),
+  startTime: timestamp("start_time", { withTimezone: true }),
+  endTime: timestamp("end_time", { withTimezone: true }),
+  timesheetId: uuid("timesheet_id").references(() => timesheets.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at"), // soft delete
 });
 
 // Status enum
-export const entryStatusEnum = pgEnum('entry_status', [
-  'draft', 'submitted', 'approved', 'rejected'
+export const entryStatusEnum = pgEnum("entry_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
 ]);
 ```
 
 #### Tabela: `timesheets`
 
 ```typescript
-export const timesheets = pgTable('timesheets', {
-  id:              uuid('id').primaryKey().defaultRandom(),
-  userId:          uuid('user_id').notNull().references(() => users.id),
-  period:          varchar('period', { length: 10 }).notNull(), // "2026-W12" | "2026-03"
-  periodType:      varchar('period_type', { length: 10 }).notNull(), // "weekly" | "monthly"
-  totalMinutes:    integer('total_minutes').notNull().default(0),
-  status:          timesheetStatusEnum('status').notNull().default('open'),
-  submittedAt:     timestamp('submitted_at', { withTimezone: true }),
-  approvedBy:      uuid('approved_by').references(() => users.id),
-  approvedAt:      timestamp('approved_at', { withTimezone: true }),
-  rejectionReason: text('rejection_reason'),
-  createdAt:       timestamp('created_at').notNull().defaultNow(),
-  updatedAt:       timestamp('updated_at').notNull().defaultNow(),
+export const timesheets = pgTable("timesheets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  period: varchar("period", { length: 10 }).notNull(), // "2026-W12" | "2026-03"
+  periodType: varchar("period_type", { length: 10 }).notNull(), // "weekly" | "monthly"
+  totalMinutes: integer("total_minutes").notNull().default(0),
+  status: timesheetStatusEnum("status").notNull().default("open"),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  approvedBy: uuid("approved_by").references(() => users.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  rejectionReason: text("rejection_reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 ```
 
 #### Tabela: `projects`
 
 ```typescript
-export const projects = pgTable('projects', {
-  id:             uuid('id').primaryKey().defaultRandom(),
-  name:           varchar('name', { length: 255 }).notNull(),
-  code:           varchar('code', { length: 20 }).notNull().unique(), // "OPT-001"
-  color:          varchar('color', { length: 7 }).notNull(),          // "#f97316"
-  status:         projectStatusEnum('status').notNull().default('active'),
-  billable:       boolean('billable').notNull().default(true),
-  budgetMinutes:  integer('budget_minutes'),
-  azureProjectId: varchar('azure_project_id', { length: 255 }),
-  managerId:      uuid('manager_id').notNull().references(() => users.id),
-  createdAt:      timestamp('created_at').notNull().defaultNow(),
-  updatedAt:      timestamp('updated_at').notNull().defaultNow(),
-  deletedAt:      timestamp('deleted_at'),
+export const projects = pgTable("projects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: varchar("name", { length: 255 }).notNull(),
+  code: varchar("code", { length: 20 }).notNull().unique(), // "OPT-001"
+  color: varchar("color", { length: 7 }).notNull(), // "#f97316"
+  status: projectStatusEnum("status").notNull().default("active"),
+  billable: boolean("billable").notNull().default(true),
+  budgetMinutes: integer("budget_minutes"),
+  azureProjectId: varchar("azure_project_id", { length: 255 }),
+  managerId: uuid("manager_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at"),
 });
 
 // Tabela de relacionamento N:N
-export const projectMembers = pgTable('project_members', {
-  projectId: uuid('project_id').notNull().references(() => projects.id),
-  userId:    uuid('user_id').notNull().references(() => users.id),
-},
-(t) => [primaryKey({ columns: [t.projectId, t.userId] })]);
+export const projectMembers = pgTable(
+  "project_members",
+  {
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+  },
+  (t) => [primaryKey({ columns: [t.projectId, t.userId] })],
+);
 ```
 
 #### Tabela: `users`
 
 ```typescript
-export const users = pgTable('users', {
-  id:             uuid('id').primaryKey().defaultRandom(),
-  email:          varchar('email', { length: 255 }).notNull().unique(),
-  displayName:    varchar('display_name', { length: 255 }).notNull(),
-  avatarUrl:      text('avatar_url'),
-  role:           userRoleEnum('role').notNull().default('member'),
-  department:     varchar('department', { length: 255 }),
-  managerId:      uuid('manager_id').references((): AnyPgColumn => users.id),
-  hourlyRate:     numeric('hourly_rate', { precision: 10, scale: 2 }),
-  weeklyCapacity: integer('weekly_capacity').notNull().default(2400), // minutos = 40h
-  azureId:        varchar('azure_id', { length: 255 }),
-  isActive:       boolean('is_active').notNull().default(true),
-  createdAt:      timestamp('created_at').notNull().defaultNow(),
-  updatedAt:      timestamp('updated_at').notNull().defaultNow(),
+export const users = pgTable("users", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  avatarUrl: text("avatar_url"),
+  role: userRoleEnum("role").notNull().default("member"),
+  department: varchar("department", { length: 255 }),
+  managerId: uuid("manager_id").references((): AnyPgColumn => users.id),
+  hourlyRate: numeric("hourly_rate", { precision: 10, scale: 2 }),
+  weeklyCapacity: integer("weekly_capacity").notNull().default(2400), // minutos = 40h
+  azureId: varchar("azure_id", { length: 255 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 ```
 
 ### 3.4 Segurança — PostgreSQL Row-Level Security (RLS)
 
-RLS habilitado no Neon para isolamento de dados por usuário:
+RLS habilitado no Azure Database for PostgreSQL para isolamento de dados por usuário:
 
 ```sql
 -- time_entries: usuário só vê as próprias; manager vê da equipe; admin vê tudo
@@ -424,7 +442,7 @@ CREATE POLICY "hide_deleted" ON time_entries
   FOR SELECT USING (deleted_at IS NULL);
 ```
 
-> **Segurança adicional:** Todas as Route Handlers validam sessão via Better Auth antes de qualquer operação. Inputs validados com Zod. PAT do Azure DevOps armazenado criptografado (coluna `encrypted_pat`). Conexão Neon via connection pool com SSL obrigatório (`sslmode=require`).
+> **Segurança adicional:** Todas as Route Handlers validam sessão via Better Auth antes de qualquer operação. Inputs validados com Zod. PAT do Azure DevOps armazenado criptografado (coluna `encrypted_pat`). Conexão Azure PostgreSQL via connection pool com SSL obrigatório (`sslmode=require`).
 
 ### 3.5 Performance e Escalabilidade
 
@@ -435,7 +453,7 @@ CREATE POLICY "hide_deleted" ON time_entries
 - **`next/image`** com lazy loading e blur placeholder para todos os assets
 - **`dynamic()` import** para componentes pesados: calendário, gráficos, editor PDF
 - **SWR** com stale-while-revalidate e mutação otimista
-- **Capacidade:** 30 usuários × 5 entradas/dia × 250 dias = 37.500 linhas/ano — Neon escala para bilhões com branching para ambientes isolados
+- **Capacidade:** 30 usuários × 5 entradas/dia × 250 dias = 37.500 linhas/ano — Azure Database for PostgreSQL escala horizontalmente por ajuste de SKU e storage conforme crescimento.
 
 ---
 
@@ -447,65 +465,65 @@ CREATE POLICY "hide_deleted" ON time_entries
 
 ```css
 /* Brand */
---brand-500: #f97316;   /* Cor primária — botões CTA, badges, timers */
---brand-600: #ea580c;   /* Hover/active */
---brand-50:  #fff7ed;   /* Background sutil de destaque */
+--brand-500: #f97316; /* Cor primária — botões CTA, badges, timers */
+--brand-600: #ea580c; /* Hover/active */
+--brand-50: #fff7ed; /* Background sutil de destaque */
 
 /* Neutros (dark mode principal) */
---neutral-950: #0a0a0a;  /* Background principal */
---neutral-900: #171717;  /* Cards, sidebar, navbar */
---neutral-800: #262626;  /* Inputs, dropdowns, rows alternados */
---neutral-700: #404040;  /* Bordas, separadores */
---neutral-500: #737373;  /* Placeholders, texto desabilitado */
---neutral-300: #d4d4d4;  /* Texto secundário */
---neutral-100: #f5f5f5;  /* Background light mode */
+--neutral-950: #0a0a0a; /* Background principal */
+--neutral-900: #171717; /* Cards, sidebar, navbar */
+--neutral-800: #262626; /* Inputs, dropdowns, rows alternados */
+--neutral-700: #404040; /* Bordas, separadores */
+--neutral-500: #737373; /* Placeholders, texto desabilitado */
+--neutral-300: #d4d4d4; /* Texto secundário */
+--neutral-100: #f5f5f5; /* Background light mode */
 
 /* Semânticas */
---success: #22c55e;  /* approved, completo, online */
---warning: #f59e0b;  /* pendente, parcial */
---error:   #ef4444;  /* rejected, validação, crítico */
---info:    #3b82f6;  /* submitted, informativo */
+--success: #22c55e; /* approved, completo, online */
+--warning: #f59e0b; /* pendente, parcial */
+--error: #ef4444; /* rejected, validação, crítico */
+--info: #3b82f6; /* submitted, informativo */
 ```
 
 #### Tipografia
 
-| Família | Uso | Tamanhos / Pesos |
-|---|---|---|
-| **Sora** | Display, headings, números de destaque, landing page | H1: 72px Bold · H2: 48px Bold · H3: 32px SemiBold · H4: 24px SemiBold |
-| **DM Sans** | Body text, labels, navegação, formulários | Body: 16px Regular · Small: 14px · Caption: 12px |
-| **JetBrains Mono** | Números de horas, códigos de projeto, dados de tempo | Timer: 32px · Horas: 20px · Código: 14px |
+| Família            | Uso                                                  | Tamanhos / Pesos                                                      |
+| ------------------ | ---------------------------------------------------- | --------------------------------------------------------------------- |
+| **Sora**           | Display, headings, números de destaque, landing page | H1: 72px Bold · H2: 48px Bold · H3: 32px SemiBold · H4: 24px SemiBold |
+| **DM Sans**        | Body text, labels, navegação, formulários            | Body: 16px Regular · Small: 14px · Caption: 12px                      |
+| **JetBrains Mono** | Números de horas, códigos de projeto, dados de tempo | Timer: 32px · Horas: 20px · Código: 14px                              |
 
 ```html
 <!-- next/font setup obrigatório -->
-import { Sora, DM_Sans } from 'next/font/google'
-import localFont from 'next/font/local'
+import { Sora, DM_Sans } from 'next/font/google' import localFont from
+'next/font/local'
 ```
 
 #### Espaçamento — Grid de 4pt
 
 Todos os espaçamentos seguem múltiplos de 4px via tokens Tailwind:
 
-| Token | Valor | Uso |
-|---|---|---|
-| `space-1` | 4px | Gap mínimo entre ícone e texto |
-| `space-2` | 8px | Padding de badges, gap inline |
-| `space-4` | 16px | Padding padrão de cards e botões |
-| `space-6` | 24px | Gap entre seções menores |
-| `space-8` | 32px | Gap entre cards principais |
-| `space-12` | 48px | Separação entre módulos |
-| `space-16` | 64px | Margens de seções da landing page |
+| Token      | Valor | Uso                               |
+| ---------- | ----- | --------------------------------- |
+| `space-1`  | 4px   | Gap mínimo entre ícone e texto    |
+| `space-2`  | 8px   | Padding de badges, gap inline     |
+| `space-4`  | 16px  | Padding padrão de cards e botões  |
+| `space-6`  | 24px  | Gap entre seções menores          |
+| `space-8`  | 32px  | Gap entre cards principais        |
+| `space-12` | 48px  | Separação entre módulos           |
+| `space-16` | 64px  | Margens de seções da landing page |
 
 ### 4.2 Componentes Base
 
 #### Botões
 
-| Variante | Aparência | Quando Usar |
-|---|---|---|
-| `primary` | Fundo laranja sólido, texto branco, hover darken 10% | Ação principal de cada página (máx. 1 acima do fold) |
-| `secondary` | Fundo transparente, borda `white/10`, texto branco | Ações secundárias, cancelar, voltar |
-| `ghost` | Sem fundo, sem borda, hover fundo sutil | Ações terciárias, ícones de ação inline |
-| `destructive` | Fundo vermelho, texto branco | Deletar, rejeitar |
-| `outline-orange` | Sem fundo, borda laranja, texto laranja | Ações de destaque sem preencher (ex: "Exportar") |
+| Variante         | Aparência                                            | Quando Usar                                          |
+| ---------------- | ---------------------------------------------------- | ---------------------------------------------------- |
+| `primary`        | Fundo laranja sólido, texto branco, hover darken 10% | Ação principal de cada página (máx. 1 acima do fold) |
+| `secondary`      | Fundo transparente, borda `white/10`, texto branco   | Ações secundárias, cancelar, voltar                  |
+| `ghost`          | Sem fundo, sem borda, hover fundo sutil              | Ações terciárias, ícones de ação inline              |
+| `destructive`    | Fundo vermelho, texto branco                         | Deletar, rejeitar                                    |
+| `outline-orange` | Sem fundo, borda laranja, texto laranja              | Ações de destaque sem preencher (ex: "Exportar")     |
 
 > **Regra:** Cada página tem no máximo **1 botão `primary`** visível acima do fold. Todos os botões têm `transition-colors duration-150`. Área mínima de clique: **44×44px** (WCAG AA).
 
@@ -595,12 +613,16 @@ Direita:   Sino (notificações) + Avatar (dropdown: perfil, config, tema, logou
 ```typescript
 const containerVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.08 } }
-}
+  visible: { transition: { staggerChildren: 0.08 } },
+};
 const itemVariants = {
-  hidden:  { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] } }
-}
+  hidden: { opacity: 0, y: 20 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
+  },
+};
 ```
 
 #### Scroll-triggered reveal
@@ -622,8 +644,8 @@ variants={{
 const pageVariants = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
-  exit:    { opacity: 0 }
-}
+  exit: { opacity: 0 },
+};
 // transition: { duration: 0.3, ease: "easeOut" }
 ```
 
@@ -637,8 +659,11 @@ transition={{ type: "spring", stiffness: 400, damping: 25 }}
 ```
 
 > **Regra:** NUNCA animar propriedades que causem CLS. Usar **apenas `transform` e `opacity`**. Respeitar `prefers-reduced-motion`:
+>
 > ```typescript
-> const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+> const prefersReduced = window.matchMedia(
+>   "(prefers-reduced-motion: reduce)",
+> ).matches;
 > ```
 
 ---
@@ -656,9 +681,9 @@ transition={{ type: "spring", stiffness: 400, damping: 25 }}
     "strictNullChecks": true,
     "noUncheckedIndexedAccess": true,
     "paths": {
-      "@/*": ["./*"]
-    }
-  }
+      "@/*": ["./*"],
+    },
+  },
 }
 ```
 
@@ -672,18 +697,18 @@ transition={{ type: "spring", stiffness: 400, damping: 25 }}
 
 ### 5.2 Convenções de Nomenclatura
 
-| Artefato | Convenção | Exemplo |
-|---|---|---|
-| Componentes React | PascalCase | `TimeEntryCard.tsx` |
-| Hooks customizados | `use` + camelCase | `useTimeEntries.ts` |
-| Stores Zustand | camelCase + `Store` | `timerStore.ts` |
-| Route Handlers | kebab-case | `/api/time-entries/route.ts` |
-| Schemas Zod | camelCase + `Schema` | `timeEntrySchema.ts` |
-| Types/Interfaces | PascalCase | `TimeEntry`, `Project`, `User` |
-| Constantes | SCREAMING_SNAKE_CASE | `MAX_TIMER_DURATION` |
-| CSS classes | kebab-case | `.timer-active-indicator` |
-| Tabelas PostgreSQL | snake_case | `time_entries`, `project_members` |
-| Env vars | `NEXT_PUBLIC_` para cliente | `NEXT_PUBLIC_APP_URL` |
+| Artefato           | Convenção                   | Exemplo                           |
+| ------------------ | --------------------------- | --------------------------------- |
+| Componentes React  | PascalCase                  | `TimeEntryCard.tsx`               |
+| Hooks customizados | `use` + camelCase           | `useTimeEntries.ts`               |
+| Stores Zustand     | camelCase + `Store`         | `timerStore.ts`                   |
+| Route Handlers     | kebab-case                  | `/api/time-entries/route.ts`      |
+| Schemas Zod        | camelCase + `Schema`        | `timeEntrySchema.ts`              |
+| Types/Interfaces   | PascalCase                  | `TimeEntry`, `Project`, `User`    |
+| Constantes         | SCREAMING_SNAKE_CASE        | `MAX_TIMER_DURATION`              |
+| CSS classes        | kebab-case                  | `.timer-active-indicator`         |
+| Tabelas PostgreSQL | snake_case                  | `time_entries`, `project_members` |
+| Env vars           | `NEXT_PUBLIC_` para cliente | `NEXT_PUBLIC_APP_URL`             |
 
 ### 5.3 Estrutura de Componentes React
 
@@ -744,7 +769,7 @@ export default function TimeEntryCard({ entryId, onDelete }: TimeEntryCardProps)
 ```typescript
 // app/(dashboard)/time/page.tsx
 export default async function TimePage() {
-  // Acesso direto ao Neon via Drizzle (servidor only)
+  // Acesso direto ao Azure PostgreSQL via Drizzle (servidor only)
   const entries = await db.query.timeEntries.findMany({
     where: and(eq(timeEntries.userId, session.user.id), gte(timeEntries.date, startOfDay))
   })
@@ -756,15 +781,18 @@ export default async function TimePage() {
 
 ```typescript
 // SWR para polling / mutações otimistas
-const { data, mutate } = useSWR('/api/time-entries', fetcher, {
+const { data, mutate } = useSWR("/api/time-entries", fetcher, {
   refreshInterval: 30_000, // 30s polling
-})
+});
 
 // Mutação otimista
 async function handleCreate(data: CreateTimeEntryInput) {
-  mutate([...entries, optimisticEntry], false) // atualiza UI imediatamente
-  await fetch('/api/time-entries', { method: 'POST', body: JSON.stringify(data) })
-  mutate() // revalida do servidor
+  mutate([...entries, optimisticEntry], false); // atualiza UI imediatamente
+  await fetch("/api/time-entries", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  mutate(); // revalida do servidor
 }
 ```
 
@@ -774,23 +802,28 @@ async function handleCreate(data: CreateTimeEntryInput) {
 // app/api/time-entries/route.ts
 export async function POST(req: Request): Promise<Response> {
   // 1. Autenticação
-  const session = await auth.api.getSession({ headers: req.headers })
-  if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await auth.api.getSession({ headers: req.headers });
+  if (!session)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   // 2. Validação
-  const body = await req.json()
-  const parsed = createTimeEntrySchema.safeParse(body)
-  if (!parsed.success) return Response.json({ error: parsed.error.flatten() }, { status: 400 })
+  const body = await req.json();
+  const parsed = createTimeEntrySchema.safeParse(body);
+  if (!parsed.success)
+    return Response.json({ error: parsed.error.flatten() }, { status: 400 });
 
   // 3. Regras de negócio
-  const { data } = parsed
+  const { data } = parsed;
   // ... validações de negócio ...
 
   // 4. Persistência
-  const entry = await db.insert(timeEntries).values({ ...data, userId: session.user.id }).returning()
+  const entry = await db
+    .insert(timeEntries)
+    .values({ ...data, userId: session.user.id })
+    .returning();
 
   // 5. Resposta
-  return Response.json(entry[0], { status: 201 })
+  return Response.json(entry[0], { status: 201 });
 }
 ```
 
@@ -821,15 +854,15 @@ export async function POST(req: Request): Promise<Response> {
 
 ### 6.1 Registro de Tempo — Validações
 
-| Regra | Valor |
-|---|---|
-| Duração mínima | 1 minuto |
-| Duração máxima | 24 horas (1440 min) |
-| Data máxima | Hoje (sem datas futuras) |
-| Data mínima | 30 dias no passado |
-| Timers simultâneos | Máximo 1 por usuário |
-| Edição bloqueada | Entries em status `submitted` ou `approved` |
-| Timer em pausa | Ao iniciar novo timer, o pausado é finalizado automaticamente |
+| Regra              | Valor                                                         |
+| ------------------ | ------------------------------------------------------------- |
+| Duração mínima     | 1 minuto                                                      |
+| Duração máxima     | 24 horas (1440 min)                                           |
+| Data máxima        | Hoje (sem datas futuras)                                      |
+| Data mínima        | 30 dias no passado                                            |
+| Timers simultâneos | Máximo 1 por usuário                                          |
+| Edição bloqueada   | Entries em status `submitted` ou `approved`                   |
+| Timer em pausa     | Ao iniciar novo timer, o pausado é finalizado automaticamente |
 
 ### 6.2 Timesheets — Fluxo de Aprovação
 
@@ -848,18 +881,18 @@ approved                  rejected → entries voltam a draft
 
 ### 6.3 Controle de Acesso por Role
 
-| Ação | Member | Manager | Admin |
-|---|---|---|---|
-| Ver/criar/editar próprias entradas | ✅ | ✅ | ✅ |
-| Submeter próprio timesheet | ✅ | ✅ | ✅ |
-| Ver entradas da equipe | ❌ | ✅ equipe direta | ✅ todos |
-| Aprovar/rejeitar timesheets | ❌ | ✅ equipe direta | ✅ todos |
-| Ver relatório da equipe | ❌ | ✅ | ✅ |
-| Exportar dados da equipe | ❌ | ✅ | ✅ |
-| Criar/editar projetos | ❌ | ✅ seus projetos | ✅ |
-| Convidar usuários | ❌ | ❌ | ✅ |
-| CRUD completo usuários/projetos | ❌ | ❌ | ✅ |
-| Configurar integrações | ❌ | ❌ | ✅ |
+| Ação                               | Member | Manager          | Admin    |
+| ---------------------------------- | ------ | ---------------- | -------- |
+| Ver/criar/editar próprias entradas | ✅     | ✅               | ✅       |
+| Submeter próprio timesheet         | ✅     | ✅               | ✅       |
+| Ver entradas da equipe             | ❌     | ✅ equipe direta | ✅ todos |
+| Aprovar/rejeitar timesheets        | ❌     | ✅ equipe direta | ✅ todos |
+| Ver relatório da equipe            | ❌     | ✅               | ✅       |
+| Exportar dados da equipe           | ❌     | ✅               | ✅       |
+| Criar/editar projetos              | ❌     | ✅ seus projetos | ✅       |
+| Convidar usuários                  | ❌     | ❌               | ✅       |
+| CRUD completo usuários/projetos    | ❌     | ❌               | ✅       |
+| Configurar integrações             | ❌     | ❌               | ✅       |
 
 ### 6.4 Integração Azure DevOps — Comportamentos
 
@@ -924,18 +957,18 @@ approved                  rejected → entries voltam a draft
   "formatter": {
     "indentWidth": 2,
     "lineWidth": 100,
-    "indentStyle": "space"
+    "indentStyle": "space",
   },
   "linter": {
     "rules": {
       "recommended": true,
       "correctness": { "noUnusedVariables": "error" },
-      "style": { "noVar": "error", "useConst": "error" }
-    }
+      "style": { "noVar": "error", "useConst": "error" },
+    },
   },
   "javascript": {
-    "formatter": { "quoteStyle": "single", "trailingCommas": "all" }
-  }
+    "formatter": { "quoteStyle": "single", "trailingCommas": "all" },
+  },
 }
 ```
 
@@ -945,30 +978,30 @@ approved                  rejected → entries voltam a draft
 
 ### 8.2 Estratégia de Testes
 
-| Tipo | Ferramenta | O que cobrir |
-|---|---|---|
-| Unit | Vitest + Testing Library | `formatDuration`, `parseHours`, schemas Zod, stores Zustand |
-| Component | Vitest + Testing Library | `TimeEntryForm`, `TimerWidget`, `TimesheetStatus` — render, interação, estados |
-| Integration | Vitest + MSW | Route Handlers com banco Neon em branch isolado + mocks AzDO API |
-| E2E | Playwright | login → registrar hora → submeter → aprovar → exportar |
-| Accessibility | axe-core + Playwright | Scan WCAG AA automático em todas as páginas |
+| Tipo          | Ferramenta               | O que cobrir                                                                   |
+| ------------- | ------------------------ | ------------------------------------------------------------------------------ |
+| Unit          | Vitest + Testing Library | `formatDuration`, `parseHours`, schemas Zod, stores Zustand                    |
+| Component     | Vitest + Testing Library | `TimeEntryForm`, `TimerWidget`, `TimesheetStatus` — render, interação, estados |
+| Integration   | Vitest + MSW             | Route Handlers com banco PostgreSQL em schema isolado + mocks AzDO API         |
+| E2E           | Playwright               | login → registrar hora → submeter → aprovar → exportar                         |
+| Accessibility | axe-core + Playwright    | Scan WCAG AA automático em todas as páginas                                    |
 
 ### 8.3 Métricas de Performance (Core Web Vitals)
 
-| Métrica | Meta |
-|---|---|
-| LCP (Largest Contentful Paint) | < 2.5s |
-| INP (Interaction to Next Paint) | < 100ms |
-| CLS (Cumulative Layout Shift) | < 0.1 (target: 0) |
-| TTFB (Time to First Byte) | < 200ms |
-| Lighthouse Score | ≥ 90 em todas as categorias |
-| Bundle JS inicial | < 150KB gzipped |
+| Métrica                         | Meta                        |
+| ------------------------------- | --------------------------- |
+| LCP (Largest Contentful Paint)  | < 2.5s                      |
+| INP (Interaction to Next Paint) | < 100ms                     |
+| CLS (Cumulative Layout Shift)   | < 0.1 (target: 0)           |
+| TTFB (Time to First Byte)       | < 200ms                     |
+| Lighthouse Score                | ≥ 90 em todas as categorias |
+| Bundle JS inicial               | < 150KB gzipped             |
 
 ### 8.4 Observabilidade
 
 - **Vercel Analytics:** Core Web Vitals por rota com alertas de degradação
 - **Vercel Speed Insights:** RUM (Real User Monitoring)
-- **Neon Query Analytics:** latência de queries por tipo e tabela
+- **Azure Monitor + pg_stat_statements:** latência de queries por tipo e tabela
 - **Sentry (free):** captura de erros client + server com stack trace e contexto de usuário
 - **Logs estruturados** em Route Handlers: `{ userId, action, durationMs, status }`
 
@@ -978,18 +1011,18 @@ approved                  rejected → entries voltam a draft
 
 ### 9.1 Ambientes
 
-| Ambiente | URL | Trigger |
-|---|---|---|
-| Development | `localhost:3000` | `next dev` |
-| Preview | `optsolv-time-*.vercel.app` | PR aberto no GitHub |
-| Production | `time.optsolv.com.br` | Merge na `main` |
+| Ambiente    | URL                         | Trigger             |
+| ----------- | --------------------------- | ------------------- |
+| Development | `localhost:3000`            | `next dev`          |
+| Preview     | `optsolv-time-*.vercel.app` | PR aberto no GitHub |
+| Production  | `time.optsolv.com.br`       | Merge na `main`     |
 
 ### 9.2 Variáveis de Ambiente Obrigatórias
 
 ```bash
 # Banco de Dados (servidor only — NUNCA em NEXT_PUBLIC_)
-DATABASE_URL=postgresql://...@ep-xxx.neon.tech/neondb?sslmode=require
-DATABASE_URL_UNPOOLED=postgresql://...@ep-xxx.neon.tech/neondb  # para migrações
+DATABASE_URL=postgresql://...@my-server.postgres.database.azure.com:5432/opt-timer?sslmode=require
+DATABASE_URL_UNPOOLED=postgresql://...@my-server.postgres.database.azure.com:5432/opt-timer?sslmode=require  # para migrações
 
 # Autenticação
 BETTER_AUTH_SECRET=min-32-chars-random-string
@@ -1016,12 +1049,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '22', cache: 'npm' }
+        with: { node-version: "22", cache: "npm" }
       - run: npm ci
-      - run: npx tsc --noEmit                  # Type check
-      - run: npx biome ci .                    # Lint + format
-      - run: npx vitest run --coverage         # Unit + component tests
-      - run: npx next build                    # Build check
+      - run: npx tsc --noEmit # Type check
+      - run: npx biome ci . # Lint + format
+      - run: npx vitest run --coverage # Unit + component tests
+      - run: npx next build # Build check
       # E2E roda em preview URL após deploy Vercel
 ```
 
@@ -1090,13 +1123,13 @@ jobs:
 
 ### 11.1 MVP — Hackathon (v1.0)
 
-| Sprint | Funcionalidades | Status |
-|---|---|---|
+| Sprint   | Funcionalidades                                                | Status       |
+| -------- | -------------------------------------------------------------- | ------------ |
 | Sprint 1 | Setup, Auth (email + Azure AD SSO), Layout base, Design System | Em andamento |
-| Sprint 2 | Dashboard, Timer em tempo real, Registro manual de horas | Planejado |
-| Sprint 3 | Timesheets submit/approve, Calendário com heatmap | Planejado |
-| Sprint 4 | Reports com gráficos, Export Excel/PDF, Landing Page | Planejado |
-| Sprint 5 | Azure DevOps integration, Polish visual, Testes E2E | Planejado |
+| Sprint 2 | Dashboard, Timer em tempo real, Registro manual de horas       | Planejado    |
+| Sprint 3 | Timesheets submit/approve, Calendário com heatmap              | Planejado    |
+| Sprint 4 | Reports com gráficos, Export Excel/PDF, Landing Page           | Planejado    |
+| Sprint 5 | Azure DevOps integration, Polish visual, Testes E2E            | Planejado    |
 
 ### 11.2 Pós-Hackathon (v1.x)
 
@@ -1124,7 +1157,7 @@ jobs:
 
 - [Next.js App Router](https://nextjs.org/docs/app)
 - [Better Auth](https://www.better-auth.com/docs)
-- [Neon PostgreSQL](https://neon.tech/docs)
+- [Azure Database for PostgreSQL](https://learn.microsoft.com/azure/postgresql/)
 - [Drizzle ORM](https://orm.drizzle.team/docs)
 - [Azure DevOps REST API v7.1](https://learn.microsoft.com/en-us/rest/api/azure/devops)
 - [shadcn/ui](https://ui.shadcn.com/docs)
@@ -1142,4 +1175,4 @@ jobs:
 
 ---
 
-*OptSolv Time Tracker — PRD v1.0.0 · Hackathon Interno OptSolv 2026 · Uso Confidencial*
+_OptSolv Time Tracker — PRD v1.0.0 · Hackathon Interno OptSolv 2026 · Uso Confidencial_
