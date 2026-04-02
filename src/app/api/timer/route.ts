@@ -9,6 +9,34 @@ import { db } from "@/lib/db";
 import { activeTimer, project, timeEntry } from "@/lib/db/schema";
 import { startTimerSchema } from "@/lib/validations/time-entry.schema";
 
+function resolveTimeZone(headerValue: string | null): string {
+  if (!headerValue) {
+    return "UTC";
+  }
+
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: headerValue });
+    return headerValue;
+  } catch {
+    return "UTC";
+  }
+}
+
+function formatDateInTimeZone(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * GET - Get the current user's active timer (if any).
  */
@@ -45,6 +73,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
+    const timezone = resolveTimeZone(req.headers.get("x-timezone"));
     const body = await req.json();
     const parsed = startTimerSchema.safeParse(body);
 
@@ -81,7 +110,7 @@ export async function POST(req: Request): Promise<Response> {
     });
 
     if (existingTimer) {
-      await stopTimerAndSave(session.user.id, existingTimer);
+      await stopTimerAndSave(session.user.id, existingTimer, timezone);
     }
 
     const id = crypto.randomUUID();
@@ -167,7 +196,8 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (action === "update") {
       const updates: Record<string, unknown> = {};
-      if (typeof body.description === "string") updates.description = body.description;
+      if (typeof body.description === "string")
+        updates.description = body.description;
       if (typeof body.billable === "boolean") updates.billable = body.billable;
       if (typeof body.azureWorkItemId === "number") {
         updates.azureWorkItemId = body.azureWorkItemId;
@@ -204,6 +234,7 @@ export async function DELETE(req: Request): Promise<Response> {
   }
 
   try {
+    const timezone = resolveTimeZone(req.headers.get("x-timezone"));
     const existing = await db.query.activeTimer.findFirst({
       where: eq(activeTimer.userId, session.user.id),
     });
@@ -212,7 +243,7 @@ export async function DELETE(req: Request): Promise<Response> {
       return Response.json({ error: "Nenhum timer ativo." }, { status: 404 });
     }
 
-    const entry = await stopTimerAndSave(session.user.id, existing);
+    const entry = await stopTimerAndSave(session.user.id, existing, timezone);
 
     return Response.json({ entry });
   } catch (error) {
@@ -224,6 +255,7 @@ export async function DELETE(req: Request): Promise<Response> {
 async function stopTimerAndSave(
   userId: string,
   timer: typeof activeTimer.$inferSelect,
+  timezone: string,
 ) {
   const now = new Date();
   let totalMs = timer.accumulatedMs;
@@ -233,7 +265,7 @@ async function stopTimerAndSave(
   }
 
   const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
-  const dateStr = now.toISOString().slice(0, 10);
+  const dateStr = formatDateInTimeZone(now, timezone);
 
   const entry = await db.transaction(async (tx) => {
     const entryId = crypto.randomUUID();

@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
+import {
+  dispatchTimeEntriesUpdated,
+  dispatchTimerUpdated,
+  TIMER_UPDATED_EVENT,
+} from "@/lib/time-events";
 import { formatTimerDisplay } from "@/lib/utils";
 
 export interface ActiveTimer {
@@ -29,6 +33,14 @@ export function useTimer() {
   const [loading, setLoading] = useState(true);
   const [displayTime, setDisplayTime] = useState("00:00:00");
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const getClientTimeZone = useCallback(() => {
+    if (typeof window === "undefined") {
+      return "UTC";
+    }
+
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  }, []);
 
   const fetchTimer = useCallback(async () => {
     try {
@@ -58,7 +70,17 @@ export function useTimer() {
   useEffect(() => {
     fetchTimer();
     const pollInterval = setInterval(fetchTimer, 5000);
-    return () => clearInterval(pollInterval);
+
+    const handleTimerUpdated = () => {
+      void fetchTimer();
+    };
+
+    window.addEventListener(TIMER_UPDATED_EVENT, handleTimerUpdated);
+
+    return () => {
+      clearInterval(pollInterval);
+      window.removeEventListener(TIMER_UPDATED_EVENT, handleTimerUpdated);
+    };
   }, [fetchTimer]);
 
   // Local tick for display
@@ -90,7 +112,10 @@ export function useTimer() {
     }) => {
       const res = await fetch("/api/timer", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-timezone": getClientTimeZone(),
+        },
         body: JSON.stringify(data),
       });
       if (!res.ok) {
@@ -99,9 +124,10 @@ export function useTimer() {
       }
       const result = await res.json();
       setTimer(result.timer);
+      dispatchTimerUpdated();
       return result.timer as ActiveTimer;
     },
-    [],
+    [getClientTimeZone],
   );
 
   const pauseTimer = useCallback(async () => {
@@ -116,6 +142,7 @@ export function useTimer() {
     }
     const result = await res.json();
     setTimer(result.timer);
+    dispatchTimerUpdated();
   }, []);
 
   const resumeTimer = useCallback(async () => {
@@ -130,10 +157,14 @@ export function useTimer() {
     }
     const result = await res.json();
     setTimer(result.timer);
+    dispatchTimerUpdated();
   }, []);
 
   const stopTimer = useCallback(async () => {
-    const res = await fetch("/api/timer", { method: "DELETE" });
+    const res = await fetch("/api/timer", {
+      method: "DELETE",
+      headers: { "x-timezone": getClientTimeZone() },
+    });
     if (!res.ok) {
       const err = await res.json();
       throw new Error(err.error ?? "Falha ao parar timer");
@@ -141,8 +172,9 @@ export function useTimer() {
     const result = await res.json();
     setTimer(null);
     dispatchTimeEntriesUpdated();
+    dispatchTimerUpdated();
     return result.entry;
-  }, []);
+  }, [getClientTimeZone]);
 
   const updateTimer = useCallback(
     async (data: {
@@ -162,6 +194,7 @@ export function useTimer() {
       }
       const result = await res.json();
       setTimer(result.timer);
+      dispatchTimerUpdated();
     },
     [],
   );

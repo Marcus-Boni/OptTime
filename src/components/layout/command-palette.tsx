@@ -2,11 +2,11 @@
 
 import {
   BarChart3,
-  Calendar,
   CheckSquare,
   Clock,
   Folder,
   Home,
+  Hourglass,
   Layers,
   Lightbulb,
   Link2,
@@ -36,7 +36,7 @@ const navigationItems = [
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   { name: "Relatórios", href: "/dashboard/reports", icon: BarChart3 },
   { name: "Integrações", href: "/dashboard/integrations", icon: Link2 },
-  { name: "Sugestões", href: "/dashboard/suggestions", icon: Lightbulb }
+  { name: "Sugestões", href: "/dashboard/suggestions", icon: Lightbulb },
 ];
 
 const managementItems = [
@@ -55,6 +55,7 @@ export function CommandPalette() {
     commandPaletteOpen,
     closeCommandPalette,
     openQuickEntry,
+    openQuickTimer,
     theme,
     toggleTheme,
   } = useUIStore();
@@ -84,6 +85,11 @@ export function CommandPalette() {
     openQuickEntry();
   };
 
+  const handleNewTimerEntry = () => {
+    closeCommandPalette();
+    openQuickTimer();
+  };
+
   const handleToggleTheme = () => {
     closeCommandPalette();
     toggleTheme();
@@ -104,6 +110,10 @@ export function CommandPalette() {
           <CommandItem onSelect={handleNewEntry}>
             <Plus className="mr-2 h-4 w-4" />
             Novo Registro de Tempo
+          </CommandItem>
+          <CommandItem onSelect={handleNewTimerEntry}>
+            <Hourglass className="mr-2 h-4 w-4" />
+            Novo Registro com Timer
           </CommandItem>
           <CommandItem onSelect={handleToggleTheme}>
             {theme === "dark" ? (

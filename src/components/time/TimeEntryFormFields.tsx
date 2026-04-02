@@ -5,6 +5,7 @@ import { ptBR } from "date-fns/locale";
 import { CalendarClock, CalendarIcon } from "lucide-react";
 import type { UseFormReturn } from "react-hook-form";
 import { DurationInput } from "@/components/time/DurationInput";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -14,13 +15,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -96,30 +90,15 @@ export function TimeEntryFormFields({
     <div className="space-y-5 px-5 py-5 sm:px-6">
       <div className="space-y-1.5">
         <Label>Projeto *</Label>
-        <Select
+        <ProjectCombobox
+          projects={projects}
           value={selectedProjectId}
-          onValueChange={(value) => {
+          onChange={(value) => {
             form.setValue("projectId", value, { shouldValidate: true });
             onWorkItemChange(null);
           }}
-        >
-          <SelectTrigger className="h-11 rounded-md bg-background/80">
-            <SelectValue placeholder="Selecione um projeto" />
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map((project) => (
-              <SelectItem key={project.id} value={project.id}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ backgroundColor: project.color }}
-                  />
-                  {project.name}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          aria-invalid={Boolean(form.formState.errors.projectId)}
+        />
         {form.formState.errors.projectId ? (
           <p className="text-xs text-destructive">
             {form.formState.errors.projectId.message}

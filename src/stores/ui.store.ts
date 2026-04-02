@@ -14,6 +14,8 @@ interface UIState {
   mobileSidebarOpen: boolean;
   /** Whether the quick time-entry dialog is open */
   quickEntryOpen: boolean;
+  /** Whether the quick timer-start dialog is open */
+  quickTimerOpen: boolean;
   /** Context used to prefill the quick time-entry dialog */
   quickEntryContext: {
     date?: string;
@@ -44,6 +46,8 @@ interface UIActions {
   setMobileSidebarOpen: (open: boolean) => void;
   openQuickEntry: (context?: UIState["quickEntryContext"]) => void;
   closeQuickEntry: () => void;
+  openQuickTimer: () => void;
+  closeQuickTimer: () => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
   setTimePageDate: (date: string | null) => void;
@@ -57,6 +61,7 @@ export const useUIStore = create<UIState & UIActions>()(
       activeModal: null,
       mobileSidebarOpen: false,
       quickEntryOpen: false,
+      quickTimerOpen: false,
       quickEntryContext: null,
       commandPaletteOpen: false,
       timePageDate: null,
@@ -74,6 +79,8 @@ export const useUIStore = create<UIState & UIActions>()(
         set({ quickEntryOpen: true, quickEntryContext: context ?? null }),
       closeQuickEntry: () =>
         set({ quickEntryOpen: false, quickEntryContext: null }),
+      openQuickTimer: () => set({ quickTimerOpen: true }),
+      closeQuickTimer: () => set({ quickTimerOpen: false }),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
       setTimePageDate: (date) => set({ timePageDate: date }),

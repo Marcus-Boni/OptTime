@@ -10,18 +10,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useTimer } from "@/hooks/use-timer";
 import { cn } from "@/lib/utils";
 
@@ -77,7 +71,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
 
   useEffect(() => {
     if (hasTimer) {
-      setExpanded(true);
+      setExpanded(false);
     }
   }, [hasTimer]);
 
@@ -171,6 +165,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
 
   return (
     <Card
+      id="timer-widget"
       className={cn(
         "overflow-hidden border-border/60 bg-card/80 shadow-none backdrop-blur",
         isRunning && "border-brand-500/40 bg-brand-500/5",
@@ -278,97 +273,77 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
               </>
             ) : null}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setExpanded((value) => !value)}
-            >
-              {expanded ? (
-                <ChevronUp className="mr-2 h-4 w-4" />
-              ) : (
-                <ChevronDown className="mr-2 h-4 w-4" />
-              )}
-              {expanded ? "Recolher" : "Abrir timer"}
-            </Button>
+            {!hasTimer ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded((value) => !value)}
+              >
+                {expanded ? (
+                  <ChevronUp className="mr-2 h-4 w-4" />
+                ) : (
+                  <ChevronDown className="mr-2 h-4 w-4" />
+                )}
+                {expanded ? "Recolher" : "Abrir timer"}
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        {expanded ? (
+        {expanded && !hasTimer ? (
           <div className="space-y-3 rounded-2xl border border-border/60 bg-background/70 p-4">
-            {!hasTimer ? (
-              <>
-                <div className="grid gap-2 xl:grid-cols-[minmax(0,220px)_minmax(0,1fr)]">
-                  <Select
-                    value={projectId}
-                    onValueChange={(value) => {
-                      setProjectId(value);
-                      setWorkItem(null);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione um projeto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: project.color }}
-                            />
-                            {project.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)]">
+              <ProjectCombobox
+                projects={projects}
+                value={projectId}
+                onChange={(value) => {
+                  setProjectId(value);
+                  setWorkItem(null);
+                }}
+              />
 
-                  <WorkItemCombobox
-                    projectName={
-                      selectedProject?.azureProjectId
-                        ? selectedProject.name
-                        : null
-                    }
-                    value={workItem}
-                    onChange={setWorkItem}
-                    unavailableMessage={workItemUnavailableMessage}
-                  />
+              <WorkItemCombobox
+                projectName={
+                  selectedProject?.azureProjectId ? selectedProject.name : null
+                }
+                value={workItem}
+                onChange={setWorkItem}
+                unavailableMessage={workItemUnavailableMessage}
+              />
 
-                  <Input
-                    type="text"
-                    value={description}
-                    onChange={(event) => setDescription(event.target.value)}
-                    placeholder="No que você está trabalhando?"
-                    onKeyDown={(event) =>
-                      event.key === "Enter" && void handleStart()
-                    }
-                    className="xl:col-span-2"
-                  />
-                </div>
+              <Input
+                type="text"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="No que você está trabalhando?"
+                onKeyDown={(event) =>
+                  event.key === "Enter" && void handleStart()
+                }
+                className="xl:col-span-2"
+              />
+            </div>
 
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 px-3 py-3 text-sm">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      Iniciar temporizador
-                    </p>
-                    <p className="text-muted-foreground">
-                      Ideal para tarefas longas ou concentradas, nao para
-                      registro retroativo em lote.
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-brand-500 text-white hover:bg-brand-600"
-                    onClick={handleStart}
-                    disabled={!projectId}
-                  >
-                    <Play className="mr-1.5 h-3.5 w-3.5" />
-                    Iniciar
-                  </Button>
-                </div>
-              </>
-            ) : null}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed border-border/60 px-3 py-3 text-sm">
+              <div>
+                <p className="font-medium text-foreground">
+                  Iniciar temporizador
+                </p>
+                <p className="text-muted-foreground">
+                  Ideal para tarefas longas ou concentradas, não para registro
+                  retroativo em lote.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                className="bg-brand-500 text-white hover:bg-brand-600"
+                onClick={handleStart}
+                disabled={!projectId}
+              >
+                <Play className="mr-1.5 h-3.5 w-3.5" />
+                Iniciar
+              </Button>
+            </div>
           </div>
         ) : null}
       </CardContent>

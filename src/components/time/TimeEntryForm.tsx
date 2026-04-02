@@ -113,7 +113,7 @@ export function TimeEntryForm({
 
   const loadProjects = useCallback(async () => {
     try {
-      const res = await fetch("/api/projects?status=active&limit=100");
+      const res = await fetch("/api/projects?status=active");
       if (!res.ok) return;
 
       const data = (await res.json()) as { projects?: Project[] };

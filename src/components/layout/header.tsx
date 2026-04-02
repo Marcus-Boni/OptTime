@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Hourglass,
   LogOut,
   Menu,
   Moon,
@@ -18,6 +19,7 @@ import { toast } from "sonner";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
+import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +44,7 @@ export function Header() {
     toggleTheme,
     setMobileSidebarOpen,
     openQuickEntry,
+    openQuickTimer,
     openCommandPalette,
   } = useUIStore();
   const { data: session, isPending } = useSession();
@@ -112,6 +115,10 @@ export function Header() {
     });
   };
 
+  const openTimerQuickStart = () => {
+    openQuickTimer();
+  };
+
   if (isPending || !currentUser) {
     return (
       <header className="sticky top-0 z-30 flex h-16 items-center px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
@@ -157,6 +164,17 @@ export function Header() {
           Novo Registro
         </Button>
 
+        <Button
+          size="sm"
+          variant="outline"
+          className="hidden gap-1.5 md:flex"
+          aria-label="Novo registro com timer"
+          onClick={openTimerQuickStart}
+        >
+          <Hourglass className="h-4 w-4" />
+          Com Timer
+        </Button>
+
         {/* Mobile: icon-only */}
         <Button
           size="icon"
@@ -165,6 +183,16 @@ export function Header() {
           onClick={openRichQuickEntry}
         >
           <Plus className="h-4 w-4" />
+        </Button>
+
+        <Button
+          size="icon"
+          variant="outline"
+          className="md:hidden"
+          aria-label="Novo registro com timer"
+          onClick={openTimerQuickStart}
+        >
+          <Hourglass className="h-4 w-4" />
         </Button>
 
         {/* Search */}
@@ -281,6 +309,7 @@ export function Header() {
       {mounted && (
         <>
           <QuickEntryDialog />
+          <QuickTimerDialog />
           <CommandPalette />
         </>
       )}

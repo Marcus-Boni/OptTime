@@ -183,7 +183,10 @@ export function WorkItemCombobox({
                   : "Nenhum work item disponível neste projeto"}
             </div>
           ) : (
-            <ul className="max-h-60 overflow-auto py-1">
+            <ul
+              className="max-h-60 overflow-auto overscroll-contain py-1"
+              onWheel={(event) => event.stopPropagation()}
+            >
               {filteredItems.map((item) => (
                 <WorkItemOption
                   key={item.id}
