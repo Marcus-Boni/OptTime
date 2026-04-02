@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, Plus, PencilLine } from "lucide-react";
+import { Loader2, PencilLine, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -49,7 +49,7 @@ export default function ReleaseFormDialog({
   onOpenChange,
 }: ReleaseFormDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
-  
+
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
 
@@ -72,7 +72,6 @@ export default function ReleaseFormDialog({
     },
   });
 
-  // Sync form values when opening for a release
   useEffect(() => {
     if (isOpen && release) {
       form.reset({
@@ -83,7 +82,7 @@ export default function ReleaseFormDialog({
     } else if (isOpen && !release) {
       form.reset({ versionTag: "", title: "", description: "" });
     }
-  }, [isOpen, release, form]);
+  }, [form, isOpen, release]);
 
   async function handleSubmit(values: CreateReleaseInput) {
     try {
@@ -130,8 +129,8 @@ export default function ReleaseFormDialog({
         </DialogTrigger>
       )}
 
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
           <DialogTitle>
             {isEdit ? `Editar ${release.versionTag}` : "Nova Release"}
           </DialogTitle>
@@ -145,76 +144,81 @@ export default function ReleaseFormDialog({
         <Form {...form}>
           <form
             onSubmit={form.handleSubmit(handleSubmit)}
-            className="space-y-4"
+            className="flex min-h-0 flex-1 flex-col"
           >
-            <FormField
-              control={form.control}
-              name="versionTag"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel htmlFor="release-version-tag">
-                    Tag da versão
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      id="release-version-tag"
-                      placeholder="v1.2.0"
-                      className="font-mono"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription className="text-xs">
-                    Formato semântico: v1.2.0 ou v2.0.0-beta.1
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
+              <FormField
+                control={form.control}
+                name="versionTag"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="release-version-tag">
+                      Tag da versão
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        id="release-version-tag"
+                        placeholder="v1.2.0"
+                        className="font-mono"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      Formato semântico: v1.2.0 ou v2.0.0-beta.1
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel htmlFor="release-title">Título</FormLabel>
-                  <FormControl>
-                    <Input
-                      id="release-title"
-                      placeholder="Ex: Melhorias no relatório de horas"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="title"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="release-title">Título</FormLabel>
+                    <FormControl>
+                      <Input
+                        id="release-title"
+                        placeholder="Ex: Melhorias no relatório de horas"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel htmlFor="release-description">
-                    Release Notes
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      id="release-description"
-                      placeholder={`## Novidades\n- Adicionamos X\n- Melhoramos Y\n\n## Correções\n- Corrigimos Z`}
-                      className="min-h-[180px] resize-none font-mono text-sm"
-                      aria-describedby="release-description-hint"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription id="release-description-hint" className="text-xs">
-                    Suporta Markdown simples: ## Título, - lista, **negrito**
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+              <FormField
+                control={form.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="release-description">
+                      Release Notes
+                    </FormLabel>
+                    <FormControl>
+                      <Textarea
+                        id="release-description"
+                        placeholder={`## Novidades\n- Adicionamos X\n- Melhoramos Y\n\n## Correções\n- Corrigimos Z`}
+                        className="min-h-[240px] resize-y font-mono text-sm"
+                        aria-describedby="release-description-hint"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription
+                      id="release-description-hint"
+                      className="text-xs"
+                    >
+                      Suporta Markdown simples: ## Título, - lista, **negrito**
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
-            <DialogFooter>
+            <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
               <Button
                 type="button"
                 variant="outline"
