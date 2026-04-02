@@ -198,6 +198,7 @@ export const project = pgTable(
       .notNull(),
   },
   (table) => [
+    uniqueIndex("project_azure_id_unique").on(table.azureProjectId),
     index("project_status_idx").on(table.status),
     index("project_azure_id_idx").on(table.azureProjectId),
     index("project_manager_idx").on(table.managerId),
@@ -217,6 +218,10 @@ export const projectMember = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
+    uniqueIndex("project_member_project_user_unique").on(
+      table.projectId,
+      table.userId,
+    ),
     index("project_member_project_idx").on(table.projectId),
     index("project_member_user_idx").on(table.userId),
   ],

@@ -1,8 +1,11 @@
+import { eq, inArray, like } from "drizzle-orm";
 import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+
+type AzureImportAction = "create" | "join" | "joined";
 
 interface AzureProject {
   id: string;
@@ -11,6 +14,91 @@ interface AzureProject {
   url: string;
   state: string;
   lastUpdateTime: string;
+  importAction: AzureImportAction;
+  platformProjectId: string | null;
+  platformProjectName: string | null;
+  alreadyImported: boolean;
+  alreadyMember: boolean;
+}
+
+function buildProjectCodeBase(name: string) {
+  return (
+    name
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 20) || "PROJECT"
+  );
+}
+
+async function generateUniqueProjectCode(
+  tx: Pick<typeof db, "query">,
+  name: string,
+  azureProjectId: string,
+) {
+  const base = buildProjectCodeBase(name);
+  const azureSuffix = azureProjectId
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 6);
+  const prefixedBase = azureSuffix
+    ? `${base.slice(0, Math.max(1, 20 - azureSuffix.length - 1))}-${azureSuffix}`
+    : base;
+
+  const existing = await tx.query.project.findMany({
+    where: like(project.code, `${prefixedBase}%`),
+    columns: { code: true },
+  });
+
+  const existingCodes = new Set(
+    existing.map((existingProject) => existingProject.code),
+  );
+
+  if (!existingCodes.has(prefixedBase)) {
+    return prefixedBase;
+  }
+
+  let suffix = 1;
+  let candidate = prefixedBase;
+  while (existingCodes.has(candidate)) {
+    const suffixText = `-${suffix}`;
+    candidate = `${prefixedBase.slice(0, Math.max(1, 20 - suffixText.length))}${suffixText}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+function buildImportMessage(summary: {
+  createdCount: number;
+  joinedCount: number;
+  alreadyMemberCount: number;
+}) {
+  const parts: string[] = [];
+
+  if (summary.createdCount > 0) {
+    parts.push(
+      `${summary.createdCount} projeto(s) criado(s) na plataforma`,
+    );
+  }
+
+  if (summary.joinedCount > 0) {
+    parts.push(
+      `${summary.joinedCount} projeto(s) existente(s) vinculado(s) ao seu usuário`,
+    );
+  }
+
+  if (summary.alreadyMemberCount > 0) {
+    parts.push(
+      `${summary.alreadyMemberCount} projeto(s) em que você já fazia parte`,
+    );
+  }
+
+  if (parts.length === 0) {
+    return "Nenhuma alteração foi necessária.";
+  }
+
+  return `${parts.join(". ")}.`;
 }
 
 export async function GET(req: Request): Promise<Response> {
@@ -54,23 +142,96 @@ export async function GET(req: Request): Promise<Response> {
       );
     }
 
-    const data = (await res.json()) as { value: AzureProject[] };
-    const existingProjects = await db.query.project.findMany({
-      columns: { azureProjectId: true },
-    });
-    const importedIds = new Set(
-      existingProjects.map((item) => item.azureProjectId).filter(Boolean),
-    );
+    const data = (await res.json()) as {
+      value: Array<{
+        id: string;
+        name: string;
+        description: string;
+        url: string;
+        state: string;
+        lastUpdateTime: string;
+      }>;
+    };
 
-    const projects = data.value.map((item) => ({
-      id: item.id,
-      name: item.name,
-      description: item.description || "",
-      url: `${orgUrl}/${encodeURIComponent(item.name)}`,
-      state: item.state,
-      lastUpdateTime: item.lastUpdateTime,
-      alreadyImported: importedIds.has(item.id),
-    }));
+    if (data.value.length === 0) {
+      return Response.json({ projects: [] });
+    }
+
+    const azureProjectIds = data.value.map((item) => item.id);
+    const [existingProjects, memberships] = await Promise.all([
+      db.query.project.findMany({
+        where: inArray(project.azureProjectId, azureProjectIds),
+        columns: {
+          id: true,
+          name: true,
+          azureProjectId: true,
+          managerId: true,
+        },
+      }),
+      db.query.projectMember.findMany({
+        where: eq(projectMember.userId, actor.userId),
+        columns: { projectId: true },
+      }),
+    ]);
+
+    const actorProjectIds = new Set(memberships.map((item) => item.projectId));
+    const existingByAzureId = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        managerId: string | null;
+      }
+    >();
+
+    for (const existingProject of existingProjects) {
+      if (!existingProject.azureProjectId) {
+        continue;
+      }
+
+      if (!existingByAzureId.has(existingProject.azureProjectId)) {
+        existingByAzureId.set(existingProject.azureProjectId, {
+          id: existingProject.id,
+          name: existingProject.name,
+          managerId: existingProject.managerId,
+        });
+        continue;
+      }
+
+      console.warn("[GET /api/integrations/azure-devops/projects][duplicate_azure_project_id]", {
+        azureProjectId: existingProject.azureProjectId,
+        keptProjectId: existingByAzureId.get(existingProject.azureProjectId)?.id,
+        duplicateProjectId: existingProject.id,
+      });
+    }
+
+    const projects = data.value.map((item) => {
+      const existingProject = existingByAzureId.get(item.id);
+      const alreadyMember = existingProject
+        ? actorProjectIds.has(existingProject.id) ||
+          existingProject.managerId === actor.userId
+        : false;
+
+      const importAction: AzureImportAction = !existingProject
+        ? "create"
+        : alreadyMember
+          ? "joined"
+          : "join";
+
+      return {
+        id: item.id,
+        name: item.name,
+        description: item.description || "",
+        url: `${orgUrl}/${encodeURIComponent(item.name)}`,
+        state: item.state,
+        lastUpdateTime: item.lastUpdateTime,
+        importAction,
+        platformProjectId: existingProject?.id ?? null,
+        platformProjectName: existingProject?.name ?? null,
+        alreadyImported: Boolean(existingProject),
+        alreadyMember,
+      };
+    });
 
     return Response.json({ projects });
   } catch (error) {
@@ -103,21 +264,56 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const existingProjects = await db.query.project.findMany({
-      columns: { azureProjectId: true },
-    });
-    const importedIds = new Set(
-      existingProjects.map((item) => item.azureProjectId).filter(Boolean),
+    const dedupedProjects = Array.from(
+      new Map(projectsToImport.map((item) => [item.id, item])).values(),
     );
+    const azureProjectIds = dedupedProjects.map((item) => item.id);
 
-    const toInsert = projectsToImport.filter(
-      (item) => !importedIds.has(item.id),
-    );
-    if (toInsert.length === 0) {
-      return Response.json(
-        { message: "Todos os projetos selecionados ja foram importados." },
-        { status: 200 },
-      );
+    const [existingProjects, memberships] = await Promise.all([
+      db.query.project.findMany({
+        where: inArray(project.azureProjectId, azureProjectIds),
+        columns: {
+          id: true,
+          name: true,
+          azureProjectId: true,
+          managerId: true,
+        },
+      }),
+      db.query.projectMember.findMany({
+        where: eq(projectMember.userId, actor.userId),
+        columns: { projectId: true },
+      }),
+    ]);
+
+    const actorProjectIds = new Set(memberships.map((item) => item.projectId));
+    const existingByAzureId = new Map<
+      string,
+      {
+        id: string;
+        name: string;
+        managerId: string | null;
+      }
+    >();
+
+    for (const existingProject of existingProjects) {
+      if (!existingProject.azureProjectId) {
+        continue;
+      }
+
+      if (!existingByAzureId.has(existingProject.azureProjectId)) {
+        existingByAzureId.set(existingProject.azureProjectId, {
+          id: existingProject.id,
+          name: existingProject.name,
+          managerId: existingProject.managerId,
+        });
+        continue;
+      }
+
+      console.warn("[POST /api/integrations/azure-devops/projects][duplicate_azure_project_id]", {
+        azureProjectId: existingProject.azureProjectId,
+        keptProjectId: existingByAzureId.get(existingProject.azureProjectId)?.id,
+        duplicateProjectId: existingProject.id,
+      });
     }
 
     const colors = [
@@ -133,17 +329,60 @@ export async function POST(req: Request): Promise<Response> {
       "#06b6d4",
     ];
 
-    const created = await db.transaction(async (tx) => {
-      const createdProjects = [];
+    const summary = await db.transaction(async (tx) => {
+      const result = {
+        createdCount: 0,
+        joinedCount: 0,
+        alreadyMemberCount: 0,
+        projects: [] as Array<{
+          id: string;
+          name: string;
+          action: AzureImportAction;
+        }>,
+      };
 
-      for (let i = 0; i < toInsert.length; i++) {
-        const item = toInsert[i];
+      for (let i = 0; i < dedupedProjects.length; i++) {
+        const item = dedupedProjects[i];
+        const existingProject = existingByAzureId.get(item.id);
+        const alreadyMember = existingProject
+          ? actorProjectIds.has(existingProject.id) ||
+            existingProject.managerId === actor.userId
+          : false;
+
+        if (existingProject) {
+          if (alreadyMember) {
+            result.alreadyMemberCount += 1;
+            result.projects.push({
+              id: existingProject.id,
+              name: existingProject.name,
+              action: "joined",
+            });
+            continue;
+          }
+
+          await tx
+            .insert(projectMember)
+            .values({
+              id: crypto.randomUUID(),
+              projectId: existingProject.id,
+              userId: actor.userId,
+            })
+            .onConflictDoNothing({
+              target: [projectMember.projectId, projectMember.userId],
+            });
+
+          result.joinedCount += 1;
+          result.projects.push({
+            id: existingProject.id,
+            name: existingProject.name,
+            action: "join",
+          });
+          actorProjectIds.add(existingProject.id);
+          continue;
+        }
+
         const projectId = crypto.randomUUID();
-        const code = item.name
-          .toUpperCase()
-          .replace(/[^A-Z0-9]+/g, "-")
-          .replace(/^-|-$/g, "")
-          .slice(0, 20);
+        const code = await generateUniqueProjectCode(tx, item.name, item.id);
 
         const [newProject] = await tx
           .insert(project)
@@ -158,28 +397,77 @@ export async function POST(req: Request): Promise<Response> {
             source: "azure-devops",
             azureProjectId: item.id,
             azureProjectUrl: item.url || null,
-            managerId: actor.userId,
+            managerId:
+              actor.role === "manager" || actor.role === "admin"
+                ? actor.userId
+                : null,
           })
-          .returning();
+          .onConflictDoNothing({
+            target: project.azureProjectId,
+          })
+          .returning({
+            id: project.id,
+            name: project.name,
+          });
 
-        await tx.insert(projectMember).values({
-          id: crypto.randomUUID(),
-          projectId,
-          userId: actor.userId,
+        const targetProject =
+          newProject ??
+          (await tx.query.project.findFirst({
+            where: eq(project.azureProjectId, item.id),
+            columns: {
+              id: true,
+              name: true,
+              managerId: true,
+            },
+          }));
+
+        if (!targetProject) {
+          throw new Error(
+            `Nao foi possivel localizar o projeto apos importar ${item.name}.`,
+          );
+        }
+
+        await tx
+          .insert(projectMember)
+          .values({
+            id: crypto.randomUUID(),
+            projectId: targetProject.id,
+            userId: actor.userId,
+          })
+          .onConflictDoNothing({
+            target: [projectMember.projectId, projectMember.userId],
+          });
+
+        const action = newProject ? "create" : "join";
+        if (action === "create") {
+          result.createdCount += 1;
+        } else {
+          result.joinedCount += 1;
+        }
+
+        result.projects.push({
+          id: targetProject.id,
+          name: targetProject.name,
+          action,
         });
-
-        createdProjects.push(newProject);
       }
 
-      return createdProjects;
+      return result;
     });
 
     return Response.json(
       {
-        message: `${created.length} projeto(s) importado(s).`,
-        projects: created,
+        message: buildImportMessage(summary),
+        summary: {
+          createdCount: summary.createdCount,
+          joinedCount: summary.joinedCount,
+          alreadyMemberCount: summary.alreadyMemberCount,
+        },
+        projects: summary.projects,
       },
-      { status: 201 },
+      {
+        status: summary.createdCount > 0 || summary.joinedCount > 0 ? 201 : 200,
+      },
     );
   } catch (error) {
     console.error("[POST /api/integrations/azure-devops/projects]:", error);

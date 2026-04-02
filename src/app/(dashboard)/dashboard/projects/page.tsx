@@ -35,7 +35,11 @@ interface AzureProject {
   url: string;
   state: string;
   lastUpdateTime: string;
+  importAction: "create" | "join" | "joined";
+  platformProjectId: string | null;
+  platformProjectName: string | null;
   alreadyImported: boolean;
+  alreadyMember: boolean;
 }
 
 // ─── Animation ─────────────────────────────────────────────────────────────────
@@ -435,10 +439,10 @@ export default function ProjectsPage() {
                     <button
                       key={ap.id}
                       type="button"
-                      disabled={ap.alreadyImported}
+                      disabled={ap.importAction === "joined"}
                       onClick={() => toggleAzureProject(ap.id)}
                       className={`w-full rounded-lg border p-3 text-left transition-all ${
-                        ap.alreadyImported
+                        ap.importAction === "joined"
                           ? "cursor-not-allowed border-border/30 opacity-50"
                           : selectedAzureIds.has(ap.id)
                             ? "border-brand-500 bg-brand-500/5"
@@ -447,22 +451,55 @@ export default function ProjectsPage() {
                     >
                       <div className="flex items-center justify-between">
                         <span className="text-sm font-medium">{ap.name}</span>
-                        {ap.alreadyImported ? (
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] bg-muted text-muted-foreground"
-                          >
-                            Importado
-                          </Badge>
-                        ) : selectedAzureIds.has(ap.id) ? (
-                          <div className="h-4 w-4 rounded-full bg-brand-500" />
-                        ) : (
-                          <div className="h-4 w-4 rounded-full border border-border" />
-                        )}
+                        <div className="flex items-center gap-2">
+                          {ap.importAction === "joined" ? (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-muted text-muted-foreground"
+                            >
+                              Ja faz parte
+                            </Badge>
+                          ) : ap.importAction === "join" ? (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-blue-500/10 text-blue-400"
+                            >
+                              Entrar
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] bg-emerald-500/10 text-emerald-400"
+                            >
+                              Novo
+                            </Badge>
+                          )}
+                          {ap.importAction !== "joined" &&
+                            (selectedAzureIds.has(ap.id) ? (
+                              <div className="h-4 w-4 rounded-full bg-brand-500" />
+                            ) : (
+                              <div className="h-4 w-4 rounded-full border border-border" />
+                            ))}
+                        </div>
                       </div>
                       {ap.description && (
                         <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
                           {ap.description}
+                        </p>
+                      )}
+                      {ap.importAction === "join" && ap.platformProjectName && (
+                        <p className="mt-2 text-[11px] text-blue-400">
+                          Este projeto ja existe na plataforma como{" "}
+                          <span className="font-medium">
+                            {ap.platformProjectName}
+                          </span>
+                          . Ao importar, voce sera adicionado como membro.
+                        </p>
+                      )}
+                      {ap.importAction === "create" && (
+                        <p className="mt-2 text-[11px] text-muted-foreground">
+                          Ao importar, o projeto sera criado na plataforma e
+                          vinculado ao seu usuario.
                         </p>
                       )}
                     </button>

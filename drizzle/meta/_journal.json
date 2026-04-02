@@ -71,6 +71,13 @@
       "when": 1775100109123,
       "tag": "0009_overjoyed_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1775138051125,
+      "tag": "0010_spooky_sandman",
+      "breakpoints": true
     }
   ]
 }
