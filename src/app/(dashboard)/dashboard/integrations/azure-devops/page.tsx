@@ -29,12 +29,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import AzureProjectSyncButton from "@/components/integrations/AzureProjectSyncButton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 import {
   type AzureDevopsConfigInput,
@@ -114,6 +116,10 @@ const itemVariants = {
 };
 
 export default function AzureDevOpsPage() {
+  const { data: session } = authClient.useSession();
+  const sessionUser = session?.user as { role?: string } | undefined;
+  const isAdmin = sessionUser?.role === "admin";
+
   const [isLoadingConfig, setIsLoadingConfig] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -657,6 +663,37 @@ export default function AzureDevOpsPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Admin: Project Name Sync */}
+      {isAdmin && (
+        <motion.div variants={itemVariants}>
+          <Card className="border-border/50 bg-card/80 backdrop-blur">
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <FolderSync className="h-4 w-4 text-brand-500" />
+                <CardTitle className="font-display text-base">
+                  Re-sincronizar Projetos
+                </CardTitle>
+                <Badge
+                  variant="secondary"
+                  className="ml-auto text-[10px] bg-orange-500/10 text-orange-400"
+                >
+                  Admin
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Projetos importados do Azure DevOps ficam armazenados com o nome
+                que tinham no momento da importação. Se um projeto foi renomeado
+                no Azure DevOps, use esta ação para atualizar os nomes na
+                plataforma sem apagar nenhum dado.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <AzureProjectSyncButton />
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Extension Token Section */}
       <motion.div variants={itemVariants}>
