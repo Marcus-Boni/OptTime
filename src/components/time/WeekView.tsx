@@ -39,6 +39,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { DragDropContextMenu } from "@/components/time/DragDropContextMenu";
 import {
@@ -59,6 +60,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Switch } from "@/components/ui/switch";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import {
   getTimesheetStatusLabel,
@@ -84,6 +86,9 @@ interface WeekViewProps {
   weekTimesheetStatus?: string | null;
   weekEntryCount?: number;
   weekTotalMinutes?: number;
+  /** When false, Saturday and Sunday columns are hidden */
+  showWeekends?: boolean;
+  onShowWeekendsChange?: (show: boolean) => void;
 }
 
 type DraggableEntryListeners = ReturnType<typeof useDraggable>["listeners"];
@@ -104,10 +109,13 @@ export function WeekView({
   weekTimesheetStatus,
   weekEntryCount,
   weekTotalMinutes,
+  showWeekends = true,
+  onShowWeekendsChange,
 }: WeekViewProps) {
   const weekStart = startOfISOWeek(referenceDate);
   const weekEnd = endOfISOWeek(referenceDate);
-  const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const allDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  const days = showWeekends ? allDays : allDays.filter((d) => !isWeekend(d));
   const weekNumber = getISOWeek(weekStart);
   const weekYear = getISOWeekYear(weekStart);
   const weekTotalMinutesValue =
@@ -371,24 +379,40 @@ export function WeekView({
             </p>
           ) : null}
 
-          {/* Week progress bar */}
-          <div className="flex w-full items-center gap-3 sm:w-64">
-            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/50">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  weekPercentage >= 1
-                    ? "bg-emerald-500"
-                    : weekPercentage > 0
-                      ? "bg-brand-500"
-                      : "bg-transparent",
-                )}
-                style={{ width: `${weekPercentage * 100}%` }}
+          {/* Week progress bar + weekend toggle */}
+          <div className="flex w-full flex-col gap-2 sm:w-64">
+            <div className="flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted/50">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    weekPercentage >= 1
+                      ? "bg-emerald-500"
+                      : weekPercentage > 0
+                        ? "bg-brand-500"
+                        : "bg-transparent",
+                  )}
+                  style={{ width: `${weekPercentage * 100}%` }}
+                />
+              </div>
+              <span className="text-xs font-medium text-muted-foreground">
+                {Math.round(weekPercentage * 100)}%
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <span
+                id="week-view-weekend-toggle-label"
+                className="text-xs text-muted-foreground"
+              >
+                Exibir fins de semana
+              </span>
+              <Switch
+                checked={showWeekends}
+                onCheckedChange={onShowWeekendsChange}
+                aria-label="Exibir fins de semana na visualização de semana"
+                aria-labelledby="week-view-weekend-toggle-label"
               />
             </div>
-            <span className="text-xs font-medium text-muted-foreground">
-              {Math.round(weekPercentage * 100)}%
-            </span>
           </div>
         </div>
       </div>
@@ -400,28 +424,51 @@ export function WeekView({
         onDragCancel={() => setActiveEntry(null)}
       >
         <div className="overflow-x-auto px-4 py-4 sm:px-5">
-          <div className="grid min-w-[980px] grid-cols-7 gap-2.5">
-            {days.map((day) => {
-              const dayKey = format(day, "yyyy-MM-dd");
-              return (
-                <DroppableColumn
-                  key={dayKey}
-                  day={day}
-                  dayKey={dayKey}
-                  entries={entriesByDate.get(dayKey) ?? []}
-                  dailyTargetMinutes={dailyTargetMinutes}
-                  onDayClick={onDayClick}
-                  onOpenCreateForDate={onOpenCreateForDate}
-                  isEntryDraggable={isEntryDraggable}
-                  isLocked={weekLocked}
-                  lockMessage={weekLockMessage}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onDuplicate={onDuplicate}
-                />
-              );
-            })}
-          </div>
+          <motion.div
+            layout
+            className={cn(
+              "grid gap-2.5",
+              showWeekends
+                ? "min-w-[980px] grid-cols-7"
+                : "min-w-[700px] grid-cols-5",
+            )}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              {days.map((day) => {
+                const dayKey = format(day, "yyyy-MM-dd");
+                return (
+                  <motion.div
+                    key={dayKey}
+                    layout
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.9 }}
+                    transition={{
+                      duration: 0.22,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                      layout: { type: "spring", stiffness: 400, damping: 30 },
+                    }}
+                    className="min-w-0"
+                  >
+                    <DroppableColumn
+                      day={day}
+                      dayKey={dayKey}
+                      entries={entriesByDate.get(dayKey) ?? []}
+                      dailyTargetMinutes={dailyTargetMinutes}
+                      onDayClick={onDayClick}
+                      onOpenCreateForDate={onOpenCreateForDate}
+                      isEntryDraggable={isEntryDraggable}
+                      isLocked={weekLocked}
+                      lockMessage={weekLockMessage}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      onDuplicate={onDuplicate}
+                    />
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
         </div>
 
         <DragOverlay>

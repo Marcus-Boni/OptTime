@@ -12,7 +12,7 @@ import {
   subDays,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Calendar,
   ChevronLeft,
@@ -64,6 +64,9 @@ interface DayViewProps {
   appliedSuggestionCommitKeys: string[];
   onEditSuggestion: (suggestion: TimeSuggestion) => void;
   onIgnoreSuggestion: (suggestion: TimeSuggestion) => void;
+  /** When false, Saturday and Sunday are hidden from the week strip */
+  showWeekends?: boolean;
+  onShowWeekendsChange?: (show: boolean) => void;
 }
 
 function normalizeText(value: string | null | undefined): string {
@@ -94,12 +97,17 @@ export function DayView({
   appliedSuggestionCommitKeys,
   onEditSuggestion,
   onIgnoreSuggestion,
+  showWeekends = true,
+  onShowWeekendsChange,
 }: DayViewProps) {
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
-  const weekDays = eachDayOfInterval({
+  const allWeekDays = eachDayOfInterval({
     start: startOfISOWeek(selectedDate),
     end: endOfISOWeek(selectedDate),
   });
+  const weekDays = showWeekends
+    ? allWeekDays
+    : allWeekDays.filter((d) => !isWeekend(d));
 
   const dayEntries = useMemo(
     () => entries.filter((entry) => entry.date === selectedDateStr),
@@ -210,85 +218,105 @@ export function DayView({
 
         {/* Week strip */}
         <div className="mt-5 px-6">
-          <div className="grid grid-cols-7 gap-1.5">
-            {weekDays.map((day) => {
-              const dayKey = format(day, "yyyy-MM-dd");
-              const dayMinutes = (entriesByDate.get(dayKey) ?? []).reduce(
-                (sum, entry) => sum + entry.duration,
-                0,
-              );
-              const selected = isSameDay(day, selectedDate);
-              const today = isToday(day);
-              const weekend = isWeekend(day);
-              const dayPct =
-                dailyTarget > 0 ? Math.min(dayMinutes / dailyTarget, 1) : 0;
-              const dayComplete = dayPct >= 1;
+          <motion.div
+            layout
+            className={cn(
+              "grid gap-1.5 transition-none",
+              showWeekends ? "grid-cols-7" : "grid-cols-5",
+            )}
+          >
+            <AnimatePresence initial={false} mode="popLayout">
+              {weekDays.map((day) => {
+                const dayKey = format(day, "yyyy-MM-dd");
+                const dayMinutes = (entriesByDate.get(dayKey) ?? []).reduce(
+                  (sum, entry) => sum + entry.duration,
+                  0,
+                );
+                const selected = isSameDay(day, selectedDate);
+                const today = isToday(day);
+                const weekend = isWeekend(day);
+                const dayPct =
+                  dailyTarget > 0 ? Math.min(dayMinutes / dailyTarget, 1) : 0;
+                const dayComplete = dayPct >= 1;
 
-              return (
-                <button
-                  key={dayKey}
-                  type="button"
-                  onClick={() => onSelectedDateChange(day)}
-                  className={cn(
-                    "flex flex-col items-center gap-2 rounded-2xl px-1 py-3 transition-all",
-                    selected
-                      ? "bg-foreground/5 ring-1 ring-foreground/10"
-                      : "hover:bg-muted/40",
-                    weekend && !selected && "opacity-50",
-                  )}
-                >
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
-                    {format(day, "EEE", { locale: ptBR })}
-                  </span>
-
-                  {/* Day number chip */}
-                  <span
-                    className={cn(
-                      "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold",
-                      selected && today
-                        ? "bg-brand-500 text-white"
-                        : selected
-                          ? "bg-foreground text-background"
-                          : today
-                            ? "text-brand-500"
-                            : "text-foreground",
-                    )}
+                return (
+                  <motion.div
+                    key={dayKey}
+                    layout
+                    initial={{ opacity: 0, scale: 0.85 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.85 }}
+                    transition={{
+                      duration: 0.22,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                      layout: { type: "spring", stiffness: 400, damping: 30 },
+                    }}
                   >
-                    {format(day, "d")}
-                  </span>
-
-                  {/* Duration */}
-                  <span
-                    className={cn(
-                      "text-[10px] font-medium",
-                      dayMinutes > 0
-                        ? "text-foreground/70"
-                        : "text-muted-foreground/40",
-                    )}
-                  >
-                    {dayMinutes > 0 ? formatDuration(dayMinutes) : "—"}
-                  </span>
-
-                  {/* Progress bar */}
-                  <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
-                    <div
+                    <button
+                      type="button"
+                      onClick={() => onSelectedDateChange(day)}
                       className={cn(
-                        "h-full rounded-full transition-all",
-                        dayComplete
-                          ? "bg-emerald-500"
-                          : dayMinutes > 0
-                            ? "bg-brand-500"
-                            : "bg-transparent",
+                        "flex w-full flex-col items-center gap-2 rounded-2xl px-1 py-3 transition-colors",
+                        selected
+                          ? "bg-foreground/5 ring-1 ring-foreground/10"
+                          : "hover:bg-muted/40",
+                        weekend && !selected && "opacity-50",
                       )}
-                      style={{
-                        width: `${Math.max(dayPct * 100, dayMinutes > 0 ? 10 : 0)}%`,
-                      }}
-                    />
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                        {format(day, "EEE", { locale: ptBR })}
+                      </span>
+
+                      {/* Day number chip */}
+                      <span
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold",
+                          selected && today
+                            ? "bg-brand-500 text-white"
+                            : selected
+                              ? "bg-foreground text-background"
+                              : today
+                                ? "text-brand-500"
+                                : "text-foreground",
+                        )}
+                      >
+                        {format(day, "d")}
+                      </span>
+
+                      {/* Duration */}
+                      <span
+                        className={cn(
+                          "text-[10px] font-medium",
+                          dayMinutes > 0
+                            ? "text-foreground/70"
+                            : "text-muted-foreground/40",
+                        )}
+                      >
+                        {dayMinutes > 0 ? formatDuration(dayMinutes) : "—"}
+                      </span>
+
+                      {/* Progress bar */}
+                      <div className="h-1 w-full overflow-hidden rounded-full bg-muted/50">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all",
+                            dayComplete
+                              ? "bg-emerald-500"
+                              : dayMinutes > 0
+                                ? "bg-brand-500"
+                                : "bg-transparent",
+                          )}
+                          style={{
+                            width: `${Math.max(dayPct * 100, dayMinutes > 0 ? 10 : 0)}%`,
+                          }}
+                        />
+                      </div>
+                    </button>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </motion.div>
         </div>
 
         {/* Daily progress */}
@@ -325,19 +353,35 @@ export function DayView({
         </div>
 
         <div className="border-t border-border/60 px-6 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <span
-              id="time-assistant-toggle-label"
-              className="text-xs font-medium text-muted-foreground"
-            >
-              Assistente inteligente de horas
-            </span>
-            <Switch
-              checked={assistantEnabled}
-              onCheckedChange={onAssistantEnabledChange}
-              aria-label="Ativar assistente inteligente de horas"
-              aria-labelledby="time-assistant-toggle-label"
-            />
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-3">
+              <span
+                id="time-weekend-toggle-label"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Exibir finais de semana
+              </span>
+              <Switch
+                checked={showWeekends}
+                onCheckedChange={onShowWeekendsChange}
+                aria-label="Exibir finais de semana na visualização de dia"
+                aria-labelledby="time-weekend-toggle-label"
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span
+                id="time-assistant-toggle-label"
+                className="text-xs font-medium text-muted-foreground"
+              >
+                Assistente inteligente de horas
+              </span>
+              <Switch
+                checked={assistantEnabled}
+                onCheckedChange={onAssistantEnabledChange}
+                aria-label="Ativar assistente inteligente de horas"
+                aria-labelledby="time-assistant-toggle-label"
+              />
+            </div>
           </div>
         </div>
       </section>

@@ -122,7 +122,7 @@ export function OutlookEventsList({
       <div className="space-y-3 rounded-[24px] border border-amber-500/30 bg-amber-500/10 p-5 text-sm text-muted-foreground">
         <p>
           A conta Microsoft foi encontrada, mas o token nao pode ser renovado.
-          Reconecte a integracao para continuar usando a agenda.
+          Reconecte a integração para continuar usando a agenda.
         </p>
         <div>
           <Button

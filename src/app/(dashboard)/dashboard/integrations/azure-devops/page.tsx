@@ -4,17 +4,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import {
   AlertCircle,
-  ArrowRight,
   BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Clock,
   Copy,
-  ExternalLink,
   FolderSync,
-  GitBranch,
   Globe,
   KeyRound,
   Link2,
@@ -25,7 +21,6 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -143,7 +138,6 @@ export default function AzureDevOpsPage() {
     register,
     handleSubmit,
     setValue,
-    watch,
     formState: { errors },
   } = useForm<AzureDevopsConfigInput>({
     resolver: zodResolver(azureDevopsConfigSchema),
@@ -153,8 +147,6 @@ export default function AzureDevOpsPage() {
       commitAuthor: "",
     },
   });
-
-  const watchedOrgUrl = watch("organizationUrl");
 
   useEffect(() => {
     async function fetchExtensionToken() {

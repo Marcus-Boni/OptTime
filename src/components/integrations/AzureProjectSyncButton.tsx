@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
@@ -47,10 +47,9 @@ export default function AzureProjectSyncButton({
     setErrorMessage(null);
 
     try {
-      const res = await fetch(
-        "/api/integrations/azure-devops/projects/sync",
-        { method: "PATCH" },
-      );
+      const res = await fetch("/api/integrations/azure-devops/projects/sync", {
+        method: "PATCH",
+      });
 
       const data = await res.json();
 
@@ -73,9 +72,7 @@ export default function AzureProjectSyncButton({
       }
     } catch (err: unknown) {
       const message =
-        err instanceof Error
-          ? err.message
-          : "Erro inesperado ao sincronizar.";
+        err instanceof Error ? err.message : "Erro inesperado ao sincronizar.";
       console.error("[AzureProjectSyncButton] handleSync:", err);
       setErrorMessage(message);
       setStatus("error");
@@ -96,7 +93,11 @@ export default function AzureProjectSyncButton({
           type="button"
           variant="outline"
           size="sm"
-          onClick={status === "error" || status === "success" ? handleReset : handleSync}
+          onClick={
+            status === "error" || status === "success"
+              ? handleReset
+              : handleSync
+          }
           disabled={status === "loading"}
           className={cn(
             "gap-2 text-xs transition-all",

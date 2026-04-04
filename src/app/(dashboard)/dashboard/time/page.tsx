@@ -216,6 +216,9 @@ export default function TimePage() {
   const [assistantEnabled, setAssistantEnabled] = useState(() => {
     return getTimePreferences().assistantEnabled;
   });
+  const [showWeekends, setShowWeekends] = useState(() => {
+    return getTimePreferences().showWeekends;
+  });
   const [weekTimesheet, setWeekTimesheet] = useState<{
     id: string;
     status: string;
@@ -655,6 +658,11 @@ export default function TimePage() {
     saveTimePreference("assistantEnabled", enabled);
   }, []);
 
+  const handleShowWeekendsChange = useCallback((show: boolean) => {
+    setShowWeekends(show);
+    saveTimePreference("showWeekends", show);
+  }, []);
+
   const hideSuggestion = useCallback((fingerprint: string) => {
     setIgnoredSuggestionFingerprints((current) => {
       if (current.includes(fingerprint)) {
@@ -862,6 +870,8 @@ export default function TimePage() {
             appliedSuggestionCommitKeys={appliedSuggestionCommitKeys}
             onEditSuggestion={handleEditSuggestion}
             onIgnoreSuggestion={handleIgnoreSuggestion}
+            showWeekends={showWeekends}
+            onShowWeekendsChange={handleShowWeekendsChange}
           />
         ) : activeView === "week" ? (
           <WeekView
@@ -882,6 +892,8 @@ export default function TimePage() {
             weekTimesheetStatus={weekTimesheet?.status ?? null}
             weekEntryCount={weekEntryCount}
             weekTotalMinutes={weekTotalMinutes}
+            showWeekends={showWeekends}
+            onShowWeekendsChange={handleShowWeekendsChange}
           />
         ) : (
           <MonthView

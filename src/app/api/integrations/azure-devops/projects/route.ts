@@ -114,7 +114,7 @@ export async function GET(req: Request): Promise<Response> {
 
     if (!config) {
       return Response.json(
-        { error: "Integracao com Azure DevOps nao configurada." },
+        { error: "Integração com Azure DevOps não configurada." },
         { status: 400 },
       );
     }

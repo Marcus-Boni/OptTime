@@ -139,8 +139,8 @@ export function OutlookMeetingDrawer({
             <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
             <div className="space-y-3">
               <p className="text-muted-foreground">
-                A conexao Microsoft foi encontrada, mas o refresh token nao esta
-                mais utilizavel. Reconecte a integracao.
+                A conexão Microsoft foi encontrada, mas o refresh token não está
+                mais utilizável. Reconecte a integração.
               </p>
               <Button
                 variant="outline"

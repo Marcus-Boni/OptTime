@@ -4,11 +4,12 @@ import {
   eachDayOfInterval,
   endOfISOWeek,
   format,
+  isWeekend,
   startOfISOWeek,
   subDays,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   BriefcaseBusiness,
   CalendarIcon,
@@ -45,6 +46,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -66,6 +68,7 @@ import type {
   TeamHourUser,
 } from "@/hooks/use-team-hours";
 import { useTeamHours } from "@/hooks/use-team-hours";
+import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 
 const containerVariants = {
@@ -317,6 +320,9 @@ export default function TeamHoursPage() {
   const [selectedEntry, setSelectedEntry] = useState<TeamHourEntry | null>(
     null,
   );
+  const [showWeekends, setShowWeekends] = useState(() =>
+    getTimePreferences().showWeekends,
+  );
   const resetPagination = () => setPage(0);
 
   const deferredSearch = useDeferredValue(search);
@@ -552,9 +558,9 @@ export default function TeamHoursPage() {
         ? eachDayOfInterval({
             start: selectedWeekStartDate,
             end: selectedWeekEndDate,
-          })
+          }).filter((d) => showWeekends || !isWeekend(d))
         : [],
-    [selectedWeekEndDate, selectedWeekStartDate],
+    [selectedWeekEndDate, selectedWeekStartDate, showWeekends],
   );
 
   const weekEntriesMap = useMemo(() => {
@@ -1142,7 +1148,24 @@ export default function TeamHoursPage() {
                           <p className="text-sm text-muted-foreground">
                             {weekLabel}
                           </p>
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <span
+                                id="team-hours-weekend-toggle-label"
+                                className="text-xs text-muted-foreground"
+                              >
+                                Exibir fins de semana
+                              </span>
+                              <Switch
+                                checked={showWeekends}
+                                onCheckedChange={(show) => {
+                                  setShowWeekends(show);
+                                  saveTimePreference("showWeekends", show);
+                                }}
+                                aria-label="Exibir fins de semana na visão de semana"
+                                aria-labelledby="team-hours-weekend-toggle-label"
+                              />
+                            </div>
                             <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
                               {formatDuration(selectedWeekSummary.totalMinutes)}
                             </Badge>
@@ -1177,63 +1200,86 @@ export default function TeamHoursPage() {
                           </div>
                         ) : (
                           <div className="overflow-x-auto">
-                            <div className="grid min-w-[980px] grid-cols-7 gap-3">
-                              {weekDays.map((day) => {
-                                const dayKey = format(day, "yyyy-MM-dd");
-                                const dayEntries =
-                                  weekEntriesMap.get(dayKey) ?? [];
-                                const dayTotal = dayEntries.reduce(
-                                  (sum, entry) => sum + entry.duration,
-                                  0,
-                                );
+                            <motion.div
+                              layout
+                              className={cn(
+                                "grid gap-3",
+                                showWeekends
+                                  ? "min-w-[980px] grid-cols-7"
+                                  : "min-w-[700px] grid-cols-5",
+                              )}
+                            >
+                              <AnimatePresence initial={false} mode="popLayout">
+                                {weekDays.map((day) => {
+                                  const dayKey = format(day, "yyyy-MM-dd");
+                                  const dayEntries =
+                                    weekEntriesMap.get(dayKey) ?? [];
+                                  const dayTotal = dayEntries.reduce(
+                                    (sum, entry) => sum + entry.duration,
+                                    0,
+                                  );
 
-                                return (
-                                  <div
-                                    key={dayKey}
-                                    className="flex min-h-[360px] flex-col rounded-2xl border border-border/60 bg-background/70"
-                                  >
-                                    <div className="border-b border-border/50 px-4 py-4">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div>
-                                          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                            {format(day, "EEE", {
-                                              locale: ptBR,
-                                            })}
-                                          </p>
-                                          <p className="mt-1 font-display text-xl font-semibold text-foreground">
-                                            {format(day, "d")}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="font-mono text-sm font-semibold text-foreground">
-                                            {formatDuration(dayTotal)}
-                                          </p>
-                                          <p className="text-[11px] text-muted-foreground">
-                                            {dayEntries.length} itens
-                                          </p>
+                                  return (
+                                    <motion.div
+                                      key={dayKey}
+                                      layout
+                                      initial={{ opacity: 0, scale: 0.9 }}
+                                      animate={{ opacity: 1, scale: 1 }}
+                                      exit={{ opacity: 0, scale: 0.9 }}
+                                      transition={{
+                                        duration: 0.22,
+                                        ease: [0.25, 0.46, 0.45, 0.94],
+                                        layout: {
+                                          type: "spring",
+                                          stiffness: 400,
+                                          damping: 30,
+                                        },
+                                      }}
+                                      className="flex min-h-[360px] flex-col rounded-2xl border border-border/60 bg-background/70"
+                                    >
+                                      <div className="border-b border-border/50 px-4 py-4">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div>
+                                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                              {format(day, "EEE", {
+                                                locale: ptBR,
+                                              })}
+                                            </p>
+                                            <p className="mt-1 font-display text-xl font-semibold text-foreground">
+                                              {format(day, "d")}
+                                            </p>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className="font-mono text-sm font-semibold text-foreground">
+                                              {formatDuration(dayTotal)}
+                                            </p>
+                                            <p className="text-[11px] text-muted-foreground">
+                                              {dayEntries.length} itens
+                                            </p>
+                                          </div>
                                         </div>
                                       </div>
-                                    </div>
 
-                                    <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                                      {dayEntries.length > 0 ? (
-                                        dayEntries.map((entry) => (
-                                          <WeekEntryCard
-                                            key={entry.id}
-                                            entry={entry}
-                                            onSelect={setSelectedEntry}
-                                          />
-                                        ))
-                                      ) : (
-                                        <div className="flex h-full min-h-28 items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 px-4 text-center text-sm text-muted-foreground">
-                                          Sem registros neste dia
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
+                                      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                                        {dayEntries.length > 0 ? (
+                                          dayEntries.map((entry) => (
+                                            <WeekEntryCard
+                                              key={entry.id}
+                                              entry={entry}
+                                              onSelect={setSelectedEntry}
+                                            />
+                                          ))
+                                        ) : (
+                                          <div className="flex h-full min-h-28 items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 px-4 text-center text-sm text-muted-foreground">
+                                            Sem registros neste dia
+                                          </div>
+                                        )}
+                                      </div>
+                                    </motion.div>
+                                  );
+                                })}
+                              </AnimatePresence>
+                            </motion.div>
                           </div>
                         )}
                       </CardContent>
