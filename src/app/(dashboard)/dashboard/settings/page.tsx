@@ -38,7 +38,6 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUpdateProfile } from "@/hooks/use-update-profile";
 import { useSession } from "@/lib/auth-client";
-import { syncUserClientPreferences } from "@/lib/user-client-preferences";
 import {
   type UpdateProfileFormInput,
   type UpdateProfileInput,
@@ -322,19 +321,6 @@ export default function SettingsPage() {
       return;
     }
 
-    syncUserClientPreferences({
-      ...user,
-      ...data,
-      timeAssistantEnabled:
-        data.timeAssistantEnabled ?? user.timeAssistantEnabled,
-      timeDefaultBillable: data.timeDefaultBillable ?? user.timeDefaultBillable,
-      timeDefaultDuration: data.timeDefaultDuration ?? user.timeDefaultDuration,
-      timeDefaultView: data.timeDefaultView ?? user.timeDefaultView,
-      timeOutlookDefaultOpen:
-        data.timeOutlookDefaultOpen ?? user.timeOutlookDefaultOpen,
-      timeShowWeekends: data.timeShowWeekends ?? user.timeShowWeekends,
-      timeSubmitMode: data.timeSubmitMode ?? user.timeSubmitMode,
-    });
     await refetch();
   }
 

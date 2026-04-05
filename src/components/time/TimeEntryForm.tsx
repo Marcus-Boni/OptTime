@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { OutlookMeetingDrawer } from "@/components/time/OutlookMeetingDrawer";
 import { TimeEntryDialogShell } from "@/components/time/TimeEntryDialogShell";
 import {
@@ -15,7 +14,13 @@ import {
 import { Button } from "@/components/ui/button";
 import type { OutlookEvent } from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
-import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
+import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
+import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
+import {
+  DEFAULT_LOCAL_TIME_PREFERENCES,
+  DEFAULT_PERSISTED_TIME_PREFERENCES,
+  type TimePreferences,
+} from "@/lib/time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { parseLocalDate } from "@/lib/utils";
 
@@ -74,15 +79,22 @@ interface TimeEntryFormProps {
 
 function getDefaultValues(
   initialValues?: TimeEntryFormInitialValues,
+  preferences?: TimePreferences,
 ): TimeEntryFormValues {
-  const preferences = getTimePreferences();
+  const resolvedPreferences =
+    preferences ??
+    ({
+      ...DEFAULT_LOCAL_TIME_PREFERENCES,
+      ...DEFAULT_PERSISTED_TIME_PREFERENCES,
+    } satisfies TimePreferences);
 
   return {
-    projectId: initialValues?.projectId ?? preferences.lastProjectId ?? "",
+    projectId:
+      initialValues?.projectId ?? resolvedPreferences.lastProjectId ?? "",
     description: initialValues?.description ?? "",
     date: initialValues?.date ? parseLocalDate(initialValues.date) : new Date(),
-    duration: initialValues?.duration ?? preferences.defaultDuration,
-    billable: initialValues?.billable ?? preferences.defaultBillable,
+    duration: initialValues?.duration ?? resolvedPreferences.defaultDuration,
+    billable: initialValues?.billable ?? resolvedPreferences.defaultBillable,
   };
 }
 
@@ -94,6 +106,8 @@ export function TimeEntryForm({
   mode = "create",
   allowContinue = true,
 }: TimeEntryFormProps) {
+  const { preferences, saveLastProjectId, updatePreferences } =
+    useUserTimePreferences();
   const [projects, setProjects] = useState<Project[]>([]);
   const [workItem, setWorkItem] = useState<{
     id: number;
@@ -104,13 +118,11 @@ export function TimeEntryForm({
   const [activeDescriptionVariant, setActiveDescriptionVariant] = useState<
     "concise" | "packaged" | null
   >(initialValues?.descriptionVariants?.defaultVariant ?? null);
-  const submitModeRef = useRef<"close" | "continue">(
-    getTimePreferences().submitMode,
-  );
+  const submitModeRef = useRef<"close" | "continue">(preferences.submitMode);
 
   const form = useForm<TimeEntryFormValues>({
     resolver: zodResolver(schema),
-    defaultValues: getDefaultValues(initialValues),
+    defaultValues: getDefaultValues(initialValues, preferences),
   });
 
   const loadProjects = useCallback(async () => {
@@ -136,9 +148,8 @@ export function TimeEntryForm({
       return;
     }
 
-    const preferences = getTimePreferences();
     submitModeRef.current = allowContinue ? preferences.submitMode : "close";
-    form.reset(getDefaultValues(initialValues));
+    form.reset(getDefaultValues(initialValues, preferences));
     setActiveDescriptionVariant(
       initialValues?.descriptionVariants?.defaultVariant ?? null,
     );
@@ -155,7 +166,7 @@ export function TimeEntryForm({
     } else {
       setWorkItem(null);
     }
-  }, [allowContinue, form, initialValues, open]);
+  }, [allowContinue, form, initialValues, open, preferences]);
 
   const selectedDate = form.watch("date");
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
@@ -219,10 +230,19 @@ export function TimeEntryForm({
       });
 
       if (mode === "create") {
-        saveTimePreference("lastProjectId", values.projectId);
-        saveTimePreference("defaultBillable", values.billable);
-        saveTimePreference("defaultDuration", values.duration);
-        saveTimePreference("submitMode", submitModeRef.current);
+        saveLastProjectId(values.projectId);
+
+        void updatePreferences(
+          {
+            timeDefaultBillable: values.billable,
+            timeDefaultDuration: values.duration,
+            timeSubmitMode: submitModeRef.current,
+          },
+          {
+            errorMessage:
+              "O registro foi salvo, mas nao foi possivel atualizar suas preferencias padrao.",
+          },
+        );
       }
 
       if (
@@ -321,7 +341,9 @@ export function TimeEntryForm({
                 <Button
                   type="submit"
                   disabled={
-                    submitting || selectedDateLocked || selectedDateStatusPending
+                    submitting ||
+                    selectedDateLocked ||
+                    selectedDateStatusPending
                   }
                   variant="outline"
                   className="rounded-full"
@@ -343,7 +365,9 @@ export function TimeEntryForm({
                 <Button
                   type="submit"
                   disabled={
-                    submitting || selectedDateLocked || selectedDateStatusPending
+                    submitting ||
+                    selectedDateLocked ||
+                    selectedDateStatusPending
                   }
                   className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
                   title={

@@ -2,7 +2,12 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { CalendarClock, PanelLeftClose, RefreshCw, TriangleAlert } from "lucide-react";
+import {
+  CalendarClock,
+  PanelLeftClose,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { OutlookEventsList } from "@/components/time/OutlookEventsList";
@@ -14,8 +19,8 @@ import {
   useOutlookEvents,
 } from "@/hooks/use-outlook-events";
 import { useTimeEntries } from "@/hooks/use-time-entries";
+import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { signIn } from "@/lib/auth-client";
-import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 
 interface OutlookMeetingDrawerProps {
   open: boolean;
@@ -30,6 +35,7 @@ export function OutlookMeetingDrawer({
   selectedDate,
   onSelectEvent,
 }: OutlookMeetingDrawerProps) {
+  const { preferences, updatePreferences } = useUserTimePreferences();
   const outlook = useOutlookEvents({
     startDate: selectedDate,
     endDate: selectedDate,
@@ -40,16 +46,32 @@ export function OutlookMeetingDrawer({
     to: selectedDate,
   });
 
-  const [defaultOpen, setDefaultOpen] = useState(false);
+  const [defaultOpen, setDefaultOpen] = useState(
+    preferences.outlookDrawerDefaultOpen,
+  );
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    setDefaultOpen(getTimePreferences().outlookDrawerDefaultOpen);
-  }, []);
+    setDefaultOpen(preferences.outlookDrawerDefaultOpen);
+  }, [preferences.outlookDrawerDefaultOpen]);
 
   const handleDefaultOpenChange = (checked: boolean) => {
+    const previousValue = defaultOpen;
     setDefaultOpen(checked);
-    saveTimePreference("outlookDrawerDefaultOpen", checked);
+
+    void (async () => {
+      const success = await updatePreferences(
+        { timeOutlookDefaultOpen: checked },
+        {
+          errorMessage:
+            "Nao foi possivel salvar a abertura automatica do Outlook.",
+        },
+      );
+
+      if (!success) {
+        setDefaultOpen(previousValue);
+      }
+    })();
   };
 
   async function handleReconnectMicrosoft() {
@@ -118,18 +140,18 @@ export function OutlookMeetingDrawer({
 
         <div className="flex flex-1 items-center justify-between rounded-xl border border-border/60 bg-background/50 px-3 py-1.5">
           <p
-          id="outlook-drawer-default-open-label"
-          className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider"
-        >
-          Auto-abrir
-        </p>
-        <Switch
-          size="sm"
-          checked={defaultOpen}
-          onCheckedChange={handleDefaultOpenChange}
-          aria-labelledby="outlook-drawer-default-open-label"
-          className="scale-75 origin-right"
-        />
+            id="outlook-drawer-default-open-label"
+            className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider"
+          >
+            Auto-abrir
+          </p>
+          <Switch
+            size="sm"
+            checked={defaultOpen}
+            onCheckedChange={handleDefaultOpenChange}
+            aria-labelledby="outlook-drawer-default-open-label"
+            className="scale-75 origin-right"
+          />
         </div>
       </div>
 

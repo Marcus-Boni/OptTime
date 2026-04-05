@@ -19,11 +19,11 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
+import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import {
   dispatchTimeEntriesUpdated,
   dispatchTimerUpdated,
 } from "@/lib/time-events";
-import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { useUIStore } from "@/stores/ui.store";
 
@@ -47,6 +47,8 @@ interface ActiveTimerSummary {
 }
 
 export function QuickTimerDialog() {
+  const { preferences, saveLastProjectId, updatePreferences } =
+    useUserTimePreferences();
   const { quickTimerOpen, closeQuickTimer } = useUIStore();
   const todayDate = format(new Date(), "yyyy-MM-dd");
   const todayTimesheetStatus = useTimesheetStatus(
@@ -92,8 +94,6 @@ export function QuickTimerDialog() {
 
     async function loadContext() {
       setLoading(true);
-
-      const preferences = getTimePreferences();
 
       try {
         const [projectsRes, timerRes] = await Promise.all([
@@ -155,7 +155,7 @@ export function QuickTimerDialog() {
     return () => {
       cancelled = true;
     };
-  }, [quickTimerOpen]);
+  }, [preferences.defaultBillable, preferences.lastProjectId, quickTimerOpen]);
 
   const handleStartTimer = async () => {
     if (todayLocked) {
@@ -198,8 +198,14 @@ export function QuickTimerDialog() {
         throw new Error(error.error ?? "Não foi possível iniciar o timer.");
       }
 
-      saveTimePreference("lastProjectId", projectId);
-      saveTimePreference("defaultBillable", billable);
+      saveLastProjectId(projectId);
+      void updatePreferences(
+        { timeDefaultBillable: billable },
+        {
+          errorMessage:
+            "O timer foi iniciado, mas nao foi possivel atualizar sua preferencia de faturamento.",
+        },
+      );
 
       dispatchTimerUpdated();
       dispatchTimeEntriesUpdated();

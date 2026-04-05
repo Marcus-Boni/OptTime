@@ -68,7 +68,7 @@ import type {
   TeamHourUser,
 } from "@/hooks/use-team-hours";
 import { useTeamHours } from "@/hooks/use-team-hours";
-import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
+import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 
 const containerVariants = {
@@ -306,6 +306,7 @@ function getQuickRangeDates(days: number) {
 }
 
 export default function TeamHoursPage() {
+  const { preferences, updatePreferences } = useUserTimePreferences();
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
   const [toDate, setToDate] = useState<Date | undefined>(undefined);
   const [search, setSearch] = useState("");
@@ -320,10 +321,12 @@ export default function TeamHoursPage() {
   const [selectedEntry, setSelectedEntry] = useState<TeamHourEntry | null>(
     null,
   );
-  const [showWeekends, setShowWeekends] = useState(() =>
-    getTimePreferences().showWeekends,
-  );
+  const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
   const resetPagination = () => setPage(0);
+
+  useEffect(() => {
+    setShowWeekends(preferences.showWeekends);
+  }, [preferences.showWeekends]);
 
   const deferredSearch = useDeferredValue(search);
   const fromStr = fromDate ? format(fromDate, "yyyy-MM-dd") : undefined;
@@ -1160,7 +1163,20 @@ export default function TeamHoursPage() {
                                 checked={showWeekends}
                                 onCheckedChange={(show) => {
                                   setShowWeekends(show);
-                                  saveTimePreference("showWeekends", show);
+                                  void (async () => {
+                                    const previousValue = showWeekends;
+                                    const success = await updatePreferences(
+                                      { timeShowWeekends: show },
+                                      {
+                                        errorMessage:
+                                          "Nao foi possivel salvar a exibicao de fins de semana.",
+                                      },
+                                    );
+
+                                    if (!success) {
+                                      setShowWeekends(previousValue);
+                                    }
+                                  })();
                                 }}
                                 aria-label="Exibir fins de semana na visão de semana"
                                 aria-labelledby="team-hours-weekend-toggle-label"

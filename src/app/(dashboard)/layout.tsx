@@ -4,11 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
-import { useSession } from "@/lib/auth-client";
-import { syncUserClientPreferences } from "@/lib/user-client-preferences";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
-import type { User } from "@/types/user";
 
 export default function DashboardLayout({
   children,
@@ -16,19 +13,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
-  const { data: session, isPending } = useSession();
 
   useEffect(() => {
     useUIStore.persist.rehydrate();
   }, []);
-
-  useEffect(() => {
-    if (isPending || !session?.user) {
-      return;
-    }
-
-    syncUserClientPreferences(session.user as unknown as User);
-  }, [isPending, session?.user]);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-background">

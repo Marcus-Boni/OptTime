@@ -25,15 +25,14 @@ import {
   type OutlookEvent,
 } from "@/hooks/use-outlook-events";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
-import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import {
   type TimeSuggestion,
   type TimeSuggestionCommit,
   useTimeSuggestions,
 } from "@/hooks/use-time-suggestions";
+import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useTimesheets } from "@/hooks/use-timesheets";
-import { useSession } from "@/lib/auth-client";
-import { getTimePreferences, saveTimePreference } from "@/lib/time-preferences";
+import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { getWeekPeriod } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
@@ -187,15 +186,15 @@ function estimateCommitDuration(suggestion: TimeSuggestion) {
 }
 
 export default function TimePage() {
-  const { data: session } = useSession();
-  const weeklyCapacityHours =
-    (session?.user as { weeklyCapacity?: number } | undefined)
-      ?.weeklyCapacity ?? 40;
+  const { preferences, updatePreferences, user } = useUserTimePreferences();
+  const weeklyCapacityHours = user?.weeklyCapacity ?? 40;
 
   const openQuickEntry = useUIStore((state) => state.openQuickEntry);
   const setTimePageDate = useUIStore((state) => state.setTimePageDate);
 
-  const [activeView, setActiveView] = useState<TimeView>("week");
+  const [activeView, setActiveView] = useState<TimeView>(
+    preferences.defaultView,
+  );
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [projects, setProjects] = useState<Project[]>([]);
   const [createTarget, setCreateTarget] = useState<
@@ -213,12 +212,10 @@ export default function TimePage() {
     useState<string[]>([]);
   const [ignoredSuggestionFingerprints, setIgnoredSuggestionFingerprints] =
     useState<string[]>([]);
-  const [assistantEnabled, setAssistantEnabled] = useState(() => {
-    return getTimePreferences().assistantEnabled;
-  });
-  const [showWeekends, setShowWeekends] = useState(() => {
-    return getTimePreferences().showWeekends;
-  });
+  const [assistantEnabled, setAssistantEnabled] = useState(
+    preferences.assistantEnabled,
+  );
+  const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
   const [weekTimesheet, setWeekTimesheet] = useState<{
     id: string;
     status: string;
@@ -265,15 +262,16 @@ export default function TimePage() {
   }, [loadProjects]);
 
   useEffect(() => {
-    const preferredView = getTimePreferences().defaultView;
-    if (
-      preferredView === "day" ||
-      preferredView === "week" ||
-      preferredView === "month"
-    ) {
-      setActiveView(preferredView);
-    }
-  }, []);
+    setActiveView(preferences.defaultView);
+  }, [preferences.defaultView]);
+
+  useEffect(() => {
+    setAssistantEnabled(preferences.assistantEnabled);
+  }, [preferences.assistantEnabled]);
+
+  useEffect(() => {
+    setShowWeekends(preferences.showWeekends);
+  }, [preferences.showWeekends]);
 
   useEffect(() => {
     setTimePageDate(format(selectedDate, "yyyy-MM-dd"));
@@ -362,10 +360,26 @@ export default function TimePage() {
     0,
   );
 
-  const handleViewChange = useCallback((view: TimeView) => {
-    setActiveView(view);
-    saveTimePreference("defaultView", view);
-  }, []);
+  const handleViewChange = useCallback(
+    (view: TimeView) => {
+      const previousView = activeView;
+      setActiveView(view);
+
+      void (async () => {
+        const success = await updatePreferences(
+          { timeDefaultView: view },
+          {
+            errorMessage: "Nao foi possivel salvar sua visualizacao padrao.",
+          },
+        );
+
+        if (!success) {
+          setActiveView(previousView);
+        }
+      })();
+    },
+    [activeView, updatePreferences],
+  );
 
   const openCreate = useCallback(
     (overrides?: {
@@ -653,15 +667,49 @@ export default function TimePage() {
     setIgnoredSuggestionFingerprints([]);
   }, [selectedDateStr]);
 
-  const handleAssistantEnabledChange = useCallback((enabled: boolean) => {
-    setAssistantEnabled(enabled);
-    saveTimePreference("assistantEnabled", enabled);
-  }, []);
+  const handleAssistantEnabledChange = useCallback(
+    (enabled: boolean) => {
+      const previousValue = assistantEnabled;
+      setAssistantEnabled(enabled);
 
-  const handleShowWeekendsChange = useCallback((show: boolean) => {
-    setShowWeekends(show);
-    saveTimePreference("showWeekends", show);
-  }, []);
+      void (async () => {
+        const success = await updatePreferences(
+          { timeAssistantEnabled: enabled },
+          {
+            errorMessage:
+              "Nao foi possivel salvar a preferencia do assistente.",
+          },
+        );
+
+        if (!success) {
+          setAssistantEnabled(previousValue);
+        }
+      })();
+    },
+    [assistantEnabled, updatePreferences],
+  );
+
+  const handleShowWeekendsChange = useCallback(
+    (show: boolean) => {
+      const previousValue = showWeekends;
+      setShowWeekends(show);
+
+      void (async () => {
+        const success = await updatePreferences(
+          { timeShowWeekends: show },
+          {
+            errorMessage:
+              "Nao foi possivel salvar a exibicao de fins de semana.",
+          },
+        );
+
+        if (!success) {
+          setShowWeekends(previousValue);
+        }
+      })();
+    },
+    [showWeekends, updatePreferences],
+  );
 
   const hideSuggestion = useCallback((fingerprint: string) => {
     setIgnoredSuggestionFingerprints((current) => {
@@ -760,7 +808,12 @@ export default function TimePage() {
         azureWorkItemTitle: source.azureWorkItemTitle,
       });
     },
-    [openCreate, openSuggestionCreate, selectedDateLockMessage, selectedDateLocked],
+    [
+      openCreate,
+      openSuggestionCreate,
+      selectedDateLockMessage,
+      selectedDateLocked,
+    ],
   );
 
   const handleIgnoreSuggestion = useCallback(
