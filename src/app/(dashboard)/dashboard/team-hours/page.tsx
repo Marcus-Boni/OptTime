@@ -82,6 +82,7 @@ const itemVariants = {
 };
 
 const ITEMS_PER_PAGE = 15;
+const TEAM_HOURS_DAY_LIST_MAX_HEIGHT = 360;
 const QUICK_RANGES = [
   { label: "Todo período", days: null },
   { label: "7 dias", days: 7 },
@@ -1276,7 +1277,13 @@ export default function TeamHoursPage() {
                                         </div>
                                       </div>
 
-                                      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                                      <div
+                                        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+                                        style={{
+                                          maxHeight:
+                                            TEAM_HOURS_DAY_LIST_MAX_HEIGHT,
+                                        }}
+                                      >
                                         {dayEntries.length > 0 ? (
                                           dayEntries.map((entry) => (
                                             <WeekEntryCard
