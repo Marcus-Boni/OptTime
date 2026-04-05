@@ -125,15 +125,23 @@ type Entry = {
   project?: { id: string; name: string; color: string | null };
 };
 
-function getGreeting() {
-  const hour = new Date().getHours();
+function getGreeting(now: Date | null) {
+  if (!now) return "Olá";
+
+  const hour = now.getHours();
   if (hour < 12) return "Bom dia";
   if (hour < 18) return "Boa tarde";
   return "Boa noite";
 }
 
-function getRangeDates(range: RangeOption) {
-  const now = new Date();
+function getRangeDates(range: RangeOption, now: Date | null) {
+  if (!now) {
+    return {
+      from: "",
+      to: "",
+      label: "Carregando período",
+    };
+  }
 
   if (range === "this-week") {
     const start = startOfWeek(now, { weekStartsOn: 1 });
@@ -241,11 +249,12 @@ function EmptyState({
 }
 
 function DashboardContent() {
-  const { data: session } = useSession();
+  const { data: session, isPending: sessionPending } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const chartColors = useChartColors();
   const [range, setRange] = useState<RangeOption>("this-week");
+  const [dashboardNow, setDashboardNow] = useState<Date | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("all");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(true);
@@ -259,7 +268,14 @@ function DashboardContent() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const { from, to, label } = useMemo(() => getRangeDates(range), [range]);
+  const { from, to, label } = useMemo(
+    () => getRangeDates(range, dashboardNow),
+    [dashboardNow, range],
+  );
+
+  useEffect(() => {
+    setDashboardNow(new Date());
+  }, []);
 
   useEffect(() => {
     if (searchParams.get("error") !== "forbidden") return;
@@ -297,6 +313,10 @@ function DashboardContent() {
     const controller = new AbortController();
     const projectQuery =
       selectedProjectId !== "all" ? `&projectId=${selectedProjectId}` : "";
+
+    if (!from || !to) {
+      return () => controller.abort();
+    }
 
     async function loadDashboard() {
       setLoadingDashboard(true);
@@ -358,7 +378,8 @@ function DashboardContent() {
     return () => controller.abort();
   }, [from, selectedProjectId, to]);
 
-  const firstName = session?.user?.name?.split(" ")[0] ?? "";
+  const firstName =
+    dashboardNow && !sessionPending ? session?.user?.name?.split(" ")[0] ?? "" : "";
   const selectedProject =
     selectedProjectId === "all"
       ? null
@@ -373,10 +394,14 @@ function DashboardContent() {
     [projects],
   );
   const activeDays = daySummaries.filter((day) => day.totalMinutes > 0).length;
-  const periodDays = Math.max(
-    differenceInCalendarDays(parseLocalDate(to), parseLocalDate(from)) + 1,
-    1,
-  );
+  const periodDays =
+    from && to
+      ? Math.max(
+          differenceInCalendarDays(parseLocalDate(to), parseLocalDate(from)) +
+            1,
+          1,
+        )
+      : 1;
   const entryCount = daySummaries.reduce((sum, day) => sum + day.entryCount, 0);
   const billableRate =
     totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0;
@@ -509,7 +534,7 @@ function DashboardContent() {
               <div className="space-y-4">
                 <div>
                   <h1 className="font-display text-2xl font-bold text-foreground md:text-3xl">
-                    {getGreeting()}
+                    {getGreeting(dashboardNow)}
                     {firstName ? `, ${firstName}` : ""}! 👋
                   </h1>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
