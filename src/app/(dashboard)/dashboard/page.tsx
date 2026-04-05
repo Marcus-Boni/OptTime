@@ -469,14 +469,14 @@ function DashboardContent() {
     }
   }
 
-  function handleExportPDF() {
+  async function handleExportPDF() {
     if (projectSummaries.length === 0) {
       toast.error("Não há dados para exportar no período selecionado.");
       return;
     }
 
     try {
-      exportSummaryByProjectToPDF({
+      await exportSummaryByProjectToPDF({
         projectData: projectSummaries.map((project) => ({
           projectName: project.projectName,
           totalMinutes: project.totalMinutes,
