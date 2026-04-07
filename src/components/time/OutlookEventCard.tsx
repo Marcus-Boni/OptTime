@@ -10,6 +10,12 @@ import {
 } from "@/hooks/use-outlook-events";
 import { cn, formatDuration } from "@/lib/utils";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 interface OutlookEventCardProps {
   event: OutlookEvent;
   isImported?: boolean;
@@ -21,16 +27,21 @@ export function OutlookEventCard({
   isImported = false,
   onImport,
 }: OutlookEventCardProps) {
-  const organizerName = event.organizer?.emailAddress?.name?.trim();
-
   return (
     <div className="rounded-xl border border-border/60 bg-card/80 p-3 shadow-sm backdrop-blur transition-all hover:border-brand-500/30">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="line-clamp-1 text-sm font-semibold text-foreground">
-              {event.subject || "Sem título"}
-            </h4>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h4 className="line-clamp-1 text-sm font-semibold text-foreground cursor-help decoration-brand-500/20 underline-offset-4 hover:underline">
+                  {event.subject || "Sem título"}
+                </h4>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[300px]">
+                <p className="font-medium">{event.subject || "Sem título"}</p>
+              </TooltipContent>
+            </Tooltip>
             <Badge
               variant={isImported ? "secondary" : "outline"}
               className={cn(

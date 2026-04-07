@@ -20,6 +20,7 @@ import {
   Clock,
   Plus,
   Zap,
+  CalendarClock,
 } from "lucide-react";
 import { useMemo } from "react";
 import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
@@ -27,6 +28,12 @@ import { TimeEntryCard } from "@/components/time/TimeEntryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   type OutlookEvent,
   useOutlookEvents,
@@ -114,7 +121,7 @@ export function DayView({
     [entries, selectedDateStr],
   );
   const totalMinutes = dayEntries.reduce(
-    (sum, entry) => sum + entry.duration,
+    (sum: number, entry: TimeEntry) => sum + entry.duration,
     0,
   );
   const percentage =
@@ -229,7 +236,7 @@ export function DayView({
               {weekDays.map((day) => {
                 const dayKey = format(day, "yyyy-MM-dd");
                 const dayMinutes = (entriesByDate.get(dayKey) ?? []).reduce(
-                  (sum, entry) => sum + entry.duration,
+                  (sum: number, entry: TimeEntry) => sum + entry.duration,
                   0,
                 );
                 const selected = isSameDay(day, selectedDate);
@@ -386,20 +393,22 @@ export function DayView({
         </div>
       </section>
 
-      <SmartSuggestionsPanel
-        enabled={assistantEnabled}
-        suggestions={suggestions}
-        loading={suggestionsLoading}
-        error={suggestionsError}
-        actionsDisabled={selectedDateLocked}
-        actionsDisabledReason={lockMessage}
-        onRetry={onRetrySuggestions}
-        onApply={onApplySuggestion}
-        onApplyCommit={onApplySuggestionCommit}
-        appliedCommitKeys={appliedSuggestionCommitKeys}
-        onEditAndApply={onEditSuggestion}
-        onIgnore={onIgnoreSuggestion}
-      />
+      <AnimatePresence mode="popLayout">
+        <SmartSuggestionsPanel
+          enabled={assistantEnabled}
+          suggestions={suggestions}
+          loading={suggestionsLoading}
+          error={suggestionsError}
+          actionsDisabled={selectedDateLocked}
+          actionsDisabledReason={lockMessage}
+          onRetry={onRetrySuggestions}
+          onApply={onApplySuggestion}
+          onApplyCommit={onApplySuggestionCommit}
+          appliedCommitKeys={appliedSuggestionCommitKeys}
+          onEditAndApply={onEditSuggestion}
+          onIgnore={onIgnoreSuggestion}
+        />
+      </AnimatePresence>
 
       {/* Meeting indicator */}
       {outlook.connected !== false && pendingMeetings.length > 0 && (
@@ -455,29 +464,45 @@ export function DayView({
 
           {/* Meeting chips */}
           {pendingMeetings.length > 1 && (
-            <div className="border-t border-border/40 px-5 py-3">
-              <div className="flex flex-wrap gap-1.5">
-                {pendingMeetings.slice(0, 5).map((meeting) => (
-                  <button
-                    key={meeting.id}
-                    type="button"
-                    onClick={() => onCreateFromOutlook(meeting)}
-                    disabled={selectedDateLocked}
-                    className="flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/30 px-3 py-1 text-xs text-foreground/70 transition hover:border-border hover:bg-muted/60 hover:text-foreground"
-                    title={selectedDateLocked ? lockMessage : undefined}
-                  >
-                    <span className="max-w-48 truncate font-medium">
-                      {meeting.subject || "Sem título"}
-                    </span>
-                  </button>
-                ))}
-                {pendingMeetings.length > 5 && (
-                  <span className="flex items-center px-1 text-xs text-muted-foreground">
-                    +{pendingMeetings.length - 5}
-                  </span>
-                )}
+            <TooltipProvider delayDuration={0}>
+              <div className="border-t border-border/40 px-5 py-3">
+                <div className="flex flex-wrap gap-2">
+                  {pendingMeetings.slice(0, 5).map((meeting) => (
+                    <Tooltip key={meeting.id}>
+                      <TooltipTrigger asChild>
+                        <motion.button
+                          type="button"
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => onCreateFromOutlook(meeting)}
+                          disabled={selectedDateLocked}
+                          className={cn(
+                            "group flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1.5 text-xs text-foreground/80 transition-colors",
+                            "hover:border-brand-500/30 hover:bg-brand-500/5 hover:text-brand-600 dark:hover:text-brand-400",
+                            selectedDateLocked && "opacity-50 cursor-not-allowed",
+                          )}
+                        >
+                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-muted/50 group-hover:bg-brand-500/10">
+                            <CalendarClock className="h-2.5 w-2.5 text-muted-foreground group-hover:text-brand-500" />
+                          </div>
+                          <span className="max-w-[220px] truncate font-medium">
+                            {meeting.subject || "Sem título"}
+                          </span>
+                        </motion.button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom" className="max-w-xs">
+                        {meeting.subject || "Sem título"}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                  {pendingMeetings.length > 5 && (
+                    <div className="flex items-center rounded-lg border border-border/40 bg-muted/10 px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                      +{pendingMeetings.length - 5} MAIS
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            </TooltipProvider>
           )}
         </section>
       )}

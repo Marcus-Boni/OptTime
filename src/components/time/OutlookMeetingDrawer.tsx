@@ -22,6 +22,8 @@ import { useTimeEntries } from "@/hooks/use-time-entries";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { signIn } from "@/lib/auth-client";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
+
 interface OutlookMeetingDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -217,34 +219,36 @@ export function OutlookMeetingDrawer({
   if (!open) return null;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-muted/5 md:bg-background">
-      <div className="border-b border-border/60 px-4 py-4 sm:px-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
-              <CalendarClock className="h-3 w-3" />
-              Agenda do Outlook
+    <TooltipProvider delayDuration={0}>
+      <div className="flex h-full min-h-0 flex-col bg-muted/5 md:bg-background">
+        <div className="border-b border-border/60 px-4 py-4 sm:px-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-muted-foreground/80">
+                <CalendarClock className="h-3 w-3" />
+                Agenda do Outlook
+              </div>
+              <h3 className="mt-0.5 font-display text-sm font-bold capitalize text-foreground">
+                {formattedDate}
+              </h3>
             </div>
-            <h3 className="mt-0.5 font-display text-sm font-bold capitalize text-foreground">
-              {formattedDate}
-            </h3>
-          </div>
 
-          <div className="flex shrink-0 items-center gap-2">
-            {eventCountBadge}
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
-              aria-label="Minimizar agenda"
-            >
-              <PanelLeftClose className="h-4 w-4" />
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              {eventCountBadge}
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                aria-label="Minimizar agenda"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </div>
           </div>
+          {drawerMeta}
         </div>
-        {drawerMeta}
+        {eventsList}
       </div>
-      {eventsList}
-    </div>
+    </TooltipProvider>
   );
 }

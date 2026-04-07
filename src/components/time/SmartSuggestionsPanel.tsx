@@ -13,6 +13,7 @@ import {
   RotateCcw,
   Sparkles,
 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -207,18 +208,16 @@ export function SmartSuggestionsPanel({
     Record<string, boolean>
   >({});
 
-  if (!enabled) {
-    return (
-      <section className="rounded-[28px] border border-border/60 bg-card/80 p-5 shadow-sm">
-        <p className="text-sm text-muted-foreground">
-          Assistente inteligente desativado para este usuário.
-        </p>
-      </section>
-    );
-  }
+  if (!enabled) return null;
 
   return (
-    <section className="rounded-[28px] border border-border/60 bg-card/90 shadow-sm">
+    <motion.section
+      initial={{ opacity: 0, y: -10, height: 0, marginBottom: 0 }}
+      animate={{ opacity: 1, y: 0, height: "auto", marginBottom: 16 }}
+      exit={{ opacity: 0, y: -10, height: 0, marginBottom: 0 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="overflow-hidden rounded-[28px] border border-border/60 bg-card/90 shadow-sm"
+    >
       <div className="flex items-center justify-between gap-3 border-b border-border/60 px-5 py-4">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-brand-500/10 text-brand-500">
@@ -291,7 +290,7 @@ export function SmartSuggestionsPanel({
             return (
               <article
                 key={suggestion.fingerprint}
-                className="rounded-2xl border border-border/60 bg-gradient-to-br from-background/95 to-muted/20 p-4"
+                className="rounded-2xl border border-border/60 bg-linear-to-br from-background/95 to-muted/20 p-4"
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-3">
@@ -519,6 +518,6 @@ export function SmartSuggestionsPanel({
           })
         )}
       </div>
-    </section>
+    </motion.section>
   );
 }
