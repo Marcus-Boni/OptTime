@@ -16,7 +16,6 @@ import {
   TimeEntryForm,
   type TimeEntryFormInitialValues,
 } from "@/components/time/TimeEntryForm";
-import { TimerWidget } from "@/components/time/TimerWidget";
 import { type TimeView, TimeViewTabs } from "@/components/time/TimeViewTabs";
 import { WeekView } from "@/components/time/WeekView";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -57,12 +56,7 @@ const viewSkeletonKeys = [
   "time-view-skeleton-3",
 ];
 
-interface Project {
-  id: string;
-  name: string;
-  color: string;
-  azureProjectId?: string | null;
-}
+
 
 function truncateText(value: string, maxLength: number) {
   if (value.length <= maxLength) {
@@ -196,7 +190,6 @@ export default function TimePage() {
     preferences.defaultView,
   );
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [projects, setProjects] = useState<Project[]>([]);
   const [createTarget, setCreateTarget] = useState<
     TimeEntryFormInitialValues | undefined
   >();
@@ -235,7 +228,7 @@ export default function TimePage() {
     };
   }, [activeView, selectedDate]);
 
-  const { entries, loading, createEntry, updateEntry, deleteEntry, refetch } =
+  const { entries, loading, createEntry, updateEntry, deleteEntry } =
     useTimeEntries({
       from: dateRange.from,
       to: dateRange.to,
@@ -245,21 +238,7 @@ export default function TimePage() {
     enabled: false,
   });
 
-  const loadProjects = useCallback(async () => {
-    try {
-      const response = await fetch("/api/projects?status=active&limit=100");
-      if (!response.ok) return;
 
-      const payload = (await response.json()) as { projects?: Project[] };
-      setProjects(payload.projects ?? []);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
 
   useEffect(() => {
     setActiveView(preferences.defaultView);
@@ -958,15 +937,6 @@ export default function TimePage() {
           />
         )}
       </motion.div>
-
-      <motion.section variants={itemVariants}>
-        <TimerWidget
-          projects={projects}
-          onEntrySaved={() => {
-            refetch();
-          }}
-        />
-      </motion.section>
 
       <TimeEntryForm
         open={Boolean(createTarget)}
