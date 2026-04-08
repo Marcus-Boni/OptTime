@@ -27,6 +27,7 @@ interface Project {
   name: string;
   color: string;
   azureProjectId?: string | null;
+  members?: { userId: string }[];
 }
 
 interface TimerWidgetProps {

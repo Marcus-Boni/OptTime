@@ -15,12 +15,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 interface ProjectOption {
   id: string;
   name: string;
   color: string;
+  members?: { userId: string }[];
 }
 
 interface EmptyOption {
@@ -48,14 +50,22 @@ export function ProjectCombobox({
   "aria-invalid": ariaInvalid,
 }: ProjectComboboxProps) {
   const [open, setOpen] = useState(false);
+  const { data: session } = useSession();
+  const currentUserId = session?.user.id;
 
-  const sortedProjects = useMemo(
-    () =>
-      [...projects].sort((a, b) =>
-        a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
-      ),
-    [projects],
-  );
+  const sortedProjects = useMemo(() => {
+    let filtered = projects;
+    if (currentUserId) {
+      filtered = projects.filter((project) => {
+        if (!project.members) return true;
+        return project.members.some((m) => m.userId === currentUserId);
+      });
+    }
+
+    return [...filtered].sort((a, b) =>
+      a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
+    );
+  }, [projects, currentUserId]);
 
   const selectedProject =
     value === emptyOption?.value

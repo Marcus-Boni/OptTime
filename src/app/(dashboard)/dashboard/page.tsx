@@ -99,6 +99,7 @@ type ProjectOption = {
   name: string;
   code: string;
   color: string | null;
+  members?: { userId: string }[];
 };
 type DaySummary = {
   date: string;
@@ -390,6 +391,7 @@ function DashboardContent() {
         id: project.id,
         name: project.name,
         color: project.color ?? "#94a3b8",
+        members: project.members,
       })),
     [projects],
   );
