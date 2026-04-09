@@ -10,6 +10,15 @@ import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
 
+function safeParseStages(raw: string): string[] {
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * GET /api/projects/[id]
  * Returns full project details inside the actor scope.
@@ -57,6 +66,7 @@ export async function GET(
             role: true,
           },
         },
+        scope: true,
       },
     });
 
@@ -67,7 +77,18 @@ export async function GET(
       );
     }
 
-    return Response.json({ project: found });
+    // Parse scope stages JSON
+    const projectData = found.scope
+      ? {
+          ...found,
+          scope: {
+            ...found.scope,
+            stages: safeParseStages(found.scope.stages),
+          },
+        }
+      : found;
+
+    return Response.json({ project: projectData });
   } catch (error) {
     console.error("[GET /api/projects/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
@@ -137,9 +158,14 @@ export async function PUT(
           status: data.status ?? existing.status,
           billable: data.billable,
           budget: data.budget ?? null,
-          azureProjectId: data.azureProjectId ?? null,
+          azureProjectId: data.azureProjectId !== undefined ? data.azureProjectId : existing.azureProjectId,
           imageUrl: data.imageUrl ?? null,
           managerId,
+          scopeId: data.scopeId ?? null,
+          currentStage: data.currentStage ?? null,
+          commercialName: data.commercialName ?? null,
+          startDate: data.startDate ?? null,
+          endDate: data.endDate ?? null,
         })
         .where(eq(project.id, id));
 
@@ -180,10 +206,22 @@ export async function PUT(
             role: true,
           },
         },
+        scope: true,
       },
     });
 
-    return Response.json({ project: updatedProject });
+    const projectData =
+      updatedProject?.scope
+        ? {
+            ...updatedProject,
+            scope: {
+              ...updatedProject.scope,
+              stages: safeParseStages(updatedProject.scope.stages),
+            },
+          }
+        : updatedProject;
+
+    return Response.json({ project: projectData });
   } catch (error) {
     console.error("[PUT /api/projects/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 /** Valid project status values */
-export type ProjectStatusValue = "active" | "archived" | "completed";
+export type ProjectStatusValue = "active" | "archived" | "completed" | "open";
 
 /** Validation schema for creating/editing a project */
 export const projectSchema = z.object({
@@ -9,6 +9,7 @@ export const projectSchema = z.object({
     .string()
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(100, "Máximo de 100 caracteres"),
+  commercialName: z.string().optional(),
   code: z
     .string()
     .min(2, "Código deve ter pelo menos 2 caracteres")
@@ -23,10 +24,14 @@ export const projectSchema = z.object({
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "Cor deve ser um código hex válido"),
-  status: z.enum(["active", "archived", "completed"]).optional(),
+  status: z.enum(["active", "archived", "completed", "open"]).optional(),
+  currentStage: z.string().optional(),
   billable: z.boolean().default(true),
   budget: z.number().min(0).optional(),
   azureProjectId: z.string().optional(),
+  scopeId: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
   /** Base64 data URI or remote URL for the project cover image */
   imageUrl: z.string().optional().nullable(),
   memberIds: z.array(z.string()).default([]),

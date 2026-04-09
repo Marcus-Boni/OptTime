@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 import {
   ensureManagerAssignableUsers,
   getAccessibleProjectIds,
@@ -8,6 +8,15 @@ import {
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
+
+function safeParseStages(raw: string): string[] {
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? (arr as string[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * GET /api/projects
@@ -56,12 +65,26 @@ export async function GET(req: Request): Promise<Response> {
         manager: {
           columns: { id: true, name: true, email: true, image: true },
         },
+        scope: true,
       },
       orderBy: (table, { desc }) => [desc(table.updatedAt)],
       limit,
     });
 
-    return Response.json({ projects });
+    // Parse scope stages JSON for each project
+    const parsedProjects = projects.map((p) =>
+      p.scope
+        ? {
+            ...p,
+            scope: {
+              ...p.scope,
+              stages: safeParseStages(p.scope.stages),
+            },
+          }
+        : p,
+    );
+
+    return Response.json({ projects: parsedProjects });
   } catch (error) {
     console.error("[GET /api/projects]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
@@ -134,12 +157,17 @@ export async function POST(req: Request): Promise<Response> {
           description: data.description || null,
           clientName: data.clientName || null,
           color: data.color,
-          status: "active",
+          status: data.status ?? "open",
           billable: data.billable,
           budget: data.budget || null,
           source: "manual",
           azureProjectId: data.azureProjectId || null,
           managerId,
+          scopeId: data.scopeId || null,
+          currentStage: data.currentStage || null,
+          commercialName: data.commercialName || null,
+          startDate: data.startDate || null,
+          endDate: data.endDate || null,
         })
         .returning();
 

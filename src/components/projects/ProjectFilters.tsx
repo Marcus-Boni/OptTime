@@ -14,46 +14,52 @@ import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-export type ProjectStatusFilter = "all" | "active" | "archived" | "completed";
+export type ProjectStatusFilter = "all" | "open" | "active" | "archived" | "completed";
 export type ProjectMembershipFilter = "all" | "member";
 
 export interface ProjectFilterState {
   search: string;
   status: ProjectStatusFilter;
   membership: ProjectMembershipFilter;
+  scopeId: string;
 }
 
 export interface ProjectFiltersProps {
   filters: ProjectFilterState;
   onFiltersChange: (filters: ProjectFilterState) => void;
   isPrivileged: boolean;
+  isAdmin: boolean;
   totalCount: number;
   filteredCount: number;
+  availableScopes?: Array<{ id: string; name: string }>;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 const STATUS_OPTIONS: Array<{ value: ProjectStatusFilter; label: string }> = [
   { value: "all", label: "Todos os status" },
-  { value: "active", label: "Ativos" },
-  { value: "completed", label: "Concluídos" },
-  { value: "archived", label: "Arquivados" },
+  { value: "open", label: "Em Aberto" },
+  { value: "active", label: "Em Andamento" },
+  { value: "archived", label: "Arquivado" },
 ];
 
 export function ProjectFilters({
   filters,
   onFiltersChange,
   isPrivileged,
+  isAdmin,
   totalCount,
   filteredCount,
+  availableScopes = [],
 }: ProjectFiltersProps) {
   const hasActiveFilters =
     filters.search !== "" ||
     filters.status !== "all" ||
-    filters.membership !== "all";
+    filters.membership !== "all" ||
+    filters.scopeId !== "all";
 
   function handleReset() {
-    onFiltersChange({ search: "", status: "all", membership: "all" });
+    onFiltersChange({ search: "", status: "all", membership: "all", scopeId: "all" });
   }
 
   return (
@@ -108,6 +114,33 @@ export function ProjectFilters({
             ))}
           </SelectContent>
         </Select>
+
+        {/* Scope filter — only for admin */}
+        {isAdmin && availableScopes.length > 0 && (
+          <Select
+            value={filters.scopeId}
+            onValueChange={(v) =>
+              onFiltersChange({ ...filters, scopeId: v })
+            }
+          >
+            <SelectTrigger
+              id="projects-scope-filter"
+              className="h-9 w-auto min-w-[140px] text-xs"
+            >
+              <SelectValue placeholder="Escopos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all" className="text-xs">
+                Todos os escopos
+              </SelectItem>
+              {availableScopes.map((opt) => (
+                <SelectItem key={opt.id} value={opt.id} className="text-xs">
+                  {opt.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         {/* Membership filter — only for privileged users */}
         {isPrivileged && (

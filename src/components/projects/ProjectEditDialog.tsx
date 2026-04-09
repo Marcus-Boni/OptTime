@@ -5,13 +5,16 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   Archive,
+  CalendarRange,
   CheckCircle2,
+  CircleDot,
   ImagePlus,
   Loader2,
   Palette,
   Save,
   Search,
   Trash2,
+  User as UserIcon,
   Users,
   X,
 } from "lucide-react";
@@ -19,7 +22,7 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import type { ProjectFromAPI, TeamMember } from "@/components/projects/types";
+import type { ProjectFromAPI, ProjectScope, TeamMember } from "@/components/projects/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +44,7 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, getInitials } from "@/lib/utils";
+import { DatePicker } from "@/components/ui/date-picker";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -76,9 +80,15 @@ const editProjectSchema = z.object({
   description: z.string().max(500, "Máximo de 500 caracteres").optional(),
   clientName: z.string().optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Selecione uma cor"),
-  status: z.enum(["active", "archived", "completed"]),
+  status: z.enum(["open", "active", "archived", "completed"]),
   billable: z.boolean(),
   budget: z.string().optional(),
+  commercialName: z.string().optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  scopeId: z.string().optional(),
+  currentStage: z.string().optional(),
+  azureProjectId: z.string().optional(),
 });
 
 type EditProjectInput = z.infer<typeof editProjectSchema>;
@@ -199,6 +209,7 @@ export function ProjectEditDialog({
   isAdmin,
 }: ProjectEditDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [scopes, setScopes] = useState<ProjectScope[]>([]);
   const [people, setPeople] = useState<TeamMember[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(
     new Set(),
@@ -232,9 +243,15 @@ export function ProjectEditDialog({
       description: project.description ?? "",
       clientName: project.clientName ?? "",
       color: project.color,
-      status: project.status as "active" | "archived" | "completed",
+      status: (project.status as "open" | "active" | "archived" | "completed") ?? "open",
       billable: project.billable,
       budget: project.budget?.toString() ?? "",
+      commercialName: project.commercialName ?? "",
+      startDate: project.startDate ?? "",
+      endDate: project.endDate ?? "",
+      scopeId: project.scopeId ?? "",
+      currentStage: project.currentStage ?? "",
+      azureProjectId: project.azureProjectId ?? "",
     });
 
     setSelectedMembers(new Set(project.members.map((m) => m.userId)));
@@ -260,7 +277,20 @@ export function ProjectEditDialog({
       }
     }
 
+    async function fetchScopes() {
+      try {
+        const res = await fetch("/api/project-scopes");
+        if (res.ok) {
+          const data = await res.json() as { scopes: ProjectScope[] };
+          setScopes(data.scopes);
+        }
+      } catch {
+        // Non-critical
+      }
+    }
+
     fetchPeople();
+    fetchScopes();
   }, [open]);
 
   // ─── Image handling ───────────────────────────────────────────────────────────
@@ -320,12 +350,16 @@ export function ProjectEditDialog({
           status: data.status,
           billable: data.billable,
           budget: data.budget ? parseFloat(data.budget) : undefined,
-          // imageData=undefined → keep server value; null → remove; string → new image
           imageUrl: imageData,
-          memberIds: Array.from(selectedMembers).filter(
-            (id) => id !== currentUserId,
-          ),
+          // Send all selected members — the PUT handler deduplicates with managerId
+          memberIds: Array.from(selectedMembers),
           managerId: project.managerId ?? currentUserId,
+          azureProjectId: data.azureProjectId || project.azureProjectId || undefined,
+          commercialName: data.commercialName || null,
+          startDate: data.startDate || null,
+          endDate: data.endDate || null,
+          scopeId: data.scopeId || null,
+          currentStage: data.currentStage || null,
         }),
       });
 
@@ -529,16 +563,16 @@ export function ProjectEditDialog({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="open">
+                            <span className="flex items-center gap-2">
+                              <CircleDot className="h-3.5 w-3.5 text-blue-400" />
+                              Em Aberto
+                            </span>
+                          </SelectItem>
                           <SelectItem value="active">
                             <span className="flex items-center gap-2">
                               <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />
-                              Ativo
-                            </span>
-                          </SelectItem>
-                          <SelectItem value="completed">
-                            <span className="flex items-center gap-2">
-                              <CheckCircle2 className="h-3.5 w-3.5 text-blue-400" />
-                              Concluído
+                              Em Andamento
                             </span>
                           </SelectItem>
                           <SelectItem value="archived">
@@ -573,6 +607,147 @@ export function ProjectEditDialog({
                 </div>
               </div>
             </section>
+
+            <Separator />
+
+            {/* ── Informações Comerciais ───────────────────────────────────── */}
+            <section aria-labelledby="edit-commercial-label" className="space-y-4">
+              <Label
+                id="edit-commercial-label"
+                className="flex items-center gap-2 text-sm font-semibold text-foreground"
+              >
+                <UserIcon className="h-4 w-4" />
+                Informações Comerciais
+              </Label>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="edit-commercial-name">Responsável Comercial</Label>
+                  <Input
+                    id="edit-commercial-name"
+                    placeholder="Ex: João Silva"
+                    {...register("commercialName")}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-start-date">Data Início</Label>
+                  <Controller
+                    control={control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <DatePicker
+                        id="edit-start-date"
+                        value={field.value ?? null}
+                        onChange={(v) => field.onChange(v ?? "")}
+                      />
+                    )}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-end-date">Data Fim</Label>
+                  <Controller
+                    control={control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <DatePicker
+                        id="edit-end-date"
+                        value={field.value ?? null}
+                        onChange={(v) => field.onChange(v ?? "")}
+                      />
+                    )}
+                  />
+                </div>
+              </div>
+            </section>
+
+            {/* ── Escopo (admin only) ───────────────────────────────────── */}
+            {isAdmin && (
+              <>
+                <Separator />
+                <section aria-labelledby="edit-scope-label" className="space-y-4">
+                  <Label
+                    id="edit-scope-label"
+                    className="flex items-center gap-2 text-sm font-semibold text-foreground"
+                  >
+                    <CalendarRange className="h-4 w-4" />
+                    Escopo do Projeto
+                  </Label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {/* Scope selector */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-scope-select">Escopo</Label>
+                      <Controller
+                        control={control}
+                        name="scopeId"
+                        render={({ field }) => {
+                          return (
+                            <Select
+                              value={field.value ?? "none"}
+                              onValueChange={(v) => {
+                                const scopeId = v === "none" ? "" : v;
+                                field.onChange(scopeId);
+                                // Reset stage when scope changes
+                                setValue("currentStage", "");
+                              }}
+                            >
+                              <SelectTrigger id="edit-scope-select" className="h-9">
+                                <SelectValue placeholder="Selecionar escopo..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">
+                                  <span className="italic text-muted-foreground">Sem escopo</span>
+                                </SelectItem>
+                                {scopes.map((scope) => (
+                                  <SelectItem key={scope.id} value={scope.id}>
+                                    {scope.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
+                        }}
+                      />
+                    </div>
+
+                    {/* Stage selector - only shown when scope has stages */}
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-stage-select">Etapa Atual</Label>
+                      <Controller
+                        control={control}
+                        name="currentStage"
+                        render={({ field }) => {
+                          const watchedScopeId = watch("scopeId");
+                          const selectedScope = scopes.find((s) => s.id === watchedScopeId);
+                          const stages = selectedScope?.stages ?? [];
+                          return (
+                            <Select
+                              value={field.value ?? "none"}
+                              onValueChange={(v) => field.onChange(v === "none" ? "" : v)}
+                              disabled={stages.length === 0}
+                            >
+                              <SelectTrigger id="edit-stage-select" className="h-9">
+                                <SelectValue placeholder={stages.length === 0 ? "Selecione um escopo" : "Selecionar etapa..."} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">
+                                  <span className="italic text-muted-foreground">Sem etapa</span>
+                                </SelectItem>
+                                {stages.map((stage) => (
+                                  <SelectItem key={stage} value={stage}>
+                                    {stage}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
+                        }}
+                      />
+                    </div>
+                  </div>
+                </section>
+              </>
+            )}
 
             <Separator />
 

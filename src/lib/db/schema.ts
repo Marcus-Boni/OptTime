@@ -177,8 +177,35 @@ export const invitationRelations = relations(invitation, ({ one }) => ({
 }));
 
 // ─── Project ───────────────────────────────────────────────────────────
-export type ProjectStatus = "active" | "archived" | "completed";
+export type ProjectStatus = "open" | "active" | "archived" | "completed";
 export type ProjectSource = "manual" | "azure-devops";
+
+// ─── Project Scope ────────────────────────────────────────────────────
+
+export const projectScope = pgTable(
+  "project_scope",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    /** JSON array of stage names, e.g. ["Seguro Decisão", "Desenvolvimento"] */
+    stages: text("stages").notNull().default("[]"),
+    /** Default project status for projects associated with this scope */
+    defaultStatus: text("default_status").notNull().default("open"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("project_scope_name_idx").on(table.name)],
+);
+
+export const projectScopeRelations = relations(
+  projectScope,
+  ({ many }) => ({
+    projects: many(project),
+  }),
+);
 
 export const project = pgTable(
   "project",
@@ -189,7 +216,8 @@ export const project = pgTable(
     description: text("description"),
     clientName: text("client_name"),
     color: text("color").notNull().default("#6366f1"),
-    status: text("status").notNull().default("active"),
+    /** open | active | archived | completed (legacy) */
+    status: text("status").notNull().default("open"),
     billable: boolean("billable").notNull().default(true),
     /** Budget in hours */
     budget: integer("budget"),
@@ -202,6 +230,18 @@ export const project = pgTable(
     /** Cover image for the project (base64 data URI or remote URL) */
     imageUrl: text("image_url"),
     managerId: text("manager_id").references(() => user.id),
+    /** Linked scope (admin-managed) */
+    scopeId: text("scope_id").references(() => projectScope.id, {
+      onDelete: "set null",
+    }),
+    /** Current stage within the assigned scope */
+    currentStage: text("current_stage"),
+    /** Commercial responsible name */
+    commercialName: text("commercial_name"),
+    /** Project start date in YYYY-MM-DD format */
+    startDate: text("start_date"),
+    /** Project end date in YYYY-MM-DD format */
+    endDate: text("end_date"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -213,6 +253,7 @@ export const project = pgTable(
     index("project_status_idx").on(table.status),
     index("project_azure_id_idx").on(table.azureProjectId),
     index("project_manager_idx").on(table.managerId),
+    index("project_scope_idx").on(table.scopeId),
   ],
 );
 
@@ -242,6 +283,10 @@ export const projectRelations = relations(project, ({ one, many }) => ({
   manager: one(user, {
     fields: [project.managerId],
     references: [user.id],
+  }),
+  scope: one(projectScope, {
+    fields: [project.scopeId],
+    references: [projectScope.id],
   }),
   members: many(projectMember),
   timeEntries: many(timeEntry),

@@ -1,13 +1,12 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Cloud, Edit2, Folder } from "lucide-react";
+import { CalendarRange, Cloud, Edit2, Folder, Link2, User } from "lucide-react";
 import Link from "next/link";
-
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { cn, getInitials, getStatusColor, isBase64Image } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
+import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
 import type { ProjectFromAPI } from "@/components/projects/types";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -17,6 +16,22 @@ export interface ProjectCardProps {
   isPrivileged: boolean;
   onEdit?: (project: ProjectFromAPI) => void;
 }
+
+// ─── Constants ─────────────────────────────────────────────────────────────────
+
+const STATUS_LABELS: Record<string, string> = {
+  open: "Em Aberto",
+  active: "Em Andamento",
+  archived: "Arquivado",
+  completed: "Concluído",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  open: "bg-blue-500/10 text-blue-400",
+  active: "bg-green-500/10 text-green-400",
+  archived: "bg-neutral-500/10 text-neutral-400",
+  completed: "bg-purple-500/10 text-purple-400",
+};
 
 // ─── Animation ─────────────────────────────────────────────────────────────────
 
@@ -38,21 +53,9 @@ function ProjectImage({
   color: string;
 }) {
   if (imageUrl) {
-    if (isBase64Image(imageUrl)) {
-      return (
-        <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg">
-          {/* biome-ignore lint/performance/noImgElement: data URI — next/image doesn't support base64 */}
-          <img
-            src={imageUrl}
-            alt={`Imagem de ${name}`}
-            className="h-full w-full object-cover"
-          />
-        </div>
-      );
-    }
     return (
-      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg">
-        {/* biome-ignore lint/performance/noImgElement: remote src validated at upload */}
+      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg">
+        {/* biome-ignore lint/performance/noImgElement: data URI or remote URL */}
         <img
           src={imageUrl}
           alt={`Imagem de ${name}`}
@@ -62,10 +65,9 @@ function ProjectImage({
     );
   }
 
-  // Fallback: colored square with initials
   return (
     <div
-      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-white"
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-semibold text-white"
       style={{ backgroundColor: color }}
     >
       {getInitials(name)}
@@ -73,23 +75,24 @@ function ProjectImage({
   );
 }
 
+function formatDate(date: string | null): string | null {
+  if (!date) return null;
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year?.slice(2)}`;
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-export function ProjectCard({
-  project: proj,
-  isPrivileged,
-  onEdit,
-}: ProjectCardProps) {
+export function ProjectCard({ project: proj, isPrivileged, onEdit }: ProjectCardProps) {
   const members = proj.members ?? [];
   const memberCount = members.length;
   const visibleMembers = members.slice(0, 4);
-  const projectBadgeClassName =
-    "min-w-0 max-w-full shrink whitespace-normal break-words text-center leading-tight";
-  const usedPercent = proj.budget
-    ? Math.min(Math.round((0 / proj.budget) * 100), 100)
-    : 0;
-
   const isArchived = proj.status === "archived";
+
+  const statusLabel = STATUS_LABELS[proj.status] ?? proj.status;
+  const statusColorClass = STATUS_COLORS[proj.status] ?? "bg-neutral-500/10 text-neutral-400";
+
+  const hasDateRange = proj.startDate || proj.endDate;
 
   return (
     <motion.div
@@ -109,19 +112,15 @@ export function ProjectCard({
               isArchived && "opacity-60",
             )}
           >
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-start gap-3">
-                <ProjectImage
-                  imageUrl={proj.imageUrl}
-                  name={proj.name}
-                  color={proj.color}
-                />
+                <ProjectImage imageUrl={proj.imageUrl} name={proj.name} color={proj.color} />
                 <div className="min-w-0 flex-1 overflow-hidden">
+                  {/* Title + edit button */}
                   <div className="flex min-w-0 items-start gap-1.5">
                     <CardTitle className="min-w-0 flex-1 wrap-break-word font-display text-sm font-semibold leading-snug line-clamp-2">
                       {proj.name}
                     </CardTitle>
-                    {/* Edit button — integrated to the title area */}
                     {isPrivileged && onEdit && (
                       <button
                         type="button"
@@ -141,34 +140,39 @@ export function ProjectCard({
                       </button>
                     )}
                   </div>
+
+                  {/* Client */}
                   {proj.clientName && (
                     <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
                       {proj.clientName}
                     </p>
                   )}
-                  {/* Badges always below title — never overflow */}
+
+                  {/* Status + scope stage + azure badges */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1">
                     <Badge
                       variant="secondary"
                       className={cn(
-                        projectBadgeClassName,
-                        "text-[10px]",
-                        getStatusColor(proj.status),
+                        "min-w-0 max-w-full shrink whitespace-normal wrap-break-word text-center leading-tight text-[10px]",
+                        statusColorClass,
                       )}
                     >
-                      {proj.status === "active"
-                        ? "Ativo"
-                        : proj.status === "completed"
-                          ? "Concluído"
-                          : "Arquivado"}
+                      {statusLabel}
                     </Badge>
+
+                    {proj.currentStage && (
+                      <Badge
+                        variant="secondary"
+                        className="min-w-0 max-w-full shrink whitespace-normal break-words text-center leading-tight text-[10px] bg-orange-500/10 text-orange-400"
+                      >
+                        {proj.currentStage}
+                      </Badge>
+                    )}
+
                     {proj.source === "azure-devops" && (
                       <Badge
                         variant="secondary"
-                        className={cn(
-                          projectBadgeClassName,
-                          "bg-blue-500/10 px-1.5 py-0 text-[9px] text-blue-400",
-                        )}
+                        className="bg-blue-500/10 px-1.5 py-0 text-[9px] text-blue-400"
                       >
                         <Cloud className="h-2.5 w-2.5 mr-0.5" />
                         Azure
@@ -180,32 +184,59 @@ export function ProjectCard({
             </CardHeader>
 
             <CardContent className="space-y-3">
+              {/* Description */}
               {proj.description && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {proj.description}
-                </p>
+                <p className="text-xs text-muted-foreground line-clamp-2">{proj.description}</p>
               )}
 
-              {proj.budget && (
-                <div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Budget</span>
-                    <span className="font-mono text-foreground">
-                      {proj.budget}h
+              {/* Commercial info */}
+              <div className="space-y-1">
+                {proj.commercialName && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <User className="h-3 w-3 shrink-0 text-neutral-500" />
+                    <span className="truncate">{proj.commercialName}</span>
+                  </div>
+                )}
+                {hasDateRange && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <CalendarRange className="h-3 w-3 shrink-0 text-neutral-500" />
+                    <span className="font-mono">
+                      {formatDate(proj.startDate) ?? "—"}
+                      {" → "}
+                      {formatDate(proj.endDate) ?? "—"}
                     </span>
                   </div>
-                  <Progress value={usedPercent} className="mt-1.5 h-1.5" />
-                </div>
-              )}
+                )}
+              </div>
 
+              {/* Progress bar (lazy-loaded from Azure DevOps) */}
+              {proj.azureProjectId ? (
+                <ProjectProgressBar
+                  projectId={proj.id}
+                  azureProjectId={proj.azureProjectId}
+                />
+              ) : isPrivileged ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit?.(proj);
+                  }}
+                  className="flex items-center gap-1 text-[10px] text-neutral-600 transition-colors hover:text-orange-400"
+                >
+                  <Link2 className="h-2.5 w-2.5" />
+                  Vincular Azure DevOps
+                </button>
+              ) : null}
+
+              {/* Members */}
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <Folder className="h-3 w-3 shrink-0" />
                   <span className="whitespace-nowrap">
-                    {memberCount} membro
-                    {memberCount !== 1 && "s"}
+                    {memberCount} membro{memberCount !== 1 && "s"}
                   </span>
-                  {/* Member avatars */}
                   {memberCount > 0 && (
                     <div className="ml-1 flex shrink-0 -space-x-1.5">
                       {visibleMembers.map((m) => (
@@ -242,10 +273,7 @@ export function ProjectCard({
                 {proj.billable && (
                   <Badge
                     variant="secondary"
-                    className={cn(
-                      projectBadgeClassName,
-                      "bg-green-500/10 text-[10px] text-green-400",
-                    )}
+                    className="bg-green-500/10 text-[10px] text-green-400"
                   >
                     Billable
                   </Badge>

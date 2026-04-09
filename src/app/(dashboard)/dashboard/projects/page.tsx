@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Cloud, Folder, Loader2, Plus, Search } from "lucide-react";
+import { Cloud, Folder, Loader2, Plus, Search, Tag } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -71,6 +71,7 @@ export default function ProjectsPage() {
     search: "",
     status: "active",
     membership: "all",
+    scopeId: "all",
   });
 
   // ─── Edit dialog ───────────────────────────────────────────────────────────
@@ -117,10 +118,23 @@ export default function ProjectsPage() {
 
   // ─── Filtered projects (client-side) ──────────────────────────────────────
 
+  const availableScopes = useMemo(() => {
+    const scopesMap = new Map<string, string>();
+    for (const p of projects) {
+        if (p.scope) scopesMap.set(p.scope.id, p.scope.name);
+    }
+    return Array.from(scopesMap.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [projects]);
+
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
       // Status filter
       if (filters.status !== "all" && p.status !== filters.status) return false;
+
+      // Scope filter (Admin only)
+      if (isAdmin && filters.scopeId !== "all" && p.scopeId !== filters.scopeId) return false;
 
       // Membership filter (privileged only)
       if (
@@ -142,7 +156,7 @@ export default function ProjectsPage() {
 
       return true;
     });
-  }, [projects, filters, isPrivileged, currentUserId]);
+  }, [projects, filters, isAdmin, isPrivileged, currentUserId]);
 
   // ─── Edit handlers ─────────────────────────────────────────────────────────
 
@@ -276,6 +290,14 @@ export default function ProjectsPage() {
             <Cloud className="h-4 w-4" />
             Importar do Azure
           </Button>
+          {isAdmin && (
+            <Link href="/dashboard/projects/scopes">
+              <Button variant="outline" className="gap-1.5">
+                <Tag className="h-4 w-4" />
+                Escopos
+              </Button>
+            </Link>
+          )}
           {isPrivileged && (
             <Link href="/dashboard/projects/new">
               <Button className="gap-1.5 bg-brand-500 text-white hover:bg-brand-600">
@@ -293,8 +315,10 @@ export default function ProjectsPage() {
           filters={filters}
           onFiltersChange={setFilters}
           isPrivileged={isPrivileged}
+          isAdmin={isAdmin}
           totalCount={projects.length}
           filteredCount={filteredProjects.length}
+          availableScopes={availableScopes}
         />
       </motion.div>
 
