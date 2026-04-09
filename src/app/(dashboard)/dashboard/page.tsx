@@ -10,7 +10,7 @@ import {
   subMonths,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -41,6 +41,7 @@ import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DatePicker } from "@/components/ui/date-picker";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -52,6 +53,10 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { useSession } from "@/lib/auth-client";
+import {
+  getDefaultDashboardCustomRange,
+  resolveDashboardRange,
+} from "@/lib/dashboard/date-range";
 import { exportSummaryByProjectToExcel } from "@/lib/export/excel";
 import { exportSummaryByProjectToPDF } from "@/lib/export/pdf";
 import {
@@ -63,9 +68,11 @@ import {
 
 const RANGE_OPTIONS = [
   { value: "this-week", label: "Esta semana" },
+  { value: "last-week", label: "Semana passada" },
   { value: "this-month", label: "Este mês" },
   { value: "last-month", label: "Mês passado" },
   { value: "last-3-months", label: "Últimos 3 meses" },
+  { value: "custom", label: "Personalizado" },
 ] as const;
 
 const PIE_COLORS = [
@@ -135,7 +142,7 @@ function getGreeting(now: Date | null) {
   return "Boa noite";
 }
 
-function getRangeDates(range: RangeOption, now: Date | null) {
+function _getRangeDates(range: RangeOption, now: Date | null) {
   if (!now) {
     return {
       from: "",
@@ -255,6 +262,13 @@ function DashboardContent() {
   const searchParams = useSearchParams();
   const chartColors = useChartColors();
   const [range, setRange] = useState<RangeOption>("this-week");
+  const [customRange, setCustomRange] = useState<{
+    from: string | null;
+    to: string | null;
+  }>({
+    from: null,
+    to: null,
+  });
   const [dashboardNow, setDashboardNow] = useState<Date | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("all");
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -269,14 +283,51 @@ function DashboardContent() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
-  const { from, to, label } = useMemo(
-    () => getRangeDates(range, dashboardNow),
-    [dashboardNow, range],
+  const {
+    from,
+    to,
+    label,
+    error: rangeError,
+    isReady: isRangeReady,
+    usesWeekdayLabels,
+  } = useMemo(
+    () =>
+      resolveDashboardRange({
+        range,
+        now: dashboardNow,
+        customRange,
+      }),
+    [customRange, dashboardNow, range],
   );
 
   useEffect(() => {
     setDashboardNow(new Date());
   }, []);
+
+  const resetDashboardData = useCallback(() => {
+    setDaySummaries([]);
+    setProjectSummaries([]);
+    setRecentEntries([]);
+    setTotalMinutes(0);
+    setBillableMinutes(0);
+    setLoadingDashboard(false);
+    setLoadingEntries(false);
+    setDataError(null);
+  }, []);
+
+  function handleRangeChange(value: string) {
+    const nextRange = value as RangeOption;
+
+    if (nextRange === "custom" && (!customRange.from || !customRange.to)) {
+      if (from && to) {
+        setCustomRange({ from, to });
+      } else if (dashboardNow) {
+        setCustomRange(getDefaultDashboardCustomRange(dashboardNow));
+      }
+    }
+
+    setRange(nextRange);
+  }
 
   useEffect(() => {
     if (searchParams.get("error") !== "forbidden") return;
@@ -315,7 +366,12 @@ function DashboardContent() {
     const projectQuery =
       selectedProjectId !== "all" ? `&projectId=${selectedProjectId}` : "";
 
-    if (!from || !to) {
+    if (!dashboardNow) {
+      return () => controller.abort();
+    }
+
+    if (!isRangeReady || !from || !to) {
+      resetDashboardData();
       return () => controller.abort();
     }
 
@@ -360,11 +416,7 @@ function DashboardContent() {
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") return;
         if (!controller.signal.aborted) {
-          setDaySummaries([]);
-          setProjectSummaries([]);
-          setRecentEntries([]);
-          setTotalMinutes(0);
-          setBillableMinutes(0);
+          resetDashboardData();
           setDataError("Não foi possível carregar os dados do dashboard.");
         }
       } finally {
@@ -377,7 +429,14 @@ function DashboardContent() {
 
     void loadDashboard();
     return () => controller.abort();
-  }, [from, selectedProjectId, to]);
+  }, [
+    dashboardNow,
+    from,
+    isRangeReady,
+    resetDashboardData,
+    selectedProjectId,
+    to,
+  ]);
 
   const firstName =
     dashboardNow && !sessionPending
@@ -414,19 +473,37 @@ function DashboardContent() {
   const averageEntriesPerActiveDay =
     activeDays > 0 ? Math.round((entryCount / activeDays) * 10) / 10 : 0;
   const topProject = projectSummaries[0] ?? null;
+  const customRangeHelperText =
+    range === "custom"
+      ? (rangeError ??
+        (isRangeReady
+          ? "Período personalizado aplicado ao dashboard."
+          : "Selecione a data inicial e a data final para aplicar o filtro personalizado."))
+      : null;
+  const emptyStateContent =
+    range === "custom" && !isRangeReady
+      ? {
+          title: rangeError
+            ? "Intervalo inválido"
+            : "Defina um período personalizado",
+          description:
+            rangeError ??
+            "Informe a data inicial e a data final para carregar os dados do dashboard.",
+        }
+      : null;
 
-  const summaryText =
-    totalMinutes > 0
+  const summaryText = !isRangeReady
+    ? "Defina um intervalo válido para carregar o resumo do dashboard."
+    : totalMinutes > 0
       ? `${formatDuration(totalMinutes)} registrados em ${activeDays} dias com atividade, ${billableRate}% faturáveis${topProject ? ` e maior concentração em ${topProject.projectName}` : ""}.`
       : "Use os filtros para acompanhar sua distribuição de horas, exportar os dados e entender onde seu tempo está sendo investido.";
 
   const barData = daySummaries.map((day) => ({
-    day:
-      range === "this-week"
-        ? format(parseLocalDate(day.date), "EEE", { locale: ptBR })
-            .replace(".", "")
-            .replace(/^\w/, (value) => value.toUpperCase())
-        : format(parseLocalDate(day.date), "dd/MM", { locale: ptBR }),
+    day: usesWeekdayLabels
+      ? format(parseLocalDate(day.date), "EEE", { locale: ptBR })
+          .replace(".", "")
+          .replace(/^\w/, (value) => value.toUpperCase())
+      : format(parseLocalDate(day.date), "dd/MM", { locale: ptBR }),
     hours: Math.round((day.totalMinutes / 60) * 10) / 10,
   }));
 
@@ -534,8 +611,22 @@ function DashboardContent() {
       <motion.div variants={itemVariants}>
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardContent className="flex flex-col gap-6 p-6">
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-              <div className="space-y-4">
+            <motion.div
+              layout
+              transition={{
+                duration: 0.24,
+                ease: [0.25, 0.46, 0.45, 0.94],
+              }}
+              className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"
+            >
+              <motion.div
+                layout="position"
+                transition={{
+                  duration: 0.24,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                }}
+                className="space-y-4"
+              >
                 <div>
                   <h1 className="font-display text-2xl font-bold text-foreground md:text-3xl">
                     {getGreeting(dashboardNow)}
@@ -570,18 +661,29 @@ function DashboardContent() {
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
                   {summaryText}
                 </p>
-              </div>
+              </motion.div>
 
-              <div className="flex w-full flex-col gap-3 xl:max-w-xl">
-                <div className="grid gap-3 sm:grid-cols-2">
+              <motion.div
+                layout
+                transition={{
+                  duration: 0.24,
+                  ease: [0.25, 0.46, 0.45, 0.94],
+                }}
+                className="flex w-full flex-col gap-3 xl:max-w-xl"
+              >
+                <motion.div
+                  layout
+                  transition={{
+                    duration: 0.24,
+                    ease: [0.25, 0.46, 0.45, 0.94],
+                  }}
+                  className="grid gap-3 sm:grid-cols-2"
+                >
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                       Período
                     </p>
-                    <Select
-                      value={range}
-                      onValueChange={(value) => setRange(value as RangeOption)}
-                    >
+                    <Select value={range} onValueChange={handleRangeChange}>
                       <SelectTrigger className="w-full">
                         <SelectValue />
                       </SelectTrigger>
@@ -608,7 +710,70 @@ function DashboardContent() {
                       disabled={projectsLoading}
                     />
                   </div>
-                </div>
+
+                  <AnimatePresence initial={false}>
+                    {range === "custom" ? (
+                      <motion.div
+                        layout
+                        initial={{ opacity: 0, height: 0, y: -8 }}
+                        animate={{ opacity: 1, height: "auto", y: 0 }}
+                        exit={{ opacity: 0, height: 0, y: -8 }}
+                        transition={{
+                          duration: 0.2,
+                          ease: [0.25, 0.46, 0.45, 0.94],
+                        }}
+                        className="space-y-3 overflow-hidden sm:col-span-2"
+                      >
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                              Data inicial
+                            </p>
+                            <DatePicker
+                              value={customRange.from}
+                              onChange={(value) =>
+                                setCustomRange((current) => ({
+                                  ...current,
+                                  from: value,
+                                }))
+                              }
+                              placeholder="Selecione a data inicial"
+                              className="h-10 border-border/50 bg-background/50 hover:bg-background/80"
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+                              Data final
+                            </p>
+                            <DatePicker
+                              value={customRange.to}
+                              onChange={(value) =>
+                                setCustomRange((current) => ({
+                                  ...current,
+                                  to: value,
+                                }))
+                              }
+                              placeholder="Selecione a data final"
+                              className="h-10 border-border/50 bg-background/50 hover:bg-background/80"
+                            />
+                          </div>
+                        </div>
+
+                        <p
+                          className={cn(
+                            "text-xs",
+                            rangeError
+                              ? "text-destructive"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {customRangeHelperText}
+                        </p>
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </motion.div>
 
                 <div className="flex flex-wrap items-center gap-2 xl:justify-end">
                   <Button
@@ -616,7 +781,11 @@ function DashboardContent() {
                     size="sm"
                     className="gap-2"
                     onClick={handleExportExcel}
-                    disabled={loadingDashboard || projectSummaries.length === 0}
+                    disabled={
+                      !isRangeReady ||
+                      loadingDashboard ||
+                      projectSummaries.length === 0
+                    }
                   >
                     <FileSpreadsheet className="h-4 w-4" />
                     Excel
@@ -626,14 +795,18 @@ function DashboardContent() {
                     size="sm"
                     className="gap-2"
                     onClick={handleExportPDF}
-                    disabled={loadingDashboard || projectSummaries.length === 0}
+                    disabled={
+                      !isRangeReady ||
+                      loadingDashboard ||
+                      projectSummaries.length === 0
+                    }
                   >
                     <Download className="h-4 w-4" />
                     PDF
                   </Button>
                 </div>
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
 
             {dataError ? (
               <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-muted-foreground">
@@ -677,7 +850,7 @@ function DashboardContent() {
                 <Skeleton className="h-[280px] w-full rounded-xl" />
               ) : barData.length === 0 ? (
                 <EmptyState
-                  title="Nenhuma hora registrada"
+                  title={emptyStateContent?.title ?? "Nenhuma hora registrada"}
                   description="Não houve lançamentos no período selecionado. Registre novas horas para acompanhar sua evolução."
                 />
               ) : (

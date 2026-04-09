@@ -10,6 +10,10 @@ import {
   isWeekend,
   startOfISOWeek,
   subDays,
+  startOfMonth,
+  endOfMonth,
+  startOfWeek,
+  endOfWeek,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
@@ -23,12 +27,12 @@ import {
   Plus,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
 import { TimeEntryCard } from "@/components/time/TimeEntryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Calendar as CalendarComponent, CalendarDayButton } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
@@ -88,6 +92,129 @@ function normalizeText(value: string | null | undefined): string {
 }
 
 const dailyTarget = 8 * 60;
+
+function MiniMonthCalendar({
+  referenceDate,
+  dailyTargetMinutes,
+  onDayClick,
+}: {
+  referenceDate: Date;
+  dailyTargetMinutes: number;
+  onDayClick: (date: Date) => void;
+}) {
+  const [daySummaries, setDaySummaries] = useState<{ date: string; totalMinutes: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [month, setMonth] = useState<Date>(startOfMonth(referenceDate));
+
+  const firstDayOfMonth = startOfMonth(month);
+  const lastDayOfMonth = endOfMonth(month);
+  const visibleStart = startOfWeek(firstDayOfMonth, { locale: ptBR });
+  const visibleEnd = endOfWeek(lastDayOfMonth, { locale: ptBR });
+  const fromStr = format(visibleStart, "yyyy-MM-dd");
+  const toStr = format(visibleEnd, "yyyy-MM-dd");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetch(`/api/time-entries/summary?groupBy=day&from=${fromStr}&to=${toStr}`, {
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) return { data: [] };
+        return await response.json();
+      })
+      .then((payload) => {
+        if (!active) return;
+        setDaySummaries(payload.data ?? []);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("[MiniMonthCalendar] load summaries:", err);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fromStr, toStr]);
+
+  const minutesByDate = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const summary of daySummaries) {
+      const key = summary.date.split("T")[0] ?? summary.date;
+      map.set(key, Number(summary.totalMinutes) || 0);
+    }
+    return map;
+  }, [daySummaries]);
+
+  const monthTotal = Array.from(minutesByDate.values()).reduce((sum, mins) => sum + mins, 0);
+
+  return (
+    <div className="flex flex-col bg-card shadow-sm rounded-xl overflow-hidden">
+      <div className="px-1 pt-2 pb-0">
+        <CalendarComponent
+          mode="single"
+          selected={referenceDate}
+          onSelect={(date) => {
+            if (date) onDayClick(date);
+          }}
+          month={month}
+          onMonthChange={setMonth}
+          locale={ptBR}
+          className="w-full"
+          classNames={{
+            day: "relative p-0 text-center w-full focus-within:relative focus-within:z-20",
+          }}
+          components={{
+            DayButton: (props) => {
+              const dateStr = format(props.day.date, "yyyy-MM-dd");
+              const minutes = minutesByDate.get(dateStr) ?? 0;
+              const hasHours = minutes > 0;
+              const metTarget = dailyTargetMinutes > 0 ? minutes >= dailyTargetMinutes : hasHours;
+
+              // Extract children to inject our dot without breaking the button's native dimensions
+              const { children, ...rest } = props as any;
+
+              return (
+                <CalendarDayButton {...rest} className={cn(props.className, "relative")}>
+                  {children}
+                  {hasHours && !loading && (
+                    <span
+                      className={cn(
+                        "absolute bottom-1 h-1 w-1 rounded-full transition-colors",
+                        props.modifiers.selected
+                          ? "bg-current opacity-90"
+                          : metTarget
+                            ? "bg-emerald-500"
+                            : "bg-brand-500"
+                      )}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  )}
+                </CalendarDayButton>
+              );
+            },
+          }}
+        />
+      </div>
+      <div className="border-t border-border/40 bg-muted/20 px-3 py-2.5 mt-2 flex items-center justify-between text-xs">
+        <span className="text-muted-foreground font-medium flex items-center gap-1.5">
+          {loading ? (
+            <div className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-brand-500 border-t-transparent" />
+          ) : (
+            <Clock className="h-3.5 w-3.5 opacity-70" />
+          )}
+          Total no mês
+        </span>
+        <span className="font-mono text-brand-500 font-semibold bg-brand-500/10 px-2 py-0.5 rounded-full border border-brand-500/20">
+          {formatDuration(monthTotal)}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export function DayView({
   entries,
@@ -201,18 +328,14 @@ export function DayView({
                   <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      onSelectedDateChange(date);
-                      setDatePopoverOpen(false);
-                    }
+              <PopoverContent className="w-[300px] p-0 border-border/60 bg-card rounded-xl shadow-lg" align="start" sideOffset={8}>
+                <MiniMonthCalendar
+                  referenceDate={selectedDate}
+                  dailyTargetMinutes={dailyTarget}
+                  onDayClick={(date) => {
+                    onSelectedDateChange(date);
+                    setDatePopoverOpen(false);
                   }}
-                  initialFocus
-                  locale={ptBR}
                 />
               </PopoverContent>
             </Popover>
