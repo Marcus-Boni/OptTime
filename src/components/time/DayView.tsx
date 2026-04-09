@@ -15,18 +15,25 @@ import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Calendar,
+  CalendarClock,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Plus,
   Zap,
-  CalendarClock,
 } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
 import { TimeEntryCard } from "@/components/time/TimeEntryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import {
   Tooltip,
@@ -157,6 +164,8 @@ export function DayView({
     (event) => !importedDescriptions.has(normalizeText(event.subject)),
   );
 
+  const [datePopoverOpen, setDatePopoverOpen] = useState(false);
+
   return (
     <div className="space-y-3">
       {/* Header card */}
@@ -167,24 +176,51 @@ export function DayView({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full"
+              className="h-8 w-8 rounded-full shrink-0"
               onClick={() => onSelectedDateChange(subDays(selectedDate, 1))}
               aria-label="Dia anterior"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
 
-            <h2 className="font-display text-xl font-semibold text-foreground">
-              {isToday(selectedDate) && (
-                <span className="mr-1 text-brand-500">Hoje,</span>
-              )}
-              {format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
-            </h2>
+            <Popover open={datePopoverOpen} onOpenChange={setDatePopoverOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="group flex items-center gap-1.5 rounded-xl px-2 py-1 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+                  aria-label="Selecionar data no calendário"
+                >
+                  <h2 className="font-display text-xl font-semibold text-foreground">
+                    {isToday(selectedDate) && (
+                      <span className="mr-1 text-brand-500">Hoje,</span>
+                    )}
+                    {format(selectedDate, "EEEE, d 'de' MMMM", {
+                      locale: ptBR,
+                    })}
+                  </h2>
+                  <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <CalendarComponent
+                  mode="single"
+                  selected={selectedDate}
+                  onSelect={(date) => {
+                    if (date) {
+                      onSelectedDateChange(date);
+                      setDatePopoverOpen(false);
+                    }
+                  }}
+                  initialFocus
+                  locale={ptBR}
+                />
+              </PopoverContent>
+            </Popover>
 
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-full"
+              className="h-8 w-8 rounded-full shrink-0"
               onClick={() => onSelectedDateChange(addDays(selectedDate, 1))}
               aria-label="Próximo dia"
             >
@@ -196,7 +232,10 @@ export function DayView({
                 variant="ghost"
                 size="sm"
                 className="rounded-full text-xs text-muted-foreground"
-                onClick={() => onSelectedDateChange(new Date())}
+                onClick={() => {
+                  onSelectedDateChange(new Date());
+                  setDatePopoverOpen(false);
+                }}
               >
                 Ir para hoje
               </Button>
