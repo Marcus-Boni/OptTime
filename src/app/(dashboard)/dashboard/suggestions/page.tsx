@@ -73,12 +73,6 @@ export default function SuggestionsPage() {
       >
         <div>
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-500/10">
-              <Lightbulb
-                className="h-5 w-5 text-brand-400"
-                aria-hidden="true"
-              />
-            </div>
             <h1 className="font-display text-2xl font-bold text-foreground">
               Sugestões
             </h1>

@@ -157,7 +157,6 @@ export default function ProjectDetailPage() {
 
   function handleEditSuccess(updated: ProjectFromAPI) {
     setProject(updated);
-    toast.success("Projeto atualizado!");
   }
 
   if (loading || !project) return <PageSkeleton />;

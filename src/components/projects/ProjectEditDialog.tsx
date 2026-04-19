@@ -372,7 +372,22 @@ export function ProjectEditDialog({
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error || "Erro ao salvar projeto");
+        let errorMessage = "Erro ao salvar projeto";
+        if (typeof err.error === "string") {
+          errorMessage = err.error;
+        } else if (err.error && typeof err.error === "object") {
+          if (err.error.fieldErrors) {
+            const fields = Object.keys(err.error.fieldErrors);
+            if (fields.length > 0) {
+              errorMessage = `Campos inválidos: ${fields.join(", ")}`;
+            }
+          } else if (err.error.formErrors?.length > 0) {
+            errorMessage = err.error.formErrors.join(", ");
+          } else {
+            errorMessage = JSON.stringify(err.error);
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await res.json();

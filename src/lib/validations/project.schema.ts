@@ -9,7 +9,7 @@ export const projectSchema = z.object({
     .string()
     .min(2, "Nome deve ter pelo menos 2 caracteres")
     .max(100, "Máximo de 100 caracteres"),
-  commercialName: z.string().optional(),
+  commercialName: z.string().optional().nullable(),
   code: z
     .string()
     .min(2, "Código deve ter pelo menos 2 caracteres")
@@ -18,20 +18,21 @@ export const projectSchema = z.object({
       /^[A-Z0-9-]+$/,
       "Código deve conter apenas letras maiúsculas, números e hífens",
     )
-    .optional(),
-  clientName: z.string().optional(),
-  description: z.string().max(500).optional(),
+    .optional()
+    .nullable(),
+  clientName: z.string().optional().nullable(),
+  description: z.string().max(500).optional().nullable(),
   color: z
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, "Cor deve ser um código hex válido"),
   status: z.enum(["active", "archived", "completed", "open"]).optional(),
-  currentStage: z.string().optional(),
+  currentStage: z.string().optional().nullable(),
   billable: z.boolean().default(true),
-  budget: z.number().min(0).optional(),
-  azureProjectId: z.string().optional(),
-  scopeId: z.string().optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  budget: z.number().min(0).optional().nullable(),
+  azureProjectId: z.string().optional().nullable(),
+  scopeId: z.string().optional().nullable(),
+  startDate: z.string().optional().nullable(),
+  endDate: z.string().optional().nullable(),
   /** Base64 data URI or remote URL for the project cover image */
   imageUrl: z.string().optional().nullable(),
   memberIds: z.array(z.string()).default([]),
