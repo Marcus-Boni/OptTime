@@ -2,7 +2,7 @@
   "manifestVersion": 1,
   "id": "optsolv-time-tracker",
   "publisher": "OptSolvTimeTracker",
-  "version": "1.1.8",
+  "version": "1.1.10",
   "name": "OptSolv Time Tracker",
   "description": "Registre e visualize horas diretamente nos work items do Azure DevOps.",
   "public": false,

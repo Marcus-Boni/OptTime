@@ -40,6 +40,37 @@
         font-size: 13px;
         line-height: 1.5;
       }
+
+      /* ── Date input dark-mode fixes ───────────────────────────── */
+      input[type="date"] {
+        color-scheme: dark;
+      }
+      input[type="date"]::-webkit-calendar-picker-indicator {
+        filter: invert(60%) sepia(80%) saturate(500%) hue-rotate(10deg)
+          brightness(105%);
+        cursor: pointer;
+        opacity: 0.85;
+        transition: opacity 0.15s;
+      }
+      input[type="date"]::-webkit-calendar-picker-indicator:hover {
+        opacity: 1;
+      }
+
+      /* ── Animations ───────────────────────────────────────────── */
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
     </style>
     <script type="module" src="./main.tsx"></script>
   </head>

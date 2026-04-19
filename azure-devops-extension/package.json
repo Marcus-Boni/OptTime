@@ -1,6 +1,6 @@
 {
   "name": "optsolv-time-tracker-azdo-extension",
-  "version": "1.1.8",
+  "version": "1.1.10",
   "private": true,
   "description": "OptSolv Time Tracker — Azure DevOps Extension",
   "scripts": {

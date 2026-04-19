@@ -4,11 +4,18 @@ import type {
   IFormServiceSubset,
 } from "../../shared/api";
 import { syncWorkItemFields } from "../../shared/api";
-import { resolveProjectIdFromDevOpsContext } from "../../shared/project-matching";
+import {
+  getHiddenProjectIds,
+  hideProject,
+  showProject,
+} from "../../shared/project-filtering";
+import { matchProjectFromDevOpsContext } from "../../shared/project-matching";
 import type { Project } from "../../shared/types";
 
 export interface QuickLogFormProps {
   projects: Project[];
+  /** Full project list (visible + hidden) — used in the manage panel */
+  allProjects: Project[];
   workItemId: number | null;
   workItemTitle: string;
   /** DevOps project name — used to auto-select the matching OptSolv project */
@@ -16,27 +23,39 @@ export interface QuickLogFormProps {
   /** Current Azure DevOps organisation + project slug used to build work-item URL */
   devOpsBaseUrl: string;
   formService: IFormServiceSubset | null;
+  /** Whether the project was already matched to the current DevOps context */
+  isProjectAutoSelected: boolean;
+  /** Controlled description value — shared with Dashboard to survive tab switches */
+  description: string;
+  onDescriptionChange: (value: string) => void;
   onCreated: () => void;
   onCreateEntry: (payload: CreateTimeEntryPayload) => Promise<unknown>;
+  /** Called after the user hides/shows a project so the project list can reload */
+  onProjectsChanged: () => void;
 }
 
 export function QuickLogForm({
   projects,
+  allProjects,
   workItemId,
   workItemTitle,
   devOpsProjectName,
   devOpsBaseUrl,
   formService,
+  isProjectAutoSelected,
+  description,
+  onDescriptionChange,
   onCreated,
   onCreateEntry,
+  onProjectsChanged,
 }: QuickLogFormProps) {
   const today = new Date().toISOString().slice(0, 10);
 
-  // Pre-select project matching the DevOps project context
+  // Pre-select project matching the DevOps project context.
+  // Falls back to first available project when no match is found (user must pick).
   const [projectId, setProjectId] = useState(() =>
-    resolveProjectIdFromDevOpsContext(projects, devOpsProjectName),
+    matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId,
   );
-  const [description, setDescription] = useState("");
   const [date, setDate] = useState(today);
   const [selectedDuration, setSelectedDuration] = useState("");
   const [customHours, setCustomHours] = useState("");
@@ -46,6 +65,8 @@ export function QuickLogForm({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [devOpsUpdated, setDevOpsUpdated] = useState(false);
+  const [showManageProjects, setShowManageProjects] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(getHiddenProjectIds);
 
   const descRef = useRef<HTMLInputElement>(null);
 
@@ -56,10 +77,32 @@ export function QuickLogForm({
         // Only override if the current selection is empty or not in the list
         const stillValid = projects.some((p) => p.id === prev);
         if (prev && stillValid) return prev;
-        return resolveProjectIdFromDevOpsContext(projects, devOpsProjectName);
+        return matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId;
       });
     }
   }, [projects, devOpsProjectName]);
+
+  function handleHideProject(id: string) {
+    hideProject(id);
+    const next = new Set(hiddenIds);
+    next.add(id);
+    setHiddenIds(next);
+    // If the current selection was hidden, reset to the best available match
+    if (projectId === id) {
+      setProjectId(
+        matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId,
+      );
+    }
+    onProjectsChanged();
+  }
+
+  function handleShowProject(id: string) {
+    showProject(id);
+    const next = new Set(hiddenIds);
+    next.delete(id);
+    setHiddenIds(next);
+    onProjectsChanged();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,7 +166,7 @@ export function QuickLogForm({
       }
 
       setSuccessMsg(`✓ Registrado com sucesso!${devOpsMsg}`);
-      setDescription("");
+      onDescriptionChange("");
       setSelectedDuration("");
       setCustomHours("");
       setCustomMinutes("");
@@ -147,32 +190,56 @@ export function QuickLogForm({
 
   return (
     <form onSubmit={handleSubmit} style={s.form} noValidate>
-      {/* Project */}
-      <div style={s.row}>
-        <label style={s.label} htmlFor="qlf-projectId">
-          Projeto
-        </label>
-        <select
-          id="qlf-projectId"
-          style={s.select}
-          value={projectId}
-          onChange={(e) => setProjectId(e.target.value)}
-          disabled={loading}
-          required
-          aria-describedby={!projectId ? "qlf-projectId-err" : undefined}
-        >
-          {projects.length === 0 && (
-            <option value="">Nenhum projeto disponível</option>
-          )}
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* ── Project selector (hidden when auto-selected in PBI context) ── */}
+      {!isProjectAutoSelected && (
+        <div style={s.row}>
+          <div style={s.labelRow}>
+            <label style={s.label} htmlFor="qlf-projectId">
+              Projeto
+            </label>
+            <button
+              type="button"
+              style={s.manageBtn}
+              onClick={() => setShowManageProjects((v) => !v)}
+              aria-expanded={showManageProjects}
+              aria-label="Gerenciar visibilidade de projetos"
+              title="Ocultar projetos inativos do seletor"
+            >
+              {showManageProjects ? "← Voltar" : "Gerenciar"}
+            </button>
+          </div>
 
-      {/* Description (optional) */}
+          {showManageProjects ? (
+            <ManageProjectsPanel
+              allProjects={allProjects}
+              hiddenIds={hiddenIds}
+              onHide={handleHideProject}
+              onShow={handleShowProject}
+            />
+          ) : (
+            <select
+              id="qlf-projectId"
+              style={s.select}
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              disabled={loading}
+              required
+              aria-describedby={!projectId ? "qlf-projectId-err" : undefined}
+            >
+              {projects.length === 0 && (
+                <option value="">Nenhum projeto disponível</option>
+              )}
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
+
+      {/* ── Description (optional) ── */}
       <div style={s.row}>
         <label style={s.label} htmlFor="qlf-description">
           Descrição <span style={s.optional}>(opcional)</span>
@@ -184,14 +251,14 @@ export function QuickLogForm({
           type="text"
           placeholder={workItemTitle || "O que você fez?"}
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => onDescriptionChange(e.target.value)}
           disabled={loading}
           maxLength={500}
           aria-label="Descrição do lançamento (opcional)"
         />
       </div>
 
-      {/* Date + Duration row */}
+      {/* ── Date + Duration row ── */}
       <div style={{ display: "flex", gap: 8 }}>
         <div style={{ ...s.row, flex: "0 0 44%" }}>
           <label style={s.label} htmlFor="qlf-date">
@@ -270,7 +337,7 @@ export function QuickLogForm({
         </div>
       </div>
 
-      {/* Billable toggle + DevOps badge */}
+      {/* ── Billable toggle + DevOps badge ── */}
       <div style={s.metaRow}>
         <label style={s.checkRow}>
           <input
@@ -328,15 +395,79 @@ export function QuickLogForm({
   );
 }
 
+// ── ManageProjectsPanel ───────────────────────────────────────────────────────
+
+interface ManageProjectsPanelProps {
+  allProjects: Project[];
+  hiddenIds: Set<string>;
+  onHide: (id: string) => void;
+  onShow: (id: string) => void;
+}
+
+function ManageProjectsPanel({
+  allProjects,
+  hiddenIds,
+  onHide,
+  onShow,
+}: ManageProjectsPanelProps) {
+  return (
+    <div style={mp.panel} role="list" aria-label="Gerenciar projetos">
+      {allProjects.length === 0 && (
+        <p style={mp.empty}>Nenhum projeto encontrado.</p>
+      )}
+      {allProjects.map((p) => {
+        const isHidden = hiddenIds.has(p.id);
+        return (
+          <div key={p.id} style={mp.row} role="listitem">
+            <span style={mp.dot} aria-hidden="true">
+              <svg width="8" height="8" viewBox="0 0 8 8">
+                <circle cx="4" cy="4" r="4" fill={p.color} />
+              </svg>
+            </span>
+            <span style={isHidden ? mp.nameHidden : mp.name}>{p.name}</span>
+            <button
+              type="button"
+              style={isHidden ? mp.showBtn : mp.hideBtn}
+              onClick={() => (isHidden ? onShow(p.id) : onHide(p.id))}
+              aria-label={`${isHidden ? "Mostrar" : "Ocultar"} projeto ${p.name}`}
+            >
+              {isHidden ? "Mostrar" : "Ocultar"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const s: Record<string, React.CSSProperties> = {
   form: { display: "flex", flexDirection: "column", gap: 10 },
   row: { display: "flex", flexDirection: "column", gap: 3 },
+  labelRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   label: {
     fontSize: 10,
     color: "var(--muted)",
     fontWeight: 600,
     textTransform: "uppercase",
     letterSpacing: "0.05em",
+  },
+  manageBtn: {
+    background: "none",
+    border: "none",
+    color: "var(--brand)",
+    fontSize: 10,
+    cursor: "pointer",
+    padding: 0,
+    fontWeight: 600,
+    letterSpacing: "0.03em",
+    textDecoration: "underline",
+    textUnderlineOffset: 2,
   },
   optional: {
     fontWeight: 400,
@@ -432,5 +563,57 @@ const s: Record<string, React.CSSProperties> = {
     width: "100%",
     transition: "opacity 0.15s",
     minHeight: 44,
+  },
+};
+
+const mp: Record<string, React.CSSProperties> = {
+  panel: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    background: "var(--surface)",
+    border: "1px solid var(--border)",
+    borderRadius: "var(--radius)",
+    padding: "8px 10px",
+    maxHeight: 180,
+    overflowY: "auto",
+  },
+  empty: { fontSize: 12, color: "var(--muted)", textAlign: "center" },
+  row: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "3px 0",
+    borderBottom: "1px solid rgba(255,255,255,0.05)",
+  },
+  dot: { flexShrink: 0, lineHeight: 0 },
+  name: { flex: 1, fontSize: 12, color: "var(--text)", minWidth: 0 },
+  nameHidden: {
+    flex: 1,
+    fontSize: 12,
+    color: "var(--muted)",
+    minWidth: 0,
+    textDecoration: "line-through",
+    opacity: 0.6,
+  },
+  hideBtn: {
+    background: "none",
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    color: "var(--muted)",
+    fontSize: 10,
+    cursor: "pointer",
+    padding: "2px 6px",
+    flexShrink: 0,
+  },
+  showBtn: {
+    background: "rgba(249,115,22,0.12)",
+    border: "1px solid rgba(249,115,22,0.3)",
+    borderRadius: 4,
+    color: "var(--brand)",
+    fontSize: 10,
+    cursor: "pointer",
+    padding: "2px 6px",
+    flexShrink: 0,
   },
 };

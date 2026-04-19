@@ -16,20 +16,44 @@ function buildProjectTokens(project: Project): string[] {
     .filter(Boolean);
 }
 
-export function resolveProjectIdFromDevOpsContext(
+export interface ProjectMatchResult {
+  /** The matched project ID, or empty string when no projects are available. */
+  projectId: string;
+  /**
+   * True only when an actual name/code match was found between the DevOps
+   * project name and an OptSolv project.
+   * False when the result is a generic first-project fallback.
+   */
+  isMatched: boolean;
+}
+
+/**
+ * Tries to find an OptSolv project that corresponds to the current Azure
+ * DevOps project name.
+ *
+ * Returns `isMatched = false` when:
+ *  - The project list is empty
+ *  - No DevOps project name was provided
+ *  - No exact or partial name/code match was found (falls back to first project)
+ */
+export function matchProjectFromDevOpsContext(
   projects: Project[],
   devOpsProjectName: string,
-): string {
-  if (projects.length === 0) return "";
-  if (!devOpsProjectName) return projects[0]?.id ?? "";
+): ProjectMatchResult {
+  if (projects.length === 0) return { projectId: "", isMatched: false };
+  if (!devOpsProjectName)
+    return { projectId: projects[0]?.id ?? "", isMatched: false };
 
   const normalizedDevOpsProject = normalizeProjectToken(devOpsProjectName);
-  if (!normalizedDevOpsProject) return projects[0]?.id ?? "";
+  if (!normalizedDevOpsProject)
+    return { projectId: projects[0]?.id ?? "", isMatched: false };
 
   const exact = projects.find((project) =>
-    buildProjectTokens(project).some((token) => token === normalizedDevOpsProject),
+    buildProjectTokens(project).some(
+      (token) => token === normalizedDevOpsProject,
+    ),
   );
-  if (exact) return exact.id;
+  if (exact) return { projectId: exact.id, isMatched: true };
 
   const partial = projects.find((project) =>
     buildProjectTokens(project).some(
@@ -38,6 +62,20 @@ export function resolveProjectIdFromDevOpsContext(
         normalizedDevOpsProject.includes(token),
     ),
   );
+  if (partial) return { projectId: partial.id, isMatched: true };
 
-  return partial?.id ?? projects[0]?.id ?? "";
+  // No match found — return first project as a neutral fallback but signal
+  // that the user should still manually pick the correct project.
+  return { projectId: projects[0]?.id ?? "", isMatched: false };
+}
+
+/**
+ * @deprecated Use `matchProjectFromDevOpsContext` instead, which also exposes
+ * whether the result is a genuine match or a generic fallback.
+ */
+export function resolveProjectIdFromDevOpsContext(
+  projects: Project[],
+  devOpsProjectName: string,
+): string {
+  return matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId;
 }

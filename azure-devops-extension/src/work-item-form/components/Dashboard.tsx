@@ -10,6 +10,8 @@ import {
   stopTimer,
 } from "../../shared/api";
 import { clearCredentials } from "../../shared/auth";
+import { getVisibleProjects } from "../../shared/project-filtering";
+import { matchProjectFromDevOpsContext } from "../../shared/project-matching";
 import type {
   ActiveTimer,
   Project,
@@ -55,6 +57,10 @@ export function Dashboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setTick] = useState(0);
+
+  // ── Description is kept here so it survives tab switches ──────────────────
+  const [sharedDescription, setSharedDescription] = useState("");
+
   // Store a stable ref to the last refresh time so the poll can skip if a
   // programmatic refresh just happened (avoids 5s blank wait after Start/Stop).
   const lastRefreshTs = useRef(0);
@@ -182,6 +188,17 @@ export function Dashboard({
   // Timer running for THIS work item
   const isTimerActive = timer !== null && timer.azureWorkItemId === workItemId;
 
+  // Derive visible (non-hidden) projects from the full list
+  const visibleProjects = getVisibleProjects(projects);
+
+  // isProjectAutoSelected is true ONLY when a real name/code match was found
+  // between the DevOps project name and an OptSolv project.
+  // A generic first-project fallback does NOT count as auto-selected.
+  const { isMatched: isProjectAutoSelected } = matchProjectFromDevOpsContext(
+    visibleProjects,
+    devOpsProjectName,
+  );
+
   return (
     <div style={s.container}>
       {/* ── Header ─────────────────────────────────────────────── */}
@@ -201,8 +218,8 @@ export function Dashboard({
         </button>
       </div>
 
-      {/* ── Work item title ─────────────────────────────────────── */}
-      {workItemTitle && (
+      {/* ── Work item title — hidden when project context is already known ── */}
+      {workItemTitle && !isProjectAutoSelected && (
         <div style={s.wiTitle} title={workItemTitle}>
           {workItemTitle}
         </div>
@@ -268,29 +285,38 @@ export function Dashboard({
       >
         {tab === "log" && (
           <QuickLogForm
-            projects={projects}
+            projects={visibleProjects}
+            allProjects={projects}
             workItemId={workItemId}
             workItemTitle={workItemTitle}
             devOpsProjectName={devOpsProjectName}
             devOpsBaseUrl={devOpsBaseUrl}
             formService={formService}
+            isProjectAutoSelected={isProjectAutoSelected}
+            description={sharedDescription}
+            onDescriptionChange={setSharedDescription}
             onCreated={async () => {
+              setSharedDescription("");
               await refresh();
               setTab("history");
             }}
             onCreateEntry={createTimeEntry}
+            onProjectsChanged={() => void refresh()}
           />
         )}
 
         {tab === "timer" && (
           <TimerControl
             timer={timer}
-            projects={projects}
+            projects={visibleProjects}
+            allProjects={projects}
             workItemId={workItemId}
             workItemTitle={workItemTitle}
             devOpsProjectName={devOpsProjectName}
+            isProjectAutoSelected={isProjectAutoSelected}
             onStart={handleTimerStart}
             onStop={handleTimerStop}
+            onProjectsChanged={() => void refresh()}
           />
         )}
 
