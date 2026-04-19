@@ -33,7 +33,6 @@ const navigationItems = [
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
   { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
-  { name: "Integrações", href: "/dashboard/integrations", icon: Link2 },
   { name: "Sugestões", href: "/dashboard/suggestions", icon: Lightbulb },
 ];
 

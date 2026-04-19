@@ -1,14 +1,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
   BookOpen,
   Check,
   CheckCircle2,
   ChevronDown,
-  ChevronUp,
   Copy,
   FolderSync,
   Globe,
@@ -297,7 +296,7 @@ export default function AzureDevOpsPage() {
           <Skeleton className="h-14 w-full rounded-xl" />
         ) : (
           <Card className="border-border/50 bg-card/80 backdrop-blur">
-            <CardHeader className="pb-3">
+            <CardHeader>
               <button
                 type="button"
                 onClick={() => setTutorialOpen((v) => !v)}
@@ -307,16 +306,25 @@ export default function AzureDevOpsPage() {
                   <BookOpen className="h-4 w-4 text-brand-500" />
                   Como configurar a integração
                 </CardTitle>
-                {tutorialOpen ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                )}
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 text-muted-foreground transition-transform duration-300",
+                    tutorialOpen && "rotate-180",
+                  )}
+                />
               </button>
             </CardHeader>
 
-            {tutorialOpen === true && (
-              <CardContent className="pt-0">
+            <AnimatePresence initial={false}>
+              {tutorialOpen === true && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.3, ease: "easeInOut" }}
+                  className="overflow-hidden"
+                >
+                  <CardContent className="pt-0">
                 <div className="mb-4 rounded-lg border border-brand-500/20 bg-brand-500/5 px-4 py-3">
                   <p className="text-xs text-muted-foreground">
                     Você precisará de dois dados do Azure DevOps: a{" "}
@@ -530,7 +538,9 @@ export default function AzureDevOpsPage() {
                   </div>
                 </div>
               </CardContent>
-            )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </Card>
         )}
       </motion.div>
@@ -602,8 +612,8 @@ export default function AzureDevOpsPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Preencha apenas se este usuario precisar de sugestoes
-                  inteligentes baseadas em commits. O valor mais confiavel e{" "}
+                  Preencha apenas se este usuário precisar de sugestões
+                  inteligentes baseadas em commits. O valor mais confiável é{" "}
                   <code>git config user.email</code>.
                 </p>
               </div>
