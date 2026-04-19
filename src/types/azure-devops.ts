@@ -24,6 +24,14 @@ export interface AzureDevOpsWorkItem {
   url: string;
 }
 
+export interface AzureDevOpsAssignedWorkItem extends AzureDevOpsWorkItem {
+  createdDate?: string;
+  changedDate?: string;
+  priority?: number;
+  tags?: string[];
+  targetDate?: string;
+}
+
 export interface AzureDevOpsProject {
   id: string;
   name: string;

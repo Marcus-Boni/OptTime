@@ -15,7 +15,7 @@ const segmentLabels: Record<string, string> = {
   projects: "Projetos",
   team: "Equipe",
   export: "Exportar",
-  people: "Pessoas",
+  people: "Equipe",
   integrations: "Integrações",
   "azure-devops": "Azure DevOps",
   profile: "Perfil",

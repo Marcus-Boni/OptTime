@@ -1,4 +1,5 @@
 import type {
+  AzureDevOpsAssignedWorkItem,
   AzureDevOpsCommit,
   AzureDevOpsRepository,
   AzureDevOpsWorkItem,
@@ -37,9 +38,19 @@ function parseWorkItemIdsFromText(text: string) {
   return [...ids];
 }
 
+function isGuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
 export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
   const orgUrl = organizationUrl.replace(/\/$/, "");
   const authHeader = buildAuthHeader(pat);
+  const projectContextCache = new Map<
+    string,
+    Promise<{ id?: string; name: string }>
+  >();
 
   async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     const res = await fetch(url, {
@@ -68,20 +79,21 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     top = 20,
   ): Promise<WorkItemSearchResult[]> {
     const isIdSearch = /^#?\d+$/.test(query.trim());
+    const projectContext = await resolveProjectContext(projectName);
     const sanitizedQuery = query.replace(/'/g, "''");
 
     let wiql: string;
     if (isIdSearch) {
       const id = query.replace("#", "").trim();
-      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectName}' AND [System.Id] = ${id}`;
+      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.Id] = ${id}`;
     } else {
-      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectName}' AND [System.Title] CONTAINS '${sanitizedQuery}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
+      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.Title] CONTAINS '${sanitizedQuery}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
     }
 
     const wiqlResult = await fetchApi<{
       workItems: Array<{ id: number; url: string }>;
     }>(
-      `${orgUrl}/${encodeURIComponent(projectName)}/_apis/wit/wiql?api-version=7.1`,
+      `${orgUrl}/${encodeURIComponent(projectContext.name)}/_apis/wit/wiql?api-version=7.1`,
       {
         method: "POST",
         body: JSON.stringify({ query: wiql }),
@@ -105,8 +117,35 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
       title: (wi.fields["System.Title"] as string) ?? "",
       type: (wi.fields["System.WorkItemType"] as WorkItemType) ?? "Task",
       state: (wi.fields["System.State"] as WorkItemState) ?? "New",
-      projectName: (wi.fields["System.TeamProject"] as string) ?? projectName,
+      projectName:
+        (wi.fields["System.TeamProject"] as string) ?? projectContext.name,
     }));
+  }
+
+  async function resolveProjectContext(projectRef: string) {
+    const normalizedRef = projectRef.trim();
+
+    let cached = projectContextCache.get(normalizedRef);
+    if (!cached) {
+      cached = (async () => {
+        if (!isGuidLike(normalizedRef)) {
+          return { name: normalizedRef };
+        }
+
+        const projectResult = await fetchApi<{ id: string; name: string }>(
+          `${orgUrl}/_apis/projects/${encodeURIComponent(normalizedRef)}?api-version=7.1`,
+        );
+
+        return {
+          id: projectResult.id,
+          name: projectResult.name,
+        };
+      })();
+
+      projectContextCache.set(normalizedRef, cached);
+    }
+
+    return cached;
   }
 
   async function getWorkItem(id: number): Promise<AzureDevOpsWorkItem> {
@@ -197,12 +236,13 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     projectName: string,
     top = 50,
   ): Promise<WorkItemSearchResult[]> {
-    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectName}' AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' ORDER BY [System.ChangedDate] DESC`;
+    const projectContext = await resolveProjectContext(projectName);
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' ORDER BY [System.ChangedDate] DESC`;
 
     const wiqlResult = await fetchApi<{
       workItems: Array<{ id: number }>;
     }>(
-      `${orgUrl}/${encodeURIComponent(projectName)}/_apis/wit/wiql?api-version=7.1`,
+      `${orgUrl}/${encodeURIComponent(projectContext.name)}/_apis/wit/wiql?api-version=7.1`,
       {
         method: "POST",
         body: JSON.stringify({ query: wiql }),
@@ -226,7 +266,80 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
       title: (wi.fields["System.Title"] as string) ?? "",
       type: (wi.fields["System.WorkItemType"] as WorkItemType) ?? "Task",
       state: (wi.fields["System.State"] as WorkItemState) ?? "New",
-      projectName: (wi.fields["System.TeamProject"] as string) ?? projectName,
+      projectName:
+        (wi.fields["System.TeamProject"] as string) ?? projectContext.name,
+    }));
+  }
+
+  async function getAssignedWorkItems(
+    projectRef: string,
+    top = 100,
+  ): Promise<AzureDevOpsAssignedWorkItem[]> {
+    const projectContext = await resolveProjectContext(projectRef);
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.AssignedTo] = @Me AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' AND [System.State] <> 'Done' AND [System.State] <> 'Completed' AND [System.State] <> 'Cancelad' ORDER BY [System.ChangedDate] DESC`;
+
+    const wiqlResult = await fetchApi<{
+      workItems: Array<{ id: number }>;
+    }>(
+      `${orgUrl}/${encodeURIComponent(projectContext.name)}/_apis/wit/wiql?$top=${top}&api-version=7.1`,
+      {
+        method: "POST",
+        body: JSON.stringify({ query: wiql }),
+      },
+    );
+
+    const ids = wiqlResult.workItems.slice(0, top).map((item) => item.id);
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const batchResult = await fetchApi<{
+      value: Array<{
+        id: number;
+        fields: Record<string, unknown>;
+        _links?: { html?: { href?: string } };
+      }>;
+    }>(
+      `${orgUrl}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.Title,System.WorkItemType,System.State,System.TeamProject,System.AreaPath,System.IterationPath,System.CreatedDate,System.ChangedDate,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.CompletedWork,Microsoft.VSTS.Scheduling.OriginalEstimate,Microsoft.VSTS.Common.Priority,System.Tags,Microsoft.VSTS.Scheduling.TargetDate&api-version=7.1`,
+    );
+
+    return batchResult.value.map((wi) => ({
+      id: wi.id,
+      title: (wi.fields["System.Title"] as string) ?? "",
+      type: (wi.fields["System.WorkItemType"] as WorkItemType) ?? "Task",
+      state: (wi.fields["System.State"] as WorkItemState) ?? "New",
+      assignedTo: undefined,
+      projectName:
+        (wi.fields["System.TeamProject"] as string) ?? projectContext.name,
+      areaPath: (wi.fields["System.AreaPath"] as string) ?? "",
+      iterationPath: (wi.fields["System.IterationPath"] as string) ?? "",
+      remainingWork: wi.fields["Microsoft.VSTS.Scheduling.RemainingWork"] as
+        | number
+        | undefined,
+      completedWork: wi.fields["Microsoft.VSTS.Scheduling.CompletedWork"] as
+        | number
+        | undefined,
+      originalEstimate: wi.fields[
+        "Microsoft.VSTS.Scheduling.OriginalEstimate"
+      ] as number | undefined,
+      createdDate: wi.fields["System.CreatedDate"] as string | undefined,
+      changedDate: wi.fields["System.ChangedDate"] as string | undefined,
+      priority: wi.fields["Microsoft.VSTS.Common.Priority"] as
+        | number
+        | undefined,
+      tags:
+        typeof wi.fields["System.Tags"] === "string"
+          ? (wi.fields["System.Tags"] as string)
+              .split(";")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : undefined,
+      targetDate: wi.fields["Microsoft.VSTS.Scheduling.TargetDate"] as
+        | string
+        | undefined,
+      url:
+        wi._links?.html?.href ??
+        `${orgUrl}/_workitems/edit/${encodeURIComponent(String(wi.id))}`,
     }));
   }
 
@@ -394,6 +507,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     getWorkItem,
     updateCompletedWork,
     getProjectWorkItems,
+    getAssignedWorkItems,
     listRepositories,
     getRecentCommits,
   };

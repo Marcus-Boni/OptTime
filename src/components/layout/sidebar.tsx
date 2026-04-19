@@ -8,7 +8,6 @@ import {
   Clock,
   Folder,
   Home,
-  Layers,
   Lightbulb,
   Link2,
   Pause,
@@ -80,6 +79,35 @@ const managementNav = [
   { name: "Equipe", href: "/dashboard/people", icon: Users },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
 ];
+
+function getPendingSubmitWeeksLabel(count: number): string {
+  return count === 1
+    ? "1 Semana pendente de submit"
+    : `${count} Semanas pendentes de submit`;
+}
+
+function PendingSubmitWeeksBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+
+  const label = getPendingSubmitWeeksLabel(count);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge
+          variant="secondary"
+          className="h-5 min-w-5 cursor-help justify-center bg-brand-500 px-1.5 text-[10px] font-bold text-white"
+          aria-label={label}
+        >
+          {count}
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        <span>{label}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 function TimerWidget({ collapsed }: { collapsed: boolean }) {
   const {
@@ -177,7 +205,7 @@ export function Sidebar() {
   });
   const isManager =
     !isPending && (user?.role === "manager" || user?.role === "admin");
-  const pendingTimesheetCount = timesheets.filter(
+  const pendingSubmitWeeksCount = timesheets.filter(
     (timesheet) =>
       timesheet.status === "open" || timesheet.status === "rejected",
   ).length;
@@ -185,7 +213,8 @@ export function Sidebar() {
     item.href === "/dashboard/time"
       ? {
           ...item,
-          badge: pendingTimesheetCount > 0 ? pendingTimesheetCount : undefined,
+          badge:
+            pendingSubmitWeeksCount > 0 ? pendingSubmitWeeksCount : undefined,
         }
       : item,
   );
@@ -304,12 +333,7 @@ export function Sidebar() {
                         <>
                           <span className="flex-1">{item.name}</span>
                           {item.badge ? (
-                            <Badge
-                              variant="secondary"
-                              className="h-5 min-w-5 justify-center bg-brand-500 px-1.5 text-[10px] font-bold text-white"
-                            >
-                              {item.badge}
-                            </Badge>
+                            <PendingSubmitWeeksBadge count={item.badge} />
                           ) : null}
                         </>
                       ) : null}
@@ -324,9 +348,9 @@ export function Sidebar() {
                           <TooltipContent side="right">
                             <span>{item.name}</span>
                             {item.badge ? (
-                              <Badge className="ml-2 h-4 bg-brand-500 text-[10px] text-white">
-                                {item.badge}
-                              </Badge>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {getPendingSubmitWeeksLabel(item.badge)}
+                              </p>
                             ) : null}
                           </TooltipContent>
                         </Tooltip>

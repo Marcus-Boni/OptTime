@@ -2,6 +2,8 @@ import type { AzureDevOpsCommit } from "@/types/azure-devops";
 
 type CommitAuthorIdentityInput = {
   configuredAuthor?: string | null;
+  userEmail?: string | null;
+  userName?: string | null;
 };
 
 function normalizeCommitAuthor(value: string) {
@@ -10,8 +12,10 @@ function normalizeCommitAuthor(value: string) {
 
 export function buildCommitAuthorCandidates({
   configuredAuthor,
+  userEmail,
+  userName,
 }: CommitAuthorIdentityInput) {
-  const rawCandidates = configuredAuthor ? [configuredAuthor] : [];
+  const rawCandidates = [configuredAuthor, userEmail, userName];
 
   return Array.from(
     new Set(
