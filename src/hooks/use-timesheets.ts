@@ -339,3 +339,49 @@ export function useTimesheetApprovals() {
     pendingCount: timesheets.length,
   };
 }
+
+// ─── useTimesheetHistory ────────────────────────────────────────────────────────
+
+interface UseTimesheetHistoryOptions {
+  enabled?: boolean;
+}
+
+export function useTimesheetHistory(
+  options: UseTimesheetHistoryOptions = {},
+) {
+  const enabled = options.enabled ?? false;
+  const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchHistory = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/timesheets/history");
+      if (!res.ok) throw new Error("Falha ao carregar histórico");
+      const data = await res.json();
+      setTimesheets(data.timesheets ?? []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro desconhecido");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    fetchHistory();
+  }, [enabled, fetchHistory]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const handleUpdate = () => { void fetchHistory(); };
+    window.addEventListener(TIMESHEETS_UPDATED_EVENT, handleUpdate);
+    return () => {
+      window.removeEventListener(TIMESHEETS_UPDATED_EVENT, handleUpdate);
+    };
+  }, [enabled, fetchHistory]);
+
+  return { timesheets, loading, error, refetch: fetchHistory };
+}
