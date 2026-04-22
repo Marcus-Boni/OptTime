@@ -25,8 +25,10 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { Release } from "@/hooks/use-releases";
+import { ReleaseDescription } from "./ReleaseDescription";
 import {
   createReleaseSchema,
   type CreateReleaseInput,
@@ -198,13 +200,37 @@ export default function ReleaseFormDialog({
                       Release Notes
                     </FormLabel>
                     <FormControl>
-                      <Textarea
-                        id="release-description"
-                        placeholder={`## Novidades\n- Adicionamos X\n- Melhoramos Y\n\n## Correções\n- Corrigimos Z`}
-                        className="min-h-[240px] resize-y font-mono text-sm"
-                        aria-describedby="release-description-hint"
-                        {...field}
-                      />
+                      <Tabs defaultValue="edit" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2 mb-2">
+                          <TabsTrigger value="edit" className="text-xs">
+                            Escrever
+                          </TabsTrigger>
+                          <TabsTrigger value="preview" className="text-xs">
+                            Visualizar
+                          </TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="edit" className="mt-0 focus-visible:outline-none">
+                          <Textarea
+                            id="release-description"
+                            placeholder={`## Novidades\n- Adicionamos X\n- Melhoramos Y\n\n## Correções\n- Corrigimos Z`}
+                            className="min-h-[240px] resize-y font-mono text-sm"
+                            aria-describedby="release-description-hint"
+                            {...field}
+                          />
+                        </TabsContent>
+                        <TabsContent 
+                          value="preview" 
+                          className="mt-0 min-h-[240px] rounded-md border border-input bg-muted/20 px-4 py-3 focus-visible:outline-none overflow-y-auto"
+                        >
+                          {field.value ? (
+                            <ReleaseDescription text={field.value} />
+                          ) : (
+                            <p className="text-xs text-muted-foreground italic flex h-full items-center justify-center">
+                              Nada para visualizar ainda...
+                            </p>
+                          )}
+                        </TabsContent>
+                      </Tabs>
                     </FormControl>
                     <FormDescription
                       id="release-description-hint"

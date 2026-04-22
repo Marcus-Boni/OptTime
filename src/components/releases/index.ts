@@ -4,3 +4,4 @@ export { default as ReleaseFormDialog } from "./ReleaseFormDialog";
 export type { ReleaseFormDialogProps } from "./ReleaseFormDialog";
 export { default as PublishReleaseDialog } from "./PublishReleaseDialog";
 export type { PublishReleaseDialogProps } from "./PublishReleaseDialog";
+export { ReleaseDescription } from "./ReleaseDescription";

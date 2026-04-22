@@ -31,6 +31,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Release } from "@/hooks/use-releases";
+import { ReleaseDescription } from "./ReleaseDescription";
 
 export interface ReleaseCardProps {
   release: Release;
@@ -56,55 +57,6 @@ function formatDate(iso: string): string {
     month: "long",
     year: "numeric",
   });
-}
-
-/** Renders simple markdown-like text as formatted JSX */
-function ReleaseDescription({ text }: { text: string }) {
-  const lines = text.split("\n");
-
-  return (
-    <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
-      {lines.map((line, i) => {
-        const key = `${i}-${line.slice(0, 20)}`;
-        if (line.startsWith("## ")) {
-          return (
-            <h2
-              key={key}
-              className="pt-2 text-base font-semibold text-foreground"
-            >
-              {line.slice(3)}
-            </h2>
-          );
-        }
-        if (line.startsWith("### ")) {
-          return (
-            <h3
-              key={key}
-              className="pt-1 text-sm font-semibold text-foreground/80"
-            >
-              {line.slice(4)}
-            </h3>
-          );
-        }
-        if (line.startsWith("- ")) {
-          return (
-            <div key={key} className="flex items-start gap-2">
-              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-              <span>{line.slice(2)}</span>
-            </div>
-          );
-        }
-        if (line.trim() === "") {
-          return <div key={key} className="h-1" />;
-        }
-        return (
-          <p key={key} className="text-muted-foreground">
-            {line}
-          </p>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function ReleaseCard({
