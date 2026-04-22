@@ -144,27 +144,36 @@ export function TimeEntryForm({
   }, []);
 
   const wasOpenRef = useRef(false);
+  const initialValuesString = initialValues ? JSON.stringify(initialValues) : "null";
+  const prevInitialValuesRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       if (wasOpenRef.current) {
         setOutlookOpen(false);
         wasOpenRef.current = false;
+        prevInitialValuesRef.current = null;
       }
       return;
     }
 
-    // Initialize or reset form only when modal opens or initial values change
-    if (!wasOpenRef.current || initialValues) {
-      void loadProjects();
+    const isFirstOpen = !wasOpenRef.current;
+    const initialValuesChanged =
+      prevInitialValuesRef.current !== null &&
+      prevInitialValuesRef.current !== initialValuesString;
 
-      if (!wasOpenRef.current) {
+    // Initialize or reset form only when modal opens or initial values actually change
+    if (isFirstOpen || initialValuesChanged) {
+      if (isFirstOpen) {
         wasOpenRef.current = true;
+        void loadProjects();
 
         if (preferences.outlookDrawerDefaultOpen) {
           setOutlookOpen(true);
         }
       }
+
+      prevInitialValuesRef.current = initialValuesString;
 
       submitModeRef.current = allowContinue ? preferences.submitMode : "close";
       form.reset(getDefaultValues(initialValues, preferences));
@@ -182,7 +191,15 @@ export function TimeEntryForm({
         setWorkItem(null);
       }
     }
-  }, [allowContinue, form, initialValues, loadProjects, open, preferences]);
+  }, [
+    allowContinue,
+    form,
+    initialValues,
+    initialValuesString,
+    loadProjects,
+    open,
+    preferences,
+  ]);
 
   const selectedDate = form.watch("date");
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");

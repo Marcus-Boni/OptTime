@@ -114,6 +114,7 @@ interface MemberRowProps {
   member: TeamMember;
   selected: boolean;
   isCurrentUser: boolean;
+  isLocked: boolean;
   onToggle: (id: string) => void;
 }
 
@@ -121,16 +122,17 @@ function MemberRow({
   member,
   selected,
   isCurrentUser,
+  isLocked,
   onToggle,
 }: MemberRowProps) {
   return (
     // biome-ignore lint/a11y/useSemanticElements: custom keyboard handling
     <div
       role="button"
-      tabIndex={isCurrentUser ? -1 : 0}
-      onClick={() => !isCurrentUser && onToggle(member.id)}
+      tabIndex={isLocked ? -1 : 0}
+      onClick={() => !isLocked && onToggle(member.id)}
       onKeyDown={(e) => {
-        if (!isCurrentUser && (e.key === "Enter" || e.key === " ")) {
+        if (!isLocked && (e.key === "Enter" || e.key === " ")) {
           e.preventDefault();
           onToggle(member.id);
         }
@@ -138,7 +140,7 @@ function MemberRow({
       className={cn(
         "flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors select-none",
         selected ? "bg-brand-500/10" : "hover:bg-muted/50",
-        isCurrentUser ? "cursor-default opacity-75" : "cursor-pointer",
+        isLocked ? "cursor-default opacity-75" : "cursor-pointer",
       )}
     >
       {/* Avatar */}
@@ -947,6 +949,7 @@ export function ProjectEditDialog({
                           member={person}
                           selected={selectedMembers.has(person.id)}
                           isCurrentUser={person.id === currentUserId}
+                          isLocked={person.id === (project?.managerId ?? currentUserId)}
                           onToggle={toggleMember}
                         />
                       </motion.div>

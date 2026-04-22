@@ -13,7 +13,7 @@ const techLogos: TechLogo[] = [
   { name: "TailwindCSS", label: "Tailwind CSS" },
   { name: "Azure DevOps", label: "Azure DevOps" },
   { name: "Azure PostgreSQL", label: "Azure PostgreSQL" },
-  { name: "Vercel", label: "Vercel" },
+  { name: "Azure App Service", label: "Azure App Service" },
   { name: "Drizzle", label: "Drizzle ORM" },
   { name: "Better Auth", label: "Better Auth" },
   { name: "Framer Motion", label: "Framer Motion" },
