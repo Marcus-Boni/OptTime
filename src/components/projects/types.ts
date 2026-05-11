@@ -45,6 +45,7 @@ export interface ProjectProgress {
 export interface ProjectFromAPI {
   id: string;
   name: string;
+  code: string;
   description: string | null;
   clientName: string | null;
   color: string;

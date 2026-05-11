@@ -8,5 +8,9 @@
       "Bash(C:/Users/mgalv/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/scripts/start-server.sh --project-dir \"C:/Users/mgalv/Projetos-Programacao/Projetos-Treino/harvest\")",
       "Bash(cat \"C:/Users/mgalv/Projetos-Programacao/Projetos-Treino/harvest/.superpowers/brainstorm/\"*\"/.server-info\")"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "shadcn"
+  ],
+  "enableAllProjectMcpServers": true
 }

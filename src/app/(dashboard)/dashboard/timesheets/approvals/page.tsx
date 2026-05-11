@@ -1,13 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion, type Variants } from "framer-motion";
-import {
-  CalendarDays,
-  ChevronDown,
-  Clock,
-  History,
-  Users,
-} from "lucide-react";
+import { CalendarDays, ChevronDown, Clock, History, Users } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApprovalCard } from "@/components/timesheets/ApprovalCard";
@@ -104,8 +98,8 @@ interface WeekGroup {
 function getWeekStart(period: string): Date {
   const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
   if (weekMatch) {
-    const year = parseInt(weekMatch[1]);
-    const week = parseInt(weekMatch[2]);
+    const year = parseInt(weekMatch[1], 10);
+    const week = parseInt(weekMatch[2], 10);
     // ISO 8601: week 1 is the week containing the first Thursday of the year
     const jan4 = new Date(year, 0, 4);
     const jan4DayOfWeek = jan4.getDay() === 0 ? 7 : jan4.getDay();
@@ -116,7 +110,11 @@ function getWeekStart(period: string): Date {
   // For monthly periods, use first day of the month
   const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
   if (monthMatch) {
-    return new Date(parseInt(monthMatch[1]), parseInt(monthMatch[2]) - 1, 1);
+    return new Date(
+      parseInt(monthMatch[1], 10),
+      parseInt(monthMatch[2], 10) - 1,
+      1,
+    );
   }
   return new Date();
 }
@@ -124,7 +122,7 @@ function getWeekStart(period: string): Date {
 function formatWeekLabel(period: string): string {
   const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
   if (weekMatch) {
-    const weekNum = parseInt(weekMatch[2]);
+    const weekNum = parseInt(weekMatch[2], 10);
     return `Semana ${weekNum}`;
   }
   const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
@@ -143,7 +141,7 @@ function formatWeekLabel(period: string): string {
       "Novembro",
       "Dezembro",
     ];
-    return months[parseInt(monthMatch[2]) - 1] ?? period;
+    return months[parseInt(monthMatch[2], 10) - 1] ?? period;
   }
   return period;
 }
@@ -160,7 +158,11 @@ function formatDateRange(period: string): string {
   }
   const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
   if (monthMatch) {
-    const d = new Date(parseInt(monthMatch[1]), parseInt(monthMatch[2]) - 1, 1);
+    const d = new Date(
+      parseInt(monthMatch[1], 10),
+      parseInt(monthMatch[2], 10) - 1,
+      1,
+    );
     return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
   }
   return period;
@@ -393,18 +395,24 @@ function HistoryWeekSection({
         <div className="hidden sm:flex items-center gap-3 flex-shrink-0">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Users className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>{group.timesheets.length} pessoa{group.timesheets.length !== 1 ? "s" : ""}</span>
+            <span>
+              {group.timesheets.length} pessoa
+              {group.timesheets.length !== 1 ? "s" : ""}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="font-mono">{formatDuration(group.totalMinutes)}</span>
+            <span className="font-mono">
+              {formatDuration(group.totalMinutes)}
+            </span>
           </div>
           {group.approvedCount > 0 && (
             <Badge
               variant="secondary"
               className="bg-green-500/10 text-green-500 border-green-500/20 text-[11px] dark:text-green-400"
             >
-              {group.approvedCount} aprovado{group.approvedCount !== 1 ? "s" : ""}
+              {group.approvedCount} aprovado
+              {group.approvedCount !== 1 ? "s" : ""}
             </Badge>
           )}
           {group.rejectedCount > 0 && (
@@ -412,7 +420,8 @@ function HistoryWeekSection({
               variant="secondary"
               className="bg-destructive/10 text-destructive border-destructive/20 text-[11px]"
             >
-              {group.rejectedCount} rejeitado{group.rejectedCount !== 1 ? "s" : ""}
+              {group.rejectedCount} rejeitado
+              {group.rejectedCount !== 1 ? "s" : ""}
             </Badge>
           )}
         </div>
@@ -477,7 +486,13 @@ export default function TimesheetApprovalsPage() {
     useTimesheetHistory({ enabled: showHistory });
 
   const pending = useMemo(
-    () => approvals.filter((ts) => ts.status === "submitted"),
+    () =>
+      approvals.filter(
+        (ts) =>
+          ts.status === "submitted" ||
+          ts.status === "open" ||
+          ts.status === "rejected",
+      ),
     [approvals],
   );
 
@@ -619,10 +634,9 @@ export default function TimesheetApprovalsPage() {
 
       {/* ── Content ── */}
       {loading ? (
-        <div
+        <output
           className="space-y-4"
           aria-label="Carregando aprovações"
-          role="status"
         >
           {Array.from({ length: 2 }).map((_, gi) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
@@ -634,7 +648,7 @@ export default function TimesheetApprovalsPage() {
               ))}
             </div>
           ))}
-        </div>
+        </output>
       ) : pending.length === 0 ? (
         <motion.div
           variants={fadeUp}
@@ -735,9 +749,8 @@ export default function TimesheetApprovalsPage() {
 
                 {/* Skeleton */}
                 {historyLoading ? (
-                  <div
+                  <output
                     className="space-y-2"
-                    role="status"
                     aria-label="Carregando histórico"
                   >
                     {Array.from({ length: 3 }).map((_, i) => (
@@ -753,7 +766,7 @@ export default function TimesheetApprovalsPage() {
                         ))}
                       </div>
                     ))}
-                  </div>
+                  </output>
                 ) : historyGroups.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-border/50 py-12 text-center">
                     <History

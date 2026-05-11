@@ -8,6 +8,7 @@ import {
   Loader2,
   Palette,
   Save,
+  Search,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -40,6 +41,7 @@ const createProjectSchema = z.object({
   billable: z.boolean(),
   budget: z.string().optional(),
   memberIds: z.array(z.string()),
+  managerId: z.string().min(1, "Selecione um lider do projeto"),
 });
 
 type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -99,17 +101,7 @@ export default function NewProjectPage() {
     new Set(),
   );
   const [memberSearch, setMemberSearch] = useState("");
-
-  // Add the current user to the selected members list by default
-  useEffect(() => {
-    if (session?.user?.id) {
-      setSelectedMembers((prev) => {
-        const next = new Set(prev);
-        next.add(session.user.id);
-        return next;
-      });
-    }
-  }, [session?.user?.id]);
+  const [managerSearch, setManagerSearch] = useState("");
 
   const {
     register,
@@ -128,8 +120,21 @@ export default function NewProjectPage() {
       billable: true,
       budget: "",
       memberIds: [],
+      managerId: "",
     },
   });
+
+  // Add the current user to the selected members list by default
+  useEffect(() => {
+    if (session?.user?.id) {
+      setValue("managerId", session.user.id);
+      setSelectedMembers((prev) => {
+        const next = new Set(prev);
+        next.add(session.user.id);
+        return next;
+      });
+    }
+  }, [session?.user?.id, setValue]);
 
   // Fetch team members for assignment
   useEffect(() => {
@@ -161,6 +166,23 @@ export default function NewProjectPage() {
       p.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
       p.email.toLowerCase().includes(memberSearch.toLowerCase()),
   );
+  const managerCandidates = people.filter(
+    (p) => p.role === "admin" || p.role === "manager",
+  );
+  const selectedManagerId = watch("managerId");
+  const selectedManager = managerCandidates.find(
+    (person) => person.id === selectedManagerId,
+  );
+  const filteredManagers = managerCandidates.filter(
+    (p) =>
+      p.name.toLowerCase().includes(managerSearch.toLowerCase()) ||
+      p.email.toLowerCase().includes(managerSearch.toLowerCase()),
+  );
+
+  function selectManager(id: string) {
+    setValue("managerId", id, { shouldDirty: true, shouldValidate: true });
+    setSelectedMembers((prev) => new Set(prev).add(id));
+  }
 
   const onSubmit = async (data: CreateProjectInput) => {
     setSaving(true);
@@ -175,6 +197,7 @@ export default function NewProjectPage() {
           color: data.color,
           billable: data.billable,
           budget: data.budget ? parseFloat(data.budget) : undefined,
+          managerId: data.managerId,
           memberIds: Array.from(selectedMembers),
         }),
       });
@@ -356,6 +379,93 @@ export default function NewProjectPage() {
           </Card>
         </motion.div>
 
+        {/* Project leader */}
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Users className="h-5 w-5" />
+                Liderança do Projeto
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="manager-search">
+                  Líder do projeto <span className="text-destructive">*</span>
+                </Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Escolha um único admin ou gerente responsável pelo projeto.
+                </p>
+              </div>
+
+              {selectedManager && (
+                <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {selectedManager.name}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {selectedManager.email}
+                    </p>
+                  </div>
+                  <span className="rounded-md bg-muted px-2 py-1 text-[10px] uppercase text-muted-foreground">
+                    {selectedManager.role === "admin" ? "Admin" : "Gerente"}
+                  </span>
+                </div>
+              )}
+
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="manager-search"
+                  placeholder="Buscar admin ou gerente..."
+                  className="pl-9"
+                  value={managerSearch}
+                  onChange={(e) => setManagerSearch(e.target.value)}
+                />
+              </div>
+
+              <div className="max-h-48 overflow-y-auto rounded-lg border border-border/50">
+                {filteredManagers.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-muted-foreground">
+                    Nenhum admin ou gerente encontrado.
+                  </p>
+                ) : (
+                  filteredManagers.map((person) => (
+                    <button
+                      key={person.id}
+                      type="button"
+                      onClick={() => selectManager(person.id)}
+                      className={cn(
+                        "flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition-colors hover:bg-muted/50",
+                        person.id === selectedManagerId && "bg-brand-500/10",
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium">
+                          {person.name}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {person.email}
+                        </span>
+                      </span>
+                      <span className="rounded-md bg-muted px-2 py-1 text-[10px] uppercase text-muted-foreground">
+                        {person.role === "admin" ? "Admin" : "Gerente"}
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              {errors.managerId && (
+                <p className="text-sm text-destructive">
+                  {errors.managerId.message}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+
         {/* Team Members (only for privileged users who can see people) */}
         {
           <motion.div variants={itemVariants}>
@@ -384,19 +494,21 @@ export default function NewProjectPage() {
                   {filteredPeople.map((person) => {
                     const isSelected = selectedMembers.has(person.id);
                     const isCurrentUser = session?.user?.id === person.id;
+                    const isLeader = selectedManagerId === person.id;
 
                     return (
                       // biome-ignore lint/a11y/useSemanticElements: <!-- The div is used for custom keyboard handling and styling -->
                       <div
                         key={person.id}
                         role="button"
-                        tabIndex={isCurrentUser ? -1 : 0}
+                        tabIndex={isCurrentUser || isLeader ? -1 : 0}
                         onClick={() =>
-                          !isCurrentUser && toggleMember(person.id)
+                          !isCurrentUser && !isLeader && toggleMember(person.id)
                         }
                         onKeyDown={(e) => {
                           if (
                             !isCurrentUser &&
+                            !isLeader &&
                             (e.key === "Enter" || e.key === " ")
                           ) {
                             e.preventDefault();
@@ -408,7 +520,7 @@ export default function NewProjectPage() {
                           isSelected
                             ? "bg-brand-50 dark:bg-brand-950/30"
                             : "hover:bg-muted/50",
-                          isCurrentUser
+                          isCurrentUser || isLeader
                             ? "cursor-default opacity-80"
                             : "cursor-pointer",
                         )}

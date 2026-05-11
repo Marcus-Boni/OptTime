@@ -7,7 +7,7 @@ import {
   getActorContext,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { project, projectMember } from "@/lib/db/schema";
+import { project, projectMember, user } from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
 
 function safeParseStages(raw: string): string[] {
@@ -17,6 +17,17 @@ function safeParseStages(raw: string): string[] {
   } catch {
     return [];
   }
+}
+
+async function isProjectLeaderRole(userId: string): Promise<boolean> {
+  const candidate = await db.query.user.findFirst({
+    where: eq(user.id, userId),
+    columns: { role: true, isActive: true },
+  });
+  return (
+    candidate?.isActive === true &&
+    (candidate.role === "admin" || candidate.role === "manager")
+  );
 }
 
 /**
@@ -139,6 +150,13 @@ export async function PUT(
       actor.role === "manager"
         ? actor.userId
         : data.managerId || existing.managerId || actor.userId;
+
+    if (!(await isProjectLeaderRole(managerId))) {
+      return Response.json(
+        { error: "O lider do projeto deve ser um admin ou gerente ativo." },
+        { status: 400 },
+      );
+    }
     const assigneeIds = [...new Set([managerId, ...data.memberIds])];
 
     if (!(await ensureManagerAssignableUsers(actor, assigneeIds))) {

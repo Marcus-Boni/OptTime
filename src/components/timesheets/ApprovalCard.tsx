@@ -38,7 +38,9 @@ function parsePeriod(period: string): string {
   // "2025-W10" => "Semana 10 de 2025"
   // "2025-03"  => "Março de 2025"
   const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch) return `Semana ${parseInt(weekMatch[2])} de ${weekMatch[1]}`;
+  if (weekMatch) {
+    return `Semana ${parseInt(weekMatch[2], 10)} de ${weekMatch[1]}`;
+  }
   const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
   if (monthMatch) {
     const months = [
@@ -55,7 +57,7 @@ function parsePeriod(period: string): string {
       "Novembro",
       "Dezembro",
     ];
-    return `${months[parseInt(monthMatch[2]) - 1]} de ${monthMatch[1]}`;
+    return `${months[parseInt(monthMatch[2], 10) - 1]} de ${monthMatch[1]}`;
   }
   return period;
 }
@@ -93,6 +95,10 @@ export function ApprovalCard({
   };
 
   const user = timesheet.user;
+  const canApprove =
+    timesheet.status === "submitted" ||
+    timesheet.status === "open" ||
+    timesheet.status === "rejected";
 
   return (
     <>
@@ -142,7 +148,7 @@ export function ApprovalCard({
                 Detalhes
               </Link>
             </Button>
-            {timesheet.status === "submitted" && (
+            {canApprove && (
               <>
                 <Button
                   size="sm"
@@ -158,7 +164,7 @@ export function ApprovalCard({
                   variant="outline"
                   className="text-destructive hover:text-destructive"
                   onClick={() => setRejectOpen(true)}
-                  disabled={loading}
+                  disabled={loading || timesheet.status !== "submitted"}
                 >
                   <X className="mr-1.5 h-3.5 w-3.5" />
                   Rejeitar

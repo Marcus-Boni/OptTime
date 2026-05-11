@@ -12,6 +12,7 @@ import {
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
+import { formatLocalDate } from "@/lib/utils";
 import { startTimerSchema } from "@/lib/validations/time-entry.schema";
 
 export const dynamic = "force-dynamic";
@@ -96,10 +97,7 @@ export async function POST(req: Request): Promise<Response> {
   const data = parsed.data;
 
   try {
-    await assertWeeklyTimesheetDateUnlocked(
-      extUser.id,
-      new Date().toISOString().slice(0, 10),
-    );
+    await assertWeeklyTimesheetDateUnlocked(extUser.id, formatLocalDate());
 
     const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
@@ -175,7 +173,7 @@ async function stopTimerAndSave(
     totalMs += now.getTime() - timer.startedAt.getTime();
   }
   const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
-  const dateStr = now.toISOString().slice(0, 10);
+  const dateStr = formatLocalDate(now);
 
   await assertWeeklyTimesheetDateUnlocked(userId, dateStr);
 

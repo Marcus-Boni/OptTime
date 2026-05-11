@@ -1,3 +1,4 @@
+import { getISOWeek, getISOWeekYear, startOfISOWeek, subWeeks } from "date-fns";
 import { and, eq, inArray } from "drizzle-orm";
 import {
   getActiveSession,
@@ -5,7 +6,51 @@ import {
   getDirectReportIds,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { timesheet } from "@/lib/db/schema";
+import { timesheet, user } from "@/lib/db/schema";
+
+const APPROVAL_QUEUE_STATUSES = ["submitted", "open", "rejected"];
+const UNSUBMITTED_WEEKS_LOOKBACK = 4;
+
+function getRecentWeeklyPeriods(): string[] {
+  const currentWeekStart = startOfISOWeek(new Date());
+  return Array.from({ length: UNSUBMITTED_WEEKS_LOOKBACK }, (_, index) => {
+    const weekDate = subWeeks(currentWeekStart, index);
+    return `${getISOWeekYear(weekDate)}-W${getISOWeek(weekDate).toString().padStart(2, "0")}`;
+  });
+}
+
+async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
+  if (actor.role === "admin") {
+    const users = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.isActive, true));
+    return users.map((person) => person.id);
+  }
+
+  return getDirectReportIds(actor.userId);
+}
+
+async function ensureRecentUnsubmittedWeeks(userIds: string[]) {
+  if (userIds.length === 0) return;
+
+  const periods = getRecentWeeklyPeriods();
+  await db
+    .insert(timesheet)
+    .values(
+      userIds.flatMap((userId) =>
+        periods.map((period) => ({
+          id: crypto.randomUUID(),
+          userId,
+          period,
+          periodType: "weekly",
+        })),
+      ),
+    )
+    .onConflictDoNothing({
+      target: [timesheet.userId, timesheet.period],
+    });
+}
 
 /**
  * GET - List submitted timesheets pending approval inside the actor scope.
@@ -22,20 +67,17 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
+    const scopedUserIds = await getApprovalUserIds(actor);
+    await ensureRecentUnsubmittedWeeks(scopedUserIds);
+
+    const statusFilter = inArray(timesheet.status, APPROVAL_QUEUE_STATUSES);
+
     const where =
       actor.role === "admin"
-        ? eq(timesheet.status, "submitted")
-        : await (async () => {
-            const directReportIds = await getDirectReportIds(actor.userId);
-            if (directReportIds.length === 0) {
-              return null;
-            }
-
-            return and(
-              eq(timesheet.status, "submitted"),
-              inArray(timesheet.userId, directReportIds),
-            );
-          })();
+        ? statusFilter
+        : scopedUserIds.length === 0
+          ? null
+          : and(statusFilter, inArray(timesheet.userId, scopedUserIds));
 
     if (!where) {
       return Response.json({ timesheets: [] });
@@ -55,7 +97,7 @@ export async function GET(req: Request): Promise<Response> {
         },
         approver: { columns: { id: true, name: true } },
       },
-      orderBy: (ts, { asc }) => [asc(ts.submittedAt)],
+      orderBy: (ts, { desc, asc }) => [desc(ts.period), asc(ts.submittedAt)],
     });
 
     return Response.json({ timesheets: pending });

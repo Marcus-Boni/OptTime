@@ -29,6 +29,7 @@ import type {
 } from "@/components/projects/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import {
   Dialog,
   DialogContent,
@@ -48,7 +49,6 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn, getInitials } from "@/lib/utils";
-import { DatePicker } from "@/components/ui/date-picker";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
@@ -88,6 +88,7 @@ const editProjectSchema = z.object({
   billable: z.boolean(),
   budget: z.string().optional(),
   commercialName: z.string().optional(),
+  managerId: z.string().min(1, "Selecione um lider do projeto"),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   scopeId: z.string().optional(),
@@ -221,6 +222,7 @@ export function ProjectEditDialog({
     new Set(),
   );
   const [memberSearch, setMemberSearch] = useState("");
+  const [managerSearch, setManagerSearch] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageData, setImageData] = useState<string | null | undefined>(
     undefined,
@@ -255,6 +257,7 @@ export function ProjectEditDialog({
       billable: project.billable,
       budget: project.budget?.toString() ?? "",
       commercialName: project.commercialName ?? "",
+      managerId: project.managerId ?? currentUserId,
       startDate: project.startDate ?? "",
       endDate: project.endDate ?? "",
       scopeId: project.scopeId ?? "",
@@ -266,7 +269,8 @@ export function ProjectEditDialog({
     setImagePreview(project.imageUrl ?? null);
     setImageData(undefined);
     setMemberSearch("");
-  }, [project, reset]);
+    setManagerSearch("");
+  }, [project, reset, currentUserId]);
 
   // ─── Fetch team members ───────────────────────────────────────────────────────
 
@@ -340,6 +344,11 @@ export function ProjectEditDialog({
     });
   }
 
+  function selectManager(id: string) {
+    setValue("managerId", id, { shouldDirty: true, shouldValidate: true });
+    setSelectedMembers((prev) => new Set(prev).add(id));
+  }
+
   // ─── Submit ───────────────────────────────────────────────────────────────────
 
   async function onSubmit(data: EditProjectInput) {
@@ -361,7 +370,7 @@ export function ProjectEditDialog({
           imageUrl: imageData,
           // Send all selected members — the PUT handler deduplicates with managerId
           memberIds: Array.from(selectedMembers),
-          managerId: project.managerId ?? currentUserId,
+          managerId: data.managerId,
           azureProjectId:
             data.azureProjectId || project.azureProjectId || undefined,
           commercialName: data.commercialName || null,
@@ -412,6 +421,18 @@ export function ProjectEditDialog({
     (p) =>
       p.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
       p.email.toLowerCase().includes(memberSearch.toLowerCase()),
+  );
+  const managerCandidates = people.filter(
+    (p) => p.role === "admin" || p.role === "manager",
+  );
+  const selectedManagerId = watch("managerId");
+  const selectedManager = managerCandidates.find(
+    (person) => person.id === selectedManagerId,
+  );
+  const filteredManagers = managerCandidates.filter(
+    (p) =>
+      p.name.toLowerCase().includes(managerSearch.toLowerCase()) ||
+      p.email.toLowerCase().includes(managerSearch.toLowerCase()),
   );
 
   const selectedCount = selectedMembers.size;
@@ -657,6 +678,73 @@ export function ProjectEditDialog({
                     placeholder="Ex: João Silva"
                     {...register("commercialName")}
                   />
+                </div>
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="edit-manager-search">
+                    Líder do projeto <span className="text-destructive">*</span>
+                  </Label>
+                  {selectedManager && (
+                    <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {selectedManager.name}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {selectedManager.email}
+                        </p>
+                      </div>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {selectedManager.role === "admin" ? "Admin" : "Gerente"}
+                      </Badge>
+                    </div>
+                  )}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="edit-manager-search"
+                      placeholder="Buscar admin ou gerente..."
+                      className="h-9 pl-9 text-sm"
+                      value={managerSearch}
+                      onChange={(e) => setManagerSearch(e.target.value)}
+                    />
+                  </div>
+                  <div className="max-h-36 overflow-y-auto rounded-lg border border-border/50">
+                    {filteredManagers.length === 0 ? (
+                      <p className="py-4 text-center text-sm text-muted-foreground">
+                        Nenhum admin ou gerente encontrado.
+                      </p>
+                    ) : (
+                      filteredManagers.map((person) => (
+                        <button
+                          key={person.id}
+                          type="button"
+                          onClick={() => selectManager(person.id)}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted/50",
+                            person.id === selectedManagerId &&
+                              "bg-brand-500/10",
+                          )}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate font-medium">
+                              {person.name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {person.email}
+                            </span>
+                          </span>
+                          <Badge variant="secondary" className="text-[10px]">
+                            {person.role === "admin" ? "Admin" : "Gerente"}
+                          </Badge>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  {errors.managerId && (
+                    <p className="text-xs text-destructive">
+                      {errors.managerId.message}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="edit-start-date">Data Início</Label>
@@ -949,7 +1037,7 @@ export function ProjectEditDialog({
                           member={person}
                           selected={selectedMembers.has(person.id)}
                           isCurrentUser={person.id === currentUserId}
-                          isLocked={person.id === (project?.managerId ?? currentUserId)}
+                          isLocked={person.id === selectedManagerId}
                           onToggle={toggleMember}
                         />
                       </motion.div>

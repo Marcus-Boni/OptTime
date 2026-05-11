@@ -34,6 +34,13 @@ export interface QuickLogFormProps {
   onProjectsChanged: () => void;
 }
 
+function formatLocalDate(date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function QuickLogForm({
   projects,
   allProjects,
@@ -49,12 +56,12 @@ export function QuickLogForm({
   onCreateEntry,
   onProjectsChanged,
 }: QuickLogFormProps) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatLocalDate();
 
   // Pre-select project matching the DevOps project context.
   // Falls back to first available project when no match is found (user must pick).
-  const [projectId, setProjectId] = useState(() =>
-    matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId,
+  const [projectId, setProjectId] = useState(
+    () => matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId,
   );
   const [date, setDate] = useState(today);
   const [selectedDuration, setSelectedDuration] = useState("");
@@ -77,7 +84,8 @@ export function QuickLogForm({
         // Only override if the current selection is empty or not in the list
         const stillValid = projects.some((p) => p.id === prev);
         if (prev && stillValid) return prev;
-        return matchProjectFromDevOpsContext(projects, devOpsProjectName).projectId;
+        return matchProjectFromDevOpsContext(projects, devOpsProjectName)
+          .projectId;
       });
     }
   }, [projects, devOpsProjectName]);
@@ -376,9 +384,9 @@ export function QuickLogForm({
         </div>
       )}
       {successMsg && (
-        <div style={s.successMsg} role="status" aria-live="polite">
+        <output style={s.successMsg} aria-live="polite">
           {successMsg}
-        </div>
+        </output>
       )}
 
       <button
@@ -411,16 +419,16 @@ function ManageProjectsPanel({
   onShow,
 }: ManageProjectsPanelProps) {
   return (
-    <div style={mp.panel} role="list" aria-label="Gerenciar projetos">
+    <ul style={mp.panel} aria-label="Gerenciar projetos">
       {allProjects.length === 0 && (
         <p style={mp.empty}>Nenhum projeto encontrado.</p>
       )}
       {allProjects.map((p) => {
         const isHidden = hiddenIds.has(p.id);
         return (
-          <div key={p.id} style={mp.row} role="listitem">
+          <li key={p.id} style={mp.row}>
             <span style={mp.dot} aria-hidden="true">
-              <svg width="8" height="8" viewBox="0 0 8 8">
+              <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8">
                 <circle cx="4" cy="4" r="4" fill={p.color} />
               </svg>
             </span>
@@ -433,10 +441,10 @@ function ManageProjectsPanel({
             >
               {isHidden ? "Mostrar" : "Ocultar"}
             </button>
-          </div>
+          </li>
         );
       })}
-    </div>
+    </ul>
   );
 }
 

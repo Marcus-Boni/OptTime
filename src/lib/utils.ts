@@ -2,11 +2,11 @@ import { type ClassValue, clsx } from "clsx";
 import {
   addDays,
   endOfISOWeek,
-  getISOWeek,
-  getISOWeekYear,
   endOfMonth,
   format,
   formatDistanceToNow,
+  getISOWeek,
+  getISOWeekYear,
   isToday,
   isYesterday,
   parse,
@@ -82,6 +82,14 @@ export function parseLocalDate(dateStr: string): Date {
 
   // Fallback for other formats
   return new Date(dateStr);
+}
+
+/**
+ * Format a Date as YYYY-MM-DD using the local calendar day.
+ * Avoids UTC conversion drift from `toISOString().slice(0, 10)`.
+ */
+export function formatLocalDate(date = new Date()): string {
+  return format(date, "yyyy-MM-dd");
 }
 
 /**

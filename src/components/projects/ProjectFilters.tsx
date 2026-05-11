@@ -1,6 +1,14 @@
 "use client";
 
-import { Search, SlidersHorizontal, Users, X } from "lucide-react";
+import {
+  BarChart3,
+  LayoutGrid,
+  Search,
+  SlidersHorizontal,
+  Table2,
+  Users,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,12 +29,16 @@ export type ProjectStatusFilter =
   | "archived"
   | "completed";
 export type ProjectMembershipFilter = "all" | "member";
+export type ProjectViewMode = "cards" | "table" | "gantt";
+export type ProjectSortMode = "updated" | "endingSoon" | "name";
 
 export interface ProjectFilterState {
   search: string;
   status: ProjectStatusFilter;
   membership: ProjectMembershipFilter;
   scopeId: string;
+  view: ProjectViewMode;
+  sort: ProjectSortMode;
 }
 
 export interface ProjectFiltersProps {
@@ -48,6 +60,16 @@ const STATUS_OPTIONS: Array<{ value: ProjectStatusFilter; label: string }> = [
   { value: "archived", label: "Arquivado" },
 ];
 
+const VIEW_OPTIONS: Array<{
+  value: ProjectViewMode;
+  label: string;
+  icon: typeof LayoutGrid;
+}> = [
+  { value: "cards", label: "Cards", icon: LayoutGrid },
+  { value: "table", label: "Tabela", icon: Table2 },
+  { value: "gantt", label: "Gantt", icon: BarChart3 },
+];
+
 export function ProjectFilters({
   filters,
   onFiltersChange,
@@ -61,7 +83,9 @@ export function ProjectFilters({
     filters.search !== "" ||
     filters.status !== "all" ||
     filters.membership !== "all" ||
-    filters.scopeId !== "all";
+    filters.scopeId !== "all" ||
+    filters.sort !== "updated" ||
+    filters.view !== "cards";
 
   function handleReset() {
     onFiltersChange({
@@ -69,6 +93,8 @@ export function ProjectFilters({
       status: "all",
       membership: "all",
       scopeId: "all",
+      view: "cards",
+      sort: "updated",
     });
   }
 
@@ -172,6 +198,57 @@ export function ProjectFilters({
             Sou membro
           </button>
         )}
+
+        <Select
+          value={filters.sort}
+          onValueChange={(v) =>
+            onFiltersChange({ ...filters, sort: v as ProjectSortMode })
+          }
+        >
+          <SelectTrigger
+            id="projects-sort-filter"
+            className="h-9 w-auto min-w-[160px] text-xs"
+          >
+            <SelectValue placeholder="Ordenação" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="updated" className="text-xs">
+              Atualizados recentemente
+            </SelectItem>
+            <SelectItem value="endingSoon" className="text-xs">
+              Mais próximos de acabar
+            </SelectItem>
+            <SelectItem value="name" className="text-xs">
+              Nome do projeto
+            </SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="inline-flex h-9 overflow-hidden rounded-lg border border-border/60">
+          {VIEW_OPTIONS.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={filters.view === option.value}
+                onClick={() =>
+                  onFiltersChange({ ...filters, view: option.value })
+                }
+                className={cn(
+                  "inline-flex min-w-9 items-center justify-center gap-1.5 px-3 text-xs transition-colors",
+                  filters.view === option.value
+                    ? "bg-brand-500/10 text-brand-400"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                )}
+                title={option.label}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
         {/* Active filters indicator */}
         {hasActiveFilters && (

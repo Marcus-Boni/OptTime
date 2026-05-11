@@ -212,9 +212,16 @@ export async function PATCH(
         );
       }
 
-      if (ts.status !== "submitted") {
+      if (
+        ts.status !== "submitted" &&
+        ts.status !== "open" &&
+        ts.status !== "rejected"
+      ) {
         return Response.json(
-          { error: "Apenas timesheets submetidos podem ser aprovados." },
+          {
+            error:
+              "Apenas timesheets submetidos, abertos ou rejeitados podem ser aprovados.",
+          },
           { status: 400 },
         );
       }
@@ -230,6 +237,44 @@ export async function PATCH(
       }
 
       const updated = await db.transaction(async (tx) => {
+        if (ts.status === "open" || ts.status === "rejected") {
+          const { start, end } = getPeriodRange(ts.period, ts.periodType);
+
+          await tx
+            .update(timeEntry)
+            .set({ timesheetId: id })
+            .where(
+              and(
+                eq(timeEntry.userId, ts.userId),
+                gte(timeEntry.date, start),
+                lte(timeEntry.date, end),
+                or(
+                  isNull(timeEntry.timesheetId),
+                  eq(timeEntry.timesheetId, id),
+                ),
+                isNull(timeEntry.deletedAt),
+              ),
+            );
+
+          const [totals] = await tx
+            .select({
+              totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)`,
+              billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)`,
+            })
+            .from(timeEntry)
+            .where(
+              and(eq(timeEntry.timesheetId, id), isNull(timeEntry.deletedAt)),
+            );
+
+          await tx
+            .update(timesheet)
+            .set({
+              totalMinutes: Number(totals?.totalMinutes ?? 0),
+              billableMinutes: Number(totals?.billableMinutes ?? 0),
+            })
+            .where(eq(timesheet.id, id));
+        }
+
         const [approvedTimesheet] = await tx
           .update(timesheet)
           .set({

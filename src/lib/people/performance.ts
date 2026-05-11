@@ -1,4 +1,10 @@
-import { endOfISOWeek, format, startOfISOWeek, subDays } from "date-fns";
+import {
+  endOfISOWeek,
+  format,
+  getISODay,
+  startOfISOWeek,
+  subDays,
+} from "date-fns";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { type ActorContext, buildScopedUserWhere } from "@/lib/access-control";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
@@ -76,6 +82,11 @@ function getOrCreateMapEntry<TKey, TValue>(
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function getWeekProgressRatio(date: Date): number {
+  const businessDay = Math.min(getISODay(date), 5);
+  return clamp(businessDay / 5, 0.2, 1);
 }
 
 function isWorkItemBlocked(item: AzureDevOpsAssignedWorkItem) {
@@ -171,12 +182,18 @@ function computeHealthStatus(
 function computePerformanceScore(input: {
   integrationStatus: PeoplePerformanceUserRow["integration"]["status"];
   utilizationPercent: number;
+  weekProgressRatio: number;
   activeItems: number;
   itemsWithoutEstimate: number;
   staleItems: number;
   blockedItems: number;
 }): number {
-  const utilizationScore = clamp(input.utilizationPercent, 0, 100) * 0.5;
+  const adjustedUtilization = clamp(
+    input.utilizationPercent / input.weekProgressRatio,
+    0,
+    100,
+  );
+  const utilizationScore = adjustedUtilization * 0.5;
   const planningScore =
     (input.activeItems === 0
       ? 100
@@ -281,6 +298,7 @@ export async function getPeoplePerformance(
   const last30DaysStart = format(subDays(today, 29), "yyyy-MM-dd");
   const staleCutoff = subDays(today, STALE_ITEM_DAYS);
   const currentWeekPeriod = getWeekPeriod(today);
+  const weekProgressRatio = getWeekProgressRatio(today);
 
   const scopedUserWhere = await buildScopedUserWhere(actor);
 
@@ -637,8 +655,6 @@ export async function getPeoplePerformance(
             }
           }
 
-
-
           for (const currentProject of assignedProjects) {
             const metrics = projectMetrics.get(currentProject.name);
             if (!metrics) {
@@ -703,7 +719,7 @@ export async function getPeoplePerformance(
         );
       }
 
-      if (loggedThisWeekMinutes === 0) {
+      if (loggedThisWeekMinutes === 0 && weekProgressRatio >= 0.4) {
         alerts.push(
           buildAlert(
             "no-hours-week",
@@ -762,7 +778,6 @@ export async function getPeoplePerformance(
         );
       }
 
-
       topWorkItems.sort((left, right) => {
         const leftStaleScore = Number(right.stale) - Number(left.stale);
         if (leftStaleScore !== 0) {
@@ -771,8 +786,6 @@ export async function getPeoplePerformance(
 
         return (left.priority ?? 99) - (right.priority ?? 99);
       });
-
-
 
       projectSnapshots.sort((left, right) => {
         if (right.activeItems !== left.activeItems) {
@@ -785,6 +798,7 @@ export async function getPeoplePerformance(
       const performanceScore = computePerformanceScore({
         integrationStatus,
         utilizationPercent,
+        weekProgressRatio,
         activeItems,
         itemsWithoutEstimate,
         staleItems,
