@@ -671,3 +671,80 @@ export const reminderLogRelations = relations(reminderLog, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── Webhook Subscriptions ────────────────────────────────────────────────────
+// Stores outgoing webhook subscriptions for the public integration API (v1).
+// The 'secret' column holds an AES-256-GCM encrypted value (see lib/encryption.ts).
+export const webhookSubscription = pgTable(
+  'webhook_subscription',
+  {
+    id: text('id').primaryKey(),
+    /** Client ID (appid/azp) of the subscriber app from the Entra token */
+    subscriberAppId: text('subscriber_app_id').notNull(),
+    /** Delivery URL — must be HTTPS in production */
+    url: text('url').notNull(),
+    /** AES-256-GCM encrypted shared secret used to sign deliveries */
+    secret: text('secret').notNull(),
+    /** Array of event names this subscription listens to, e.g. ['ping', 'timesheet.approved'] */
+    events: text('events').array().notNull().default([]),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index('webhook_subscription_app_idx').on(table.subscriberAppId),
+    index('webhook_subscription_active_idx').on(table.active),
+  ],
+);
+
+export const webhookSubscriptionRelations = relations(webhookSubscription, ({ many }) => ({
+  deliveries: many(webhookDelivery),
+}));
+
+// ─── Webhook Deliveries ───────────────────────────────────────────────────────
+// Audit log and retry queue for every webhook dispatch attempt.
+export type WebhookDeliveryStatus = 'pending' | 'delivered' | 'failed'
+
+export const webhookDelivery = pgTable(
+  'webhook_delivery',
+  {
+    id: text('id').primaryKey(),
+    // Nullable for ad-hoc test dispatches that are not tied to a registered subscription
+    subscriptionId: text('subscription_id').references(() => webhookSubscription.id, {
+      onDelete: 'cascade',
+    }),
+    /** The logical event name that triggered this delivery */
+    event: text('event').notNull(),
+    /** JSON-serialized event payload */
+    payload: text('payload').notNull(),
+    /** pending | delivered | failed */
+    status: text('status').notNull().default('pending'),
+    /** Number of delivery attempts made so far */
+    attempts: integer('attempts').notNull().default(0),
+    /** HTTP status code returned by the subscriber (null if network error) */
+    responseStatus: integer('response_status'),
+    /** Last error message or response body on failure */
+    lastError: text('last_error'),
+    /** When to retry next (null means no retry scheduled or already delivered) */
+    nextRetryAt: timestamp('next_retry_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at')
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index('webhook_delivery_subscription_idx').on(table.subscriptionId),
+    index('webhook_delivery_status_retry_idx').on(table.status, table.nextRetryAt),
+  ],
+);
+
+export const webhookDeliveryRelations = relations(webhookDelivery, ({ one }) => ({
+  subscription: one(webhookSubscription, {
+    fields: [webhookDelivery.subscriptionId],
+    references: [webhookSubscription.id],
+  }),
+}));
