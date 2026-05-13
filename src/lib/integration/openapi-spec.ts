@@ -175,7 +175,8 @@ const forbiddenResponse = {
   content: { "application/json": { schema: errorSchema } },
 };
 const rateLimitedResponse = {
-  description: "Limite de requisições excedido. Tente novamente após a janela ser reiniciada.",
+  description:
+    "Limite de requisições excedido. Tente novamente após a janela ser reiniciada.",
   headers: {
     "X-RateLimit-Limit": { schema: { type: "integer" } },
     "X-RateLimit-Remaining": { schema: { type: "integer" } },

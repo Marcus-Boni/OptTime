@@ -137,7 +137,7 @@ export function useOutlookEvents({
  * Without the "Z", JavaScript's Date constructor treats the string as
  * local time instead of UTC, causing a 3-hour offset in Brazil (UTC-3).
  */
-function parseGraphDateTime(iso: string): Date {
+export function parseGraphDateTime(iso: string): Date {
   return new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
 }
 

@@ -16,6 +16,8 @@ export function QuickEntryDialog() {
     billable: boolean;
     azureWorkItemId?: number;
     azureWorkItemTitle?: string;
+    startTime?: string;
+    endTime?: string;
   }) => {
     try {
       const res = await fetch("/api/time-entries", {

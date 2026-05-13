@@ -79,6 +79,8 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
       billable: boolean;
       azureWorkItemId?: number;
       azureWorkItemTitle?: string;
+      startTime?: string;
+      endTime?: string;
     }) => {
       const res = await fetch("/api/time-entries", {
         method: "POST",

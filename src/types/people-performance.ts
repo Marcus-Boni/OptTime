@@ -52,8 +52,6 @@ export interface PeoplePerformanceWorkItemSnapshot {
   unestimated: boolean;
 }
 
-
-
 export interface PeoplePerformanceUserRow {
   user: {
     id: string;

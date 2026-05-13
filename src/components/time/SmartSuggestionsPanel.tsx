@@ -2,6 +2,7 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { motion } from "framer-motion";
 import {
   BriefcaseBusiness,
   ChevronDown,
@@ -13,7 +14,6 @@ import {
   RotateCcw,
   Sparkles,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

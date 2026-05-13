@@ -346,9 +346,7 @@ interface UseTimesheetHistoryOptions {
   enabled?: boolean;
 }
 
-export function useTimesheetHistory(
-  options: UseTimesheetHistoryOptions = {},
-) {
+export function useTimesheetHistory(options: UseTimesheetHistoryOptions = {}) {
   const enabled = options.enabled ?? false;
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [loading, setLoading] = useState(false);
@@ -376,7 +374,9 @@ export function useTimesheetHistory(
 
   useEffect(() => {
     if (!enabled) return;
-    const handleUpdate = () => { void fetchHistory(); };
+    const handleUpdate = () => {
+      void fetchHistory();
+    };
     window.addEventListener(TIMESHEETS_UPDATED_EVENT, handleUpdate);
     return () => {
       window.removeEventListener(TIMESHEETS_UPDATED_EVENT, handleUpdate);

@@ -14,6 +14,7 @@ import { OutlookEventsList } from "@/components/time/OutlookEventsList";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   type OutlookEvent,
   useOutlookEvents,
@@ -21,8 +22,6 @@ import {
 import { useTimeEntries } from "@/hooks/use-time-entries";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { signIn } from "@/lib/auth-client";
-
-import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface OutlookMeetingDrawerProps {
   open: boolean;

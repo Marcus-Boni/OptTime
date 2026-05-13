@@ -1,8 +1,8 @@
 "use client";
 
+import { motion } from "framer-motion";
 import { Bell, Calendar } from "lucide-react";
 import { useState } from "react";
-import { motion } from "framer-motion";
 import InviteUserDialog from "@/components/people/InviteUserDialog";
 import PeoplePerformanceDashboard from "@/components/people/PeoplePerformanceDashboard";
 import ReminderBulkModal from "@/components/people/ReminderBulkModal";

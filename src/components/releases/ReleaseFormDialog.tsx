@@ -28,11 +28,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { Release } from "@/hooks/use-releases";
-import { ReleaseDescription } from "./ReleaseDescription";
 import {
-  createReleaseSchema,
   type CreateReleaseInput,
+  createReleaseSchema,
 } from "@/lib/validations/release.schema";
+import { ReleaseDescription } from "./ReleaseDescription";
 
 export interface ReleaseFormDialogProps {
   /** If provided, the dialog opens in edit mode */
@@ -209,7 +209,10 @@ export default function ReleaseFormDialog({
                             Visualizar
                           </TabsTrigger>
                         </TabsList>
-                        <TabsContent value="edit" className="mt-0 focus-visible:outline-none">
+                        <TabsContent
+                          value="edit"
+                          className="mt-0 focus-visible:outline-none"
+                        >
                           <Textarea
                             id="release-description"
                             placeholder={`## Novidades\n- Adicionamos X\n- Melhoramos Y\n\n## Correções\n- Corrigimos Z`}
@@ -218,8 +221,8 @@ export default function ReleaseFormDialog({
                             {...field}
                           />
                         </TabsContent>
-                        <TabsContent 
-                          value="preview" 
+                        <TabsContent
+                          value="preview"
                           className="mt-0 min-h-[240px] rounded-md border border-input bg-muted/20 px-4 py-3 focus-visible:outline-none overflow-y-auto"
                         >
                           {field.value ? (

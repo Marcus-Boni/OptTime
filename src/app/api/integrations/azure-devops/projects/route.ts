@@ -35,6 +35,7 @@ async function generateUniqueProjectCode(
   tx: Pick<typeof db, "query">,
   name: string,
   azureProjectId: string,
+  sessionCodes: Set<string>,
 ) {
   const base = buildProjectCodeBase(name);
   const azureSuffix = azureProjectId
@@ -53,8 +54,10 @@ async function generateUniqueProjectCode(
   const existingCodes = new Set(
     existing.map((existingProject) => existingProject.code),
   );
+  sessionCodes.forEach((code) => existingCodes.add(code));
 
   if (!existingCodes.has(prefixedBase)) {
+    sessionCodes.add(prefixedBase);
     return prefixedBase;
   }
 
@@ -66,6 +69,7 @@ async function generateUniqueProjectCode(
     suffix += 1;
   }
 
+  sessionCodes.add(candidate);
   return candidate;
 }
 
@@ -335,6 +339,8 @@ export async function POST(req: Request): Promise<Response> {
       "#06b6d4",
     ];
 
+    const sessionGeneratedCodes = new Set<string>();
+
     const summary = await db.transaction(async (tx) => {
       const result = {
         createdCount: 0,
@@ -388,7 +394,12 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         const projectId = crypto.randomUUID();
-        const code = await generateUniqueProjectCode(tx, item.name, item.id);
+        const code = await generateUniqueProjectCode(
+          tx,
+          item.name,
+          item.id,
+          sessionGeneratedCodes,
+        );
 
         const [newProject] = await tx
           .insert(project)
@@ -475,8 +486,11 @@ export async function POST(req: Request): Promise<Response> {
         status: summary.createdCount > 0 || summary.joinedCount > 0 ? 201 : 200,
       },
     );
-  } catch (error) {
+  } catch (error: any) {
     console.error("[POST /api/integrations/azure-devops/projects]:", error);
-    return Response.json({ error: "Internal Server Error" }, { status: 500 });
+    return Response.json(
+      { error: error?.message || "Internal Server Error" },
+      { status: 500 },
+    );
   }
 }

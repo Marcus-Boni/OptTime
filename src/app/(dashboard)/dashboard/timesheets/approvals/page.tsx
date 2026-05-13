@@ -634,10 +634,7 @@ export default function TimesheetApprovalsPage() {
 
       {/* ── Content ── */}
       {loading ? (
-        <output
-          className="space-y-4"
-          aria-label="Carregando aprovações"
-        >
+        <output className="space-y-4" aria-label="Carregando aprovações">
           {Array.from({ length: 2 }).map((_, gi) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
             <div key={gi} className="space-y-2">

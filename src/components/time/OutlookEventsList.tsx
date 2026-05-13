@@ -1,12 +1,15 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { OutlookEventCard } from "@/components/time/OutlookEventCard";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { OutlookEvent } from "@/hooks/use-outlook-events";
+import {
+  type OutlookEvent,
+  parseGraphDateTime,
+} from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import { signIn } from "@/lib/auth-client";
 
@@ -23,6 +26,44 @@ interface OutlookEventsListProps {
 
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "").trim().toLocaleLowerCase("pt-BR");
+}
+
+function toDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getEventKeys(event: OutlookEvent) {
+  const subject = normalizeText(event.subject);
+  const start = parseGraphDateTime(event.start.dateTime);
+  const end = parseGraphDateTime(event.end.dateTime);
+
+  return {
+    fallback: `${subject}|${toDateKey(start)}`,
+    precise: `${subject}|${toDateKey(start)}|${start.toISOString()}|${end.toISOString()}`,
+  };
+}
+
+function getEntryKeys(entry: TimeEntry) {
+  const subject = normalizeText(entry.description);
+
+  if (entry.startTime && entry.endTime) {
+    const start = new Date(entry.startTime);
+    const end = new Date(entry.endTime);
+
+    return {
+      precise: `${subject}|${entry.date}|${start.toISOString()}|${end.toISOString()}`,
+      fallback: null,
+    };
+  }
+
+  return {
+    precise: null,
+    fallback: `${subject}|${entry.date}`,
+  };
 }
 
 const outlookSkeletonKeys = [
@@ -43,21 +84,35 @@ export function OutlookEventsList({
 }: OutlookEventsListProps) {
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  const importedDescriptions = useMemo(
-    () =>
-      new Set(existingEntries.map((entry) => normalizeText(entry.description))),
-    [existingEntries],
+  const importedEventKeys = useMemo(() => {
+    const precise = new Set<string>();
+    const fallback = new Set<string>();
+
+    for (const entry of existingEntries) {
+      const keys = getEntryKeys(entry);
+      if (keys.precise) precise.add(keys.precise);
+      if (keys.fallback) fallback.add(keys.fallback);
+    }
+
+    return { precise, fallback };
+  }, [existingEntries]);
+
+  const isImported = useCallback(
+    (event: OutlookEvent) => {
+      const keys = getEventKeys(event);
+      return (
+        importedEventKeys.precise.has(keys.precise) ||
+        importedEventKeys.fallback.has(keys.fallback)
+      );
+    },
+    [importedEventKeys],
   );
 
   const sortedEvents = useMemo(
     () =>
       [...events].sort((left, right) => {
-        const leftImported = importedDescriptions.has(
-          normalizeText(left.subject),
-        );
-        const rightImported = importedDescriptions.has(
-          normalizeText(right.subject),
-        );
+        const leftImported = isImported(left);
+        const rightImported = isImported(right);
 
         if (leftImported !== rightImported) {
           return leftImported ? 1 : -1;
@@ -68,7 +123,7 @@ export function OutlookEventsList({
           new Date(right.start.dateTime).getTime()
         );
       }),
-    [events, importedDescriptions],
+    [events, isImported],
   );
 
   async function handleReconnect() {
@@ -174,7 +229,7 @@ export function OutlookEventsList({
         <OutlookEventCard
           key={event.id}
           event={event}
-          isImported={importedDescriptions.has(normalizeText(event.subject))}
+          isImported={isImported(event)}
           onImport={onCreateFromOutlook}
         />
       ))}

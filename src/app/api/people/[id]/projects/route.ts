@@ -1,3 +1,4 @@
+import { and, eq, inArray } from "drizzle-orm";
 import {
   canManageProject,
   canManageUser,
@@ -7,7 +8,6 @@ import {
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
-import { and, eq, inArray } from "drizzle-orm";
 
 /**
  * GET /api/people/[id]/projects

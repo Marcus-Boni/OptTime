@@ -28,6 +28,7 @@ import {
   subWeeks,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronLeft,
   ChevronRight,
@@ -39,7 +40,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "sonner";
 import { DragDropContextMenu } from "@/components/time/DragDropContextMenu";
 import {

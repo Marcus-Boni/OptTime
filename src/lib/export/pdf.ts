@@ -67,11 +67,225 @@ function formatGeneratedAt(date = new Date()): string {
   }).format(date);
 }
 
+function fixMojibake(value: string): string {
+  // Fix UTF-8 bytes interpreted as Latin-1 (mojibake).
+  // Each corrupted pair maps a Latin-1 two-byte sequence back to the
+  // correct Unicode character.
+  return value
+    .replace(/Ã©/g, "é")
+    .replace(/Ã§/g, "ç")
+    .replace(/Ã£/g, "ã")
+    .replace(/Ã¡/g, "á")
+    .replace(/Ã­/g, "í")
+    .replace(/Ã³/g, "ó")
+    .replace(/Ãª/g, "ê")
+    .replace(/Ãµ/g, "õ")
+    .replace(/Ã´/g, "ô")
+    .replace(/Ãº/g, "ú")
+    .replace(/Ã¢/g, "â")
+    .replace(/Ã±/g, "ñ")
+    .replace(/Ã¼/g, "ü")
+    .replace(/Ã¶/g, "ö")
+    .replace(/Ã/g, "Á")
+    .replace(/Ã/g, "É")
+    .replace(/Ã/g, "Í")
+    .replace(/Ã/g, "Ó")
+    .replace(/Ã/g, "Ú")
+    .replace(/Ã/g, "Ç")
+    .replace(/Ã/g, "Ã")
+    .replace(/Ã/g, "Õ");
+}
+
+function decodeHtmlEntities(value: string): string {
+  const decodeOnce = (input: string) => {
+    if (typeof document !== "undefined") {
+      const textarea = document.createElement("textarea");
+      textarea.innerHTML = input;
+      return textarea.value;
+    }
+
+    return input
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&#(\d+);/g, (_, code: string) =>
+        String.fromCodePoint(Number.parseInt(code, 10)),
+      )
+      .replace(/&#x([\da-f]+);/gi, (_, code: string) =>
+        String.fromCodePoint(Number.parseInt(code, 16)),
+      );
+  };
+
+  let decoded = value;
+
+  for (let index = 0; index < 3; index += 1) {
+    const next = decodeOnce(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+
+  return decoded;
+}
+
+/**
+ * Detects the Azure DevOps "&X&X&X" encoding where each character is
+ * preceded by an ampersand, e.g. "&R&E&G&I&S&T&R&A&R".
+ * Returns true when the pattern is present in the string.
+ */
+function hasAzureAmpersandPattern(value: string): boolean {
+  // Three or more consecutive &<non-whitespace> tokens
+  if (/(?:&[^\s&]){3,}/.test(value)) return true;
+  // Or a high density of ampersands overall (≥ 8 in the string)
+  const ampCount = (value.match(/&/g) ?? []).length;
+  if (ampCount >= 8) return true;
+  return false;
+}
+
+function repairAzureAmpersandEncoding(value: string): string {
+  if (!hasAzureAmpersandPattern(value)) return value;
+  // Remove every & that precedes a letter/digit or a space (word separator)
+  return value
+    .replace(/&(?=[\p{L}0-9\s])/gu, "")
+    .replace(/&/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function countFragmentedTokens(value: string): number {
+  return value
+    .trim()
+    .split(/\s+/)
+    .filter(
+      (token) => token.length === 1 && !/[.!?;:()[\]{}"""'']/u.test(token),
+    ).length;
+}
+
+function repairSpacedAzureLetters(value: string): string {
+  const singleLetterTokens = countFragmentedTokens(value);
+
+  if (singleLetterTokens < 8) return value;
+
+  const knownWords = [
+    "transferencia",
+    "expedicao",
+    "preenchimento",
+    "pendentes",
+    "pendente",
+    "somente",
+    "inteiro",
+    "incluir",
+    "revenda",
+    "produto",
+    "codigo",
+    "campos",
+    "falha",
+    "valor",
+    "erro",
+    "errto",
+    "indo",
+    "apos",
+    "nada",
+    "sem",
+    "ter",
+    "pos",
+  ].sort((left, right) => right.length - left.length);
+
+  const normalizeWord = (word: string) =>
+    word
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+
+  const segmentJoinedText = (joined: string) => {
+    const normalized = normalizeWord(joined);
+    const segments: string[] = [];
+    let index = 0;
+    // Buffer for characters that don't match any dictionary word.
+    // Flushed as one block instead of one char at a time to avoid re-spacing.
+    let unknownBuf = "";
+
+    const flushUnknown = () => {
+      if (!unknownBuf) return;
+      // Split at lowercase→uppercase transitions to recover CamelCase boundaries
+      segments.push(
+        unknownBuf.replace(
+          /([a-záéíóúâêôãõçñü])([A-ZÁÉÍÓÚÂÊÔÃÕÇÑÜ])/gu,
+          "$1 $2",
+        ),
+      );
+      unknownBuf = "";
+    };
+
+    while (index < joined.length) {
+      const match = knownWords.find((word) =>
+        normalized.startsWith(word, index),
+      );
+
+      if (!match) {
+        unknownBuf += joined[index];
+        index += 1;
+        continue;
+      }
+
+      flushUnknown();
+      segments.push(
+        match === "errto" ? "Erro" : joined.slice(index, index + match.length),
+      );
+      index += match.length;
+    }
+
+    flushUnknown();
+    return segments.join(" ");
+  };
+
+  return value
+    // Handle both curly (U+2018/U+2019) and straight (U+0027) apostrophe after !
+    .replace(/!\s*['‘’]/g, " - ")
+    // Split on double-space, " - " separators, and common punctuation
+    .split(/(\s{2,}|\s+-\s+|[.!?;:()[\]{}"""])/u)
+    .map((part) => {
+      const partSingleLetters = countFragmentedTokens(part);
+
+      if (partSingleLetters < 3) return part;
+
+      return segmentJoinedText(part.replace(/\s+/g, ""));
+    })
+    .join("");
+}
+
+function normalizePdfText(value: string): string {
+  // First pass: fix mojibake (UTF-8 bytes misread as Latin-1)
+  const mojibakeFixed = fixMojibake(value);
+
+  // Second pass: fix Azure DevOps &X&X&X encoding before HTML processing
+  const azureFixed = repairAzureAmpersandEncoding(mojibakeFixed);
+
+  const withoutHtml = decodeHtmlEntities(azureFixed)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[​-‍﻿­]/g, "")
+    .replace(/ /g, " ")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+
+  // Apply Azure repair again after HTML decoding in case entities re-introduced &X patterns
+  const repairedAzure = repairAzureAmpersandEncoding(withoutHtml);
+
+  return repairSpacedAzureLetters(repairedAzure)
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function ellipsizeText(doc: jsPDF, value: string, maxWidth: number): string {
-  if (doc.getTextWidth(value) <= maxWidth) return value;
+  const normalized = normalizePdfText(value);
+
+  if (doc.getTextWidth(normalized) <= maxWidth) return normalized;
 
   const ellipsis = "...";
-  let trimmed = value;
+  let trimmed = normalized;
 
   while (trimmed.length > 1) {
     trimmed = trimmed.slice(0, -1);
@@ -201,14 +415,14 @@ function drawHeader(
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(22);
-  doc.text(title, PAGE_MARGIN, landscape ? 31 : 35);
+  doc.text(title, PAGE_MARGIN, landscape ? 29 : 35);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   doc.text(
     period ?? "Período personalizado",
     PAGE_MARGIN,
-    landscape ? 40 : 45.5,
+    landscape ? 37.5 : 45.5,
   );
 
   doc.setFontSize(9);
@@ -575,7 +789,13 @@ export async function exportSummaryByProjectToPDF({
     title: "Resumo por projeto",
     description:
       "Visão consolidada com horas totais, recorte faturável e volume de lançamentos para apoiar acompanhamento e compartilhamento executivo.",
-    headers: ["Projeto", "Total", "Faturável", "Não faturável", "Lançamentos"],
+    headers: [
+      "Projeto",
+      "Total",
+      "Faturável",
+      "Não faturável",
+      "Lançamentos",
+    ],
     rows,
     colWidths,
     startY: y,
@@ -619,9 +839,9 @@ export async function exportTimeEntriesToPDF({
   const colWidths = [23, 53, tableWidth - 23 - 53 - 30 - 24 - 26, 30, 24, 26];
 
   const rows = entries.map((entry) => [
-    entry.date,
-    entry.project,
-    entry.description,
+    normalizePdfText(entry.date),
+    normalizePdfText(entry.project),
+    normalizePdfText(entry.description),
     minutesToHours(entry.duration),
     entry.billable ? "Sim" : "Não",
     translateStatus(entry.status),
@@ -640,7 +860,14 @@ export async function exportTimeEntriesToPDF({
     title: "Lançamentos detalhados",
     description:
       "Exportação detalhada para auditoria operacional, conferência individual de registros e compartilhamento com liderança ou clientes.",
-    headers: ["Data", "Projeto", "Descrição", "Duração", "Faturável", "Status"],
+    headers: [
+      "Data",
+      "Projeto",
+      "Descrição",
+      "Duração",
+      "Faturável",
+      "Status",
+    ],
     rows,
     colWidths,
     startY: y,

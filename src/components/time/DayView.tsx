@@ -4,16 +4,16 @@ import {
   addDays,
   eachDayOfInterval,
   endOfISOWeek,
+  endOfMonth,
+  endOfWeek,
   format,
   isSameDay,
   isToday,
   isWeekend,
   startOfISOWeek,
-  subDays,
   startOfMonth,
-  endOfMonth,
   startOfWeek,
-  endOfWeek,
+  subDays,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
@@ -27,12 +27,15 @@ import {
   Plus,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ComponentProps, useEffect, useMemo, useState } from "react";
 import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
 import { TimeEntryCard } from "@/components/time/TimeEntryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar as CalendarComponent, CalendarDayButton } from "@/components/ui/calendar";
+import {
+  Calendar as CalendarComponent,
+  CalendarDayButton,
+} from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
@@ -47,6 +50,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   type OutlookEvent,
+  parseGraphDateTime,
   useOutlookEvents,
 } from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
@@ -91,6 +95,40 @@ function normalizeText(value: string | null | undefined): string {
   return (value ?? "").trim().toLocaleLowerCase("pt-BR");
 }
 
+function toDateKey(date: Date): string {
+  return format(date, "yyyy-MM-dd");
+}
+
+function getOutlookEventKeys(event: OutlookEvent) {
+  const subject = normalizeText(event.subject);
+  const start = parseGraphDateTime(event.start.dateTime);
+  const end = parseGraphDateTime(event.end.dateTime);
+
+  return {
+    fallback: `${subject}|${toDateKey(start)}`,
+    precise: `${subject}|${toDateKey(start)}|${start.toISOString()}|${end.toISOString()}`,
+  };
+}
+
+function getTimeEntryOutlookKeys(entry: TimeEntry) {
+  const subject = normalizeText(entry.description);
+
+  if (entry.startTime && entry.endTime) {
+    const start = new Date(entry.startTime);
+    const end = new Date(entry.endTime);
+
+    return {
+      precise: `${subject}|${entry.date}|${start.toISOString()}|${end.toISOString()}`,
+      fallback: null,
+    };
+  }
+
+  return {
+    precise: null,
+    fallback: `${subject}|${entry.date}`,
+  };
+}
+
 const dailyTarget = 8 * 60;
 
 function MiniMonthCalendar({
@@ -102,7 +140,9 @@ function MiniMonthCalendar({
   dailyTargetMinutes: number;
   onDayClick: (date: Date) => void;
 }) {
-  const [daySummaries, setDaySummaries] = useState<{ date: string; totalMinutes: number }[]>([]);
+  const [daySummaries, setDaySummaries] = useState<
+    { date: string; totalMinutes: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [month, setMonth] = useState<Date>(startOfMonth(referenceDate));
 
@@ -149,7 +189,10 @@ function MiniMonthCalendar({
     return map;
   }, [daySummaries]);
 
-  const monthTotal = Array.from(minutesByDate.values()).reduce((sum, mins) => sum + mins, 0);
+  const monthTotal = Array.from(minutesByDate.values()).reduce(
+    (sum, mins) => sum + mins,
+    0,
+  );
 
   return (
     <div className="flex flex-col bg-card shadow-sm rounded-xl overflow-hidden">
@@ -172,13 +215,21 @@ function MiniMonthCalendar({
               const dateStr = format(props.day.date, "yyyy-MM-dd");
               const minutes = minutesByDate.get(dateStr) ?? 0;
               const hasHours = minutes > 0;
-              const metTarget = dailyTargetMinutes > 0 ? minutes >= dailyTargetMinutes : hasHours;
+              const metTarget =
+                dailyTargetMinutes > 0
+                  ? minutes >= dailyTargetMinutes
+                  : hasHours;
 
               // Extract children to inject our dot without breaking the button's native dimensions
-              const { children, ...rest } = props as any;
+              const { children, ...rest } = props as ComponentProps<
+                typeof CalendarDayButton
+              >;
 
               return (
-                <CalendarDayButton {...rest} className={cn(props.className, "relative")}>
+                <CalendarDayButton
+                  {...rest}
+                  className={cn(props.className, "relative")}
+                >
                   {children}
                   {hasHours && !loading && (
                     <span
@@ -188,7 +239,7 @@ function MiniMonthCalendar({
                           ? "bg-current opacity-90"
                           : metTarget
                             ? "bg-emerald-500"
-                            : "bg-brand-500"
+                            : "bg-brand-500",
                       )}
                       style={{ pointerEvents: "none" }}
                     />
@@ -282,14 +333,26 @@ export function DayView({
     enabled: true,
   });
 
-  const importedDescriptions = useMemo(
-    () => new Set(dayEntries.map((entry) => normalizeText(entry.description))),
-    [dayEntries],
-  );
+  const importedOutlookKeys = useMemo(() => {
+    const precise = new Set<string>();
+    const fallback = new Set<string>();
 
-  const pendingMeetings = outlook.events.filter(
-    (event) => !importedDescriptions.has(normalizeText(event.subject)),
-  );
+    for (const entry of dayEntries) {
+      const keys = getTimeEntryOutlookKeys(entry);
+      if (keys.precise) precise.add(keys.precise);
+      if (keys.fallback) fallback.add(keys.fallback);
+    }
+
+    return { precise, fallback };
+  }, [dayEntries]);
+
+  const pendingMeetings = outlook.events.filter((event) => {
+    const keys = getOutlookEventKeys(event);
+    return (
+      !importedOutlookKeys.precise.has(keys.precise) &&
+      !importedOutlookKeys.fallback.has(keys.fallback)
+    );
+  });
 
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
@@ -328,7 +391,11 @@ export function DayView({
                   <ChevronDown className="h-5 w-5 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180" />
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-[300px] p-0 border-border/60 bg-card rounded-xl shadow-lg" align="start" sideOffset={8}>
+              <PopoverContent
+                className="w-[300px] p-0 border-border/60 bg-card rounded-xl shadow-lg"
+                align="start"
+                sideOffset={8}
+              >
                 <MiniMonthCalendar
                   referenceDate={selectedDate}
                   dailyTargetMinutes={dailyTarget}

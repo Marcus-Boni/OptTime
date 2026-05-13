@@ -74,12 +74,6 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
   Table,
   TableBody,
   TableCell,
@@ -87,6 +81,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn, formatDate, formatDuration, getRelativeTime } from "@/lib/utils";
 import type {
   PeoplePerformanceHealth,
@@ -1273,7 +1273,10 @@ export default function PeoplePerformanceDashboard({
                           Outros projetos
                         </p>
                         {overflow.map((proj) => (
-                          <div key={proj.id} className="flex items-center gap-2">
+                          <div
+                            key={proj.id}
+                            className="flex items-center gap-2"
+                          >
                             <span
                               className="h-2 w-2 shrink-0 rounded-full"
                               style={{ backgroundColor: proj.color }}
@@ -1617,10 +1620,12 @@ export default function PeoplePerformanceDashboard({
                                       "text-right",
                                     header.column.id === "user" && "w-[22%]",
                                     header.column.id === "score" && "w-[16%]",
-                                    header.column.id === "workload" && "w-[14%]",
+                                    header.column.id === "workload" &&
+                                      "w-[14%]",
                                     header.column.id === "availability" &&
                                       "w-[15%]",
-                                    header.column.id === "projects" && "w-[20%]",
+                                    header.column.id === "projects" &&
+                                      "w-[20%]",
                                     header.column.id === "alerts" && "w-[13%]",
                                   )}
                                 >

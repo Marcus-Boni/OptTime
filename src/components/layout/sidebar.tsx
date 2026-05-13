@@ -2,7 +2,6 @@
 
 import { format, getISOWeek } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
-import { useMemo } from "react";
 import {
   CheckSquare,
   ChevronLeft,
@@ -20,6 +19,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

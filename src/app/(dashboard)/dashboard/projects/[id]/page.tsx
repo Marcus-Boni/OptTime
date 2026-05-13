@@ -24,6 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ProjectEditDialog } from "@/components/projects";
 import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
+import type { ProjectFromAPI } from "@/components/projects/types";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,7 +33,6 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/lib/auth-client";
 import { cn, formatDate } from "@/lib/utils";
-import type { ProjectFromAPI } from "@/components/projects/types";
 import type { User as UserType } from "@/types/user";
 
 // ─── Animations ────────────────────────────────────────────────────────────────

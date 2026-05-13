@@ -9,17 +9,17 @@ interface ReleaseDescriptionProps {
 /** Renders simple markdown-like text as formatted JSX */
 export function ReleaseDescription({ text }: ReleaseDescriptionProps) {
   if (!text) return null;
-  
+
   const lines = text.split("\n");
 
   /** Helper to render inline markdown like bold and code */
   const renderInline = (content: string) => {
     // Match bold (**text**) and inline code (`code`)
     const parts = content.split(/(\*\*.*?\*\*|`.*?`)/g);
-    
+
     return parts.map((part, i) => {
       const key = `inline-${i}`;
-      
+
       // Bold: **text**
       if (part.startsWith("**") && part.endsWith("**")) {
         return (
@@ -28,7 +28,7 @@ export function ReleaseDescription({ text }: ReleaseDescriptionProps) {
           </strong>
         );
       }
-      
+
       // Inline code: `text`
       if (part.startsWith("`") && part.endsWith("`")) {
         return (
@@ -40,7 +40,7 @@ export function ReleaseDescription({ text }: ReleaseDescriptionProps) {
           </code>
         );
       }
-      
+
       return part;
     });
   };
@@ -49,7 +49,7 @@ export function ReleaseDescription({ text }: ReleaseDescriptionProps) {
     <div className="space-y-1 text-sm leading-relaxed text-muted-foreground">
       {lines.map((line, i) => {
         const key = `line-${i}`;
-        
+
         if (line.startsWith("## ")) {
           return (
             <h2

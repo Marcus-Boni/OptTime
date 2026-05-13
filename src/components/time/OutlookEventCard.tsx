@@ -3,18 +3,17 @@
 import { ExternalLink, TimerReset } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { OutlookEvent } from "@/hooks/use-outlook-events";
 import {
   formatEventTimeRange,
   getEventDurationMinutes,
 } from "@/hooks/use-outlook-events";
 import { cn, formatDuration } from "@/lib/utils";
-
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 interface OutlookEventCardProps {
   event: OutlookEvent;

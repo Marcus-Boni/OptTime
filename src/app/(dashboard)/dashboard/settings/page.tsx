@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import {
+  ArrowRight,
   BellRing,
   Check,
   CheckSquare,
@@ -17,7 +18,6 @@ import {
   Sun,
   Users,
   Workflow,
-  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -685,8 +685,8 @@ export default function SettingsPage() {
                   </CardHeader>
                   <CardContent>
                     <p className="mb-4 text-xs text-muted-foreground">
-                      Sincronize horas apontadas diretamente com os seus Work Items
-                      no Azure Boards e mantenha tudo atualizado.
+                      Sincronize horas apontadas diretamente com os seus Work
+                      Items no Azure Boards e mantenha tudo atualizado.
                     </p>
                     <div className="mt-auto flex items-center text-xs font-medium text-brand-500 group-hover:text-brand-600">
                       <Settings2 className="mr-1.5 h-3.5 w-3.5" />
@@ -696,7 +696,7 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
               </Link>
-              
+
               <Card className="flex h-full flex-col border-border/50 bg-card/40 backdrop-blur opacity-60">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -723,15 +723,18 @@ export default function SettingsPage() {
                       </svg>
                       Jira Software
                     </CardTitle>
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground border-border/50">
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] text-muted-foreground border-border/50"
+                    >
                       Em breve
                     </Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs text-muted-foreground">
-                    Sincronize epics, tarefas e o tempo apontado diretamente com os
-                    seus projetos do Jira da Atlassian.
+                    Sincronize epics, tarefas e o tempo apontado diretamente com
+                    os seus projetos do Jira da Atlassian.
                   </p>
                 </CardContent>
               </Card>
@@ -879,9 +882,14 @@ export default function SettingsPage() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const btn = document.querySelector('button[value="integrations"]') as HTMLButtonElement;
+                                  const btn = document.querySelector(
+                                    'button[value="integrations"]',
+                                  ) as HTMLButtonElement;
                                   if (btn) btn.click();
-                                  window.scrollTo({ top: 0, behavior: "smooth" });
+                                  window.scrollTo({
+                                    top: 0,
+                                    behavior: "smooth",
+                                  });
                                 }}
                               >
                                 Conferir integrações

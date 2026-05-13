@@ -57,8 +57,14 @@ import {
   getDefaultDashboardCustomRange,
   resolveDashboardRange,
 } from "@/lib/dashboard/date-range";
-import { exportSummaryByProjectToExcel } from "@/lib/export/excel";
-import { exportSummaryByProjectToPDF } from "@/lib/export/pdf";
+import {
+  exportSummaryByProjectToExcel,
+  exportTimeEntriesToExcel,
+} from "@/lib/export/excel";
+import {
+  exportSummaryByProjectToPDF,
+  exportTimeEntriesToPDF,
+} from "@/lib/export/pdf";
 import {
   cn,
   formatDateLabel,
@@ -130,7 +136,10 @@ type Entry = {
   duration: number;
   billable: boolean;
   date: string;
+  azureWorkItemId?: number | null;
+  azureWorkItemTitle?: string | null;
   project?: { id: string; name: string; color: string | null };
+  timesheet?: { status: string } | null;
 };
 
 function getGreeting(now: Date | null) {
@@ -256,6 +265,33 @@ function EmptyState({
   );
 }
 
+function normalizeReportText(value: string | null | undefined): string {
+  if (!value) return "";
+
+  const decoded = (() => {
+    if (typeof document === "undefined") return value;
+
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = value;
+    return textarea.value;
+  })();
+
+  const withoutHtml = decoded
+    .replace(/<[^>]*>/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF\u00AD]/g, "")
+    .replace(/\u00A0/g, " ");
+  const ampersandCount = withoutHtml.match(/&/g)?.length ?? 0;
+  const hasAzureAmpersandEncoding =
+    /(?:&[^\s&]){4,}/.test(withoutHtml) || ampersandCount >= 12;
+  const repaired = hasAzureAmpersandEncoding
+    ? withoutHtml.replace(/&/g, "")
+    : withoutHtml;
+  return repaired
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function DashboardContent() {
   const { data: session, isPending: sessionPending } = useSession();
   const router = useRouter();
@@ -277,6 +313,7 @@ function DashboardContent() {
   const [projectSummaries, setProjectSummaries] = useState<ProjectSummary[]>(
     [],
   );
+  const [reportEntries, setReportEntries] = useState<Entry[]>([]);
   const [recentEntries, setRecentEntries] = useState<Entry[]>([]);
   const [totalMinutes, setTotalMinutes] = useState(0);
   const [billableMinutes, setBillableMinutes] = useState(0);
@@ -307,6 +344,7 @@ function DashboardContent() {
   const resetDashboardData = useCallback(() => {
     setDaySummaries([]);
     setProjectSummaries([]);
+    setReportEntries([]);
     setRecentEntries([]);
     setTotalMinutes(0);
     setBillableMinutes(0);
@@ -408,9 +446,11 @@ function DashboardContent() {
         ]);
 
         if (controller.signal.aborted) return;
+        const entries = entryData.entries ?? [];
         setDaySummaries(dayData.data ?? []);
         setProjectSummaries(projectData.data ?? []);
-        setRecentEntries((entryData.entries ?? []).slice(0, 8));
+        setReportEntries(entries);
+        setRecentEntries(entries.slice(0, 8));
         setTotalMinutes(dayData.totals?.totalMinutes ?? 0);
         setBillableMinutes(dayData.totals?.billableMinutes ?? 0);
       } catch (error) {
@@ -548,6 +588,28 @@ function DashboardContent() {
     },
   ] as const;
 
+  const detailedReportRows = reportEntries.map((entry) => ({
+    date: formatDateLabel(entry.date),
+    project:
+      entry.project?.name ??
+      projects.find((project) => project.id === entry.projectId)?.name ??
+      "Projeto não identificado",
+    description: normalizeReportText(entry.description),
+    duration: entry.duration,
+    billable: entry.billable,
+    status: entry.timesheet?.status ?? "draft",
+    azureWorkItemId: entry.azureWorkItemId,
+    azureWorkItemTitle: normalizeReportText(entry.azureWorkItemTitle),
+  }));
+
+  function getExportFilename(prefix: string) {
+    return `${prefix}-${from}-${to}${selectedProject ? `-${selectedProject.code}` : ""}`;
+  }
+
+  function getExportPeriodLabel() {
+    return `${label}${selectedProject ? ` - ${selectedProject.name}` : ""}`;
+  }
+
   function handleExportExcel() {
     if (projectSummaries.length === 0) {
       toast.error("Não há dados para exportar no período selecionado.");
@@ -563,8 +625,8 @@ function DashboardContent() {
           entryCount: project.entryCount,
         })),
         {
-          filename: `dashboard-${from}-${to}${selectedProject ? `-${selectedProject.code}` : ""}`,
-          period: `${label}${selectedProject ? ` - ${selectedProject.name}` : ""}`,
+          filename: getExportFilename("dashboard"),
+          period: getExportPeriodLabel(),
           totalMinutes,
           billableMinutes,
         },
@@ -590,14 +652,50 @@ function DashboardContent() {
           entryCount: project.entryCount,
         })),
         title: "Dashboard de horas",
-        period: `${label}${selectedProject ? ` - ${selectedProject.name}` : ""}`,
-        filename: `dashboard-${from}-${to}${selectedProject ? `-${selectedProject.code}` : ""}`,
+        period: getExportPeriodLabel(),
+        filename: getExportFilename("dashboard"),
         totalMinutes,
         billableMinutes,
       });
       toast.success("Exportação em PDF concluída.");
     } catch {
       toast.error("Não foi possível exportar em PDF.");
+    }
+  }
+
+  function handleExportDetailedExcel() {
+    if (detailedReportRows.length === 0) {
+      toast.error("Não há lançamentos para exportar no período selecionado.");
+      return;
+    }
+
+    try {
+      exportTimeEntriesToExcel(
+        detailedReportRows,
+        getExportFilename("dashboard-detalhado"),
+      );
+      toast.success("Relatório detalhado em Excel concluído.");
+    } catch {
+      toast.error("Não foi possível exportar o relatório detalhado.");
+    }
+  }
+
+  async function handleExportDetailedPDF() {
+    if (detailedReportRows.length === 0) {
+      toast.error("Não há lançamentos para exportar no período selecionado.");
+      return;
+    }
+
+    try {
+      await exportTimeEntriesToPDF({
+        entries: detailedReportRows,
+        title: "Relatório detalhado de atividades",
+        period: getExportPeriodLabel(),
+        filename: getExportFilename("dashboard-detalhado"),
+      });
+      toast.success("Relatório detalhado em PDF concluído.");
+    } catch {
+      toast.error("Não foi possível exportar o relatório detalhado.");
     }
   }
 
@@ -788,7 +886,7 @@ function DashboardContent() {
                     }
                   >
                     <FileSpreadsheet className="h-4 w-4" />
-                    Excel
+                    Resumo Excel
                   </Button>
                   <Button
                     variant="outline"
@@ -802,7 +900,35 @@ function DashboardContent() {
                     }
                   >
                     <Download className="h-4 w-4" />
-                    PDF
+                    Resumo PDF
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleExportDetailedExcel}
+                    disabled={
+                      !isRangeReady ||
+                      loadingDashboard ||
+                      detailedReportRows.length === 0
+                    }
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Detalhado Excel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleExportDetailedPDF}
+                    disabled={
+                      !isRangeReady ||
+                      loadingDashboard ||
+                      detailedReportRows.length === 0
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                    Detalhado PDF
                   </Button>
                 </div>
               </motion.div>

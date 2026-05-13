@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { ProjectProgress } from "@/components/projects/types";
 import {
   canAccessProject,
   getActiveSession,
@@ -8,7 +9,6 @@ import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
 import { azureDevopsConfig, project } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
-import type { ProjectProgress } from "@/components/projects/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

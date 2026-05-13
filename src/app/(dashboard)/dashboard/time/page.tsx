@@ -13,11 +13,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { DayView } from "@/components/time/DayView";
 import { MonthView } from "@/components/time/MonthView";
-import { TimesheetsView } from "@/components/time/TimesheetsView";
 import {
   TimeEntryForm,
   type TimeEntryFormInitialValues,
 } from "@/components/time/TimeEntryForm";
+import { TimesheetsView } from "@/components/time/TimesheetsView";
 import { type TimeView, TimeViewTabs } from "@/components/time/TimeViewTabs";
 import { WeekView } from "@/components/time/WeekView";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -449,6 +449,8 @@ export default function TimePage() {
       billable: boolean;
       azureWorkItemId?: number;
       azureWorkItemTitle?: string;
+      startTime?: string;
+      endTime?: string;
     }) => {
       if (!editTarget) return;
 
@@ -476,6 +478,8 @@ export default function TimePage() {
       billable: boolean;
       azureWorkItemId?: number;
       azureWorkItemTitle?: string;
+      startTime?: string;
+      endTime?: string;
     }) => {
       try {
         await createEntry(data);

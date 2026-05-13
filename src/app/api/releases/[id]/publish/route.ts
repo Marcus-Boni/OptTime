@@ -1,10 +1,10 @@
 import { eq } from "drizzle-orm";
 import { getActiveSession, getActorContext } from "@/lib/access-control";
+import { getServerAppUrl } from "@/lib/app-url";
 import { db } from "@/lib/db";
 import { appRelease, user } from "@/lib/db/schema";
 import { sendReleaseNotesBatch } from "@/lib/email";
 import { publishReleaseSchema } from "@/lib/validations/release.schema";
-import { getServerAppUrl } from "@/lib/app-url";
 
 /**
  * POST /api/releases/[id]/publish

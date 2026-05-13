@@ -12,7 +12,10 @@ import {
   type TimeEntryFormValues,
 } from "@/components/time/TimeEntryFormFields";
 import { Button } from "@/components/ui/button";
-import type { OutlookEvent } from "@/hooks/use-outlook-events";
+import {
+  type OutlookEvent,
+  parseGraphDateTime,
+} from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
@@ -72,6 +75,8 @@ interface TimeEntryFormProps {
     billable: boolean;
     azureWorkItemId?: number;
     azureWorkItemTitle?: string;
+    startTime?: string;
+    endTime?: string;
   }) => Promise<void>;
   initialValues?: TimeEntryFormInitialValues;
   mode?: "create" | "edit";
@@ -125,6 +130,10 @@ export function TimeEntryForm({
   >(initialValues?.descriptionVariants?.defaultVariant ?? null);
   const submitModeRef = useRef<"close" | "continue">(preferences.submitMode);
   const agendaSubjectRef = useRef<string | null>(null);
+  const agendaTimeRangeRef = useRef<{
+    startTime: string;
+    endTime: string;
+  } | null>(null);
 
   const form = useForm<TimeEntryFormValues>({
     resolver: zodResolver(schema),
@@ -144,7 +153,9 @@ export function TimeEntryForm({
   }, []);
 
   const wasOpenRef = useRef(false);
-  const initialValuesString = initialValues ? JSON.stringify(initialValues) : "null";
+  const initialValuesString = initialValues
+    ? JSON.stringify(initialValues)
+    : "null";
   const prevInitialValuesRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -181,6 +192,7 @@ export function TimeEntryForm({
         initialValues?.descriptionVariants?.defaultVariant ?? null,
       );
       agendaSubjectRef.current = null;
+      agendaTimeRangeRef.current = null;
 
       if (initialValues?.azureWorkItemId && initialValues.azureWorkItemTitle) {
         setWorkItem({
@@ -212,16 +224,40 @@ export function TimeEntryForm({
     ? `Não é possível registrar horas porque a semana desta data já foi ${getTimesheetStatusLabel(selectedDateTimesheetStatus.status)}.`
     : "Não é possível registrar horas nesta data.";
 
+  useEffect(() => {
+    if (
+      !open ||
+      mode !== "create" ||
+      initialValues?.projectId ||
+      projects.length !== 1
+    ) {
+      return;
+    }
+
+    const onlyProjectId = projects[0]?.id;
+    if (!onlyProjectId || form.getValues("projectId") === onlyProjectId) {
+      return;
+    }
+
+    form.setValue("projectId", onlyProjectId, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+  }, [form, initialValues?.projectId, mode, open, projects]);
+
   const handleOutlookEvent = useCallback(
     (event: OutlookEvent) => {
-      const parseUtc = (iso: string) =>
-        new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
-
       setActiveDescriptionVariant(null);
 
       const subject = event.subject || "";
       const normalizedSubject = subject.trim().toLowerCase();
       agendaSubjectRef.current = normalizedSubject || null;
+      const startTime = parseGraphDateTime(event.start.dateTime);
+      const endTime = parseGraphDateTime(event.end.dateTime);
+      agendaTimeRangeRef.current = {
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+      };
 
       form.setValue("description", subject, {
         shouldDirty: true,
@@ -232,31 +268,28 @@ export function TimeEntryForm({
         normalizedSubject && preferences.agendaProjectMap
           ? preferences.agendaProjectMap[normalizedSubject]
           : null;
+      const onlyProjectId = projects.length === 1 ? projects[0]?.id : null;
 
-      form.setValue("projectId", mappedProjectId || "", {
+      form.setValue("projectId", mappedProjectId || onlyProjectId || "", {
         shouldDirty: true,
         shouldValidate: true,
       });
 
-      form.setValue("date", parseUtc(event.start.dateTime), {
+      form.setValue("date", startTime, {
         shouldDirty: true,
       });
       form.setValue(
         "duration",
         Math.max(
           1,
-          Math.round(
-            (parseUtc(event.end.dateTime).getTime() -
-              parseUtc(event.start.dateTime).getTime()) /
-              60000,
-          ),
+          Math.round((endTime.getTime() - startTime.getTime()) / 60000),
         ),
         { shouldDirty: true, shouldValidate: true },
       );
 
       // Removed setOutlookOpen(false) to keep drawer open for "Create and continue" workflow
     },
-    [form, preferences.agendaProjectMap],
+    [form, preferences.agendaProjectMap, projects],
   );
 
   async function handleSubmit(values: TimeEntryFormValues) {
@@ -277,6 +310,8 @@ export function TimeEntryForm({
         billable: values.billable,
         azureWorkItemId: workItem?.id,
         azureWorkItemTitle: workItem?.title,
+        startTime: agendaTimeRangeRef.current?.startTime,
+        endTime: agendaTimeRangeRef.current?.endTime,
       });
 
       if (agendaSubjectRef.current && values.projectId) {
@@ -315,6 +350,7 @@ export function TimeEntryForm({
         });
         setActiveDescriptionVariant(null);
         agendaSubjectRef.current = null;
+        agendaTimeRangeRef.current = null;
         setWorkItem(null);
         return;
       }
