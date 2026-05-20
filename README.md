@@ -155,5 +155,5 @@ Acesse [http://localhost:3000](http://localhost:3000) no seu navegador.
 ---
 
 <div align="center">
-  <b>OptSolv</b> &mdash; <i>Build Fast, Register Faster.</i>
+  <i>Build Fast, Register Faster.</i>
 </div>
