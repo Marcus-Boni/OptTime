@@ -15,14 +15,14 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { useSession } from "@/lib/auth-client";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
-interface ProjectOption {
+interface UserOption {
   id: string;
   name: string;
-  color: string;
-  members?: { userId: string }[];
+  email: string;
+  image: string | null;
 }
 
 interface EmptyOption {
@@ -30,53 +30,41 @@ interface EmptyOption {
   value: string;
 }
 
-interface ProjectComboboxProps {
-  projects: ProjectOption[];
+interface UserComboboxProps {
+  users: UserOption[];
   value: string;
-  onChange: (projectId: string) => void;
+  onChange: (userId: string) => void;
   placeholder?: string;
   disabled?: boolean;
   emptyOption?: EmptyOption;
   "aria-invalid"?: boolean;
-  byPassMemberFilter?: boolean;
   className?: string;
   variant?: "outline" | "ghost" | "none";
 }
 
-export function ProjectCombobox({
-  projects,
+export function UserCombobox({
+  users,
   value,
   onChange,
-  placeholder = "Selecione um projeto",
+  placeholder = "Selecione um colaborador",
   disabled = false,
   emptyOption,
   "aria-invalid": ariaInvalid,
-  byPassMemberFilter = false,
   className,
   variant = "outline",
-}: ProjectComboboxProps) {
+}: UserComboboxProps) {
   const [open, setOpen] = useState(false);
-  const { data: session } = useSession();
-  const currentUserId = session?.user.id;
 
-  const sortedProjects = useMemo(() => {
-    let filtered = projects;
-    if (currentUserId && !byPassMemberFilter) {
-      filtered = projects.filter((project) => {
-        if (!project.members) return true;
-        return project.members.some((m) => m.userId === currentUserId);
-      });
-    }
-
-    return [...filtered].sort((a, b) =>
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) =>
       a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }),
     );
-  }, [projects, currentUserId, byPassMemberFilter]);
+  }, [users]);
 
-  const selectedProject =
+  const selectedUser =
     value === emptyOption?.value
-      ? { id: emptyOption.value, name: emptyOption.label, color: "" }
-      : sortedProjects.find((project) => project.id === value);
+      ? { id: emptyOption.value, name: emptyOption.label, email: "", image: null }
+      : sortedUsers.find((user) => user.id === value);
 
   const Comp = variant === "none" ? "button" : Button;
 
@@ -89,24 +77,25 @@ export function ProjectCombobox({
           role="combobox"
           aria-expanded={open}
           aria-invalid={ariaInvalid}
-          disabled={disabled || (!emptyOption && projects.length === 0)}
+          disabled={disabled || (!emptyOption && users.length === 0)}
           className={cn(
             variant === "none"
               ? "flex items-center justify-between transition-all duration-200 outline-none"
               : "h-9 w-full justify-between rounded-md bg-background/80 font-normal",
             className,
-            !selectedProject && "text-muted-foreground",
+            !selectedUser && "text-muted-foreground",
           )}
         >
-          {selectedProject ? (
+          {selectedUser ? (
             <span className="flex min-w-0 items-center gap-2">
-              {selectedProject.color ? (
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: selectedProject.color }}
+              {selectedUser.name !== emptyOption?.label ? (
+                <UserAvatar
+                  name={selectedUser.name}
+                  image={selectedUser.image}
+                  size="sm"
                 />
               ) : null}
-              <span className="truncate">{selectedProject.name}</span>
+              <span className="truncate">{selectedUser.name}</span>
             </span>
           ) : (
             <span>{placeholder}</span>
@@ -120,12 +109,12 @@ export function ProjectCombobox({
         onWheel={(event) => event.stopPropagation()}
       >
         <Command>
-          <CommandInput placeholder="Buscar projeto..." />
+          <CommandInput placeholder="Buscar colaborador..." />
           <CommandList className="max-h-72 overscroll-contain">
             <CommandEmpty>
-              {projects.length === 0
-                ? "Nenhum projeto ativo disponível"
-                : "Nenhum projeto encontrado"}
+              {users.length === 0
+                ? "Nenhum colaborador ativo disponível"
+                : "Nenhum colaborador encontrado"}
             </CommandEmpty>
             {emptyOption ? (
               <CommandItem
@@ -135,6 +124,7 @@ export function ProjectCombobox({
                   onChange(emptyOption.value);
                   setOpen(false);
                 }}
+                className="gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
               >
                 <Check
                   className={cn(
@@ -145,26 +135,31 @@ export function ProjectCombobox({
                 <span className="truncate">{emptyOption.label}</span>
               </CommandItem>
             ) : null}
-            {sortedProjects.map((project) => (
+            {sortedUsers.map((user) => (
               <CommandItem
-                key={project.id}
-                value={`${project.name} ${project.id}`.toLowerCase()}
+                key={user.id}
+                value={`${user.name} ${user.email} ${user.id}`.toLowerCase()}
                 onSelect={() => {
-                  onChange(project.id);
+                  onChange(user.id);
                   setOpen(false);
                 }}
+                className="gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
               >
                 <Check
                   className={cn(
                     "h-4 w-4 shrink-0",
-                    project.id === value ? "opacity-100" : "opacity-0",
+                    user.id === value ? "opacity-100" : "opacity-0",
                   )}
                 />
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: project.color }}
+                <UserAvatar
+                  name={user.name}
+                  image={user.image}
+                  size="sm"
                 />
-                <span className="truncate">{project.name}</span>
+                <div className="flex flex-col min-w-0">
+                  <span className="truncate text-sm font-medium">{user.name}</span>
+                  <span className="truncate text-[10px] text-muted-foreground">{user.email}</span>
+                </div>
               </CommandItem>
             ))}
           </CommandList>

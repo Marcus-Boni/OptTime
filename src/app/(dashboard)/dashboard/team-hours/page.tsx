@@ -19,8 +19,25 @@ import {
   FilterX,
   Search,
   Users,
+  ChevronDown,
+  Download,
+  Loader2,
+  FileDown,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import {
+  exportCollaboratorHoursToPDF,
+  exportTeamHoursGroupedToPDF,
+} from "@/lib/export/pdf";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
+import { UserCombobox } from "@/components/time/UserCombobox";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -306,6 +323,9 @@ function getQuickRangeDates(days: number) {
   return { start, end };
 }
 
+const filterStyles =
+  "h-12 w-full rounded-2xl border border-border/50 bg-background/50 px-4 text-sm font-sans flex items-center justify-between whitespace-nowrap shadow-xs transition-all duration-200 cursor-pointer text-left text-foreground hover:border-orange-500/30 hover:bg-background/80 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:outline-none outline-none data-[state=open]:border-orange-500 data-[state=open]:ring-2 data-[state=open]:ring-orange-500/20 dark:border-border/50 dark:bg-background/50 dark:text-foreground dark:hover:border-orange-500/30 dark:hover:bg-background/80 dark:focus:border-orange-500 dark:focus:ring-2 dark:focus:ring-orange-500/20 dark:focus-visible:border-orange-500 dark:focus-visible:ring-2 dark:focus-visible:ring-orange-500/20 dark:data-[state=open]:border-orange-500 dark:data-[state=open]:ring-2 dark:data-[state=open]:ring-orange-500/20 flex-1 min-w-0";
+
 export default function TeamHoursPage() {
   const { preferences, updatePreferences } = useUserTimePreferences();
   const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
@@ -323,6 +343,13 @@ export default function TeamHoursPage() {
     null,
   );
   const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
+  const [colaboratorViewMode, setColaboratorViewMode] = useState<
+    "weekly" | "projects"
+  >("weekly");
+  const [expandedProjects, setExpandedProjects] = useState<
+    Record<string, boolean>
+  >({});
+  const [exportIsLoading, setExportIsLoading] = useState(false);
   const resetPagination = () => setPage(0);
 
   useEffect(() => {
@@ -505,12 +532,92 @@ export default function TeamHoursPage() {
     [selectedUserId, userEntriesMap],
   );
 
+  const selectedUserProjectGroups = useMemo(() => {
+    if (!selectedUserId) return [];
+
+    const groups = new Map<
+      string,
+      {
+        project: TeamHourProject;
+        entries: TeamHourEntry[];
+        totalMinutes: number;
+        billableMinutes: number;
+      }
+    >();
+
+    for (const entry of selectedUserEntries) {
+      const pid = entry.project.id;
+      const current = groups.get(pid) ?? {
+        project: entry.project,
+        entries: [],
+        totalMinutes: 0,
+        billableMinutes: 0,
+      };
+
+      current.entries.push(entry);
+      current.totalMinutes += entry.duration;
+      if (entry.billable) {
+        current.billableMinutes += entry.duration;
+      }
+      groups.set(pid, current);
+    }
+
+    return Array.from(groups.values()).sort(
+      (a, b) => b.totalMinutes - a.totalMinutes,
+    );
+  }, [selectedUserId, selectedUserEntries]);
+
   const selectedUserInsight = useMemo(
     () =>
       userInsights.find((insight) => insight.user.id === selectedUserId) ??
       null,
     [selectedUserId, userInsights],
   );
+
+  const handleExportCollaboratorPDF = async () => {
+    if (!selectedUserInsight) {
+      toast.error("Nenhum colaborador selecionado para exportar.");
+      return;
+    }
+    setExportIsLoading(true);
+    try {
+      const filename = `relatorio-horas-${selectedUserInsight.user.name.toLowerCase().replace(/\s+/g, "-")}`;
+      await exportCollaboratorHoursToPDF({
+        userName: selectedUserInsight.user.name,
+        userEmail: selectedUserInsight.user.email,
+        entries: selectedUserEntries,
+        period: periodLabel,
+        filename,
+      });
+      toast.success("PDF do colaborador gerado com sucesso!");
+    } catch (err) {
+      console.error("[TeamHoursPage] exportCollaboratorPDF:", err);
+      toast.error("Erro ao gerar PDF do colaborador.");
+    } finally {
+      setExportIsLoading(false);
+    }
+  };
+
+  const handleExportTeamPDF = async () => {
+    if (filteredEntries.length === 0) {
+      toast.error("Nenhum registro no período para exportar.");
+      return;
+    }
+    setExportIsLoading(true);
+    try {
+      await exportTeamHoursGroupedToPDF({
+        entries: filteredEntries,
+        period: periodLabel,
+        filename: "relatorio-horas-equipe",
+      });
+      toast.success("PDF consolidado da equipe gerado com sucesso!");
+    } catch (err) {
+      console.error("[TeamHoursPage] exportTeamPDF:", err);
+      toast.error("Erro ao gerar PDF da equipe.");
+    } finally {
+      setExportIsLoading(false);
+    }
+  };
 
   const availableWeeks = useMemo(() => {
     const weeks = new Set<string>();
@@ -747,6 +854,50 @@ export default function TeamHoursPage() {
                 {label}
               </Button>
             ))}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-full border-brand-500/20 text-brand-500 hover:bg-brand-500/5 hover:text-brand-600 gap-1.5 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
+                  disabled={exportIsLoading}
+                >
+                  {exportIsLoading ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  Exportar PDF
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-56 rounded-xl border-border/50 bg-background/95"
+              >
+                <DropdownMenuItem
+                  onClick={handleExportTeamPDF}
+                  className="rounded-lg gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
+                >
+                  <Users className="h-4 w-4 text-brand-500" />
+                  PDF da Equipe (Consolidado)
+                </DropdownMenuItem>
+                {selectedUserInsight && (
+                  <DropdownMenuItem
+                    onClick={handleExportCollaboratorPDF}
+                    className="rounded-lg gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
+                  >
+                    <UserAvatar
+                      name={selectedUserInsight.user.name}
+                      image={selectedUserInsight.user.image}
+                      size="sm"
+                    />
+                    PDF de {selectedUserInsight.user.name.split(" ")[0]}
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </motion.div>
 
@@ -906,45 +1057,32 @@ export default function TeamHoursPage() {
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-3">
-                    <Select
+                    <ProjectCombobox
+                      projects={uniqueProjects}
                       value={projectFilter}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
                         resetPagination();
                         setProjectFilter(value);
                       }}
-                    >
-                      <SelectTrigger className="h-12 w-full rounded-2xl border-border/50 bg-background/50 px-4 transition-all hover:border-orange-500/30 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none">
-                        <SelectValue placeholder="Projeto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Projetos</SelectItem>
-                        {uniqueProjects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Todos os projetos"
+                      emptyOption={{ label: "Todos os projetos", value: "all" }}
+                      byPassMemberFilter={true}
+                      variant="none"
+                      className={filterStyles}
+                    />
 
-                    <Select
+                    <UserCombobox
+                      users={uniqueUsers}
                       value={userFilter}
-                      onValueChange={(value) => {
+                      onChange={(value) => {
                         resetPagination();
                         setUserFilter(value);
                       }}
-                    >
-                      <SelectTrigger className="h-12 w-full rounded-2xl border-border/50 bg-background/50 px-4 transition-all hover:border-orange-500/30 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none">
-                        <SelectValue placeholder="Colaborador" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Toda Equipe</SelectItem>
-                        {uniqueUsers.map((user) => (
-                          <SelectItem key={user.id} value={user.id}>
-                            {user.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="Toda Equipe"
+                      emptyOption={{ label: "Toda Equipe", value: "all" }}
+                      variant="none"
+                      className={filterStyles}
+                    />
 
                     <Select
                       value={sortBy}
@@ -953,7 +1091,7 @@ export default function TeamHoursPage() {
                         setSortBy(value as SortOption);
                       }}
                     >
-                      <SelectTrigger className="h-12 w-full rounded-2xl border-border/50 bg-background/50 px-4 transition-all hover:border-orange-500/30 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none">
+                      <SelectTrigger className={cn(filterStyles, "data-[size=default]:h-12")}>
                         <SelectValue placeholder="Ordenar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -1080,11 +1218,36 @@ export default function TeamHoursPage() {
                       <CardHeader className="gap-5">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                              Semana completa
-                            </p>
+                            <div className="flex rounded-lg border border-border/50 bg-muted/40 p-0.5 w-fit">
+                              <button
+                                type="button"
+                                onClick={() => setColaboratorViewMode("weekly")}
+                                className={cn(
+                                  "rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer",
+                                  colaboratorViewMode === "weekly"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground",
+                                )}
+                              >
+                                Calendário Semanal
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setColaboratorViewMode("projects")
+                                }
+                                className={cn(
+                                  "rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer",
+                                  colaboratorViewMode === "projects"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground",
+                                )}
+                              >
+                                Ações por Projeto
+                              </button>
+                            </div>
                             {selectedUserInsight ? (
-                              <div className="mt-3 flex items-center gap-3">
+                              <div className="mt-4 flex items-center gap-3">
                                 <UserAvatar
                                   name={selectedUserInsight.user.name}
                                   image={selectedUserInsight.user.image}
@@ -1106,108 +1269,265 @@ export default function TeamHoursPage() {
                             )}
                           </div>
 
-                          <div className="flex items-center gap-2 self-start">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-9 w-9 rounded-full"
-                              disabled={
-                                selectedWeekIndex === -1 ||
-                                selectedWeekIndex >= availableWeeks.length - 1
-                              }
-                              onClick={() => {
-                                if (
-                                  selectedWeekIndex >= 0 &&
-                                  selectedWeekIndex < availableWeeks.length - 1
-                                ) {
-                                  setSelectedWeekStart(
-                                    availableWeeks[selectedWeekIndex + 1] ??
-                                      null,
-                                  );
+                          {colaboratorViewMode === "weekly" && (
+                            <div className="flex items-center gap-2 self-start">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 rounded-full"
+                                disabled={
+                                  selectedWeekIndex === -1 ||
+                                  selectedWeekIndex >= availableWeeks.length - 1
                                 }
-                              }}
-                            >
-                              <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="h-9 w-9 rounded-full"
-                              disabled={selectedWeekIndex <= 0}
-                              onClick={() => {
-                                if (selectedWeekIndex > 0) {
-                                  setSelectedWeekStart(
-                                    availableWeeks[selectedWeekIndex - 1] ??
-                                      null,
-                                  );
-                                }
-                              }}
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                          <p className="text-sm text-muted-foreground">
-                            {weekLabel}
-                          </p>
-                          <div className="flex flex-wrap items-center gap-3">
-                            <div className="flex items-center gap-2">
-                              <span
-                                id="team-hours-weekend-toggle-label"
-                                className="text-xs text-muted-foreground"
-                              >
-                                Exibir fins de semana
-                              </span>
-                              <Switch
-                                checked={showWeekends}
-                                onCheckedChange={(show) => {
-                                  setShowWeekends(show);
-                                  void (async () => {
-                                    const previousValue = showWeekends;
-                                    const success = await updatePreferences(
-                                      { timeShowWeekends: show },
-                                      {
-                                        errorMessage:
-                                          "Nao foi possivel salvar a exibicao de fins de semana.",
-                                      },
+                                onClick={() => {
+                                  if (
+                                    selectedWeekIndex >= 0 &&
+                                    selectedWeekIndex <
+                                      availableWeeks.length - 1
+                                  ) {
+                                    setSelectedWeekStart(
+                                      availableWeeks[selectedWeekIndex + 1] ??
+                                        null,
                                     );
-
-                                    if (!success) {
-                                      setShowWeekends(previousValue);
-                                    }
-                                  })();
+                                  }
                                 }}
-                                aria-label="Exibir fins de semana na visão de semana"
-                                aria-labelledby="team-hours-weekend-toggle-label"
-                              />
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9 rounded-full"
+                                disabled={selectedWeekIndex <= 0}
+                                onClick={() => {
+                                  if (selectedWeekIndex > 0) {
+                                    setSelectedWeekStart(
+                                      availableWeeks[selectedWeekIndex - 1] ??
+                                        null,
+                                    );
+                                  }
+                                }}
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </Button>
                             </div>
-                            <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
-                              {formatDuration(selectedWeekSummary.totalMinutes)}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className="rounded-full border-border/60 px-3 py-1.5"
-                            >
-                              {selectedWeekSummary.entryCount} registros
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className="rounded-full border-border/60 px-3 py-1.5"
-                            >
-                              {selectedWeekSummary.projectsCount} projetos
-                            </Badge>
-                          </div>
+                          )}
                         </div>
+
+                        {colaboratorViewMode === "weekly" ? (
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              {weekLabel}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  id="team-hours-weekend-toggle-label"
+                                  className="text-xs text-muted-foreground"
+                                >
+                                  Exibir fins de semana
+                                </span>
+                                <Switch
+                                  checked={showWeekends}
+                                  onCheckedChange={(show) => {
+                                    setShowWeekends(show);
+                                    void (async () => {
+                                      const previousValue = showWeekends;
+                                      const success = await updatePreferences(
+                                        { timeShowWeekends: show },
+                                        {
+                                          errorMessage:
+                                            "Nao foi possivel salvar a exibicao de fins de semana.",
+                                        },
+                                      );
+
+                                      if (!success) {
+                                        setShowWeekends(previousValue);
+                                      }
+                                    })();
+                                  }}
+                                  aria-label="Exibir fins de semana na visão de semana"
+                                  aria-labelledby="team-hours-weekend-toggle-label"
+                                />
+                              </div>
+                              <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
+                                {formatDuration(
+                                  selectedWeekSummary.totalMinutes,
+                                )}
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="rounded-full border-border/60 px-3 py-1.5"
+                              >
+                                {selectedWeekSummary.entryCount} registros
+                              </Badge>
+                              <Badge
+                                variant="outline"
+                                className="rounded-full border-border/60 px-3 py-1.5"
+                              >
+                                {selectedWeekSummary.projectsCount} projetos
+                              </Badge>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <p className="text-sm text-muted-foreground">
+                              Período:{" "}
+                              <span className="font-semibold text-foreground">
+                                {periodLabel}
+                              </span>
+                            </p>
+                            {selectedUserInsight && (
+                              <div className="flex flex-wrap items-center gap-3">
+                                <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
+                                  {formatDuration(
+                                    selectedUserInsight.totalMinutes,
+                                  )}
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full border-border/60 px-3 py-1.5"
+                                >
+                                  {selectedUserInsight.entryCount} registros
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full border-border/60 px-3 py-1.5"
+                                >
+                                  {selectedUserInsight.projectsCount} projetos
+                                </Badge>
+                                <Badge
+                                  variant="outline"
+                                  className="rounded-full border-border/60 px-3 py-1.5"
+                                >
+                                  {selectedUserInsight.totalMinutes > 0
+                                    ? Math.round(
+                                        (selectedUserInsight.billableMinutes /
+                                          selectedUserInsight.totalMinutes) *
+                                          100,
+                                      )
+                                    : 0}
+                                  % faturável
+                                </Badge>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </CardHeader>
 
                       <CardContent>
-                        {!selectedUserInsight || weekDays.length === 0 ? (
+                        {colaboratorViewMode === "weekly" ? (
+                          !selectedUserInsight || weekDays.length === 0 ? (
+                            <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-border/60 bg-muted/20 p-8 text-center">
+                              <div>
+                                <p className="text-sm font-medium text-foreground">
+                                  Nenhuma semana disponível
+                                </p>
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  Ajuste os filtros ou selecione outro
+                                  colaborador.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="overflow-x-auto">
+                              <motion.div
+                                layout
+                                className={cn(
+                                  "grid gap-3",
+                                  showWeekends
+                                    ? "min-w-[980px] grid-cols-7"
+                                    : "min-w-[700px] grid-cols-5",
+                                )}
+                              >
+                                <AnimatePresence
+                                  initial={false}
+                                  mode="popLayout"
+                                >
+                                  {weekDays.map((day) => {
+                                    const dayKey = format(day, "yyyy-MM-dd");
+                                    const dayEntries =
+                                      weekEntriesMap.get(dayKey) ?? [];
+                                    const dayTotal = dayEntries.reduce(
+                                      (sum, entry) => sum + entry.duration,
+                                      0,
+                                    );
+
+                                    return (
+                                      <motion.div
+                                        key={dayKey}
+                                        layout
+                                        initial={{ opacity: 0, scale: 0.9 }}
+                                        animate={{ opacity: 1, scale: 1 }}
+                                        exit={{ opacity: 0, scale: 0.9 }}
+                                        transition={{
+                                          duration: 0.22,
+                                          ease: [0.25, 0.46, 0.45, 0.94],
+                                          layout: {
+                                            type: "spring",
+                                            stiffness: 400,
+                                            damping: 30,
+                                          },
+                                        }}
+                                        className="flex min-h-[360px] flex-col rounded-2xl border border-border/60 bg-background/70"
+                                      >
+                                        <div className="border-b border-border/50 px-4 py-4">
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                                {format(day, "EEE", {
+                                                  locale: ptBR,
+                                                })}
+                                              </p>
+                                              <p className="mt-1 font-display text-xl font-semibold text-foreground">
+                                                {format(day, "d")}
+                                              </p>
+                                            </div>
+                                            <div className="text-right">
+                                              <p className="font-mono text-sm font-semibold text-foreground">
+                                                {formatDuration(dayTotal)}
+                                              </p>
+                                              <p className="text-[11px] text-muted-foreground">
+                                                {dayEntries.length} itens
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </div>
+
+                                        <div
+                                          className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+                                          style={{
+                                            maxHeight:
+                                              TEAM_HOURS_DAY_LIST_MAX_HEIGHT,
+                                          }}
+                                        >
+                                          {dayEntries.length > 0 ? (
+                                            dayEntries.map((entry) => (
+                                              <WeekEntryCard
+                                                key={entry.id}
+                                                entry={entry}
+                                                onSelect={setSelectedEntry}
+                                              />
+                                            ))
+                                          ) : (
+                                            <div className="flex h-full min-h-28 items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 px-4 text-center text-sm text-muted-foreground">
+                                              Sem registros neste dia
+                                            </div>
+                                          )}
+                                        </div>
+                                      </motion.div>
+                                    );
+                                  })}
+                                </AnimatePresence>
+                              </motion.div>
+                            </div>
+                          )
+                        ) : !selectedUserInsight ||
+                          selectedUserProjectGroups.length === 0 ? (
                           <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-border/60 bg-muted/20 p-8 text-center">
                             <div>
                               <p className="text-sm font-medium text-foreground">
-                                Nenhuma semana disponível
+                                Nenhum registro por projeto disponível
                               </p>
                               <p className="mt-1 text-sm text-muted-foreground">
                                 Ajuste os filtros ou selecione outro
@@ -1216,93 +1536,165 @@ export default function TeamHoursPage() {
                             </div>
                           </div>
                         ) : (
-                          <div className="overflow-x-auto">
-                            <motion.div
-                              layout
-                              className={cn(
-                                "grid gap-3",
-                                showWeekends
-                                  ? "min-w-[980px] grid-cols-7"
-                                  : "min-w-[700px] grid-cols-5",
-                              )}
-                            >
-                              <AnimatePresence initial={false} mode="popLayout">
-                                {weekDays.map((day) => {
-                                  const dayKey = format(day, "yyyy-MM-dd");
-                                  const dayEntries =
-                                    weekEntriesMap.get(dayKey) ?? [];
-                                  const dayTotal = dayEntries.reduce(
-                                    (sum, entry) => sum + entry.duration,
-                                    0,
-                                  );
+                          <div className="space-y-4">
+                            {selectedUserProjectGroups.map((group) => {
+                              const isExpanded =
+                                !!expandedProjects[group.project.id];
+                              const toggleExpand = () => {
+                                setExpandedProjects((prev) => ({
+                                  ...prev,
+                                  [group.project.id]: !prev[group.project.id],
+                                }));
+                              };
 
-                                  return (
-                                    <motion.div
-                                      key={dayKey}
-                                      layout
-                                      initial={{ opacity: 0, scale: 0.9 }}
-                                      animate={{ opacity: 1, scale: 1 }}
-                                      exit={{ opacity: 0, scale: 0.9 }}
-                                      transition={{
-                                        duration: 0.22,
-                                        ease: [0.25, 0.46, 0.45, 0.94],
-                                        layout: {
-                                          type: "spring",
-                                          stiffness: 400,
-                                          damping: 30,
-                                        },
-                                      }}
-                                      className="flex min-h-[360px] flex-col rounded-2xl border border-border/60 bg-background/70"
-                                    >
-                                      <div className="border-b border-border/50 px-4 py-4">
-                                        <div className="flex items-center justify-between gap-2">
-                                          <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                              {format(day, "EEE", {
-                                                locale: ptBR,
-                                              })}
-                                            </p>
-                                            <p className="mt-1 font-display text-xl font-semibold text-foreground">
-                                              {format(day, "d")}
-                                            </p>
-                                          </div>
-                                          <div className="text-right">
-                                            <p className="font-mono text-sm font-semibold text-foreground">
-                                              {formatDuration(dayTotal)}
-                                            </p>
-                                            <p className="text-[11px] text-muted-foreground">
-                                              {dayEntries.length} itens
-                                            </p>
-                                          </div>
-                                        </div>
-                                      </div>
+                              const projectBillableRate =
+                                group.totalMinutes > 0
+                                  ? Math.round(
+                                      (group.billableMinutes /
+                                        group.totalMinutes) *
+                                        100,
+                                    )
+                                  : 0;
 
-                                      <div
-                                        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
+                              return (
+                                <div
+                                  key={group.project.id}
+                                  className="rounded-2xl border border-border/50 bg-background/30 overflow-hidden transition-all hover:bg-background/50 hover:border-brand-500/20"
+                                >
+                                  {/* Project Header (Click to expand) */}
+                                  <button
+                                    type="button"
+                                    onClick={toggleExpand}
+                                    className="flex w-full items-center justify-between gap-4 p-4 text-left focus:outline-none focus:ring-1 focus:ring-brand-500/20 cursor-pointer"
+                                  >
+                                    <div className="flex items-center gap-3 min-w-0">
+                                      <span
+                                        className="h-3 w-3 shrink-0 rounded-full"
                                         style={{
-                                          maxHeight:
-                                            TEAM_HOURS_DAY_LIST_MAX_HEIGHT,
+                                          backgroundColor: group.project.color,
                                         }}
-                                      >
-                                        {dayEntries.length > 0 ? (
-                                          dayEntries.map((entry) => (
-                                            <WeekEntryCard
-                                              key={entry.id}
-                                              entry={entry}
-                                              onSelect={setSelectedEntry}
-                                            />
-                                          ))
-                                        ) : (
-                                          <div className="flex h-full min-h-28 items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 px-4 text-center text-sm text-muted-foreground">
-                                            Sem registros neste dia
-                                          </div>
-                                        )}
+                                      />
+                                      <div className="min-w-0">
+                                        <h4 className="font-semibold text-sm text-foreground truncate">
+                                          {group.project.name}
+                                        </h4>
+                                        <p className="text-xs text-muted-foreground truncate">
+                                          {group.project.clientName ||
+                                            "Cliente Interno"}
+                                        </p>
                                       </div>
-                                    </motion.div>
-                                  );
-                                })}
-                              </AnimatePresence>
-                            </motion.div>
+                                    </div>
+
+                                    <div className="flex items-center gap-3 shrink-0">
+                                      <Badge className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-500 font-mono">
+                                        {formatDuration(group.totalMinutes)}
+                                      </Badge>
+                                      <Badge
+                                        variant="outline"
+                                        className="rounded-full border-border/60 text-[10px] hidden sm:inline-flex"
+                                      >
+                                        {projectBillableRate}% faturável
+                                      </Badge>
+                                      <Badge
+                                        variant="outline"
+                                        className="rounded-full border-border/60 text-[10px]"
+                                      >
+                                        {group.entries.length} itens
+                                      </Badge>
+                                      <motion.div
+                                        animate={{
+                                          rotate: isExpanded ? 180 : 0,
+                                        }}
+                                        transition={{ duration: 0.2 }}
+                                      >
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                      </motion.div>
+                                    </div>
+                                  </button>
+
+                                  {/* Project Entries List */}
+                                  <AnimatePresence initial={false}>
+                                    {isExpanded && (
+                                      <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{
+                                          duration: 0.25,
+                                          ease: "easeInOut",
+                                        }}
+                                        className="border-t border-border/40 bg-muted/5"
+                                      >
+                                        <div className="p-4 pt-1 overflow-x-auto">
+                                          <Table>
+                                            <TableHeader>
+                                              <TableRow className="border-b border-border/30 hover:bg-transparent">
+                                                <TableHead className="w-[100px] h-9 text-xs">
+                                                  Data
+                                                </TableHead>
+                                                <TableHead className="h-9 text-xs">
+                                                  Descrição da Ação
+                                                </TableHead>
+                                                <TableHead className="w-[100px] text-right h-9 text-xs">
+                                                  Duração
+                                                </TableHead>
+                                                <TableHead className="w-[90px] text-right h-9 text-xs">
+                                                  Tipo
+                                                </TableHead>
+                                              </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                              {group.entries.map((entry) => (
+                                                <TableRow
+                                                  key={entry.id}
+                                                  onClick={() =>
+                                                    setSelectedEntry(entry)
+                                                  }
+                                                  className="border-b border-border/20 last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
+                                                >
+                                                  <TableCell className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">
+                                                    {format(
+                                                      parseLocalDate(
+                                                        entry.date,
+                                                      ),
+                                                      "dd/MM/yyyy",
+                                                    )}
+                                                  </TableCell>
+                                                  <TableCell className="py-2.5 text-xs font-normal text-foreground max-w-md truncate">
+                                                    {entry.description ||
+                                                      "Sem descrição"}
+                                                  </TableCell>
+                                                  <TableCell className="py-2.5 text-right font-mono text-xs font-semibold text-foreground">
+                                                    {formatDuration(
+                                                      entry.duration,
+                                                    )}
+                                                  </TableCell>
+                                                  <TableCell className="py-2.5 text-right">
+                                                    <Badge
+                                                      variant="outline"
+                                                      className={cn(
+                                                        "h-5 rounded px-1 text-[9px] uppercase tracking-tighter",
+                                                        entry.billable
+                                                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
+                                                          : "bg-muted text-muted-foreground",
+                                                      )}
+                                                    >
+                                                      {entry.billable
+                                                        ? "Faturável"
+                                                        : "Interno"}
+                                                    </Badge>
+                                                  </TableCell>
+                                                </TableRow>
+                                              ))}
+                                            </TableBody>
+                                          </Table>
+                                        </div>
+                                      </motion.div>
+                                    )}
+                                  </AnimatePresence>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </CardContent>

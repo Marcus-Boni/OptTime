@@ -1,4 +1,7 @@
+import { format } from "date-fns";
 import jsPDF from "jspdf";
+import type { TeamHourEntry } from "@/hooks/use-team-hours";
+import { parseLocalDate } from "@/lib/utils";
 
 interface TimeEntryRow {
   date: string;
@@ -194,10 +197,7 @@ function repairSpacedAzureLetters(value: string): string {
   ].sort((left, right) => right.length - left.length);
 
   const normalizeWord = (word: string) =>
-    word
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase();
+    word.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
   const segmentJoinedText = (joined: string) => {
     const normalized = normalizeWord(joined);
@@ -241,19 +241,21 @@ function repairSpacedAzureLetters(value: string): string {
     return segments.join(" ");
   };
 
-  return value
-    // Handle both curly (U+2018/U+2019) and straight (U+0027) apostrophe after !
-    .replace(/!\s*['‘’]/g, " - ")
-    // Split on double-space, " - " separators, and common punctuation
-    .split(/(\s{2,}|\s+-\s+|[.!?;:()[\]{}"""])/u)
-    .map((part) => {
-      const partSingleLetters = countFragmentedTokens(part);
+  return (
+    value
+      // Handle both curly (U+2018/U+2019) and straight (U+0027) apostrophe after !
+      .replace(/!\s*['‘’]/g, " - ")
+      // Split on double-space, " - " separators, and common punctuation
+      .split(/(\s{2,}|\s+-\s+|[.!?;:()[\]{}"""])/u)
+      .map((part) => {
+        const partSingleLetters = countFragmentedTokens(part);
 
-      if (partSingleLetters < 3) return part;
+        if (partSingleLetters < 3) return part;
 
-      return segmentJoinedText(part.replace(/\s+/g, ""));
-    })
-    .join("");
+        return segmentJoinedText(part.replace(/\s+/g, ""));
+      })
+      .join("")
+  );
 }
 
 function normalizePdfText(value: string): string {
@@ -469,7 +471,11 @@ function drawMetricCards(
     setTextColor(doc, TEXT);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(columns === 4 ? 14 : 15);
-    doc.text(metric.value, x + 5, y + 14);
+
+    // Ellipsize value with the active font size and weight set correctly
+    const maxValWidth = cardWidth - 10;
+    const ellipsizedValue = ellipsizeText(doc, metric.value, maxValWidth);
+    doc.text(ellipsizedValue, x + 5, y + 14);
 
     setTextColor(doc, TEXT_MUTED);
     doc.setFont("helvetica", "normal");
@@ -493,7 +499,12 @@ function drawSectionHeader(
   setTextColor(doc, TEXT);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text(title, PAGE_MARGIN, y);
+
+  // Ellipsize section header title to fit layout without overflow
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const maxWidth = pageWidth - PAGE_MARGIN * 2;
+  const ellipsizedTitle = ellipsizeText(doc, title, maxWidth);
+  doc.text(ellipsizedTitle, PAGE_MARGIN, y);
 
   setTextColor(doc, TEXT_MUTED);
   doc.setFont("helvetica", "normal");
@@ -789,13 +800,7 @@ export async function exportSummaryByProjectToPDF({
     title: "Resumo por projeto",
     description:
       "Visão consolidada com horas totais, recorte faturável e volume de lançamentos para apoiar acompanhamento e compartilhamento executivo.",
-    headers: [
-      "Projeto",
-      "Total",
-      "Faturável",
-      "Não faturável",
-      "Lançamentos",
-    ],
+    headers: ["Projeto", "Total", "Faturável", "Não faturável", "Lançamentos"],
     rows,
     colWidths,
     startY: y,
@@ -860,14 +865,7 @@ export async function exportTimeEntriesToPDF({
     title: "Lançamentos detalhados",
     description:
       "Exportação detalhada para auditoria operacional, conferência individual de registros e compartilhamento com liderança ou clientes.",
-    headers: [
-      "Data",
-      "Projeto",
-      "Descrição",
-      "Duração",
-      "Faturável",
-      "Status",
-    ],
+    headers: ["Data", "Projeto", "Descrição", "Duração", "Faturável", "Status"],
     rows,
     colWidths,
     startY: y,
@@ -875,5 +873,269 @@ export async function exportTimeEntriesToPDF({
   });
 
   drawFooter(doc, { title: "", generatedAt });
+  doc.save(`${filename}.pdf`);
+}
+
+export async function exportCollaboratorHoursToPDF({
+  userName,
+  userEmail,
+  entries,
+  period,
+  filename = "relatorio-colaborador",
+}: {
+  userName: string;
+  userEmail: string;
+  entries: TeamHourEntry[];
+  period?: string;
+  filename?: string;
+}) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const generatedAt = formatGeneratedAt();
+  const logoDataUrl = await getBrandLogoDataUrl();
+
+  // Group entries by project
+  const projectGroups = new Map<
+    string,
+    {
+      projectName: string;
+      clientName: string | null;
+      entries: TeamHourEntry[];
+      totalMinutes: number;
+      billableMinutes: number;
+    }
+  >();
+
+  let totalMinutes = 0;
+  let billableMinutes = 0;
+
+  for (const entry of entries) {
+    const pid = entry.project.id;
+    const current = projectGroups.get(pid) ?? {
+      projectName: entry.project.name,
+      clientName: entry.project.clientName,
+      entries: [],
+      totalMinutes: 0,
+      billableMinutes: 0,
+    };
+
+    current.entries.push(entry);
+    current.totalMinutes += entry.duration;
+    totalMinutes += entry.duration;
+    if (entry.billable) {
+      current.billableMinutes += entry.duration;
+      billableMinutes += entry.duration;
+    }
+    projectGroups.set(pid, current);
+  }
+
+  const sortedGroups = Array.from(projectGroups.values()).sort(
+    (a, b) => b.totalMinutes - a.totalMinutes,
+  );
+
+  const title = `Relatório de Horas - Colaborador`;
+  configureDocument(doc, title);
+
+  let y = drawHeader(doc, {
+    title,
+    period: period || "Todo o período",
+    logoDataUrl,
+  });
+
+  // Render metric cards for the collaborator
+  const metrics = [
+    {
+      label: "Colaborador",
+      value: userName,
+      meta: userEmail,
+    },
+    {
+      label: "Horas Totais",
+      value: minutesToHours(totalMinutes),
+      meta: `${sortedGroups.length} projetos ativos`,
+    },
+    {
+      label: "Taxa Faturável",
+      value: `${totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0}%`,
+      meta: `${minutesToHours(billableMinutes)} faturáveis`,
+    },
+    {
+      label: "Lançamentos",
+      value: String(entries.length),
+      meta: "Lançamentos registrados no período",
+    },
+  ];
+
+  y = drawMetricCards(doc, metrics, y, 2);
+  y += 10;
+
+  const tableWidth = doc.internal.pageSize.getWidth() - PAGE_MARGIN * 2;
+  const bottomLimit = CONTENT_BOTTOM;
+
+  for (const group of sortedGroups) {
+    if (y + 35 > bottomLimit) {
+      doc.addPage();
+      y = 18;
+    }
+
+    const rows = group.entries.map((entry) => [
+      format(parseLocalDate(entry.date), "dd/MM/yyyy"),
+      normalizePdfText(entry.description || "Sem descrição"),
+      minutesToHours(entry.duration),
+      entry.billable ? "Sim" : "Não",
+    ]);
+
+    rows.push([
+      "TOTAL PROJETO",
+      "",
+      minutesToHours(group.totalMinutes),
+      `${group.totalMinutes > 0 ? Math.round((group.billableMinutes / group.totalMinutes) * 100) : 0}% Fat.`,
+    ]);
+
+    y = drawTable(doc, {
+      title: group.projectName,
+      description: `${group.clientName || "Cliente Interno"} • Total de ${minutesToHours(group.totalMinutes)} (${group.totalMinutes > 0 ? Math.round((group.billableMinutes / group.totalMinutes) * 100) : 0}% faturável)`,
+      headers: ["Data", "Descrição", "Duração", "Faturável"],
+      rows,
+      colWidths: [22, tableWidth - 22 - 24 - 20, 24, 20],
+      startY: y,
+      rowHeight: 8,
+    });
+
+    y += 8; // spacing between tables
+  }
+
+  drawFooter(doc, { title: userName, generatedAt });
+  doc.save(`${filename}.pdf`);
+}
+
+export async function exportTeamHoursGroupedToPDF({
+  entries,
+  period,
+  filename = "relatorio-equipe-optsolv",
+}: {
+  entries: TeamHourEntry[];
+  period?: string;
+  filename?: string;
+}) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const generatedAt = formatGeneratedAt();
+  const logoDataUrl = await getBrandLogoDataUrl();
+
+  // Group entries by user
+  const userGroups = new Map<
+    string,
+    {
+      userName: string;
+      userEmail: string;
+      entries: TeamHourEntry[];
+      totalMinutes: number;
+      billableMinutes: number;
+    }
+  >();
+
+  let totalMinutes = 0;
+  let billableMinutes = 0;
+  const uniqueProjects = new Set<string>();
+
+  for (const entry of entries) {
+    const uid = entry.user.id;
+    const current = userGroups.get(uid) ?? {
+      userName: entry.user.name,
+      userEmail: entry.user.email,
+      entries: [],
+      totalMinutes: 0,
+      billableMinutes: 0,
+    };
+
+    current.entries.push(entry);
+    current.totalMinutes += entry.duration;
+    totalMinutes += entry.duration;
+    if (entry.billable) {
+      current.billableMinutes += entry.duration;
+      billableMinutes += entry.duration;
+    }
+    uniqueProjects.add(entry.project.id);
+    userGroups.set(uid, current);
+  }
+
+  const sortedUsers = Array.from(userGroups.values()).sort(
+    (a, b) => b.totalMinutes - a.totalMinutes,
+  );
+
+  const title = `Relatório de Horas da Equipe`;
+  configureDocument(doc, title);
+
+  let y = drawHeader(doc, {
+    title,
+    period: period || "Todo o período",
+    logoDataUrl,
+  });
+
+  // Render metric cards for the team
+  const metrics = [
+    {
+      label: "Total Horas",
+      value: minutesToHours(totalMinutes),
+      meta: `${sortedUsers.length} colaboradores ativos`,
+    },
+    {
+      label: "Taxa Faturável",
+      value: `${totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0}%`,
+      meta: `${minutesToHours(billableMinutes)} faturáveis`,
+    },
+    {
+      label: "Colaboradores",
+      value: String(sortedUsers.length),
+      meta: "Integrantes da equipe ativos",
+    },
+    {
+      label: "Projetos",
+      value: String(uniqueProjects.size),
+      meta: "Projetos trabalhados no período",
+    },
+  ];
+
+  y = drawMetricCards(doc, metrics, y, 2);
+  y += 10;
+
+  const tableWidth = doc.internal.pageSize.getWidth() - PAGE_MARGIN * 2;
+  const bottomLimit = CONTENT_BOTTOM;
+
+  for (const user of sortedUsers) {
+    if (y + 35 > bottomLimit) {
+      doc.addPage();
+      y = 18;
+    }
+
+    const rows = user.entries.map((entry) => [
+      normalizePdfText(entry.project.name),
+      format(parseLocalDate(entry.date), "dd/MM/yyyy"),
+      normalizePdfText(entry.description || "Sem descrição"),
+      minutesToHours(entry.duration),
+      entry.billable ? "Sim" : "Não",
+    ]);
+
+    rows.push([
+      "TOTAL COLABORADOR",
+      "",
+      "",
+      minutesToHours(user.totalMinutes),
+      `${user.totalMinutes > 0 ? Math.round((user.billableMinutes / user.totalMinutes) * 100) : 0}% Fat.`,
+    ]);
+
+    y = drawTable(doc, {
+      title: user.userName,
+      description: `${user.userEmail} • Total de ${minutesToHours(user.totalMinutes)} (${user.totalMinutes > 0 ? Math.round((user.billableMinutes / user.totalMinutes) * 100) : 0}% faturável)`,
+      headers: ["Projeto", "Data", "Descrição", "Duração", "Faturável"],
+      rows,
+      colWidths: [30, 20, tableWidth - 30 - 20 - 24 - 20, 24, 20],
+      startY: y,
+      rowHeight: 8,
+    });
+
+    y += 8; // spacing between tables
+  }
+
+  drawFooter(doc, { title: "Relatório Consolidado", generatedAt });
   doc.save(`${filename}.pdf`);
 }

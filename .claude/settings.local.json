@@ -9,8 +9,6 @@
       "Bash(cat \"C:/Users/mgalv/Projetos-Programacao/Projetos-Treino/harvest/.superpowers/brainstorm/\"*\"/.server-info\")"
     ]
   },
-  "enabledMcpjsonServers": [
-    "shadcn"
-  ],
+  "enabledMcpjsonServers": ["shadcn"],
   "enableAllProjectMcpServers": true
 }
