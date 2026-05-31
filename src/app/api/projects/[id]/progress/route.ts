@@ -7,7 +7,7 @@ import {
 } from "@/lib/access-control";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
-import { azureDevopsConfig, project } from "@/lib/db/schema";
+import { project } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +39,26 @@ function unconfiguredResponse(
     progressPercent: 0,
     efficiency: 0,
   };
+}
+
+function isWorkItemBlocked(fields: Record<string, unknown>): boolean {
+  const state =
+    (fields["System.State"] as string | undefined)?.toLowerCase() ?? "";
+  const tags =
+    (fields["System.Tags"] as string | undefined)?.toLowerCase() ?? "";
+  const blockedField = fields["Microsoft.VSTS.CMMI.Blocked"];
+
+  return (
+    state.includes("blocked") ||
+    state.includes("imped") ||
+    state.includes("bloqueado") ||
+    tags.includes("blocked") ||
+    tags.includes("imped") ||
+    tags.includes("bloqueado") ||
+    blockedField === "Yes" ||
+    blockedField === "Sim" ||
+    blockedField === true
+  );
 }
 
 /**
@@ -119,7 +139,7 @@ async function fetchProjectSchedulingData(
 
   // Step 3: Batch-fetch scheduling fields for all IDs
   const batchResult = await fetchAzureApi<AzureBatchResult>(
-    `${orgUrl}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,Microsoft.VSTS.Scheduling.OriginalEstimate,Microsoft.VSTS.Scheduling.CompletedWork,Microsoft.VSTS.Scheduling.RemainingWork&api-version=7.1`,
+    `${orgUrl}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.State,System.Tags,Microsoft.VSTS.CMMI.Blocked,Microsoft.VSTS.Scheduling.OriginalEstimate,Microsoft.VSTS.Scheduling.CompletedWork,Microsoft.VSTS.Scheduling.RemainingWork&api-version=7.1`,
     authHeader,
   );
 
@@ -128,6 +148,10 @@ async function fetchProjectSchedulingData(
   let remaining = 0;
 
   for (const wi of batchResult.value) {
+    if (isWorkItemBlocked(wi.fields)) {
+      continue;
+    }
+
     const origEst = wi.fields["Microsoft.VSTS.Scheduling.OriginalEstimate"];
     const compWork = wi.fields["Microsoft.VSTS.Scheduling.CompletedWork"];
     const remWork = wi.fields["Microsoft.VSTS.Scheduling.RemainingWork"];
