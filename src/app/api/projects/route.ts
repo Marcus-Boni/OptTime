@@ -127,7 +127,8 @@ export async function POST(req: Request): Promise<Response> {
     const managerId =
       actor.role === "manager" ? actor.userId : data.managerId || actor.userId;
 
-    if (!(await isProjectLeaderRole(managerId))) {
+    const projectStatus = data.status ?? "open";
+    if (projectStatus !== "archived" && !(await isProjectLeaderRole(managerId))) {
       return Response.json(
         { error: "O lider do projeto deve ser um admin ou gerente ativo." },
         { status: 400 },

@@ -151,7 +151,14 @@ export async function PUT(
         ? actor.userId
         : data.managerId || existing.managerId || actor.userId;
 
-    if (!(await isProjectLeaderRole(managerId))) {
+    const projectStatus = data.status ?? existing.status;
+    const isManagerChanged = managerId !== existing.managerId;
+
+    if (
+      projectStatus !== "archived" &&
+      isManagerChanged &&
+      !(await isProjectLeaderRole(managerId))
+    ) {
       return Response.json(
         { error: "O lider do projeto deve ser um admin ou gerente ativo." },
         { status: 400 },
