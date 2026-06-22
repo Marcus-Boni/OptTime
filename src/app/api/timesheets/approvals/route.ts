@@ -4,9 +4,10 @@ import {
   getActiveSession,
   getActorContext,
   getDirectReportIds,
+  getManagedProjectIds,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { timesheet, user } from "@/lib/db/schema";
+import { projectMember, timesheet, user } from "@/lib/db/schema";
 
 const APPROVAL_QUEUE_STATUSES = ["submitted", "open", "rejected"];
 const UNSUBMITTED_WEEKS_LOOKBACK = 4;
@@ -28,7 +29,24 @@ async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
     return users.map((person) => person.id);
   }
 
-  return getDirectReportIds(actor.userId);
+  const directReportIds = await getDirectReportIds(actor.userId);
+  const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
+  
+  let memberIds: string[] = [];
+  if (managedProjectIds.length > 0) {
+    const members = await db.query.projectMember.findMany({
+      where: inArray(projectMember.projectId, managedProjectIds),
+      columns: { userId: true },
+    });
+    memberIds = members.map((m) => m.userId);
+  }
+  
+  const allIds = new Set([
+    ...directReportIds,
+    ...memberIds
+  ]);
+  
+  return Array.from(allIds);
 }
 
 async function ensureRecentUnsubmittedWeeks(userIds: string[]) {

@@ -1,8 +1,9 @@
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import {
   getActiveSession,
   getActorContext,
   getDirectReportIds,
+  getManagedProjectIds,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
@@ -46,15 +47,24 @@ export async function GET(req: Request): Promise<Response> {
 
     if (role === "manager") {
       const directReportIds = await getDirectReportIds(actor.userId);
-      if (directReportIds.length === 0) {
-        return Response.json({ entries: [] });
+      const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
+
+      // Removido o early return para garantir que o gerente sempre veja suas próprias horas, mesmo sem subordinados ou projetos
+
+      const managerConditions = [];
+      
+      // O gerente sempre vê as próprias horas
+      managerConditions.push(eq(timeEntry.userId, actor.userId));
+      
+      if (directReportIds.length > 0) {
+        managerConditions.push(inArray(timeEntry.userId, directReportIds));
+      }
+      
+      if (managedProjectIds.length > 0) {
+        managerConditions.push(inArray(timeEntry.projectId, managedProjectIds));
       }
 
-      if (userId && !directReportIds.includes(userId)) {
-        return Response.json({ error: "Forbidden" }, { status: 403 });
-      }
-
-      filters.push(inArray(timeEntry.userId, directReportIds));
+      filters.push(or(...managerConditions));
     }
 
     const whereCondition = filters.length > 0 ? and(...filters) : undefined;

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { project, projectMember, user } from "@/lib/db/schema";
@@ -190,7 +190,25 @@ export async function buildScopedUserWhere(actor: ActorContext) {
   }
 
   if (actor.role === "manager") {
-    return eq(user.managerId, actor.userId);
+    const managedProjectIds = await getManagedProjectIds(actor);
+    const conditions = [
+      eq(user.id, actor.userId),
+      eq(user.managerId, actor.userId),
+    ];
+
+    if (managedProjectIds && managedProjectIds.length > 0) {
+      const members = await db.query.projectMember.findMany({
+        where: inArray(projectMember.projectId, managedProjectIds),
+        columns: { userId: true },
+      });
+      const memberIds = members.map((m) => m.userId);
+
+      if (memberIds.length > 0) {
+        conditions.push(inArray(user.id, memberIds));
+      }
+    }
+
+    return or(...conditions);
   }
 
   return eq(user.id, actor.userId);
