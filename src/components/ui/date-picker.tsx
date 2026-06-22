@@ -61,7 +61,7 @@ export function DatePicker({
           aria-expanded={open}
           className={cn(
             "w-full justify-start text-left font-normal h-9",
-            "border-neutral-700 bg-neutral-800 hover:bg-neutral-700",
+            "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
             "focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20",
             !selected && "text-muted-foreground",
             className,
@@ -74,7 +74,7 @@ export function DatePicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="w-auto p-0 border-neutral-700 bg-neutral-900"
+        className="w-auto p-0 border bg-popover text-popover-foreground dark:border-neutral-700 dark:bg-neutral-900"
         align="start"
       >
         <Calendar
@@ -85,7 +85,7 @@ export function DatePicker({
           initialFocus
         />
         {selected && (
-          <div className="border-t border-neutral-800 p-2">
+          <div className="border-t border-border dark:border-neutral-800 p-2">
             <Button
               type="button"
               variant="ghost"

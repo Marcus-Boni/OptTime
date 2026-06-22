@@ -61,17 +61,17 @@ const STATUS_INFO: Record<
 > = {
   open: {
     label: "Em Aberto",
-    className: "bg-blue-500/10 text-blue-400",
+    className: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
     icon: <CircleDot className="h-3 w-3" />,
   },
   active: {
     label: "Em Andamento",
-    className: "bg-green-500/10 text-green-400",
+    className: "bg-green-500/10 text-green-600 dark:text-green-400",
     icon: <CircleDot className="h-3 w-3" />,
   },
   archived: {
     label: "Arquivado",
-    className: "bg-neutral-500/10 text-neutral-400",
+    className: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
     icon: <Archive className="h-3 w-3" />,
   },
 };
@@ -189,11 +189,11 @@ function ScopeFormPanel({
               <div className="space-y-1.5">
                 {form.stages.map((stage, idx) => (
                   <div
-                    key={`${stage}-${idx}`}
-                    className="flex items-center gap-2 rounded-lg border border-neutral-700/50 bg-neutral-800/50 px-3 py-1.5"
+                    key={stage}
+                    className="flex items-center gap-2 rounded-lg border border-border dark:border-neutral-700/50 bg-muted/50 dark:bg-neutral-800/50 px-3 py-1.5"
                   >
                     <GripVertical className="h-4 w-4 shrink-0 text-neutral-600" />
-                    <span className="flex-1 text-sm text-neutral-200">
+                    <span className="flex-1 text-sm text-foreground dark:text-neutral-200">
                       {stage}
                     </span>
                     <Badge
@@ -237,7 +237,7 @@ function ScopeFormPanel({
                 variant="outline"
                 size="sm"
                 onClick={addStage}
-                className="h-9 gap-1 border-neutral-700"
+                className="h-9 gap-1 border-input"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Adicionar
@@ -306,7 +306,7 @@ function ScopeCard({
                     <span key={stage} className="flex items-center gap-1">
                       <Badge
                         variant="secondary"
-                        className="text-[11px] font-normal bg-neutral-800 text-neutral-300 border border-neutral-700/50"
+                        className="text-[11px] font-normal bg-muted text-muted-foreground border border-border dark:bg-neutral-800 dark:text-neutral-300 dark:border-neutral-700/50"
                       >
                         {idx + 1}. {stage}
                       </Badge>

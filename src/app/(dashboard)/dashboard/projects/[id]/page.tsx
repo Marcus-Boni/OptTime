@@ -54,22 +54,22 @@ const STATUS_INFO: Record<
 > = {
   open: {
     label: "Em Aberto",
-    className: "bg-blue-500/10 text-blue-400",
+    className: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
     icon: <CircleDot className="h-3.5 w-3.5" />,
   },
   active: {
     label: "Em Andamento",
-    className: "bg-green-500/10 text-green-400",
+    className: "bg-green-500/10 text-green-600 dark:text-green-400",
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
   archived: {
     label: "Arquivado",
-    className: "bg-neutral-500/10 text-neutral-400",
+    className: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
     icon: <CircleDot className="h-3.5 w-3.5" />,
   },
   completed: {
     label: "Concluído",
-    className: "bg-purple-500/10 text-purple-400",
+    className: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
     icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
 };
@@ -218,7 +218,7 @@ export default function ProjectDetailPage() {
                 {project.currentStage && (
                   <Badge
                     variant="secondary"
-                    className="text-xs bg-orange-500/10 text-orange-400"
+                    className="text-xs bg-orange-500/10 text-orange-600 dark:text-orange-400"
                   >
                     {project.currentStage}
                   </Badge>
@@ -234,7 +234,7 @@ export default function ProjectDetailPage() {
                 {project.source === "azure-devops" && (
                   <Badge
                     variant="secondary"
-                    className="text-[10px] bg-blue-500/10 text-blue-400 gap-1"
+                    className="text-[10px] bg-blue-500/10 text-blue-600 dark:text-blue-400 gap-1"
                   >
                     <Cloud className="h-3 w-3" />
                     Azure DevOps
@@ -243,7 +243,7 @@ export default function ProjectDetailPage() {
                 {project.billable && (
                   <Badge
                     variant="secondary"
-                    className="text-[10px] bg-green-500/10 text-green-400"
+                    className="text-[10px] bg-green-500/10 text-green-600 dark:text-green-400"
                   >
                     Billable
                   </Badge>
@@ -303,7 +303,7 @@ export default function ProjectDetailPage() {
                     className={cn(
                       "text-xs",
                       project.billable
-                        ? "bg-green-500/10 text-green-400"
+                        ? "bg-green-500/10 text-green-600 dark:text-green-400"
                         : "bg-muted text-muted-foreground",
                     )}
                   >
@@ -398,7 +398,7 @@ export default function ProjectDetailPage() {
                         </span>
                         <Badge
                           variant="secondary"
-                          className="text-[10px] bg-orange-500/10 text-orange-400"
+                          className="text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400"
                         >
                           {project.scope.stages.length} etapas
                         </Badge>
@@ -423,8 +423,8 @@ export default function ProjectDetailPage() {
                                     className={cn(
                                       "text-xs font-normal transition-all",
                                       isCurrent
-                                        ? "bg-orange-500/20 text-orange-300 border border-orange-500/40 font-semibold"
-                                        : "bg-neutral-800 text-neutral-400 border border-neutral-700/50",
+                                        ? "bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30 dark:border-orange-500/40 font-semibold"
+                                        : "bg-muted text-muted-foreground border border-border dark:bg-neutral-800 dark:text-neutral-400 dark:border-neutral-700/50",
                                     )}
                                   >
                                     {idx + 1}. {stage}
@@ -445,7 +445,7 @@ export default function ProjectDetailPage() {
                           <p className="text-xs text-muted-foreground">
                             Etapa atual
                           </p>
-                          <p className="text-sm font-semibold text-orange-300 mt-0.5">
+                          <p className="text-sm font-semibold text-orange-600 dark:text-orange-400 mt-0.5">
                             {project.currentStage}
                           </p>
                         </div>

@@ -1,16 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  ChevronDown,
-  GripVertical,
-  Pencil,
-  Plus,
-  Save,
-  Trash2,
-  X,
-} from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { GripVertical, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,11 +49,7 @@ export function ProjectScopeManager({
   >("open");
   const [newStage, setNewStage] = useState("");
 
-  useEffect(() => {
-    void fetchScopes();
-  }, []);
-
-  async function fetchScopes() {
+  const fetchScopes = useCallback(async () => {
     setIsLoading(true);
     try {
       const res = await fetch("/api/project-scopes");
@@ -74,7 +62,11 @@ export function ProjectScopeManager({
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    void fetchScopes();
+  }, [fetchScopes]);
 
   function startCreate() {
     setIsCreating(true);
@@ -177,7 +169,7 @@ export function ProjectScopeManager({
     <div className={cn("space-y-3", className)}>
       {/* Scope selector */}
       <div className="space-y-1.5">
-        <Label htmlFor="scope-select" className="text-sm text-neutral-300">
+        <Label htmlFor="scope-select" className="text-sm">
           Escopo do Projeto
         </Label>
         <Select
@@ -187,18 +179,20 @@ export function ProjectScopeManager({
         >
           <SelectTrigger
             id="scope-select"
-            className="w-full rounded-lg border border-neutral-700 bg-neutral-800 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+            className="w-full rounded-lg border border-input bg-background dark:border-neutral-700 dark:bg-neutral-800 text-sm focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
           >
             <SelectValue placeholder="Selecionar escopo..." />
           </SelectTrigger>
-          <SelectContent className="border-neutral-700 bg-neutral-900">
+          <SelectContent className="border bg-popover text-popover-foreground dark:border-neutral-700 dark:bg-neutral-900">
             <SelectItem value="none">
-              <span className="text-neutral-400 italic">Sem escopo</span>
+              <span className="text-muted-foreground italic">Sem escopo</span>
             </SelectItem>
             {scopes.map((scope) => (
               <SelectItem key={scope.id} value={scope.id}>
-                <span className="font-medium text-white">{scope.name}</span>
-                <span className="ml-2 text-xs text-neutral-400">
+                <span className="font-medium text-foreground dark:text-white">
+                  {scope.name}
+                </span>
+                <span className="ml-2 text-xs text-muted-foreground">
                   ({scope.stages.length} etapas ·{" "}
                   {STATUS_LABELS[scope.defaultStatus] ?? scope.defaultStatus})
                 </span>
@@ -209,9 +203,9 @@ export function ProjectScopeManager({
       </div>
 
       {/* Scope list with create/edit */}
-      <div className="rounded-xl border border-white/10 bg-neutral-900/50 p-3 space-y-2">
+      <div className="rounded-xl border border-border bg-card dark:border-white/10 dark:bg-neutral-900/50 p-3 space-y-2">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-medium text-neutral-400 uppercase tracking-wide">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
             Gerenciar Escopos
           </p>
           {!isCreating && !editingId && (
@@ -239,20 +233,20 @@ export function ProjectScopeManager({
               className="overflow-hidden rounded-lg border border-orange-500/30 bg-orange-500/5 p-3 space-y-3"
             >
               <div className="space-y-1.5">
-                <Label className="text-xs text-neutral-400">
+                <Label className="text-xs text-muted-foreground">
                   Nome do escopo
                 </Label>
                 <Input
                   value={formName}
                   onChange={(e) => setFormName(e.target.value)}
                   placeholder="Ex: Escopo Fechado"
-                  className="h-8 rounded-lg border-neutral-700 bg-neutral-800 text-sm"
+                  className="h-8 rounded-lg border-input bg-background dark:border-neutral-700 dark:bg-neutral-800 text-sm"
                   aria-label="Nome do escopo"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-neutral-400">
+                <Label className="text-xs text-muted-foreground">
                   Status padrão
                 </Label>
                 <Select
@@ -261,10 +255,10 @@ export function ProjectScopeManager({
                     setFormDefaultStatus(v as "open" | "active" | "archived")
                   }
                 >
-                  <SelectTrigger className="h-8 rounded-lg border-neutral-700 bg-neutral-800 text-sm">
+                  <SelectTrigger className="h-8 rounded-lg border-input bg-background dark:border-neutral-700 dark:bg-neutral-800 text-sm">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="border-neutral-700 bg-neutral-900">
+                  <SelectContent className="border bg-popover text-popover-foreground dark:border-neutral-700 dark:bg-neutral-900">
                     <SelectItem value="open">Em Aberto</SelectItem>
                     <SelectItem value="active">Em Andamento</SelectItem>
                     <SelectItem value="archived">Arquivado</SelectItem>
@@ -273,14 +267,14 @@ export function ProjectScopeManager({
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs text-neutral-400">
+                <Label className="text-xs text-muted-foreground">
                   Etapas ({formStages.length})
                 </Label>
                 <div className="space-y-1.5">
                   {formStages.map((stage, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
+                    <div key={stage} className="flex items-center gap-2">
                       <GripVertical className="h-3.5 w-3.5 flex-shrink-0 text-neutral-600" />
-                      <span className="flex-1 truncate rounded-md border border-neutral-700 bg-neutral-800 px-2.5 py-1 text-xs text-neutral-200">
+                      <span className="flex-1 truncate rounded-md border border-border bg-muted/50 dark:border-neutral-700 dark:bg-neutral-800 px-2.5 py-1 text-xs text-foreground dark:text-neutral-200">
                         {stage}
                       </span>
                       <button
@@ -304,7 +298,7 @@ export function ProjectScopeManager({
                         }
                       }}
                       placeholder="Nova etapa..."
-                      className="h-8 flex-1 rounded-lg border-neutral-700 bg-neutral-800 text-xs"
+                      className="h-8 flex-1 rounded-lg border-input bg-background dark:border-neutral-700 dark:bg-neutral-800 text-xs"
                       aria-label="Nova etapa"
                     />
                     <Button
@@ -312,7 +306,7 @@ export function ProjectScopeManager({
                       size="sm"
                       variant="outline"
                       onClick={addStage}
-                      className="h-8 border-neutral-700 bg-neutral-800 text-xs hover:border-orange-500/30 hover:bg-orange-500/5"
+                      className="h-8 border-input bg-background dark:border-neutral-700 dark:bg-neutral-800 text-xs hover:border-orange-500/30 hover:bg-orange-500/5"
                     >
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
@@ -326,7 +320,7 @@ export function ProjectScopeManager({
                   size="sm"
                   variant="ghost"
                   onClick={cancelForm}
-                  className="h-7 text-xs text-neutral-400"
+                  className="h-7 text-xs text-muted-foreground"
                 >
                   Cancelar
                 </Button>
@@ -351,7 +345,7 @@ export function ProjectScopeManager({
             {[1, 2].map((i) => (
               <div
                 key={i}
-                className="h-8 animate-pulse rounded-lg bg-white/5"
+                className="h-8 animate-pulse rounded-lg bg-muted dark:bg-white/5"
               />
             ))}
           </div>
@@ -368,14 +362,14 @@ export function ProjectScopeManager({
                   "flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors",
                   value === scope.id
                     ? "border border-orange-500/30 bg-orange-500/5"
-                    : "hover:bg-white/5",
+                    : "hover:bg-muted/50",
                 )}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="truncate text-sm font-medium text-neutral-200">
+                  <p className="truncate text-sm font-medium text-foreground dark:text-neutral-200">
                     {scope.name}
                   </p>
-                  <p className="text-[10px] text-neutral-500">
+                  <p className="text-[10px] text-muted-foreground">
                     {scope.stages.join(" → ") || "Sem etapas"} ·{" "}
                     {STATUS_LABELS[scope.defaultStatus]}
                   </p>

@@ -13,36 +13,32 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   BriefcaseBusiness,
   CalendarIcon,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
+  Download,
+  FileDown,
   FilterX,
+  Loader2,
   Search,
   Users,
-  ChevronDown,
-  Download,
-  Loader2,
-  FileDown,
 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  exportCollaboratorHoursToPDF,
-  exportTeamHoursGroupedToPDF,
-} from "@/lib/export/pdf";
+import { UserAvatar } from "@/components/shared/user-avatar";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
+import { UserCombobox } from "@/components/time/UserCombobox";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ProjectCombobox } from "@/components/time/ProjectCombobox";
-import { UserCombobox } from "@/components/time/UserCombobox";
-import { UserAvatar } from "@/components/shared/user-avatar";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Popover,
   PopoverContent,
@@ -86,6 +82,10 @@ import type {
 } from "@/hooks/use-team-hours";
 import { useTeamHours } from "@/hooks/use-team-hours";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
+import {
+  exportCollaboratorHoursToPDF,
+  exportTeamHoursGroupedToPDF,
+} from "@/lib/export/pdf";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 
 const containerVariants = {
@@ -1091,7 +1091,9 @@ export default function TeamHoursPage() {
                         setSortBy(value as SortOption);
                       }}
                     >
-                      <SelectTrigger className={cn(filterStyles, "data-[size=default]:h-12")}>
+                      <SelectTrigger
+                        className={cn(filterStyles, "data-[size=default]:h-12")}
+                      >
                         <SelectValue placeholder="Ordenar" />
                       </SelectTrigger>
                       <SelectContent>

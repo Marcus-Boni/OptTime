@@ -27,10 +27,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
-  open: "bg-blue-500/10 text-blue-400",
-  active: "bg-green-500/10 text-green-400",
-  archived: "bg-neutral-500/10 text-neutral-400",
-  completed: "bg-purple-500/10 text-purple-400",
+  open: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  active: "bg-green-500/10 text-green-600 dark:text-green-400",
+  archived: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400",
+  completed: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
 };
 
 // ─── Animation ─────────────────────────────────────────────────────────────────
@@ -95,7 +95,8 @@ export function ProjectCard({
 
   const statusLabel = STATUS_LABELS[proj.status] ?? proj.status;
   const statusColorClass =
-    STATUS_COLORS[proj.status] ?? "bg-neutral-500/10 text-neutral-400";
+    STATUS_COLORS[proj.status] ??
+    "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400";
 
   const hasDateRange = proj.startDate || proj.endDate;
 
@@ -172,7 +173,7 @@ export function ProjectCard({
                     {proj.currentStage && (
                       <Badge
                         variant="secondary"
-                        className="min-w-0 max-w-full shrink whitespace-normal break-words text-center leading-tight text-[10px] bg-orange-500/10 text-orange-400"
+                        className="min-w-0 max-w-full shrink whitespace-normal break-words text-center leading-tight text-[10px] bg-orange-500/10 text-orange-600 dark:text-orange-400"
                       >
                         {proj.currentStage}
                       </Badge>
@@ -286,7 +287,7 @@ export function ProjectCard({
                 {proj.billable && (
                   <Badge
                     variant="secondary"
-                    className="bg-green-500/10 text-[10px] text-green-400"
+                    className="bg-green-500/10 text-[10px] text-green-600 dark:text-green-400"
                   >
                     Billable
                   </Badge>

@@ -135,12 +135,12 @@ export function ProjectProgressBar({
         aria-label="Carregando progresso"
         role="status"
       >
-        <div className="h-1.5 w-full animate-pulse rounded-full bg-white/10" />
+        <div className="h-1.5 w-full animate-pulse rounded-full bg-muted dark:bg-white/10" />
         <div className="flex gap-3">
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="h-3 w-16 animate-pulse rounded bg-white/10"
+              className="h-3 w-16 animate-pulse rounded bg-muted dark:bg-white/10"
             />
           ))}
         </div>
@@ -153,7 +153,7 @@ export function ProjectProgressBar({
     return (
       <div
         className={cn(
-          "flex items-center gap-1.5 text-[11px] text-red-400/70",
+          "flex items-center gap-1.5 text-[11px] text-red-500 dark:text-red-400/70",
           className,
         )}
       >
@@ -182,7 +182,7 @@ export function ProjectProgressBar({
     return (
       <div
         className={cn(
-          "flex items-center gap-1.5 text-[11px] text-neutral-500 italic",
+          "flex items-center gap-1.5 text-[11px] text-muted-foreground italic",
           className,
         )}
       >
@@ -206,15 +206,15 @@ export function ProjectProgressBar({
       {/* Progress bar */}
       <div className="relative pt-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] font-medium text-neutral-400 flex items-center gap-1">
+          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
             <Activity className="h-3 w-3" />
             Progresso
           </span>
-          <span className="text-[11px] font-mono font-semibold text-orange-400">
+          <span className="text-[11px] font-mono font-semibold text-orange-600 dark:text-orange-400">
             {progressPercent}%
           </span>
         </div>
-        <div className="relative h-1.5 w-full rounded-full bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]">
+        <div className="relative h-1.5 w-full rounded-full bg-muted dark:bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]">
           <motion.div
             className={cn(
               "h-full rounded-full bg-gradient-to-r overflow-hidden",
@@ -245,7 +245,7 @@ export function ProjectProgressBar({
       {showSchedule && scheduleData && !compact && (
         <div className="relative pt-1">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[11px] font-medium text-neutral-400 flex items-center gap-1">
+            <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
               <CalendarRange className="h-3 w-3" />
               Cronograma ({scheduleData.label})
             </span>
@@ -253,14 +253,14 @@ export function ProjectProgressBar({
               className={cn(
                 "text-[11px] font-mono font-semibold",
                 scheduleData.percent > progressPercent + 15
-                  ? "text-red-400"
-                  : "text-blue-400",
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-blue-600 dark:text-blue-400",
               )}
             >
               {scheduleData.percent}%
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-white/10">
             <motion.div
               className={cn(
                 "h-full rounded-full bg-gradient-to-r",
@@ -324,13 +324,13 @@ function ProgressMetric({
 }: ProgressMetricProps) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] text-neutral-500 uppercase tracking-wide">
+      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
         {label}
       </span>
       <div
         className={cn(
           "flex items-center gap-1 font-mono text-[11px] font-semibold",
-          highlight ? "text-red-400" : "text-neutral-300",
+          highlight ? "text-red-600 dark:text-red-400" : "text-neutral-800 dark:text-neutral-300",
         )}
       >
         {icon}

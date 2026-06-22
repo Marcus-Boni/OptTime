@@ -90,19 +90,19 @@ function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     active: {
       label: "Em Andamento",
-      cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+      cls: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
     },
     open: {
       label: "Em Aberto",
-      cls: "bg-sky-500/10 text-sky-400 border-sky-500/20",
+      cls: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/20",
     },
     completed: {
       label: "Concluído",
-      cls: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+      cls: "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20",
     },
     archived: {
       label: "Arquivado",
-      cls: "bg-neutral-500/10 text-neutral-400 border-neutral-500/20",
+      cls: "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400 border-neutral-500/20",
     },
   };
   const entry = map[status] ?? {
@@ -382,7 +382,7 @@ function ProjectsTable({
                                     : `Estágio atual: ${proj.currentStage}`
                                 }
                               >
-                                <span className="inline-flex items-center rounded border border-brand-500/30 bg-brand-500/5 px-1.5 py-px text-[10px] font-medium text-brand-400">
+                                <span className="inline-flex items-center rounded border border-brand-500/30 bg-brand-500/5 px-1.5 py-px text-[10px] font-medium text-brand-600 dark:text-brand-400">
                                   {proj.currentStage}
                                 </span>
                               </Tip>

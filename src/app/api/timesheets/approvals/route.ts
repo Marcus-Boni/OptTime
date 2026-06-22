@@ -31,7 +31,7 @@ async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
 
   const directReportIds = await getDirectReportIds(actor.userId);
   const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
-  
+
   let memberIds: string[] = [];
   if (managedProjectIds.length > 0) {
     const members = await db.query.projectMember.findMany({
@@ -40,12 +40,9 @@ async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
     });
     memberIds = members.map((m) => m.userId);
   }
-  
-  const allIds = new Set([
-    ...directReportIds,
-    ...memberIds
-  ]);
-  
+
+  const allIds = new Set([...directReportIds, ...memberIds]);
+
   return Array.from(allIds);
 }
 

@@ -52,14 +52,14 @@ export async function GET(req: Request): Promise<Response> {
       // Removido o early return para garantir que o gerente sempre veja suas próprias horas, mesmo sem subordinados ou projetos
 
       const managerConditions = [];
-      
+
       // O gerente sempre vê as próprias horas
       managerConditions.push(eq(timeEntry.userId, actor.userId));
-      
+
       if (directReportIds.length > 0) {
         managerConditions.push(inArray(timeEntry.userId, directReportIds));
       }
-      
+
       if (managedProjectIds.length > 0) {
         managerConditions.push(inArray(timeEntry.projectId, managedProjectIds));
       }
