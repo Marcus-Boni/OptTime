@@ -30,6 +30,7 @@ type ProjectDTO = {
   status: string;
   billable: boolean;
   createdAt: string;
+  integrationKey: string | null;
 };
 
 export async function GET(req: Request): Promise<Response> {
@@ -97,6 +98,7 @@ export async function GET(req: Request): Promise<Response> {
         status: project.status,
         billable: project.billable,
         createdAt: project.createdAt,
+        integrationKey: project.integrationKey,
       })
       .from(project)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -118,6 +120,7 @@ export async function GET(req: Request): Promise<Response> {
       status: r.status,
       billable: r.billable,
       createdAt: r.createdAt.toISOString(),
+      integrationKey: r.integrationKey,
     }));
 
     logRequest({

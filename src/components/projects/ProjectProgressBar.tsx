@@ -330,7 +330,9 @@ function ProgressMetric({
       <div
         className={cn(
           "flex items-center gap-1 font-mono text-[11px] font-semibold",
-          highlight ? "text-red-600 dark:text-red-400" : "text-neutral-800 dark:text-neutral-300",
+          highlight
+            ? "text-red-600 dark:text-red-400"
+            : "text-neutral-800 dark:text-neutral-300",
         )}
       >
         {icon}

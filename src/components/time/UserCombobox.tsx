@@ -63,7 +63,12 @@ export function UserCombobox({
 
   const selectedUser =
     value === emptyOption?.value
-      ? { id: emptyOption.value, name: emptyOption.label, email: "", image: null }
+      ? {
+          id: emptyOption.value,
+          name: emptyOption.label,
+          email: "",
+          image: null,
+        }
       : sortedUsers.find((user) => user.id === value);
 
   const Comp = variant === "none" ? "button" : Button;
@@ -151,14 +156,14 @@ export function UserCombobox({
                     user.id === value ? "opacity-100" : "opacity-0",
                   )}
                 />
-                <UserAvatar
-                  name={user.name}
-                  image={user.image}
-                  size="sm"
-                />
+                <UserAvatar name={user.name} image={user.image} size="sm" />
                 <div className="flex flex-col min-w-0">
-                  <span className="truncate text-sm font-medium">{user.name}</span>
-                  <span className="truncate text-[10px] text-muted-foreground">{user.email}</span>
+                  <span className="truncate text-sm font-medium">
+                    {user.name}
+                  </span>
+                  <span className="truncate text-[10px] text-muted-foreground">
+                    {user.email}
+                  </span>
                 </div>
               </CommandItem>
             ))}

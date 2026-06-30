@@ -1,6 +1,6 @@
 {
-  "id": "d5de251f-f059-49a5-8d5e-d26789380d03",
-  "prevId": "8864be52-52ff-4de0-82ca-5a1dd17510f8",
+  "id": "72b10c45-f1fe-4dc8-b81a-10e6686842e4",
+  "prevId": "d5de251f-f059-49a5-8d5e-d26789380d03",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -687,6 +687,12 @@
         },
         "end_date": {
           "name": "end_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "integration_key": {
+          "name": "integration_key",
           "type": "text",
           "primaryKey": false,
           "notNull": false

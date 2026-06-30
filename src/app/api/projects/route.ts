@@ -194,6 +194,7 @@ export async function POST(req: Request): Promise<Response> {
           commercialName: data.commercialName || null,
           startDate: data.startDate || null,
           endDate: data.endDate || null,
+          integrationKey: data.integrationKey || null,
         })
         .returning();
 

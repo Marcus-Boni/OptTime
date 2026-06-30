@@ -113,6 +113,12 @@ const projectDTOSchema = {
       format: "date-time",
       example: "2026-01-15T09:00:00.000Z",
     },
+    integrationKey: {
+      type: "string",
+      nullable: true,
+      description: "Chave de integração padronizada do projeto.",
+      example: "MARCA-AMBIENTAL-INT",
+    },
   },
 };
 
@@ -195,28 +201,131 @@ export const openapiSpec = {
   info: {
     title: "OptSolv Time Tracker — API de Integração",
     version: "1.0.0",
-    description: [
-      "API REST interna para integração serviço a serviço dentro do ecossistema OptSolv.",
-      "",
-      "## Autenticação",
-      "Todos os endpoints (exceto `/openapi.json` e `/docs`) exigem um JWT Bearer obtido via",
-      "fluxo **client_credentials** do Microsoft Entra ID. Tokens delegados de usuário são rejeitados.",
-      "",
-      "## Escopos",
-      "| Escopo | Descrição |",
-      "|--------|-----------|",
-      "| `opt-time.read` | Acesso somente leitura a entradas de tempo, usuários e projetos |",
-      "| `opt-time.write` | Criar e gerenciar assinaturas de webhook |",
-      "| `opt-time.admin` | Operações administrativas (teste de envio, gerenciamento de assinaturas) |",
-      "",
-      "## Limite de Requisições",
-      "Padrão: 600 requisições/minuto por `client_id`. Os headers `X-RateLimit-Limit`,",
-      "`X-RateLimit-Remaining` e `X-RateLimit-Reset` são incluídos em todas as respostas.",
-      "",
-      "## Paginação",
-      "Os endpoints de listagem usam paginação baseada em cursor. Passe o valor `nextCursor` de uma resposta",
-      "como o parâmetro de query `cursor` na próxima requisição.",
-    ].join("\n"),
+    description: `API REST interna para integração serviço a serviço dentro do ecossistema OptSolv.
+
+## Autenticação
+
+Todos os endpoints (exceto \`/openapi.json\` e \`/docs\`) exigem um token Bearer, aceitando tanto o JWT M2M obtido via fluxo **client_credentials** do Microsoft Entra ID quanto a Chave de Integração Padronizada (API Key). Tokens delegados de usuário são rejeitados. A autenticação é estritamente de máquina para máquina utilizando identidades de serviço registradas.
+
+#### Como Obter o Token de Acesso:
+Para obter o token de acesso, envie uma requisição POST codificada em formulário (\`application/x-www-form-urlencoded\`) para o endpoint de token do Microsoft Entra ID da sua organização:
+
+\`\`\`bash
+curl -X POST \\
+  "https://login.microsoftonline.com/<TENANT_ID>/oauth2/v2.0/token" \\
+  -H "Content-Type: application/x-www-form-urlencoded" \\
+  -d "client_id=<YOUR_CLIENT_ID>" \\
+  -d "client_secret=<YOUR_CLIENT_SECRET>" \\
+  -d "scope=api://<OPT_TIME_CLIENT_ID>/.default" \\
+  -d "grant_type=client_credentials"
+\`\`\`
+
+A resposta de sucesso retornará o token no campo \`access_token\` do payload JSON. Esse token JWT deve ser repassado em todas as requisições no cabeçalho HTTP:
+
+\`\`\`http
+Authorization: Bearer <seu_token_jwt_aqui>
+\`\`\`
+
+---
+
+### 🔐 2. Escopos & App Roles
+
+A autorização é controlada no nível das App Roles concedidas ao aplicativo cliente. Certifique-se de que a aplicação possua o escopo correspondente no Azure Portal:
+
+| Escopo | Permissão | Descrição |
+| :--- | :--- | :--- |
+| \`opt-time.read\` | Leitura | Permite listar e ler registros de tempo, usuários, projetos e assinaturas de webhook. |
+| \`opt-time.write\` | Escrita | Permite registrar, modificar ou excluir configurações de webhooks e integrações. |
+| \`opt-time.admin\` | Admin | Operações administrativas completas, como envio de eventos de teste (\`test-dispatch\`). |
+
+---
+
+### 📈 3. Controle de Vazão (Rate Limiting)
+
+Para preservar o desempenho e estabilidade dos servidores, os limites são definidos por aplicativo consumidor (\`client_id\`):
+
+- **Limite padrão**: 600 requisições por minuto.
+- **Cabeçalhos de Resposta**: Use os headers abaixo para monitorar sua cota:
+  - \`X-RateLimit-Limit\`: Total de requisições permitidas na janela (600).
+  - \`X-RateLimit-Remaining\`: Requisições restantes na janela atual.
+  - \`X-RateLimit-Reset\`: Timestamp Unix (segundos) informando quando o limite será resetado.
+
+Ao exceder o limite, o servidor responderá com \`429 Too Many Requests\` contendo a mensagem no formato padrão de erro.
+
+---
+
+### 🔄 4. Paginação baseada em Cursor
+
+Para garantir alta performance em grandes listagens, as respostas são paginadas usando cursores. 
+
+- As rotas de listagem suportam os parâmetros de busca \`limit\` (1 a 200, padrão 50) e \`cursor\` (opcional).
+- O objeto retornado no sucesso possui o array \`data\` e a string \`nextCursor\` (ou \`null\` se não houver mais dados).
+- Para ler a página seguinte, copie o valor de \`nextCursor\` e envie-o no parâmetro \`?cursor=\` na requisição seguinte.
+
+---
+
+### ⚡ 5. Webhooks & Notificações em Tempo Real
+
+Assinaturas de webhook permitem receber eventos de apontamento de forma passiva no seu serviço receptor.
+
+#### Registro e Segredo Compartilhado:
+Ao criar uma assinatura via \`POST /webhooks/subscriptions\`, defina uma \`url\` HTTPS estável e insira um segredo (\`secret\`) de no mínimo 16 caracteres. O segredo será criptografado e servirá para assinar as requisições de entrega. Ele nunca mais será retornado em texto claro.
+
+#### Validação de Assinatura (Segurança):
+Toda notificação de webhook inclui o cabeçalho \`X-OptSolv-Signature: sha256=<assinatura-hexadecimal>\`.
+**É mandatório** que o destinatário verifique esta assinatura utilizando o algoritmo HMAC-SHA256 sobre o corpo bruto (raw body) da requisição com a chave secreta cadastrada:
+
+\`\`\`typescript
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+function verifySignature(rawBody: string, signatureHeader: string, secret: string): boolean {
+  const match = signatureHeader.match(/^sha256=(.+)$/);
+  if (!match) return false;
+  const hash = match[1];
+
+  const expected = createHmac("sha256", secret)
+    .update(rawBody)
+    .digest("hex");
+
+  const expectedBuffer = Buffer.from(expected, "hex");
+  const signatureBuffer = Buffer.from(hash, "hex");
+
+  return expectedBuffer.length === signatureBuffer.length && 
+         timingSafeEqual(expectedBuffer, signatureBuffer);
+}
+\`\`\`
+
+#### Política de Retentativa (Backoff):
+Se sua aplicação responder com status fora da faixa 2xx (ex: 500, 503) ou sofrer timeout, a notificação será reagendada:
+
+| Tentativa | Atraso após falha |
+| :---: | :--- |
+| 1ª | Imediato (Primeira tentativa) |
+| 2ª | 1 minuto |
+| 3ª | 2 minutos |
+| 4ª | 4 minutos |
+| 5ª | 8 minutos |
+| 6ª (final) | 16 minutos (se falhar, o status passa para \`failed\`) |
+
+---
+
+### ⚠️ 6. Estrutura de Erro Padrão
+
+A API formata respostas de erro de maneira uniforme:
+
+\`\`\`json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Parâmetros de entrada inválidos",
+    "details": {
+      "from": ["Formato de data inválido. Use YYYY-MM-DD."]
+    }
+  }
+}
+\`\`\`
+
+Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (404), \`VALIDATION_ERROR\` (400), \`RATE_LIMITED\` (429), \`INTERNAL_ERROR\` (500).`,
     contact: { name: "OptSolv Engineering", email: "dev@optsolv.com.br" },
   },
   servers: [{ url: API_BASE, description: "Ambiente atual" }],
@@ -226,9 +335,9 @@ export const openapiSpec = {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        bearerFormat: "JWT",
+        bearerFormat: "JWT / API Key",
         description:
-          "Token M2M do Entra ID (concessão client_credentials). As App Roles definem os escopos disponíveis.",
+          "Token M2M do Entra ID (concessão client_credentials) ou Chave de Integração Padronizada (definida via variável de ambiente).",
       },
     },
     schemas: {

@@ -69,6 +69,7 @@ export interface ProjectFromAPI {
   endDate: string | null;
   createdAt: string;
   updatedAt: string;
+  integrationKey: string | null;
   members: Array<{ id: string; userId: string; user: ProjectMemberUser }>;
   manager: ProjectMemberUser | null;
   /** Populated when scope is linked */

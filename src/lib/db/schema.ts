@@ -239,6 +239,8 @@ export const project = pgTable(
     startDate: text("start_date"),
     /** Project end date in YYYY-MM-DD format */
     endDate: text("end_date"),
+    /** Standardized integration key for cross-app project mapping */
+    integrationKey: text("integration_key"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()

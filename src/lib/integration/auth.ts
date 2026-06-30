@@ -28,13 +28,6 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> {
 }
 
 export async function validateM2MToken(req: Request): Promise<M2MContext> {
-  const tenantId = process.env.MICROSOFT_TENANT_ID;
-  const audience = process.env.ENTRA_API_AUDIENCE;
-
-  if (!tenantId || !audience) {
-    throw new Error("MICROSOFT_TENANT_ID and ENTRA_API_AUDIENCE must be set");
-  }
-
   const authHeader = req.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) {
     throw new ApiError(
@@ -45,6 +38,24 @@ export async function validateM2MToken(req: Request): Promise<M2MContext> {
   }
 
   const token = authHeader.slice(7);
+
+  // 1. Check for the standardized integration key
+  const integrationKey = process.env.INTEGRATION_KEY;
+  if (integrationKey && token === integrationKey) {
+    return {
+      clientId: "standardized-integration-client",
+      scopes: ["opt-time.read", "opt-time.write", "opt-time.admin"],
+      tenantId: "standardized",
+    };
+  }
+
+  // 2. Fallback to Microsoft Entra token validation
+  const tenantId = process.env.MICROSOFT_TENANT_ID;
+  const audience = process.env.ENTRA_API_AUDIENCE;
+
+  if (!tenantId || !audience) {
+    throw new Error("MICROSOFT_TENANT_ID and ENTRA_API_AUDIENCE must be set");
+  }
 
   let payload: JWTPayload;
   try {

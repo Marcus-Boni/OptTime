@@ -37,6 +37,7 @@ export const projectSchema = z.object({
   imageUrl: z.string().optional().nullable(),
   memberIds: z.array(z.string()).default([]),
   managerId: z.string().optional(),
+  integrationKey: z.string().optional().nullable(),
 });
 
 export type ProjectFormData = z.infer<typeof projectSchema>;

@@ -42,6 +42,7 @@ const createProjectSchema = z.object({
   budget: z.string().optional(),
   memberIds: z.array(z.string()),
   managerId: z.string().min(1, "Selecione um lider do projeto"),
+  integrationKey: z.string().optional(),
 });
 
 type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -121,6 +122,7 @@ export default function NewProjectPage() {
       budget: "",
       memberIds: [],
       managerId: "",
+      integrationKey: "",
     },
   });
 
@@ -199,6 +201,7 @@ export default function NewProjectPage() {
           budget: data.budget ? parseFloat(data.budget) : undefined,
           managerId: data.managerId,
           memberIds: Array.from(selectedMembers),
+          integrationKey: data.integrationKey || undefined,
         }),
       });
 
@@ -293,6 +296,21 @@ export default function NewProjectPage() {
                   placeholder="Ex: Empresa XYZ (opcional)"
                   {...register("clientName")}
                 />
+              </div>
+
+              {/* Integration Key */}
+              <div className="space-y-2">
+                <Label htmlFor="integrationKey">Chave de Integração</Label>
+                <Input
+                  id="integrationKey"
+                  placeholder="Ex: MARCA-AMBIENTAL-INT (opcional)"
+                  {...register("integrationKey")}
+                />
+                {errors.integrationKey && (
+                  <p className="text-sm text-destructive">
+                    {errors.integrationKey.message}
+                  </p>
+                )}
               </div>
 
               <Separator />

@@ -198,6 +198,10 @@ export async function PUT(
           commercialName: data.commercialName ?? null,
           startDate: data.startDate ?? null,
           endDate: data.endDate ?? null,
+          integrationKey:
+            data.integrationKey !== undefined
+              ? data.integrationKey
+              : existing.integrationKey,
         })
         .where(eq(project.id, id));
 

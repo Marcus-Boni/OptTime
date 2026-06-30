@@ -94,6 +94,7 @@ const editProjectSchema = z.object({
   scopeId: z.string().optional(),
   currentStage: z.string().optional(),
   azureProjectId: z.string().optional(),
+  integrationKey: z.string().optional(),
 });
 
 type EditProjectInput = z.infer<typeof editProjectSchema>;
@@ -263,6 +264,7 @@ export function ProjectEditDialog({
       scopeId: project.scopeId ?? "",
       currentStage: project.currentStage ?? "",
       azureProjectId: project.azureProjectId ?? "",
+      integrationKey: project.integrationKey ?? "",
     });
 
     setSelectedMembers(new Set(project.members.map((m) => m.userId)));
@@ -378,6 +380,7 @@ export function ProjectEditDialog({
           endDate: data.endDate || null,
           scopeId: data.scopeId || null,
           currentStage: data.currentStage || null,
+          integrationKey: data.integrationKey || null,
         }),
       });
 
@@ -678,6 +681,21 @@ export function ProjectEditDialog({
                     placeholder="Ex: João Silva"
                     {...register("commercialName")}
                   />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label htmlFor="edit-integration-key">
+                    Chave de Integração
+                  </Label>
+                  <Input
+                    id="edit-integration-key"
+                    placeholder="Ex: MARCA-AMBIENTAL-INT (opcional)"
+                    {...register("integrationKey")}
+                  />
+                  {errors.integrationKey && (
+                    <p className="text-xs text-destructive">
+                      {errors.integrationKey.message}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="edit-manager-search">
