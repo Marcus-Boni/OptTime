@@ -579,6 +579,104 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
           429: rateLimitedResponse,
         },
       },
+      put: {
+        operationId: "updateTimeEntry",
+        summary: "Atualizar entrada de tempo (Integração)",
+        description:
+          "Atualiza um lançamento de horas existente. Requer o escopo `opt-time.write`.",
+        tags: ["Entradas de Tempo"],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "ID da entrada de tempo.",
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  email: {
+                    type: "string",
+                    format: "email",
+                    description: "Novo e-mail do colaborador associado.",
+                    example: "dev@optsolv.com.br",
+                  },
+                  projectIntegrationKey: {
+                    type: "string",
+                    description: "Nova chave de integração do projeto.",
+                    example: "MARCA-AMBIENTAL-INT",
+                  },
+                  date: {
+                    type: "string",
+                    format: "date",
+                    description: "Nova data do lançamento (AAAA-MM-DD).",
+                    example: "2026-05-01",
+                  },
+                  description: {
+                    type: "string",
+                    description: "Nova descrição da atividade.",
+                    example: "Correção de bugs na integração.",
+                  },
+                  durationMinutes: {
+                    type: "integer",
+                    minimum: 1,
+                    description: "Nova duração em minutos.",
+                    example: 120,
+                  },
+                  billable: {
+                    type: "boolean",
+                    description: "Se o lançamento é faturável.",
+                    example: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Entrada de tempo atualizada com sucesso.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TimeEntryDTO" },
+              },
+            },
+          },
+          400: {
+            description: "Dados inválidos ou validação incorreta.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          401: unauthorizedResponse,
+          403: forbiddenResponse,
+          404: {
+            description: "Entrada de tempo não encontrada.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          409: {
+            description: "Período bloqueado (timesheet fechado).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          429: rateLimitedResponse,
+        },
+      },
     },
     "/users": {
       get: {
