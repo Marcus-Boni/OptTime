@@ -1,9 +1,15 @@
 import { and, asc, desc, eq, gt, gte, isNull, lt, lte, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { project, timeEntry, timesheet, user } from "@/lib/db/schema";
+import {
+  project,
+  projectMember,
+  timeEntry,
+  timesheet,
+  user,
+} from "@/lib/db/schema";
 import { validateM2MToken } from "@/lib/integration/auth";
-import { toErrorResponse } from "@/lib/integration/errors";
+import { ApiError, toErrorResponse } from "@/lib/integration/errors";
 import { createRequestId, logRequest } from "@/lib/integration/logger";
 import {
   buildPage,
@@ -22,6 +28,7 @@ const querySchema = z.object({
   userId: z.string().optional(),
   projectId: z.string().optional(),
   projectCode: z.string().optional(),
+  projectIntegrationKey: z.string().optional(),
   from: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
@@ -42,6 +49,7 @@ type TimeEntryDTO = {
   userEmail: string;
   projectId: string;
   projectCode: string;
+  projectIntegrationKey: string | null;
   date: string;
   durationMinutes: number;
   billable: boolean;
@@ -108,6 +116,7 @@ export async function GET(req: Request): Promise<Response> {
       userId,
       projectId,
       projectCode,
+      projectIntegrationKey,
       from,
       to,
       status,
@@ -120,6 +129,8 @@ export async function GET(req: Request): Promise<Response> {
     if (userId) conditions.push(eq(timeEntry.userId, userId));
     if (projectId) conditions.push(eq(timeEntry.projectId, projectId));
     if (projectCode) conditions.push(eq(project.code, projectCode));
+    if (projectIntegrationKey)
+      conditions.push(eq(project.integrationKey, projectIntegrationKey));
     if (from) conditions.push(gte(timeEntry.date, from));
     if (to) conditions.push(lte(timeEntry.date, to));
     if (billable !== undefined)
@@ -160,6 +171,7 @@ export async function GET(req: Request): Promise<Response> {
         createdAt: timeEntry.createdAt,
         userEmail: user.email,
         projectCode: project.code,
+        projectIntegrationKey: project.integrationKey,
         timesheetStatus: timesheet.status,
       })
       .from(timeEntry)
@@ -183,6 +195,7 @@ export async function GET(req: Request): Promise<Response> {
       userEmail: r.userEmail,
       projectId: r.projectId,
       projectCode: r.projectCode,
+      projectIntegrationKey: r.projectIntegrationKey,
       date: r.date,
       durationMinutes: r.duration,
       billable: r.billable,
@@ -218,6 +231,178 @@ export async function GET(req: Request): Promise<Response> {
       route: "GET /api/v1/time-entries",
       durationMs: Date.now() - start,
       status: 500,
+    });
+    return toErrorResponse(error, requestId);
+  }
+}
+
+const createV1TimeEntrySchema = z.object({
+  email: z.string().trim().email("invalid email format"),
+  projectIntegrationKey: z
+    .string()
+    .trim()
+    .min(1, "projectIntegrationKey is required"),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
+  description: z.string().trim().min(1, "description must not be empty"),
+  durationMinutes: z.number().int().min(1).optional(),
+  billable: z.boolean().optional(),
+});
+
+export async function POST(req: Request): Promise<Response> {
+  const requestId = createRequestId(req);
+  const start = Date.now();
+  let clientId = "unknown";
+
+  try {
+    const ctx = await validateM2MToken(req);
+    clientId = ctx.clientId;
+
+    const rlHeaders = getRateLimitHeaders(clientId);
+    if (!checkRateLimit(clientId)) {
+      return Response.json(
+        {
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many requests",
+            details: null,
+          },
+        },
+        { status: 429, headers: { ...rlHeaders, "X-Request-Id": requestId } },
+      );
+    }
+
+    requireScope(ctx.scopes, SCOPES.WRITE);
+
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      throw new ApiError("VALIDATION_ERROR", "Invalid JSON payload", 400);
+    }
+
+    const parsed = createV1TimeEntrySchema.safeParse(body);
+    if (!parsed.success) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        "Validation failed",
+        400,
+        parsed.error.flatten(),
+      );
+    }
+
+    const data = parsed.data;
+
+    // Validate targetUser exists and is active
+    const targetUser = await db.query.user.findFirst({
+      where: and(eq(user.email, data.email), eq(user.isActive, true)),
+    });
+
+    if (!targetUser) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        `User with email ${data.email} not found or inactive`,
+        400,
+      );
+    }
+
+    // Validate targetProject exists and is active/open
+    const targetProject = await db.query.project.findFirst({
+      where: and(
+        eq(project.integrationKey, data.projectIntegrationKey),
+        or(eq(project.status, "open"), eq(project.status, "active")),
+      ),
+    });
+
+    if (!targetProject) {
+      throw new ApiError(
+        "VALIDATION_ERROR",
+        `Project with integrationKey ${data.projectIntegrationKey} not found or inactive`,
+        400,
+      );
+    }
+
+    // Access control: If user is a member, they must be part of the project members list
+    if (targetUser.role === "member") {
+      const membership = await db.query.projectMember.findFirst({
+        where: and(
+          eq(projectMember.projectId, targetProject.id),
+          eq(projectMember.userId, targetUser.id),
+        ),
+      });
+
+      if (!membership) {
+        throw new ApiError(
+          "FORBIDDEN",
+          "User does not have access to this project",
+          403,
+        );
+      }
+    }
+
+    // Default duration and billable preference values
+    const duration =
+      data.durationMinutes ?? targetUser.timeDefaultDuration ?? 60;
+    const billable =
+      data.billable ??
+      targetUser.timeDefaultBillable ??
+      targetProject.billable ??
+      true;
+
+    const id = crypto.randomUUID();
+    const [entry] = await db
+      .insert(timeEntry)
+      .values({
+        id,
+        userId: targetUser.id,
+        projectId: targetProject.id,
+        description: data.description,
+        date: data.date,
+        duration,
+        billable,
+        azdoSyncStatus: "none",
+      })
+      .returning();
+
+    const dto: TimeEntryDTO = {
+      id: entry.id,
+      userId: entry.userId,
+      userEmail: targetUser.email,
+      projectId: entry.projectId,
+      projectCode: targetProject.code,
+      projectIntegrationKey: targetProject.integrationKey,
+      date: entry.date,
+      durationMinutes: entry.duration,
+      billable: entry.billable,
+      status: "draft",
+      description: entry.description,
+      createdAt: entry.createdAt.toISOString(),
+    };
+
+    logRequest({
+      requestId,
+      clientId,
+      route: "POST /api/v1/time-entries",
+      durationMs: Date.now() - start,
+      status: 201,
+    });
+
+    return Response.json(
+      { data: dto },
+      {
+        status: 201,
+        headers: {
+          "X-Request-Id": requestId,
+          ...getRateLimitHeaders(clientId),
+        },
+      },
+    );
+  } catch (error: unknown) {
+    logRequest({
+      requestId,
+      clientId,
+      route: "POST /api/v1/time-entries",
+      durationMs: Date.now() - start,
+      status: error instanceof ApiError ? error.status : 500,
     });
     return toErrorResponse(error, requestId);
   }

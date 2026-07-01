@@ -40,6 +40,7 @@ const timeEntryDTOSchema = {
     "userEmail",
     "projectId",
     "projectCode",
+    "projectIntegrationKey",
     "date",
     "durationMinutes",
     "billable",
@@ -57,6 +58,12 @@ const timeEntryDTOSchema = {
     },
     projectId: { type: "string", example: "proj_def456" },
     projectCode: { type: "string", example: "OPT-001" },
+    projectIntegrationKey: {
+      type: "string",
+      nullable: true,
+      description: "Chave de integração padronizada do projeto.",
+      example: "MARCA-AMBIENTAL-INT",
+    },
     date: { type: "string", format: "date", example: "2026-05-01" },
     durationMinutes: { type: "integer", minimum: 1, example: 90 },
     billable: { type: "boolean", example: true },
@@ -378,6 +385,13 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
             description: "Filtrar por código do projeto (ex: OPT-001).",
           },
           {
+            name: "projectIntegrationKey",
+            in: "query",
+            schema: { type: "string" },
+            description:
+              "Filtrar por chave de integração padronizada do projeto (ex: MARCA-AMBIENTAL-INT).",
+          },
+          {
             name: "from",
             in: "query",
             schema: { type: "string", format: "date" },
@@ -434,6 +448,89 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
           },
           400: {
             description: "Parâmetros de query inválidos.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          401: unauthorizedResponse,
+          403: forbiddenResponse,
+          429: rateLimitedResponse,
+        },
+      },
+      post: {
+        operationId: "createTimeEntry",
+        summary: "Criar entrada de tempo (Integração)",
+        description:
+          "Cria um novo lançamento de horas no sistema a partir de sistemas externos. Requer o escopo `opt-time.write`.",
+        tags: ["Entradas de Tempo"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: [
+                  "email",
+                  "projectIntegrationKey",
+                  "date",
+                  "description",
+                ],
+                properties: {
+                  email: {
+                    type: "string",
+                    format: "email",
+                    description:
+                      "E-mail do colaborador associado ao lançamento.",
+                    example: "dev@optsolv.com.br",
+                  },
+                  projectIntegrationKey: {
+                    type: "string",
+                    description: "Chave de integração padronizada do projeto.",
+                    example: "MARCA-AMBIENTAL-INT",
+                  },
+                  date: {
+                    type: "string",
+                    format: "date",
+                    description: "Data do lançamento (AAAA-MM-DD).",
+                    example: "2026-05-01",
+                  },
+                  description: {
+                    type: "string",
+                    description: "Descrição da atividade realizada.",
+                    example: "Correção de bugs no processamento de remessas.",
+                  },
+                  durationMinutes: {
+                    type: "integer",
+                    minimum: 1,
+                    description:
+                      "Duração do lançamento em minutos. Se não informado, utiliza o padrão do colaborador.",
+                    example: 60,
+                  },
+                  billable: {
+                    type: "boolean",
+                    description:
+                      "Se o lançamento é faturável. Se não informado, utiliza as preferências do colaborador ou projeto.",
+                    example: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Entrada de tempo criada com sucesso.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TimeEntryDTO" },
+              },
+            },
+          },
+          400: {
+            description:
+              "Dados de requisição inválidos ou validação incorreta.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },

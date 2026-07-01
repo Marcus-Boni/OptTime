@@ -31,6 +31,9 @@ export async function GET(_req: Request): Promise<Response> {
         --code-text: #f8f9fa;
         --filter-invert: 0;
         --shadow-color: rgba(0, 0, 0, 0.06);
+        --code-inline-text: #c2410c;
+        --code-inline-bg: rgba(249, 115, 22, 0.06);
+        --code-inline-border: rgba(249, 115, 22, 0.15);
         
         --method-get-bg: rgba(59, 130, 246, 0.05);
         --method-get-border: rgba(59, 130, 246, 0.2);
@@ -67,6 +70,9 @@ export async function GET(_req: Request): Promise<Response> {
         --code-text: #e5e5e5;
         --filter-invert: 1;
         --shadow-color: rgba(0, 0, 0, 0.5);
+        --code-inline-text: #ff9f59;
+        --code-inline-bg: rgba(249, 115, 22, 0.12);
+        --code-inline-border: rgba(249, 115, 22, 0.25);
         
         --method-get-bg: rgba(59, 130, 246, 0.03);
         --method-get-border: rgba(59, 130, 246, 0.15);
@@ -459,8 +465,22 @@ export async function GET(_req: Request): Promise<Response> {
         color: var(--code-text) !important;
         font-family: 'JetBrains Mono', monospace !important;
       }
-      .swagger-ui code {
+      .swagger-ui :not(pre) > code {
         font-family: 'JetBrains Mono', monospace !important;
+        background: var(--code-inline-bg) !important;
+        color: var(--code-inline-text) !important;
+        border: 1px solid var(--code-inline-border) !important;
+        padding: 3px 6px !important;
+        border-radius: 6px !important;
+        font-size: 13px !important;
+      }
+      .swagger-ui pre code {
+        font-family: 'JetBrains Mono', monospace !important;
+        background: transparent !important;
+        color: inherit !important;
+        border: none !important;
+        padding: 0 !important;
+        font-size: inherit !important;
       }
       .swagger-ui .highlight-code pre {
         background: var(--code-bg) !important;

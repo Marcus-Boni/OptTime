@@ -18,6 +18,7 @@ type TimeEntryDTO = {
   userEmail: string;
   projectId: string;
   projectCode: string;
+  projectIntegrationKey: string | null;
   date: string;
   durationMinutes: number;
   billable: boolean;
@@ -80,6 +81,7 @@ export async function GET(
         createdAt: timeEntry.createdAt,
         userEmail: user.email,
         projectCode: project.code,
+        projectIntegrationKey: project.integrationKey,
         timesheetStatus: timesheet.status,
       })
       .from(timeEntry)
@@ -99,6 +101,7 @@ export async function GET(
       userEmail: row.userEmail,
       projectId: row.projectId,
       projectCode: row.projectCode,
+      projectIntegrationKey: row.projectIntegrationKey,
       date: row.date,
       durationMinutes: row.duration,
       billable: row.billable,
