@@ -1,9 +1,9 @@
 name: Hours Reminder Cron
 
 on:
-  schedule:
-    # Runs every 5 minutes — the app decides whether to fire based on schedule config
-    - cron: "*/5 * * * *"
+  # schedule:
+  #   # Funcionalidade temporariamente pausada
+  #   # - cron: "*/5 * * * *"
   workflow_dispatch: # allows manual trigger for testing
 
 jobs:

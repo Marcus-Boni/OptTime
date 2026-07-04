@@ -56,26 +56,35 @@ export default function PeoplePage() {
         </div>
 
         {canInvite ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setIsScheduleDrawerOpen(true)}
-            >
-              <Calendar className="h-4 w-4" />
-              Agendamento
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={() => setIsReminderBulkOpen(true)}
-            >
-              <Bell className="h-4 w-4" />
-              Lembrar equipe
-            </Button>
-            <InviteUserDialog sessionRole={sessionRole} />
+          <div className="flex flex-col gap-1 items-end">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setIsScheduleDrawerOpen(true)}
+                disabled
+                title="Funcionalidade temporariamente pausada."
+              >
+                <Calendar className="h-4 w-4" />
+                Agendamento
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setIsReminderBulkOpen(true)}
+                disabled
+                title="Funcionalidade temporariamente pausada."
+              >
+                <Bell className="h-4 w-4" />
+                Lembrar equipe
+              </Button>
+              <InviteUserDialog sessionRole={sessionRole} />
+            </div>
+            <span className="text-xs text-muted-foreground mr-1">
+              Notificações pausadas temporariamente.
+            </span>
           </div>
         ) : null}
       </motion.div>
