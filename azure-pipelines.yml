@@ -69,6 +69,7 @@ stages:
         cp package.json pnpm-lock.yaml pnpm-workspace.yaml "$(deployFolder)/"
         CI=true pnpm install --prod --frozen-lockfile --dir "$(deployFolder)" --config.node-linker=hoisted
         cp -R .next "$(deployFolder)/.next"
+        cp -R drizzle "$(deployFolder)/drizzle"
         if [ -d ".next/node_modules" ]; then
           rm -rf "$(deployFolder)/.next/node_modules"
           mkdir -p "$(deployFolder)/.next/node_modules"
@@ -112,8 +113,45 @@ stages:
       runOnce:
         deploy:
           steps:
+          - checkout: self
+            displayName: Checkout repository for migrations
+
           - download: current
             artifact: drop
+            displayName: Download build artifact
+
+          - task: UseNode@1
+            displayName: Use Node.js $(nodeVersion) for migrations
+            inputs:
+              version: $(nodeVersion)
+
+          - script: |
+              corepack enable
+              corepack prepare pnpm@10.32.1 --activate
+              pnpm --version
+            displayName: Setup pnpm for migrations
+
+          - script: pnpm install --frozen-lockfile
+            displayName: Install dependencies for migrations
+
+          - task: AzureCLI@2
+            displayName: Run database migrations on production
+            inputs:
+              azureSubscription: $(azureServiceConnection)
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                set -e
+                echo "Fetching production DATABASE_URL..."
+                PROD_DB_URL=$(az webapp config appsettings list --resource-group "$(resourceGroupName)" --name "$(webAppName)" --query "[?name=='DATABASE_URL'].value" --output tsv)
+                if [ -n "$PROD_DB_URL" ]; then
+                  echo "Running database migrations..."
+                  export DATABASE_URL="$PROD_DB_URL"
+                  pnpm run db:migrate
+                else
+                  echo "Error: DATABASE_URL not found in Web App config!"
+                  exit 1
+                fi
 
           - task: AzureCLI@2
             displayName: Set startup command before deploy
