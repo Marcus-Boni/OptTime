@@ -1,4 +1,4 @@
-CREATE TABLE "project_scope" (
+CREATE TABLE IF NOT EXISTS "project_scope" (
 	"id" text PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"stages" text DEFAULT '[]' NOT NULL,
@@ -7,11 +7,11 @@ CREATE TABLE "project_scope" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "project" ADD COLUMN "scope_id" text;--> statement-breakpoint
-ALTER TABLE "project" ADD COLUMN "current_stage" text;--> statement-breakpoint
-ALTER TABLE "project" ADD COLUMN "commercial_name" text;--> statement-breakpoint
-ALTER TABLE "project" ADD COLUMN "start_date" text;--> statement-breakpoint
-ALTER TABLE "project" ADD COLUMN "end_date" text;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "scope_id" text;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "current_stage" text;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "commercial_name" text;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "start_date" text;--> statement-breakpoint
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "end_date" text;--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "project" ADD CONSTRAINT "project_scope_id_project_scope_id_fk" FOREIGN KEY ("scope_id") REFERENCES "public"."project_scope"("id") ON DELETE set null ON UPDATE no action;
 EXCEPTION

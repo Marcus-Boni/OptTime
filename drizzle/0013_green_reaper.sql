@@ -1,1 +1,1 @@
-ALTER TABLE "project" ADD COLUMN "integration_key" text;
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS "integration_key" text;
