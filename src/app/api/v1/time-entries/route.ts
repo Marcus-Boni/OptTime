@@ -201,7 +201,7 @@ export async function GET(req: Request): Promise<Response> {
       billable: r.billable,
       status: deriveStatus(r.timesheetStatus ?? null),
       description: r.description,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: new Date(r.createdAt).toISOString(),
     }));
 
     const rlHeadersFinal = getRateLimitHeaders(clientId);
@@ -375,7 +375,7 @@ export async function POST(req: Request): Promise<Response> {
       billable: entry.billable,
       status: "draft",
       description: entry.description,
-      createdAt: entry.createdAt.toISOString(),
+      createdAt: new Date(entry.createdAt).toISOString(),
     };
 
     logRequest({

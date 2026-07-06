@@ -47,7 +47,7 @@ function toDTO(
     url: sub.url,
     events: sub.events ?? [],
     active: sub.active,
-    createdAt: sub.createdAt.toISOString(),
+    createdAt: new Date(sub.createdAt).toISOString(),
   };
 }
 

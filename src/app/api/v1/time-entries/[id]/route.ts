@@ -119,7 +119,7 @@ export async function GET(
       billable: row.billable,
       status: deriveStatus(row.timesheetStatus ?? null),
       description: row.description,
-      createdAt: row.createdAt.toISOString(),
+      createdAt: new Date(row.createdAt).toISOString(),
     };
 
     logRequest({
@@ -373,7 +373,7 @@ export async function PUT(
       billable: entry.billable,
       status: "draft",
       description: entry.description,
-      createdAt: entry.createdAt.toISOString(),
+      createdAt: new Date(entry.createdAt).toISOString(),
     };
 
     logRequest({

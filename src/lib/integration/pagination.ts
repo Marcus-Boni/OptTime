@@ -11,8 +11,9 @@ export type PageResult<T> = {
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;
 
-export function encodeCursor(createdAt: Date, id: string): string {
-  const data: CursorData = { createdAt: createdAt.toISOString(), id };
+export function encodeCursor(createdAt: Date | string | number, id: string): string {
+  const dateObj = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const data: CursorData = { createdAt: dateObj.toISOString(), id };
   return Buffer.from(JSON.stringify(data)).toString("base64url");
 }
 
@@ -46,7 +47,7 @@ export function parseLimit(raw: string | null): number {
 export function buildPage<T>(
   items: T[],
   limit: number,
-  getCreatedAt: (item: T) => Date,
+  getCreatedAt: (item: T) => Date | string | number,
   getId: (item: T) => string,
 ): PageResult<T> {
   if (items.length <= limit) {

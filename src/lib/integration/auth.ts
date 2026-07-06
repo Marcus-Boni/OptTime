@@ -13,7 +13,9 @@ const JWKS_TTL_MS = 24 * 60 * 60 * 1000;
 
 function getJwks(): ReturnType<typeof createRemoteJWKSet> {
   const tenantId = process.env.MICROSOFT_TENANT_ID;
-  if (!tenantId) throw new Error("MICROSOFT_TENANT_ID is not set");
+  if (!tenantId) {
+    throw new ApiError("INTERNAL_ERROR", "MICROSOFT_TENANT_ID is not set", 500);
+  }
 
   const now = Date.now();
   if (!jwksInstance || now - jwksCreatedAt > JWKS_TTL_MS) {
@@ -54,7 +56,11 @@ export async function validateM2MToken(req: Request): Promise<M2MContext> {
   const audience = process.env.ENTRA_API_AUDIENCE;
 
   if (!tenantId || !audience) {
-    throw new Error("MICROSOFT_TENANT_ID and ENTRA_API_AUDIENCE must be set");
+    throw new ApiError(
+      "INTERNAL_ERROR",
+      `Server configuration missing: MICROSOFT_TENANT_ID (${tenantId ? 'configured' : 'missing'}) and ENTRA_API_AUDIENCE (${audience ? 'configured' : 'missing'}) must be set`,
+      500,
+    );
   }
 
   let payload: JWTPayload;
@@ -67,8 +73,12 @@ export async function validateM2MToken(req: Request): Promise<M2MContext> {
       ],
     });
     payload = result.payload;
-  } catch {
-    throw new ApiError("UNAUTHORIZED", "Invalid or expired token", 401);
+  } catch (err: unknown) {
+    throw new ApiError(
+      "UNAUTHORIZED",
+      err instanceof Error ? `Token validation failed: ${err.message}` : "Invalid or expired token",
+      401,
+    );
   }
 
   // Reject user-delegated tokens — this layer accepts M2M (client_credentials) only.

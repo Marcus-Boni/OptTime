@@ -119,7 +119,7 @@ export async function GET(req: Request): Promise<Response> {
       color: r.color,
       status: r.status,
       billable: r.billable,
-      createdAt: r.createdAt.toISOString(),
+      createdAt: new Date(r.createdAt).toISOString(),
       integrationKey: r.integrationKey,
     }));
 
