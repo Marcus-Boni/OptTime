@@ -404,3 +404,88 @@ export async function PUT(
     return toErrorResponse(error, requestId);
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  const requestId = createRequestId(req);
+  const start = Date.now();
+  let clientId = "unknown";
+
+  try {
+    const ctx = await validateM2MToken(req);
+    clientId = ctx.clientId;
+
+    const rlHeaders = getRateLimitHeaders(clientId);
+    if (!checkRateLimit(clientId)) {
+      return Response.json(
+        {
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many requests",
+            details: null,
+          },
+        },
+        { status: 429, headers: { ...rlHeaders, "X-Request-Id": requestId } },
+      );
+    }
+
+    requireScope(ctx.scopes, SCOPES.WRITE);
+
+    const { id } = await params;
+
+    const existing = await db.query.timeEntry.findFirst({
+      where: and(eq(timeEntry.id, id), isNull(timeEntry.deletedAt)),
+    });
+
+    if (!existing) {
+      throw new ApiError("NOT_FOUND", "Time entry not found", 404);
+    }
+
+    try {
+      await assertWeeklyTimesheetDateUnlocked(existing.userId, existing.date);
+    } catch (err) {
+      if (err instanceof LockedTimesheetPeriodError) {
+        throw new ApiError("VALIDATION_ERROR", err.message, 409);
+      }
+      throw err;
+    }
+
+    await db
+      .update(timeEntry)
+      .set({
+        deletedAt: new Date(),
+      })
+      .where(eq(timeEntry.id, id));
+
+    if (existing.azureWorkItemId) {
+      triggerCompletedWorkSync(existing.userId, [existing.azureWorkItemId]);
+    }
+
+    logRequest({
+      requestId,
+      clientId,
+      route: `DELETE /api/v1/time-entries/${id}`,
+      durationMs: Date.now() - start,
+      status: 204,
+    });
+
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "X-Request-Id": requestId,
+        ...getRateLimitHeaders(clientId),
+      },
+    });
+  } catch (error: unknown) {
+    logRequest({
+      requestId,
+      clientId,
+      route: "DELETE /api/v1/time-entries/[id]",
+      durationMs: Date.now() - start,
+      status: error instanceof ApiError ? error.status : 500,
+    });
+    return toErrorResponse(error, requestId);
+  }
+}

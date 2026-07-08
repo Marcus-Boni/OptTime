@@ -677,6 +677,46 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
           429: rateLimitedResponse,
         },
       },
+      delete: {
+        operationId: "deleteTimeEntry",
+        summary: "Excluir entrada de tempo (Integração)",
+        description:
+          "Realiza a exclusão lógica (soft delete) de um lançamento de horas existente. Requer o escopo `opt-time.write`.",
+        tags: ["Entradas de Tempo"],
+        parameters: [
+          {
+            name: "id",
+            in: "path",
+            required: true,
+            schema: { type: "string" },
+            description: "ID da entrada de tempo.",
+          },
+        ],
+        responses: {
+          204: {
+            description: "Entrada de tempo excluída com sucesso.",
+          },
+          401: unauthorizedResponse,
+          403: forbiddenResponse,
+          404: {
+            description: "Entrada de tempo não encontrada.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          409: {
+            description: "Período bloqueado (timesheet fechado). Não é possível excluir a entrada de tempo.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          429: rateLimitedResponse,
+        },
+      },
     },
     "/users": {
       get: {
