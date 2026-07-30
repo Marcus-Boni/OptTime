@@ -11,7 +11,7 @@
   - Deploy stage: Azure Web App deploy + startup command + health smoke test
 - Hosting
   - Azure App Service Linux web app: `prd-opt-time`
-  - Resource group: `rsg-opt-time`
+  - Resource group: `rsg-opt-time-prd`
   - Runtime stack expected by pipeline: `NODE|24-lts`
 - Authentication
   - Better Auth server config in `src/lib/auth.ts`

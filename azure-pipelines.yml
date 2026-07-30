@@ -134,37 +134,18 @@ stages:
           - script: pnpm install --frozen-lockfile
             displayName: Install dependencies for migrations
 
-          - task: AzureCLI@2
+          - script: |
+              set -e
+              if [ -n "$DATABASE_URL" ]; then
+                echo "Running database migrations..."
+                pnpm run db:migrate
+              else
+                echo "Error: DATABASE_URL variable is missing! Define DATABASE_URL in Azure DevOps Pipeline Variables."
+                exit 1
+              fi
             displayName: Run database migrations on production
-            inputs:
-              azureSubscription: $(azureServiceConnection)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -e
-                echo "Fetching production DATABASE_URL..."
-                PROD_DB_URL=$(az webapp config appsettings list --resource-group "$(resourceGroupName)" --name "$(webAppName)" --query "[?name=='DATABASE_URL'].value" --output tsv)
-                if [ -n "$PROD_DB_URL" ]; then
-                  echo "Running database migrations..."
-                  export DATABASE_URL="$PROD_DB_URL"
-                  pnpm run db:migrate
-                else
-                  echo "Error: DATABASE_URL not found in Web App config!"
-                  exit 1
-                fi
-
-          - task: AzureCLI@2
-            displayName: Set startup command before deploy
-            inputs:
-              azureSubscription: $(azureServiceConnection)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -e
-                az webapp config set \
-                  --resource-group "$(resourceGroupName)" \
-                  --name "$(webAppName)" \
-                  --startup-file 'node node_modules/next/dist/bin/next start -p $PORT'
+            env:
+              DATABASE_URL: $(DATABASE_URL)
 
           - task: AzureWebApp@1
             displayName: Deploy package to web app
@@ -175,19 +156,6 @@ stages:
               package: $(Pipeline.Workspace)/drop/app.zip
               runtimeStack: $(runtimeStack)
               startUpCommand: node node_modules/next/dist/bin/next start -p $PORT
-
-          - task: AzureCLI@2
-            displayName: Re-apply startup command after deploy
-            inputs:
-              azureSubscription: $(azureServiceConnection)
-              scriptType: bash
-              scriptLocation: inlineScript
-              inlineScript: |
-                set -e
-                az webapp config set \
-                  --resource-group "$(resourceGroupName)" \
-                  --name "$(webAppName)" \
-                  --startup-file 'node node_modules/next/dist/bin/next start -p $PORT'
 
           - script: |
               set -e
