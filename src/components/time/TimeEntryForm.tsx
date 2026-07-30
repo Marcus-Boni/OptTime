@@ -385,6 +385,12 @@ export function TimeEntryForm({
     >
       <form
         onSubmit={form.handleSubmit(handleSubmit)}
+        onKeyDown={(e) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.requestSubmit();
+          }
+        }}
         className="flex min-h-full flex-col"
       >
         <div className="flex-1">

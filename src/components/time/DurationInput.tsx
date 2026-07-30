@@ -36,6 +36,16 @@ export function DurationInput({
     }
   }, [value]);
 
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value;
+    setRaw(val);
+    setError(false);
+    const parsed = parseInput(val);
+    if (parsed !== null && parsed !== value) {
+      onChange(parsed);
+    }
+  }
+
   function handleBlur() {
     const parsed = parseInput(raw);
     if (parsed === null) {
@@ -48,6 +58,26 @@ export function DurationInput({
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      const parsed = parseInput(raw);
+      if (parsed === null) {
+        setError(true);
+        setRaw(minutesToDisplay(value));
+      } else {
+        setError(false);
+        setRaw(minutesToDisplay(parsed));
+        if (parsed !== value) {
+          onChange(parsed);
+        }
+        if (e.currentTarget.form) {
+          e.preventDefault();
+          e.currentTarget.form.requestSubmit();
+        }
+      }
+    }
+  }
+
   const parsedLive = parseInput(raw);
 
   return (
@@ -55,11 +85,9 @@ export function DurationInput({
       <Input
         ref={inputRef}
         value={raw}
-        onChange={(e) => {
-          setRaw(e.target.value);
-          setError(false);
-        }}
+        onChange={handleInputChange}
         onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
         disabled={disabled}
         placeholder="1:30"
         className={

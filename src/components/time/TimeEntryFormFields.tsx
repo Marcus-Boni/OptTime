@@ -171,6 +171,12 @@ export function TimeEntryFormFields({
           placeholder="Descreva de forma objetiva o que foi feito."
           rows={4}
           className="rounded-md bg-background/80"
+          onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
         />
 
         {form.formState.errors.description ? (
