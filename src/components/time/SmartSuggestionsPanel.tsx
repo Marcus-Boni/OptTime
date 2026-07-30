@@ -5,6 +5,7 @@ import { ptBR } from "date-fns/locale";
 import { motion } from "framer-motion";
 import {
   BriefcaseBusiness,
+  Check,
   ChevronDown,
   ChevronUp,
   Clock3,
@@ -25,6 +26,7 @@ import {
 } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { TimeEntry } from "@/hooks/use-time-entries";
 import type {
   TimeSuggestion,
   TimeSuggestionCommit,
@@ -45,6 +47,7 @@ interface SmartSuggestionsPanelProps {
     commit: TimeSuggestionCommit,
   ) => void;
   appliedCommitKeys: string[];
+  dayEntries?: TimeEntry[];
   onEditAndApply: (suggestion: TimeSuggestion) => void;
   onIgnore: (suggestion: TimeSuggestion) => void;
 }
@@ -111,6 +114,53 @@ function getWorkItemUrlFromCommitUrl(
     // ignore
   }
   return null;
+}
+
+export function isCommitApplied(
+  suggestionFingerprint: string,
+  commit: TimeSuggestionCommit,
+  appliedCommitKeys: string[],
+  dayEntries: TimeEntry[] = [],
+): boolean {
+  if (!commit) return false;
+
+  const shortHash = commit.commitId?.slice(0, 7)?.toLowerCase();
+  const fullHash = commit.commitId?.toLowerCase();
+
+  if (
+    appliedCommitKeys.some(
+      (key) =>
+        key === `${suggestionFingerprint}:${commit.id}` ||
+        key === `${suggestionFingerprint}:${commit.commitId}` ||
+        key === commit.id ||
+        key === commit.commitId ||
+        (shortHash && key === shortHash),
+    )
+  ) {
+    return true;
+  }
+
+  if (!dayEntries || dayEntries.length === 0) return false;
+
+  const commitMsg = commit.message?.trim()?.toLowerCase();
+
+  return dayEntries.some((entry) => {
+    const desc = entry.description?.trim()?.toLowerCase();
+    if (!desc) return false;
+
+    if (shortHash && shortHash.length >= 6 && desc.includes(shortHash)) {
+      return true;
+    }
+    if (fullHash && fullHash.length >= 8 && desc.includes(fullHash)) {
+      return true;
+    }
+
+    if (commitMsg && commitMsg.length >= 6 && desc.includes(commitMsg)) {
+      return true;
+    }
+
+    return false;
+  });
 }
 
 function SuggestionCommitRow({
@@ -244,12 +294,29 @@ function SuggestionCommitRow({
             type="button"
             size="sm"
             variant={isApplied ? "secondary" : "outline"}
-            className="self-start rounded-full"
+            className={cn(
+              "self-start rounded-full transition-all",
+              isApplied &&
+                "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-medium hover:bg-emerald-500/15 cursor-default",
+            )}
             disabled={isApplied || isDisabled}
             onClick={onApplyCommit}
-            title={isDisabled ? disabledReason : undefined}
+            title={
+              isApplied
+                ? "Este commit já foi registrado como lançamento"
+                : isDisabled
+                  ? disabledReason
+                  : undefined
+            }
           >
-            {isApplied ? "Adicionado" : "Registrar este commit"}
+            {isApplied ? (
+              <>
+                <Check className="mr-1 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <span>Adicionado</span>
+              </>
+            ) : (
+              "Registrar este commit"
+            )}
           </Button>
         ) : null}
       </div>
@@ -268,6 +335,7 @@ export function SmartSuggestionsPanel({
   onApply,
   onApplyCommit,
   appliedCommitKeys,
+  dayEntries = [],
   onEditAndApply,
   onIgnore,
 }: SmartSuggestionsPanelProps) {
@@ -521,8 +589,11 @@ export function SmartSuggestionsPanel({
                           commit={commit}
                           isDisabled={actionsDisabled}
                           disabledReason={actionsDisabledReason}
-                          isApplied={appliedCommitKeys.includes(
-                            `${suggestion.fingerprint}:${commit.id}`,
+                          isApplied={isCommitApplied(
+                            suggestion.fingerprint,
+                            commit,
+                            appliedCommitKeys,
+                            dayEntries,
                           )}
                           onApplyCommit={() =>
                             onApplyCommit(suggestion, commit)
@@ -547,8 +618,11 @@ export function SmartSuggestionsPanel({
                                 commit={commit}
                                 isDisabled={actionsDisabled}
                                 disabledReason={actionsDisabledReason}
-                                isApplied={appliedCommitKeys.includes(
-                                  `${suggestion.fingerprint}:${commit.id}`,
+                                isApplied={isCommitApplied(
+                                  suggestion.fingerprint,
+                                  commit,
+                                  appliedCommitKeys,
+                                  dayEntries,
                                 )}
                                 onApplyCommit={() =>
                                   onApplyCommit(suggestion, commit)

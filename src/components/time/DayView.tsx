@@ -634,6 +634,7 @@ export function DayView({
           onApply={onApplySuggestion}
           onApplyCommit={onApplySuggestionCommit}
           appliedCommitKeys={appliedSuggestionCommitKeys}
+          dayEntries={dayEntries}
           onEditAndApply={onEditSuggestion}
           onIgnore={onIgnoreSuggestion}
         />

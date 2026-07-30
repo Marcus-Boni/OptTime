@@ -510,11 +510,19 @@ export default function TimePage() {
           if (pendingSuggestionSubmission.commitKey) {
             setAppliedSuggestionCommitKeys((current) => {
               const commitKey = pendingSuggestionSubmission.commitKey;
-              if (!commitKey || current.includes(commitKey)) {
-                return current;
-              }
+              if (!commitKey) return current;
 
-              return [...current, commitKey];
+              const parts = commitKey.split(":");
+              const rawCommitId = parts.slice(1).join(":");
+              const shortHash = rawCommitId.split(":")[1]?.slice(0, 7) || rawCommitId.slice(0, 7);
+
+              const newKeys = [
+                commitKey,
+                rawCommitId,
+                shortHash,
+              ].filter(Boolean);
+
+              return Array.from(new Set([...current, ...newKeys]));
             });
           }
         }
