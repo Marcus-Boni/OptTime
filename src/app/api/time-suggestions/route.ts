@@ -334,6 +334,19 @@ export async function GET(req: Request): Promise<Response> {
 
           commits = commitBuckets
             .flat()
+            .map((c) => ({
+              id: c.id,
+              projectName: c.projectName,
+              repositoryName: c.repositoryName,
+              commitId: c.commitId,
+              message: c.message,
+              comment: c.comment,
+              branch: c.branch,
+              authorEmail: c.authorEmail,
+              timestamp: c.timestamp,
+              workItemIds: c.workItemIds,
+              url: c.url ?? null,
+            }))
             .sort(
               (a, b) =>
                 new Date(b.timestamp).getTime() -
@@ -355,6 +368,7 @@ export async function GET(req: Request): Promise<Response> {
       commits,
       meetings,
       projects,
+      organizationUrl: config?.organizationUrl,
       recentEntries: recentEntries.map((entry) => ({
         date: entry.date,
         projectId: entry.projectId,

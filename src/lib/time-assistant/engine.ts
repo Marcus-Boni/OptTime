@@ -16,6 +16,7 @@ export interface NormalizedCommitActivity {
   authorEmail: string | null;
   timestamp: string;
   workItemIds: number[];
+  url?: string | null;
 }
 
 export interface NormalizedOutlookActivity {
@@ -51,6 +52,7 @@ interface BuildSuggestionsInput {
   projects: InternalProject[];
   recentEntries: RecentEntryActivity[];
   existingEntries: RecentEntryActivity[];
+  organizationUrl?: string | null;
   weights?: {
     commitBoost?: number;
     meetingBoost?: number;
@@ -219,6 +221,32 @@ function getTopRecentDuration(entries: RecentEntryActivity[]): number {
   return roundToStandardDuration(getMedian(durations));
 }
 
+function buildWorkItemUrl(
+  organizationUrl: string | null | undefined,
+  commits: NormalizedCommitActivity[],
+  workItemId: number | null,
+): string | null {
+  if (!workItemId) return null;
+  if (organizationUrl) {
+    const base = organizationUrl.replace(/\/$/, "");
+    return `${base}/_workitems/edit/${workItemId}`;
+  }
+  for (const c of commits) {
+    if (c.url) {
+      try {
+        const urlObj = new URL(c.url);
+        const parts = urlObj.pathname.split("/_git/");
+        if (parts.length > 1) {
+          return `${urlObj.origin}${parts[0]}/_workitems/edit/${workItemId}`;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+  return null;
+}
+
 function buildActivitySummary(
   commits: NormalizedCommitActivity[],
 ): TimeSuggestionActivitySummary | null {
@@ -247,6 +275,7 @@ function buildActivitySummary(
       branch: commit.branch,
       timestamp: commit.timestamp,
       workItemIds: commit.workItemIds,
+      url: commit.url ?? null,
     })),
   };
 }
@@ -258,6 +287,7 @@ export function buildDeterministicSuggestions({
   projects,
   recentEntries,
   existingEntries,
+  organizationUrl,
   weights,
 }: BuildSuggestionsInput): CandidateSuggestion[] {
   const commitGroups = groupCommits(commits);
@@ -348,6 +378,11 @@ export function buildDeterministicSuggestions({
       azureWorkItemTitle: linkedWorkItemId
         ? `Work Item #${linkedWorkItemId}`
         : null,
+      azureWorkItemUrl: buildWorkItemUrl(
+        organizationUrl,
+        overlappingCommits,
+        linkedWorkItemId,
+      ),
       score,
       confidence,
       reasons,
@@ -473,6 +508,11 @@ export function buildDeterministicSuggestions({
       azureWorkItemTitle: linkedWorkItemId
         ? `Work Item #${linkedWorkItemId}`
         : null,
+      azureWorkItemUrl: buildWorkItemUrl(
+        organizationUrl,
+        group,
+        linkedWorkItemId,
+      ),
       score,
       confidence,
       reasons,

@@ -8,6 +8,7 @@ export interface TimeSuggestionCommit {
   branch: string | null;
   timestamp: string;
   workItemIds: number[];
+  url?: string | null;
 }
 
 export interface TimeSuggestionActivitySummary {
@@ -29,6 +30,7 @@ export interface TimeSuggestion {
   billable: boolean;
   azureWorkItemId: number | null;
   azureWorkItemTitle: string | null;
+  azureWorkItemUrl?: string | null;
   score: number;
   confidence: SuggestionConfidence;
   reasons: string[];

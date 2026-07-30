@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  ExternalLink,
   FolderGit2,
   GitBranch,
   GitCommitHorizontal,
@@ -95,6 +96,23 @@ function formatCompactCount(count: number, singular: string, plural: string) {
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
+function getWorkItemUrlFromCommitUrl(
+  commitUrl: string | null | undefined,
+  workItemId: number,
+): string | null {
+  if (!commitUrl) return null;
+  try {
+    const urlObj = new URL(commitUrl);
+    const parts = urlObj.pathname.split("/_git/");
+    if (parts.length > 1) {
+      return `${urlObj.origin}${parts[0]}/_workitems/edit/${workItemId}`;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 function SuggestionCommitRow({
   canApplyIndividually = false,
   commit,
@@ -117,7 +135,7 @@ function SuggestionCommitRow({
   return (
     <div
       className={cn(
-        "rounded-xl border border-border/50 p-3",
+        "rounded-xl border border-border/50 p-3 transition-colors",
         subdued ? "bg-muted/10" : "bg-muted/20",
       )}
     >
@@ -127,22 +145,53 @@ function SuggestionCommitRow({
             "mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl",
             subdued
               ? "bg-muted/60 text-muted-foreground"
-              : "bg-brand-500/10 text-brand-600",
+              : "bg-brand-500/10 text-brand-600 dark:text-brand-400",
           )}
         >
           <GitCommitHorizontal className="h-4 w-4" />
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">
-            {commit.message || "Commit sem mensagem"}
-          </p>
+          {commit.url ? (
+            <a
+              href={commit.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group/link inline-flex max-w-full items-center gap-1.5 text-sm font-medium text-foreground transition-colors hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+              title="Abrir commit no Azure DevOps"
+            >
+              <span className="truncate">
+                {commit.message || "Commit sem mensagem"}
+              </span>
+              <ExternalLink className="h-3.5 w-3.5 shrink-0 opacity-60 transition-opacity group-hover/link:opacity-100" />
+            </a>
+          ) : (
+            <p className="truncate text-sm font-medium text-foreground">
+              {commit.message || "Commit sem mensagem"}
+            </p>
+          )}
+
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <FolderGit2 className="h-3 w-3" />
               {commit.repositoryName}
             </span>
-            <span>{commit.commitId.slice(0, 7)}</span>
+
+            {commit.url ? (
+              <a
+                href={commit.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 font-mono font-medium text-brand-600 hover:underline dark:text-brand-400"
+                title="Ver commit no Azure DevOps"
+              >
+                <span>{commit.commitId.slice(0, 7)}</span>
+                <ExternalLink className="h-2.5 w-2.5 opacity-75" />
+              </a>
+            ) : (
+              <span className="font-mono">{commit.commitId.slice(0, 7)}</span>
+            )}
+
             {timestampLabel ? <span>{timestampLabel}</span> : null}
             {commit.branch ? (
               <span className="truncate">branch {commit.branch}</span>
@@ -151,15 +200,33 @@ function SuggestionCommitRow({
 
           {commit.workItemIds.length > 0 ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {commit.workItemIds.slice(0, 3).map((workItemId) => (
-                <Badge
-                  key={`${commit.id}-${workItemId}`}
-                  variant="secondary"
-                  className="rounded-full bg-background text-[10px] text-foreground/80"
-                >
-                  WI #{workItemId}
-                </Badge>
-              ))}
+              {commit.workItemIds.slice(0, 3).map((workItemId) => {
+                const wiUrl = getWorkItemUrlFromCommitUrl(
+                  commit.url,
+                  workItemId,
+                );
+                return wiUrl ? (
+                  <a
+                    key={`${commit.id}-${workItemId}`}
+                    href={wiUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-full border border-border/40 bg-background px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition-colors hover:border-brand-500/40 hover:text-brand-600 dark:hover:text-brand-400"
+                    title={`Abrir Work Item #${workItemId} no Azure DevOps`}
+                  >
+                    <span>WI #{workItemId}</span>
+                    <ExternalLink className="h-2.5 w-2.5 opacity-70" />
+                  </a>
+                ) : (
+                  <Badge
+                    key={`${commit.id}-${workItemId}`}
+                    variant="secondary"
+                    className="rounded-full bg-background text-[10px] text-foreground/80"
+                  >
+                    WI #{workItemId}
+                  </Badge>
+                );
+              })}
               {commit.workItemIds.length > 3 ? (
                 <Badge
                   variant="secondary"
@@ -177,7 +244,7 @@ function SuggestionCommitRow({
             type="button"
             size="sm"
             variant={isApplied ? "secondary" : "outline"}
-            className="rounded-full self-start"
+            className="self-start rounded-full"
             disabled={isApplied || isDisabled}
             onClick={onApplyCommit}
             title={isDisabled ? disabledReason : undefined}
@@ -304,10 +371,24 @@ export function SmartSuggestionsPanel({
                           {suggestion.projectName ?? "Projeto pendente"}
                         </span>
                         {suggestion.azureWorkItemId ? (
-                          <span className="inline-flex items-center gap-1">
-                            <GitBranch className="h-3.5 w-3.5" />#
-                            {suggestion.azureWorkItemId}
-                          </span>
+                          suggestion.azureWorkItemUrl ? (
+                            <a
+                              href={suggestion.azureWorkItemUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 font-medium text-foreground/90 transition-colors hover:text-brand-600 hover:underline dark:hover:text-brand-400"
+                              title={`Abrir Work Item #${suggestion.azureWorkItemId} no Azure DevOps`}
+                            >
+                              <GitBranch className="h-3.5 w-3.5 text-brand-500" />
+                              <span>#{suggestion.azureWorkItemId}</span>
+                              <ExternalLink className="h-3 w-3 opacity-70" />
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1">
+                              <GitBranch className="h-3.5 w-3.5" />#
+                              {suggestion.azureWorkItemId}
+                            </span>
+                          )
                         ) : null}
                         <span className="inline-flex items-center gap-1">
                           <Clock3 className="h-3.5 w-3.5" />

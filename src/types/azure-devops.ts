@@ -66,6 +66,7 @@ export interface AzureDevOpsCommit {
   branch: string | null;
   timestamp: string;
   workItemIds: number[];
+  url?: string | null;
 }
 
 /** Search result for work item autocomplete */

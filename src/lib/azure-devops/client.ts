@@ -436,6 +436,10 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
                 /(?:branch|refs\/heads\/|feature\/|bugfix\/|hotfix\/)([\w/-]+)/i,
               )?.[1] ?? null;
 
+            const webUrl =
+              commit.remoteUrl ||
+              `${orgUrl}/${encodeURIComponent(projectLabel)}/_git/${encodeURIComponent(repository.name)}/commit/${commit.commitId}`;
+
             return {
               id: `${repository.id}:${commit.commitId}`,
               commitId: commit.commitId,
@@ -452,6 +456,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
                 commit.committer?.date ??
                 new Date().toISOString(),
               workItemIds,
+              url: webUrl,
             } satisfies AzureDevOpsCommit;
           })
           .filter((commit) => matchesCommitAuthor(commit, authorCandidates));
