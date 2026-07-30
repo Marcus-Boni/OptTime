@@ -12,7 +12,7 @@ variables:
   runtimeStack: NODE|24-lts
   azureServiceConnection: opt-time
   webAppName: prd-opt-time
-  resourceGroupName: rsg-opt-time
+  resourceGroupName: rsg-opt-time-prd
   publicAppUrl: https://opt-time.optsolv.com.br
   buildDatabaseUrlFallback: postgresql://build:build@127.0.0.1:5432/build?sslmode=require
   packagePath: $(Build.ArtifactStagingDirectory)/app.zip
