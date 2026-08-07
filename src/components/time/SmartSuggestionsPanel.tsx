@@ -130,10 +130,13 @@ export function isCommitApplied(
   if (
     appliedCommitKeys.some(
       (key) =>
+        key === `${suggestionFingerprint}:::${commit.id}` ||
+        key === `${suggestionFingerprint}:::${commit.commitId}` ||
         key === `${suggestionFingerprint}:${commit.id}` ||
         key === `${suggestionFingerprint}:${commit.commitId}` ||
         key === commit.id ||
         key === commit.commitId ||
+        (fullHash && key === fullHash) ||
         (shortHash && key === shortHash),
     )
   ) {
@@ -155,7 +158,7 @@ export function isCommitApplied(
       return true;
     }
 
-    if (commitMsg && commitMsg.length >= 6 && desc.includes(commitMsg)) {
+    if (commitMsg && commitMsg.length >= 10 && desc.includes(commitMsg)) {
       return true;
     }
 

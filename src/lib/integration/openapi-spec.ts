@@ -707,7 +707,8 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
             },
           },
           409: {
-            description: "Período bloqueado (timesheet fechado). Não é possível excluir a entrada de tempo.",
+            description:
+              "Período bloqueado (timesheet fechado). Não é possível excluir a entrada de tempo.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },

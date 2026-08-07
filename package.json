@@ -55,6 +55,7 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/whatwg-url": "^13.0.0",
     "drizzle-kit": "^0.31.9",
     "shadcn": "^4.1.0",
     "tailwindcss": "^4",

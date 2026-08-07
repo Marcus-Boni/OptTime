@@ -11,7 +11,10 @@ export type PageResult<T> = {
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 200;
 
-export function encodeCursor(createdAt: Date | string | number, id: string): string {
+export function encodeCursor(
+  createdAt: Date | string | number,
+  id: string,
+): string {
   const dateObj = createdAt instanceof Date ? createdAt : new Date(createdAt);
   const data: CursorData = { createdAt: dateObj.toISOString(), id };
   return Buffer.from(JSON.stringify(data)).toString("base64url");

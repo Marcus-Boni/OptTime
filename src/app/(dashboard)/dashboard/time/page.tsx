@@ -85,7 +85,7 @@ function buildSuggestionCommitKey(
   suggestionFingerprint: string,
   commitId: string,
 ) {
-  return `${suggestionFingerprint}:${commitId}`;
+  return `${suggestionFingerprint}:::${commitId}`;
 }
 
 function buildSuggestionDescriptionVariants(
@@ -413,11 +413,13 @@ export default function TimePage() {
         azureWorkItemTitle: suggestion.azureWorkItemTitle ?? undefined,
       };
       const descriptionVariants =
+        overrides?.descriptionVariants ??
         buildSuggestionDescriptionVariants(suggestion);
       const initialDescription =
-        descriptionVariants?.defaultVariant === "packaged"
+        overrides?.description ??
+        (descriptionVariants?.defaultVariant === "packaged"
           ? descriptionVariants.packaged
-          : (descriptionVariants?.concise ?? source.description);
+          : (descriptionVariants?.concise ?? source.description));
 
       setCreateTarget({
         billable: source.billable,
@@ -512,15 +514,23 @@ export default function TimePage() {
               const commitKey = pendingSuggestionSubmission.commitKey;
               if (!commitKey) return current;
 
-              const parts = commitKey.split(":");
-              const rawCommitId = parts.slice(1).join(":");
-              const shortHash = rawCommitId.split(":")[1]?.slice(0, 7) || rawCommitId.slice(0, 7);
+              const [fingerprint, commitId] = commitKey.split(":::");
+              const rawCommitId = commitId ?? "";
+              const rawHash = rawCommitId.includes(":")
+                ? rawCommitId.split(":")[1]
+                : rawCommitId;
+              const shortHash = rawHash
+                ? rawHash.slice(0, 7).toLowerCase()
+                : "";
+              const fullHash = rawHash ? rawHash.toLowerCase() : "";
 
               const newKeys = [
                 commitKey,
-                rawCommitId,
-                shortHash,
-              ].filter(Boolean);
+                fingerprint && commitId ? `${fingerprint}:${commitId}` : null,
+                commitId,
+                fullHash || null,
+                shortHash || null,
+              ].filter((k): k is string => Boolean(k));
 
               return Array.from(new Set([...current, ...newKeys]));
             });

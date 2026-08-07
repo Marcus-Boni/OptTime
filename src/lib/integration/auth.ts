@@ -58,7 +58,7 @@ export async function validateM2MToken(req: Request): Promise<M2MContext> {
   if (!tenantId || !audience) {
     throw new ApiError(
       "INTERNAL_ERROR",
-      `Server configuration missing: MICROSOFT_TENANT_ID (${tenantId ? 'configured' : 'missing'}) and ENTRA_API_AUDIENCE (${audience ? 'configured' : 'missing'}) must be set`,
+      `Server configuration missing: MICROSOFT_TENANT_ID (${tenantId ? "configured" : "missing"}) and ENTRA_API_AUDIENCE (${audience ? "configured" : "missing"}) must be set`,
       500,
     );
   }
@@ -76,7 +76,9 @@ export async function validateM2MToken(req: Request): Promise<M2MContext> {
   } catch (err: unknown) {
     throw new ApiError(
       "UNAUTHORIZED",
-      err instanceof Error ? `Token validation failed: ${err.message}` : "Invalid or expired token",
+      err instanceof Error
+        ? `Token validation failed: ${err.message}`
+        : "Invalid or expired token",
       401,
     );
   }
