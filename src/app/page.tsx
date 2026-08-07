@@ -1,5 +1,4 @@
-"use client";
-
+import type { Metadata } from "next";
 import { CtaFinal } from "@/components/landing/cta-final";
 import { FeaturesBento } from "@/components/landing/features-bento";
 import { Footer } from "@/components/landing/footer";
@@ -10,6 +9,12 @@ import { SocialProof } from "@/components/landing/social-proof";
 import { StatsBar } from "@/components/landing/stats-bar";
 import { Testimonial } from "@/components/landing/testimonial";
 import { VideoDemo } from "@/components/landing/video-demo";
+
+export const metadata: Metadata = {
+  title: "OptSolv Time Tracker - Gestão Inteligente de Horas",
+  description:
+    "Sistema de registro e gestão de horas integrado ao Azure DevOps. Acompanhe a produtividade real da sua equipe.",
+};
 
 export default function LandingPage() {
   return (
