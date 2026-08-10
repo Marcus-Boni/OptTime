@@ -22,6 +22,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
+import EmailSettingsCard from "@/components/admin/email-settings-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -743,6 +744,9 @@ export default function SettingsPage() {
 
           {isPrivileged ? (
             <TabsContent value="operations" className="space-y-6">
+              {user.role === "admin" ? (
+                <EmailSettingsCard userRole={user.role} />
+              ) : null}
               <Card className="border-border/50 bg-card/80 backdrop-blur">
                 <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                   <div>

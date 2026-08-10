@@ -1,11 +1,254 @@
+import { eq } from "drizzle-orm";
+import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { db } from "@/lib/db";
+import { systemSetting } from "@/lib/db/schema";
+import { decrypt } from "@/lib/encryption";
 
-function getResendClient(): Resend {
+export interface SmtpConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  pass: string;
+  fromEmail: string;
+}
+
+export const SMTP_CONFIG_KEY = "smtp_config";
+
+/**
+ * Loads and decrypts SMTP configuration from database if present.
+ */
+export async function getSmtpConfigFromDb(): Promise<SmtpConfig | null> {
+  try {
+    const result = await db
+      .select()
+      .from(systemSetting)
+      .where(eq(systemSetting.key, SMTP_CONFIG_KEY))
+      .limit(1);
+
+    if (!result[0]?.value) return null;
+
+    const parsed = JSON.parse(result[0].value);
+    if (!parsed.host || !parsed.user || !parsed.pass) return null;
+
+    return {
+      host: parsed.host,
+      port: Number(parsed.port) || 587,
+      secure: Boolean(parsed.secure ?? parsed.port === 465),
+      user: parsed.user,
+      pass: decrypt(parsed.pass),
+      fromEmail: parsed.fromEmail || `OptSolv Time <${parsed.user}>`,
+    };
+  } catch (err) {
+    console.error("[getSmtpConfigFromDb] Error loading SMTP config:", err);
+    return null;
+  }
+}
+
+interface SingleEmailOptions {
+  to: string;
+  subject: string;
+  html: string;
+}
+
+interface BatchEmailOptions {
+  emails: Array<{
+    to: string;
+    subject: string;
+    html: string;
+  }>;
+}
+
+/**
+ * Core email sender for a single email. Uses DB SMTP if available, or falls back to Resend.
+ */
+export async function sendEmail({
+  to,
+  subject,
+  html,
+}: SingleEmailOptions): Promise<void> {
+  const smtp = await getSmtpConfigFromDb();
+
+  if (smtp) {
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: {
+        user: smtp.user,
+        pass: smtp.pass,
+      },
+    });
+
+    await transporter.sendMail({
+      from: smtp.fromEmail,
+      to,
+      subject,
+      html,
+    });
+    return;
+  }
+
+  // Fallback: Resend
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    throw new Error("RESEND_API_KEY is required to send e-mails.");
+    throw new Error(
+      "Nenhum serviço de e-mail configurado. Por favor, defina as configurações de SMTP no painel administrativo ou RESEND_API_KEY.",
+    );
   }
-  return new Resend(apiKey);
+
+  const resend = new Resend(apiKey);
+  const from =
+    process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <onboarding@resend.dev>";
+
+  const { error } = await resend.emails.send({
+    from,
+    to,
+    subject,
+    html,
+  });
+
+  if (error) {
+    console.error("[sendEmail] Resend error:", JSON.stringify(error));
+    throw new Error(
+      `Falha ao enviar e-mail via Resend: ${error.message ?? JSON.stringify(error)}`,
+    );
+  }
+}
+
+/**
+ * Core batch email sender. Uses DB SMTP if available, or falls back to Resend batch API.
+ */
+export async function sendBatchEmails({
+  emails,
+}: BatchEmailOptions): Promise<{ sent: number; failed: number }> {
+  if (emails.length === 0) return { sent: 0, failed: 0 };
+
+  const smtp = await getSmtpConfigFromDb();
+
+  if (smtp) {
+    const transporter = nodemailer.createTransport({
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
+      auth: {
+        user: smtp.user,
+        pass: smtp.pass,
+      },
+    });
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const item of emails) {
+      try {
+        await transporter.sendMail({
+          from: smtp.fromEmail,
+          to: item.to,
+          subject: item.subject,
+          html: item.html,
+        });
+        sent++;
+      } catch (err) {
+        console.error(`[sendBatchEmails] SMTP error sending to ${item.to}:`, err);
+        failed++;
+      }
+    }
+
+    return { sent, failed };
+  }
+
+  // Fallback: Resend Batch API
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "Nenhum serviço de e-mail configurado. Por favor, defina as configurações de SMTP no painel administrativo ou RESEND_API_KEY.",
+    );
+  }
+
+  const resend = new Resend(apiKey);
+  const from =
+    process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <onboarding@resend.dev>";
+
+  const BATCH_SIZE = 100;
+  let sent = 0;
+  let failed = 0;
+
+  for (let i = 0; i < emails.length; i += BATCH_SIZE) {
+    const chunk = emails.slice(i, i + BATCH_SIZE);
+    const resendEmails = chunk.map((e) => ({
+      from,
+      to: e.to,
+      subject: e.subject,
+      html: e.html,
+    }));
+
+    try {
+      const { data: batchData, error } = await resend.batch.send(resendEmails);
+      if (error) {
+        console.error(
+          "[sendBatchEmails] Resend batch error:",
+          JSON.stringify(error),
+        );
+        failed += chunk.length;
+      } else {
+        sent += batchData?.data?.length ?? chunk.length;
+      }
+    } catch (err) {
+      console.error("[sendBatchEmails] Resend unexpected error:", err);
+      failed += chunk.length;
+    }
+  }
+
+  return { sent, failed };
+}
+
+/**
+ * Tests an arbitrary SMTP configuration.
+ */
+export async function sendTestSmtpEmail(
+  config: SmtpConfig,
+  recipientEmail: string,
+): Promise<void> {
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: {
+      user: config.user,
+      pass: config.pass,
+    },
+  });
+
+  await transporter.verify();
+
+  await transporter.sendMail({
+    from: config.fromEmail,
+    to: recipientEmail,
+    subject: "✨ E-mail de Teste — OptSolv Time",
+    html: `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"/><title>Teste SMTP</title></head>
+<body style="margin:0;padding:24px;background-color:#0a0a0a;font-family:'Segoe UI',sans-serif;color:#ffffff;">
+  <div style="max-width:560px;margin:0 auto;background:#141414;border-radius:12px;border:1px solid rgba(255,255,255,0.08);padding:32px;">
+    <div style="background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);padding:8px 14px;border-radius:8px;display:inline-block;margin-bottom:20px;">
+      <span style="color:#ffffff;font-weight:700;font-size:14px;">OptSolv Time</span>
+    </div>
+    <h2 style="margin:0 0 12px;color:#ffffff;font-size:20px;">Conexão SMTP Estabelecida! 🎉</h2>
+    <p style="margin:0 0 16px;color:#a3a3a3;font-size:14px;line-height:1.6;">
+      Este e-mail confirma que as configurações do servidor <strong>${config.host}</strong> (${config.user}) estão corretas e o envio está 100% operacional.
+    </p>
+    <div style="background:#1e1e1e;border-radius:8px;padding:12px 16px;font-size:12px;color:#737373;">
+      Remetente: <strong style="color:#e5e5e5;">${config.fromEmail}</strong><br/>
+      Destinatário: <strong style="color:#e5e5e5;">${recipientEmail}</strong>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim(),
+  });
 }
 
 // ─── Invitation Email ─────────────────────────────────────────────────
@@ -28,27 +271,12 @@ const roleLabels: Record<string, string> = {
 export async function sendInvitationEmail(
   data: InvitationEmailData,
 ): Promise<void> {
-  const resend = getResendClient();
   const roleLabel = roleLabels[data.role] ?? data.role;
-
-  const { error } = await resend.emails.send({
-    from:
-      process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <noreply@optsolv.com.br>",
+  await sendEmail({
     to: data.to,
     subject: `${data.inviterName} te convidou para o OptSolv Time`,
     html: buildInvitationEmailHtml({ ...data, roleLabel }),
   });
-
-  if (error) {
-    console.error(
-      "[sendInvitationEmail] Resend error ao enviar para",
-      data.to,
-      JSON.stringify(error),
-    );
-    throw new Error(
-      `Falha ao enviar e-mail de convite: ${error.message ?? JSON.stringify(error)}`,
-    );
-  }
 }
 
 function buildInvitationEmailHtml(
@@ -157,45 +385,17 @@ export async function sendReleaseNotesBatch(
     changelogUrl: string;
   },
 ): Promise<{ sent: number; failed: number }> {
-  const resend = getResendClient();
-  const from =
-    process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <noreply@optsolv.com.br>";
-
-  const BATCH_SIZE = 100;
-  let sent = 0;
-  let failed = 0;
-
-  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-    const chunk = recipients.slice(i, i + BATCH_SIZE);
-    const emails = chunk.map((r) => ({
-      from,
+  const emails = recipients.map((r) => ({
+    to: r.email,
+    subject: `🚀 OptSolv Time ${release.versionTag} — ${release.title}`,
+    html: buildReleaseEmailHtml({
       to: r.email,
-      subject: `🚀 OptSolv Time ${release.versionTag} — ${release.title}`,
-      html: buildReleaseEmailHtml({
-        to: r.email,
-        recipientName: r.name,
-        ...release,
-      }),
-    }));
+      recipientName: r.name,
+      ...release,
+    }),
+  }));
 
-    try {
-      const { data: batchData, error } = await resend.batch.send(emails);
-      if (error) {
-        console.error(
-          "[sendReleaseNotesBatch] Batch error:",
-          JSON.stringify(error),
-        );
-        failed += chunk.length;
-      } else {
-        sent += batchData?.data?.length ?? chunk.length;
-      }
-    } catch (err) {
-      console.error("[sendReleaseNotesBatch] Unexpected error:", err);
-      failed += chunk.length;
-    }
-  }
-
-  return { sent, failed };
+  return sendBatchEmails({ emails });
 }
 
 function formatDescriptionToHtml(description: string): string {
@@ -251,45 +451,17 @@ export async function sendHoursReminderBatch(
     timesheetUrl: string;
   },
 ): Promise<{ sent: number; failed: number }> {
-  const resend = getResendClient();
-  const from =
-    process.env.RESEND_FROM_EMAIL ?? "OptSolv Time <noreply@optsolv.com.br>";
-
-  const BATCH_SIZE = 100;
-  let sent = 0;
-  let failed = 0;
-
-  for (let i = 0; i < recipients.length; i += BATCH_SIZE) {
-    const chunk = recipients.slice(i, i + BATCH_SIZE);
-    const emails = chunk.map((r) => ({
-      from,
+  const emails = recipients.map((r) => ({
+    to: r.email,
+    subject: `Lembrete: envie suas horas — ${payload.period}`,
+    html: buildHoursReminderEmailHtml({
       to: r.email,
-      subject: `Lembrete: envie suas horas — ${payload.period}`,
-      html: buildHoursReminderEmailHtml({
-        to: r.email,
-        recipientName: r.name,
-        ...payload,
-      }),
-    }));
+      recipientName: r.name,
+      ...payload,
+    }),
+  }));
 
-    try {
-      const { data: batchData, error } = await resend.batch.send(emails);
-      if (error) {
-        console.error(
-          "[sendHoursReminderBatch] Batch error:",
-          JSON.stringify(error),
-        );
-        failed += chunk.length;
-      } else {
-        sent += batchData?.data?.length ?? chunk.length;
-      }
-    } catch (err) {
-      console.error("[sendHoursReminderBatch] Unexpected error:", err);
-      failed += chunk.length;
-    }
-  }
-
-  return { sent, failed };
+  return sendBatchEmails({ emails });
 }
 
 function buildHoursReminderEmailHtml(data: HoursReminderEmailData): string {

@@ -762,3 +762,26 @@ export const webhookDeliveryRelations = relations(
     }),
   }),
 );
+
+// ─── System Setting ──────────────────────────────────────────────────────────
+// Stores encrypted key-value settings for system configurations (e.g. SMTP / email config).
+export const systemSetting = pgTable("system_setting", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedById: text("updated_by_id").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const systemSettingRelations = relations(systemSetting, ({ one }) => ({
+  updatedBy: one(user, {
+    fields: [systemSetting.updatedById],
+    references: [user.id],
+  }),
+}));
+
