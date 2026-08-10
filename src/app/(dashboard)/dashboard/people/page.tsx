@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Pessoas & Equipe",
-  description: "Visão gerencial de disponibilidade, capacidade e colaboradores.",
+  description:
+    "Visão gerencial de disponibilidade, capacidade e colaboradores.",
 };
 
 export default function PeoplePage() {

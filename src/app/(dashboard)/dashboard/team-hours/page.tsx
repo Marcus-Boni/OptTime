@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Horas da Equipe",
-  description: "Visão consolidada e acompanhamento das horas registradas pela equipe.",
+  description:
+    "Visão consolidada e acompanhamento das horas registradas pela equipe.",
 };
 
 export default function TeamHoursPage() {

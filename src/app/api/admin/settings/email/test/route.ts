@@ -24,10 +24,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const parsed = testSmtpSchema.safeParse(body);
   if (!parsed.success) {
-    return Response.json(
-      { error: parsed.error.flatten() },
-      { status: 400 },
-    );
+    return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const data = parsed.data;
@@ -73,7 +70,9 @@ export async function POST(req: Request): Promise<Response> {
   } catch (err: unknown) {
     console.error("[POST /api/admin/settings/email/test]", err);
     const errorMessage =
-      err instanceof Error ? err.message : "Falha ao conectar ou enviar e-mail via SMTP.";
+      err instanceof Error
+        ? err.message
+        : "Falha ao conectar ou enviar e-mail via SMTP.";
     return Response.json(
       { error: `Erro no teste de e-mail: ${errorMessage}` },
       { status: 400 },

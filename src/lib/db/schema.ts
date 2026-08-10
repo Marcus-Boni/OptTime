@@ -784,4 +784,3 @@ export const systemSettingRelations = relations(systemSetting, ({ one }) => ({
     references: [user.id],
   }),
 }));
-

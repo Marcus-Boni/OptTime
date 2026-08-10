@@ -909,7 +909,11 @@ export function DashboardClient() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 items-stretch">
         {statCards.map((card) => (
-          <motion.div key={card.title} variants={itemVariants} className="h-full">
+          <motion.div
+            key={card.title}
+            variants={itemVariants}
+            className="h-full"
+          >
             <StatCard {...card} loading={loadingDashboard} />
           </motion.div>
         ))}

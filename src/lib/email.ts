@@ -151,7 +151,10 @@ export async function sendBatchEmails({
         });
         sent++;
       } catch (err) {
-        console.error(`[sendBatchEmails] SMTP error sending to ${item.to}:`, err);
+        console.error(
+          `[sendBatchEmails] SMTP error sending to ${item.to}:`,
+          err,
+        );
         failed++;
       }
     }

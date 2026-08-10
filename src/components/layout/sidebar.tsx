@@ -10,7 +10,6 @@ import {
   Folder,
   Home,
   Lightbulb,
-  Link2,
   Pause,
   Settings,
   Square,
@@ -20,6 +19,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
+import { VersionBadge } from "@/components/layout/version-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -182,6 +182,80 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
       </div>
     </motion.div>
   );
+}
+
+interface UserProfileWidgetProps {
+  user: UserType | null;
+  collapsed: boolean;
+}
+
+function UserProfileWidget({ user, collapsed }: UserProfileWidgetProps) {
+  if (!user) return null;
+
+  const profileContent = (
+    <motion.div
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+    >
+      <Link
+        href="/dashboard/profile"
+        className={cn(
+          "group relative flex items-center gap-3 rounded-xl border border-transparent p-2 transition-all duration-200 hover:border-brand-500/20 hover:bg-accent/80 hover:shadow-md hover:shadow-brand-500/5",
+          collapsed && "justify-center px-1.5",
+        )}
+        aria-label={`Ver perfil de ${user.name}`}
+      >
+        <div className="relative shrink-0">
+          <motion.div
+            whileHover={{ scale: 1.08 }}
+            transition={{ type: "spring", stiffness: 400, damping: 25 }}
+            className="relative rounded-full transition-all duration-300 group-hover:ring-2 group-hover:ring-brand-500/80 group-hover:ring-offset-2 group-hover:ring-offset-sidebar"
+          >
+            <UserAvatar
+              name={user.name ?? ""}
+              image={user.image}
+              size="default"
+            />
+          </motion.div>
+          <span
+            className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-sidebar transition-all duration-200 group-hover:scale-110 group-hover:bg-emerald-400"
+            aria-hidden="true"
+          />
+        </div>
+
+        {!collapsed ? (
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-foreground transition-colors duration-200 group-hover:text-brand-500">
+              {user.name}
+            </p>
+            <p className="truncate text-xs text-muted-foreground capitalize">
+              {user.role}
+            </p>
+          </div>
+        ) : null}
+      </Link>
+    </motion.div>
+  );
+
+  if (collapsed) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>{profileContent}</TooltipTrigger>
+        <TooltipContent side="right" className="flex flex-col gap-0.5">
+          <p className="font-medium">{user.name}</p>
+          <p className="text-xs text-muted-foreground capitalize">
+            {user.role}
+          </p>
+          <span className="mt-1 text-[10px] font-semibold text-brand-500">
+            Ver Perfil
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
+  return profileContent;
 }
 
 export function Sidebar() {
@@ -449,29 +523,15 @@ export function Sidebar() {
               ) : null}
             </div>
           ) : (
-            <div
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-accent",
-                sidebarCollapsed && "justify-center px-0",
-              )}
-            >
-              <UserAvatar
-                name={user?.name ?? ""}
-                image={user?.image}
-                size="default"
-              />
-              {!sidebarCollapsed ? (
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">
-                    {user?.name}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {user?.role}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+            <UserProfileWidget user={user} collapsed={sidebarCollapsed} />
           )}
+
+          <div className="mt-2 pt-2 border-t border-border/40">
+            <VersionBadge
+              variant="sidebar-footer"
+              collapsed={sidebarCollapsed}
+            />
+          </div>
         </div>
       </aside>
     </TooltipProvider>

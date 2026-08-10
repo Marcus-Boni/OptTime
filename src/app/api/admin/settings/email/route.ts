@@ -62,7 +62,9 @@ export async function POST(req: Request): Promise<Response> {
 
   if (session.user.role !== "admin") {
     return Response.json(
-      { error: "Apenas administradores podem alterar configurações de e-mail." },
+      {
+        error: "Apenas administradores podem alterar configurações de e-mail.",
+      },
       { status: 403 },
     );
   }
@@ -76,10 +78,7 @@ export async function POST(req: Request): Promise<Response> {
 
   const parsed = smtpConfigSchema.safeParse(body);
   if (!parsed.success) {
-    return Response.json(
-      { error: parsed.error.flatten() },
-      { status: 400 },
-    );
+    return Response.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   try {
@@ -112,6 +111,9 @@ export async function POST(req: Request): Promise<Response> {
     });
   } catch (err) {
     console.error("[POST /api/admin/settings/email]", err);
-    return Response.json({ error: "Erro interno ao salvar configurações" }, { status: 500 });
+    return Response.json(
+      { error: "Erro interno ao salvar configurações" },
+      { status: 500 },
+    );
   }
 }

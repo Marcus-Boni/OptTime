@@ -25,7 +25,9 @@ export interface EmailSettingsCardProps {
   userRole?: string;
 }
 
-export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) {
+export default function EmailSettingsCard({
+  userRole,
+}: EmailSettingsCardProps) {
   const isAdmin = userRole === "admin";
 
   const [isLoading, setIsLoading] = useState(true);
@@ -58,7 +60,9 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
           setSecure(Boolean(data.secure));
           setUser(data.user || "");
           setPass(data.pass || "");
-          setFromEmail(data.fromEmail || (data.user ? `OptSolv Time <${data.user}>` : ""));
+          setFromEmail(
+            data.fromEmail || (data.user ? `OptSolv Time <${data.user}>` : ""),
+          );
         }
       } catch (err: unknown) {
         console.error("[EmailSettingsCard] fetchSettings:", err);
@@ -83,7 +87,8 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
 
     setIsSaving(true);
     try {
-      const finalFromEmail = fromEmail.trim() || `OptSolv Time <${user.trim()}>`;
+      const finalFromEmail =
+        fromEmail.trim() || `OptSolv Time <${user.trim()}>`;
 
       const res = await fetch("/api/admin/settings/email", {
         method: "POST",
@@ -108,7 +113,8 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
       toast.success("Configurações de e-mail SMTP salvas com sucesso!");
     } catch (err: unknown) {
       console.error("[EmailSettingsCard] handleSave:", err);
-      const message = err instanceof Error ? err.message : "Falha ao salvar configurações.";
+      const message =
+        err instanceof Error ? err.message : "Falha ao salvar configurações.";
       toast.error(message);
     } finally {
       setIsSaving(false);
@@ -145,7 +151,8 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
       toast.success(data.message || "E-mail de teste enviado com sucesso!");
     } catch (err: unknown) {
       console.error("[EmailSettingsCard] handleTest:", err);
-      const message = err instanceof Error ? err.message : "Erro ao testar envio de e-mail.";
+      const message =
+        err instanceof Error ? err.message : "Erro ao testar envio de e-mail.";
       toast.error(message);
     } finally {
       setIsTesting(false);
@@ -181,8 +188,9 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
           </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
-          Configure a conta do Gmail responsável por enviar convites, lembretes de horas e notas de release.
-          As credenciais ficam encriptadas em AES-256 no banco de dados e não exigem alterações no servidor Azure.
+          Configure a conta do Gmail responsável por enviar convites, lembretes
+          de horas e notas de release. As credenciais ficam encriptadas em
+          AES-256 no banco de dados e não exigem alterações no servidor Azure.
         </p>
       </CardHeader>
 
@@ -200,9 +208,18 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
                 Como obter a Senha de App de 16 caracteres no Gmail:
               </div>
               <ol className="list-decimal list-inside space-y-1 pl-1 text-foreground/90">
-                <li>Acesse sua Conta Google e ative a <strong>Verificação em 2 etapas</strong>.</li>
-                <li>Pesquise por <strong>"Senhas de app"</strong> nas configurações de segurança do Google.</li>
-                <li>Crie um app com o nome <strong>OptSolv Time</strong> e copie a senha de 16 caracteres gerada.</li>
+                <li>
+                  Acesse sua Conta Google e ative a{" "}
+                  <strong>Verificação em 2 etapas</strong>.
+                </li>
+                <li>
+                  Pesquise por <strong>"Senhas de app"</strong> nas
+                  configurações de segurança do Google.
+                </li>
+                <li>
+                  Crie um app com o nome <strong>OptSolv Time</strong> e copie a
+                  senha de 16 caracteres gerada.
+                </li>
               </ol>
               <div className="pt-1">
                 <a
@@ -211,7 +228,8 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-brand-400 hover:underline font-medium"
                 >
-                  Gerar Senha de App no Google <ExternalLink className="h-3 w-3" />
+                  Gerar Senha de App no Google{" "}
+                  <ExternalLink className="h-3 w-3" />
                 </a>
               </div>
             </div>
@@ -239,13 +257,16 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
 
                 <div className="space-y-2">
                   <Label htmlFor="smtp-pass" className="text-xs font-medium">
-                    Senha de App do Google (16 caracteres) <span className="text-red-400">*</span>
+                    Senha de App do Google (16 caracteres){" "}
+                    <span className="text-red-400">*</span>
                   </Label>
                   <div className="relative">
                     <Input
                       id="smtp-pass"
                       type="password"
-                      placeholder={configured ? "••••••••" : "abcd efgh ijkl mnop"}
+                      placeholder={
+                        configured ? "••••••••" : "abcd efgh ijkl mnop"
+                      }
                       value={pass}
                       onChange={(e) => setPass(e.target.value)}
                       required
@@ -295,7 +316,9 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
 
               <div className="flex items-center justify-between rounded-xl border border-border/60 bg-background/50 px-4 py-3">
                 <div className="space-y-0.5">
-                  <Label className="text-xs font-medium">Usar Conexão SSL Segura (Porta 465)</Label>
+                  <Label className="text-xs font-medium">
+                    Usar Conexão SSL Segura (Porta 465)
+                  </Label>
                   <p className="text-[11px] text-muted-foreground">
                     Para a porta padrão 587 (TLS/STARTTLS), deixe desativado.
                   </p>
@@ -319,7 +342,11 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
                     disabled={isTesting || !user}
                     className="gap-1.5 text-xs h-9 whitespace-nowrap"
                   >
-                    {isTesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    {isTesting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Send className="h-3.5 w-3.5" />
+                    )}
                     {isTesting ? "Enviando..." : "Testar Envio"}
                   </Button>
                 </div>
@@ -329,7 +356,11 @@ export default function EmailSettingsCard({ userRole }: EmailSettingsCardProps) 
                   disabled={isSaving}
                   className="gap-2 bg-brand-500 text-white hover:bg-brand-600 h-9 text-xs font-medium"
                 >
-                  {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                  {isSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="h-3.5 w-3.5" />
+                  )}
                   {isSaving ? "Salvando..." : "Salvar Configurações SMTP"}
                 </Button>
               </div>

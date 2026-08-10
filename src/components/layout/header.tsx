@@ -21,6 +21,7 @@ import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
 import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { VersionBadge } from "@/components/layout/version-badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -287,6 +288,10 @@ export function Header() {
                   Configurações
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="px-1 py-1">
+                <VersionBadge variant="header-dropdown" />
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 className="flex cursor-pointer items-center gap-2 text-destructive focus:text-destructive"

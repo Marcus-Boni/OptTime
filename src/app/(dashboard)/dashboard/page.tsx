@@ -5,7 +5,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Dashboard",
-  description: "Visão geral de horas registradas, relatórios e métricas da equipe.",
+  description:
+    "Visão geral de horas registradas, relatórios e métricas da equipe.",
 };
 
 function DashboardSkeleton() {
