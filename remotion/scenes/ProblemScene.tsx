@@ -1,5 +1,11 @@
 import type React from "react";
 import {
+  BarChart3,
+  Clock,
+  FileSpreadsheet,
+  Unplug,
+} from "lucide-react";
+import {
   AbsoluteFill,
   interpolate,
   spring,
@@ -11,22 +17,22 @@ import { fonts, theme } from "../theme";
 
 const problems = [
   {
-    icon: "📋",
+    icon: FileSpreadsheet,
     title: "Planilhas manuais",
     desc: "Erros, inconsistências e zero rastreabilidade",
   },
   {
-    icon: "🔌",
+    icon: Unplug,
     title: "Sem integração",
     desc: "Horas desconectadas dos work items do Azure DevOps",
   },
   {
-    icon: "⏳",
+    icon: Clock,
     title: "Aprovação lenta",
     desc: "Sem fluxo estruturado de submit e approve",
   },
   {
-    icon: "📊",
+    icon: BarChart3,
     title: "Sem visibilidade",
     desc: "Gerentes sem dados em tempo real da equipe",
   },
@@ -93,6 +99,7 @@ export const ProblemScene: React.FC = () => {
               fps,
               config: { damping: 14, stiffness: 120 },
             });
+            const Icon = p.icon;
 
             return (
               <div
@@ -110,7 +117,20 @@ export const ProblemScene: React.FC = () => {
                   gap: 16,
                 }}
               >
-                <span style={{ fontSize: 40 }}>{p.icon}</span>
+                <div
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 16,
+                    background: `${theme.brand}15`,
+                    border: `1px solid ${theme.brand}30`,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Icon size={28} color={theme.brand} />
+                </div>
                 <h3
                   style={{
                     fontSize: 22,
@@ -140,3 +160,4 @@ export const ProblemScene: React.FC = () => {
     </AbsoluteFill>
   );
 };
+

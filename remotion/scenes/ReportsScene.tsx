@@ -1,7 +1,9 @@
 import type React from "react";
+import { FileSpreadsheet, FileText } from "lucide-react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
 import { fonts, theme } from "../theme";
+
 
 /** Mock chart data — bar chart for weekly hours by project */
 const chartData = [
@@ -112,26 +114,34 @@ export const ReportsScene: React.FC = () => {
           <FadeIn delay={35}>
             <div style={{ display: "flex", gap: 16 }}>
               {[
-                { label: "📊 Export Excel", color: "#22c55e" },
-                { label: "📄 Export PDF", color: "#ef4444" },
-              ].map((btn) => (
-                <div
-                  key={btn.label}
-                  style={{
-                    padding: "14px 28px",
-                    borderRadius: 12,
-                    background: `${btn.color}15`,
-                    border: `1px solid ${btn.color}40`,
-                    color: btn.color,
-                    fontSize: 16,
-                    fontWeight: 700,
-                  }}
-                >
-                  {btn.label}
-                </div>
-              ))}
+                { label: "Export Excel", color: "#22c55e", icon: FileSpreadsheet },
+                { label: "Export PDF", color: "#ef4444", icon: FileText },
+              ].map((btn) => {
+                const BtnIcon = btn.icon;
+                return (
+                  <div
+                    key={btn.label}
+                    style={{
+                      padding: "14px 28px",
+                      borderRadius: 12,
+                      background: `${btn.color}15`,
+                      border: `1px solid ${btn.color}40`,
+                      color: btn.color,
+                      fontSize: 16,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <BtnIcon size={20} color={btn.color} />
+                    {btn.label}
+                  </div>
+                );
+              })}
             </div>
           </FadeIn>
+
         </div>
 
         {/* Right: chart mock */}

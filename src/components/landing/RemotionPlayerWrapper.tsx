@@ -2,7 +2,7 @@
 
 import { Player, type PlayerRef } from "@remotion/player";
 import { forwardRef } from "react";
-import { ProductDemo } from "../../../remotion/ProductDemo";
+import { ProductDemo } from "@/remotion/ProductDemo";
 
 export const RemotionPlayerWrapper = forwardRef<PlayerRef>(
   function RemotionPlayerWrapper(_props, ref) {

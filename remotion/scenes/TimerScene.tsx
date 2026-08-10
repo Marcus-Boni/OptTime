@@ -7,11 +7,13 @@ import {
   useVideoConfig,
 } from "remotion";
 import {
+  AzureDevOpsLogo,
   Badge,
   BrowserFrame,
   FadeIn,
   GlowDot,
   GradientText,
+  OptSolvLogo,
 } from "../components/shared";
 import { fonts, theme } from "../theme";
 
@@ -151,30 +153,42 @@ export const TimerScene: React.FC = () => {
                   display: "flex",
                   gap: 12,
                   alignItems: "center",
+                  background: theme.bgCard,
+                  padding: "12px 18px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.border}`,
                 }}
               >
+                <OptSolvLogo size={18} color={theme.brand} />
+                <span
+                  style={{ color: theme.white, fontSize: 16, fontWeight: 700 }}
+                >
+                  OptSolv Portal
+                </span>
                 <div
                   style={{
-                    width: 12,
-                    height: 12,
-                    borderRadius: "50%",
-                    background: theme.brand,
-                  }}
-                />
-                <span
-                  style={{ color: theme.white, fontSize: 18, fontWeight: 600 }}
-                >
-                  OptSolv Time Tracker
-                </span>
-                <span
-                  style={{
-                    color: theme.textDimmed,
-                    fontSize: 14,
-                    marginLeft: 8,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    background: `${theme.azure}20`,
+                    padding: "4px 10px",
+                    borderRadius: 8,
+                    border: `1px solid ${theme.azure}40`,
+                    marginLeft: "auto",
                   }}
                 >
-                  — Task #4521: Implementar integração Azure
-                </span>
+                  <AzureDevOpsLogo size={14} />
+                  <span
+                    style={{
+                      color: theme.azureLight,
+                      fontSize: 13,
+                      fontFamily: fonts.mono,
+                      fontWeight: 600,
+                    }}
+                  >
+                    #4521: Sync REST API
+                  </span>
+                </div>
               </div>
 
               {/* Timer display */}

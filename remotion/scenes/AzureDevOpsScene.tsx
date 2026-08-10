@@ -1,36 +1,50 @@
 import type React from "react";
 import {
+  BarChart3,
+  Lock,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import {
   AbsoluteFill,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
+import {
+  AzureDevOpsLogo,
+  Badge,
+  FadeIn,
+  GlowDot,
+  GradientText,
+  OptSolvLogo,
+} from "../components/shared";
 import { fonts, theme } from "../theme";
 
 const features = [
   {
-    icon: "🔄",
+    icon: RefreshCw,
     title: "Sync automático",
-    desc: "Work items sincronizados periodicamente",
+    desc: "Work items (Task, Bug, User Story) sincronizados em tempo real",
   },
   {
-    icon: "🔍",
-    title: "Autocomplete",
-    desc: "Busque tarefas por ID ou título",
+    icon: Search,
+    title: "Autocomplete inteligente",
+    desc: "Busque tarefas por ID (#123) ou título instantaneamente",
   },
   {
-    icon: "🔒",
-    title: "PAT criptografado",
-    desc: "Token armazenado com criptografia AES-256",
+    icon: Lock,
+    title: "PAT Criptografado",
+    desc: "Token armazenado no PostgreSQL com criptografia AES-256",
   },
   {
-    icon: "📊",
-    title: "Rastreabilidade",
-    desc: "Horas vinculadas a work items de verdade",
+    icon: BarChart3,
+    title: "Completed Work Sync",
+    desc: "Atualização automática de horas concluídas no Azure",
   },
 ];
+
 
 /** Scene 6 — Azure DevOps integration (frames 0–300 = 10s) */
 export const AzureDevOpsScene: React.FC = () => {
@@ -51,7 +65,7 @@ export const AzureDevOpsScene: React.FC = () => {
         overflow: "hidden",
       }}
     >
-      <GlowDot x="50%" y="30%" size={600} opacity={0.06} />
+      <GlowDot x="50%" y="30%" size={650} opacity={0.1} color={theme.azure} />
 
       <div
         style={{
@@ -61,7 +75,7 @@ export const AzureDevOpsScene: React.FC = () => {
           justifyContent: "center",
           height: "100%",
           padding: "0 120px",
-          gap: 56,
+          gap: 52,
         }}
       >
         {/* Header */}
@@ -75,7 +89,7 @@ export const AzureDevOpsScene: React.FC = () => {
               alignItems: "center",
             }}
           >
-            <Badge color={theme.info}>Integração nativa</Badge>
+            <Badge color={theme.azure}>Integração Nativa Azure</Badge>
             <h2
               style={{
                 fontSize: 52,
@@ -88,7 +102,7 @@ export const AzureDevOpsScene: React.FC = () => {
               Conectado ao{" "}
               <GradientText
                 style={{
-                  background: `linear-gradient(135deg, ${theme.info}, #60a5fa)`,
+                  background: `linear-gradient(135deg, ${theme.azureLight}, ${theme.info})`,
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                 }}
@@ -105,11 +119,12 @@ export const AzureDevOpsScene: React.FC = () => {
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 40,
-              padding: "32px 48px",
-              borderRadius: 20,
+              gap: 48,
+              padding: "36px 56px",
+              borderRadius: 24,
               background: theme.bgCard,
-              border: `1px solid ${theme.border}`,
+              border: `1px solid ${theme.borderLight}`,
+              boxShadow: `0 20px 60px ${theme.azureGlow}`,
             }}
           >
             {/* OptSolv side */}
@@ -118,56 +133,36 @@ export const AzureDevOpsScene: React.FC = () => {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 12,
+                gap: 14,
               }}
             >
               <div
                 style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 18,
+                  width: 80,
+                  height: 80,
+                  borderRadius: 22,
                   background: `linear-gradient(135deg, ${theme.brand}, ${theme.brandLight})`,
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
+                  boxShadow: `0 12px 30px ${theme.brandGlow}`,
                 }}
               >
-                <svg
-                  width="36"
-                  height="36"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  aria-label="OptSolv Time logo"
-                >
-                  <title>OptSolv Time logo</title>
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="9"
-                    stroke="white"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="M12 7v5l3.5 3.5"
-                    stroke="white"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <OptSolvLogo size={36} color="#ffffff" />
               </div>
               <span
-                style={{ fontSize: 16, fontWeight: 700, color: theme.white }}
+                style={{ fontSize: 18, fontWeight: 700, color: theme.white }}
               >
                 OptSolv Time
               </span>
             </div>
 
-            {/* Connection arrows */}
+            {/* Connection arrows & REST API indicator */}
             <div
               style={{
                 display: "flex",
                 flexDirection: "column",
-                gap: 8,
+                gap: 10,
                 alignItems: "center",
               }}
             >
@@ -183,31 +178,25 @@ export const AzureDevOpsScene: React.FC = () => {
                   <div
                     key={`arrow-${i}`}
                     style={{
-                      width: 120,
-                      height: 3,
+                      width: 140,
+                      height: 4,
                       borderRadius: 2,
-                      background: `linear-gradient(90deg, ${theme.brand}${Math.round(
-                        progress * 255,
-                      )
-                        .toString(16)
-                        .padStart(2, "0")}, ${theme.info}${Math.round(
-                        progress * 255,
-                      )
-                        .toString(16)
-                        .padStart(2, "0")})`,
+                      background: `linear-gradient(90deg, ${theme.brand}, ${theme.azure})`,
+                      opacity: progress,
                     }}
                   />
                 );
               })}
               <span
                 style={{
-                  fontSize: 12,
-                  color: theme.textDimmed,
+                  fontSize: 13,
+                  color: theme.azureLight,
                   fontFamily: fonts.mono,
                   marginTop: 4,
+                  fontWeight: 600,
                 }}
               >
-                REST API + PAT
+                REST API v7.1 + PAT AES-256
               </span>
             </div>
 
@@ -217,25 +206,27 @@ export const AzureDevOpsScene: React.FC = () => {
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
-                gap: 12,
+                gap: 14,
               }}
             >
               <div
                 style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: 18,
-                  background: `linear-gradient(135deg, ${theme.info}, #60a5fa)`,
+                  width: 80,
+                  height: 80,
+                  borderRadius: 22,
+                  background: theme.bgCard,
+                  border: `1px solid ${theme.azure}40`,
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  fontSize: 36,
+                  boxShadow: `0 12px 30px ${theme.azureGlow}`,
                 }}
               >
-                ⓐ
+                <AzureDevOpsLogo size={48} />
               </div>
+
               <span
-                style={{ fontSize: 16, fontWeight: 700, color: theme.white }}
+                style={{ fontSize: 18, fontWeight: 700, color: theme.white }}
               >
                 Azure DevOps
               </span>
@@ -244,34 +235,49 @@ export const AzureDevOpsScene: React.FC = () => {
         </FadeIn>
 
         {/* Feature cards */}
-        <div style={{ display: "flex", gap: 24 }}>
-          {features.map((feat, i) => {
-            const cardDelay = 30 + i * 15;
-            const s = spring({
-              frame: frame - cardDelay,
-              fps,
-              config: { damping: 14, stiffness: 120 },
-            });
+        <div style={{ display: "flex", gap: 24, width: "100%" }}>
+            {features.map((feat, i) => {
+              const cardDelay = 30 + i * 15;
+              const s = spring({
+                frame: frame - cardDelay,
+                fps,
+                config: { damping: 14, stiffness: 120 },
+              });
+              const FeatIcon = feat.icon;
 
-            return (
-              <div
-                key={feat.title}
-                style={{
-                  flex: 1,
-                  padding: "28px 24px",
-                  borderRadius: 16,
-                  background: theme.bgCard,
-                  border: `1px solid ${theme.border}`,
-                  transform: `scale(${s})`,
-                  opacity: s,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 12,
-                  alignItems: "center",
-                  textAlign: "center",
-                }}
-              >
-                <span style={{ fontSize: 36 }}>{feat.icon}</span>
+              return (
+                <div
+                  key={feat.title}
+                  style={{
+                    flex: 1,
+                    padding: "26px 20px",
+                    borderRadius: 18,
+                    background: theme.bgCard,
+                    border: `1px solid ${theme.border}`,
+                    transform: `scale(${s})`,
+                    opacity: s,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 12,
+                    alignItems: "center",
+                    textAlign: "center",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 52,
+                      height: 52,
+                      borderRadius: 14,
+                      background: `${theme.azure}18`,
+                      border: `1px solid ${theme.azure}35`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <FeatIcon size={26} color={theme.azureLight} />
+                  </div>
+
                 <span
                   style={{
                     fontSize: 18,
@@ -284,7 +290,7 @@ export const AzureDevOpsScene: React.FC = () => {
                 </span>
                 <span
                   style={{
-                    fontSize: 15,
+                    fontSize: 14,
                     color: theme.textMuted,
                     lineHeight: 1.4,
                   }}
@@ -299,3 +305,4 @@ export const AzureDevOpsScene: React.FC = () => {
     </AbsoluteFill>
   );
 };
+

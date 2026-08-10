@@ -7,10 +7,14 @@ export const theme = {
   brandLight: "#fb923c",
   brandDark: "#ea580c",
   brandGlow: "rgba(249, 115, 22, 0.15)",
+  azure: "#0078D4",
+  azureLight: "#38bdf8",
+  azureGlow: "rgba(0, 120, 212, 0.2)",
   white: "#fafafa",
   textMuted: "#a3a3a3",
   textDimmed: "#737373",
   border: "#262626",
+  borderLight: "rgba(255, 255, 255, 0.1)",
   success: "#22c55e",
   warning: "#f59e0b",
   error: "#ef4444",
@@ -23,3 +27,4 @@ export const fonts = {
   body: "DM Sans, system-ui, sans-serif",
   mono: "JetBrains Mono, monospace",
 } as const;
+

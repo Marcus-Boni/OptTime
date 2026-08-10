@@ -144,6 +144,7 @@ export function VideoDemo({
         >
           {[
             "Timer ao vivo e entrada manual",
+            "Integração nativa Azure DevOps",
             "Submit semanal para aprovação",
             "Relatórios com export em Excel/PDF",
           ].map((item) => (
@@ -152,6 +153,7 @@ export function VideoDemo({
               {item}
             </span>
           ))}
+
         </motion.div>
       </div>
     </section>

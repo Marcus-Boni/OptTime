@@ -1,13 +1,20 @@
 import type React from "react";
+import {
+  CheckCircle2,
+  FileEdit,
+  Send,
+  XCircle,
+} from "lucide-react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
 import { fonts, theme } from "../theme";
 
 const flowSteps = [
-  { label: "DRAFT", color: theme.textDimmed, icon: "📝" },
-  { label: "SUBMITTED", color: theme.warning, icon: "📤" },
-  { label: "APPROVED", color: theme.success, icon: "✅" },
+  { label: "DRAFT", color: theme.textDimmed, icon: FileEdit },
+  { label: "SUBMITTED", color: theme.warning, icon: Send },
+  { label: "APPROVED", color: theme.success, icon: CheckCircle2 },
 ];
+
 
 const weekDays = [
   { day: "Seg", hours: 8.0, entries: 3 },
@@ -93,6 +100,7 @@ export const TimesheetScene: React.FC = () => {
             {flowSteps.map((step, i) => {
               const isActive = i === activeStep;
               const isPast = i < activeStep;
+              const StepIcon = step.icon;
               return (
                 <div
                   key={step.label}
@@ -120,7 +128,6 @@ export const TimesheetScene: React.FC = () => {
                         display: "flex",
                         justifyContent: "center",
                         alignItems: "center",
-                        fontSize: 28,
                         border: isActive
                           ? `2px solid ${step.color}`
                           : "2px solid transparent",
@@ -128,7 +135,16 @@ export const TimesheetScene: React.FC = () => {
                         transition: "all 0.3s",
                       }}
                     >
-                      {step.icon}
+                      <StepIcon
+                        size={26}
+                        color={
+                          isActive
+                            ? step.color
+                            : isPast
+                              ? theme.success
+                              : theme.textDimmed
+                        }
+                      />
                     </div>
                     <span
                       style={{
@@ -167,17 +183,22 @@ export const TimesheetScene: React.FC = () => {
               <span
                 style={{
                   fontSize: 14,
-                  color: theme.textDimmed,
+                  color: theme.error,
                   fontFamily: fonts.mono,
                   padding: "8px 16px",
                   borderRadius: 8,
                   border: `1px dashed ${theme.error}40`,
                   background: `${theme.error}08`,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
-                ❌ REJECTED → volta a DRAFT
+                <XCircle size={16} color={theme.error} />
+                REJECTED → volta a DRAFT
               </span>
             </div>
+
           </div>
         </FadeIn>
 

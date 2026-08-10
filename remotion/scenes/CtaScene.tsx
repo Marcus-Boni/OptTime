@@ -1,4 +1,5 @@
 import type React from "react";
+import { ArrowRight } from "lucide-react";
 import {
   AbsoluteFill,
   interpolate,
@@ -6,8 +7,16 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { FadeIn, GlowDot, GradientText } from "../components/shared";
+import {
+  AzureDevOpsLogo,
+  Badge,
+  FadeIn,
+  GlowDot,
+  GradientText,
+  OptSolvLogo,
+} from "../components/shared";
 import { fonts, theme } from "../theme";
+
 
 /** Scene 9 — CTA / Closing (frames 0–240 = 8s) */
 export const CtaScene: React.FC = () => {
@@ -30,8 +39,8 @@ export const CtaScene: React.FC = () => {
         overflow: "hidden",
       }}
     >
-      <GlowDot x="30%" y="20%" size={700} opacity={0.1} />
-      <GlowDot x="60%" y="60%" size={500} opacity={0.08} />
+      <GlowDot x="30%" y="20%" size={700} opacity={0.12} />
+      <GlowDot x="60%" y="60%" size={500} opacity={0.08} color={theme.azure} />
 
       <div
         style={{
@@ -40,24 +49,23 @@ export const CtaScene: React.FC = () => {
           alignItems: "center",
           justifyContent: "center",
           height: "100%",
-          gap: 36,
+          gap: 32,
         }}
       >
-        {/* Logo */}
+        {/* Logos container */}
         <div
           style={{
             transform: `scale(${logoScale})`,
             display: "flex",
-            flexDirection: "column",
             alignItems: "center",
             gap: 20,
           }}
         >
           <div
             style={{
-              width: 80,
-              height: 80,
-              borderRadius: 20,
+              width: 88,
+              height: 88,
+              borderRadius: 22,
               background: `linear-gradient(135deg, ${theme.brand}, ${theme.brandLight})`,
               display: "flex",
               justifyContent: "center",
@@ -65,23 +73,35 @@ export const CtaScene: React.FC = () => {
               boxShadow: `0 20px 60px ${theme.brandGlow}`,
             }}
           >
-            <svg
-              width="44"
-              height="44"
-              viewBox="0 0 24 24"
-              fill="none"
-              aria-label="OptSolv Time logo"
-            >
-              <title>OptSolv Time logo</title>
-              <circle cx="12" cy="12" r="9" stroke="white" strokeWidth="2" />
-              <path
-                d="M12 7v5l3.5 3.5"
-                stroke="white"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
+            <OptSolvLogo size={44} color="#ffffff" />
           </div>
+
+          <span
+            style={{
+              fontSize: 32,
+              color: theme.textDimmed,
+              fontWeight: 300,
+            }}
+          >
+            +
+          </span>
+
+          <div
+            style={{
+              width: 88,
+              height: 88,
+              borderRadius: 22,
+              background: theme.bgCard,
+              border: `1px solid ${theme.azure}40`,
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              boxShadow: `0 20px 60px ${theme.azureGlow}`,
+            }}
+          >
+            <AzureDevOpsLogo size={52} />
+          </div>
+
         </div>
 
         <FadeIn delay={10} durationFrames={20}>
@@ -123,23 +143,28 @@ export const CtaScene: React.FC = () => {
               display: "flex",
               gap: 20,
               alignItems: "center",
-              marginTop: 12,
+              marginTop: 8,
             }}
           >
             <div
               style={{
-                padding: "18px 44px",
-                borderRadius: 14,
+                padding: "18px 48px",
+                borderRadius: 16,
                 background: `linear-gradient(135deg, ${theme.brand}, ${theme.brandDark})`,
                 color: "white",
                 fontSize: 20,
                 fontWeight: 700,
                 boxShadow: `0 12px 40px ${theme.brandGlow}`,
                 transform: `scale(${pulseScale})`,
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
               }}
             >
-              Comece agora →
+              Comece a usar agora
+              <ArrowRight size={22} color="white" />
             </div>
+
           </div>
         </FadeIn>
 
@@ -147,8 +172,8 @@ export const CtaScene: React.FC = () => {
           <div
             style={{
               display: "flex",
-              gap: 32,
-              marginTop: 20,
+              gap: 36,
+              marginTop: 16,
             }}
           >
             {[
@@ -190,13 +215,14 @@ export const CtaScene: React.FC = () => {
               fontSize: 14,
               color: theme.textDimmed,
               fontFamily: fonts.body,
-              marginTop: 20,
+              marginTop: 16,
             }}
           >
-            OptSolv © 2026 — Hackathon Interno
+            OptSolv Time Tracker © 2026 — Hackathon Interno
           </span>
         </FadeIn>
       </div>
     </AbsoluteFill>
   );
 };
+

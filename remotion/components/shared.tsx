@@ -1,12 +1,68 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Img,
   interpolate,
   spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { fonts, theme } from "../theme";
+
+/* ── Official OptSolv Brand Logo Mark ── */
+export const OptSolvLogo: React.FC<{
+  size?: number;
+  color?: string;
+  style?: React.CSSProperties;
+}> = ({ size = 28, color = "#FEF9F6", style }) => (
+  <svg
+    width={size}
+    height={Math.round(size * 1.5)}
+    viewBox="0 0 22 33"
+    fill="none"
+    xmlns="http://www.w3.org/2000/svg"
+    style={{ display: "block", flexShrink: 0, ...style }}
+    aria-label="OptSolv Logo"
+  >
+    <title>OptSolv Logo</title>
+    <path
+      d="M20.4456 5.94912L10.1852 0.815186V3.94402L21.1289 9.41962V7.05441C21.1289 6.58606 20.8646 6.1581 20.4456 5.94862V5.94912Z"
+      fill={color}
+    />
+    <path
+      d="M14.0962 17.213V15.7062C14.0962 14.9755 13.6647 14.3136 12.9964 14.0189L0.798737 8.63754V11.7664L11.3549 16.0683L11.3589 16.4594L11.3549 16.8504L0.798737 21.1524V24.2812L12.9964 18.8999C13.6647 18.6051 14.0962 17.9432 14.0962 17.2125V17.213Z"
+      fill={color}
+    />
+    <path
+      d="M10.1852 32.1041L20.4456 26.9701C20.8641 26.7607 21.1289 26.3327 21.1289 25.8644V23.4991L10.1852 28.9747V32.1041Z"
+      fill={color}
+    />
+    <path
+      d="M20.3538 14.368C20.3538 12.7779 19.4421 11.3284 18.0086 10.6401L0.805699 2.37985V5.5087L16.8868 13.1789C17.3322 13.3914 17.6155 13.8408 17.6155 14.3341V18.5857C17.6155 19.079 17.3317 19.5284 16.8868 19.7408L0.805699 27.4111V30.5399L18.0086 22.2796C19.4421 21.5913 20.3538 20.1419 20.3538 18.5518V14.368Z"
+      fill={color}
+    />
+  </svg>
+);
+
+/* ── Official Microsoft Azure DevOps Brand Logo SVG ── */
+export const AzureDevOpsLogo: React.FC<{
+  size?: number;
+  style?: React.CSSProperties;
+}> = ({ size = 36, style }) => (
+  <Img
+    src={staticFile("azure-devops-logo.svg")}
+    style={{
+      width: size,
+      height: size,
+      display: "block",
+      flexShrink: 0,
+      objectFit: "contain",
+      ...style,
+    }}
+  />
+);
+
 
 /* ── Fade wrapper ── */
 export const FadeIn: React.FC<{
@@ -74,7 +130,8 @@ export const GlowDot: React.FC<{
   x: number | string;
   y: number | string;
   opacity?: number;
-}> = ({ size = 400, x, y, opacity = 0.12 }) => (
+  color?: string;
+}> = ({ size = 400, x, y, opacity = 0.12, color = theme.brand }) => (
   <div
     style={{
       position: "absolute",
@@ -83,7 +140,7 @@ export const GlowDot: React.FC<{
       width: size,
       height: size,
       borderRadius: "50%",
-      background: theme.brand,
+      background: color,
       opacity,
       filter: `blur(${size / 3}px)`,
       pointerEvents: "none",
@@ -153,7 +210,7 @@ export const BrowserFrame: React.FC<{
         borderBottom: `1px solid ${theme.border}`,
       }}
     >
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
           <div
             key={c}
@@ -171,6 +228,7 @@ export const BrowserFrame: React.FC<{
           flex: 1,
           display: "flex",
           justifyContent: "center",
+          alignItems: "center",
         }}
       >
         <div
@@ -181,8 +239,12 @@ export const BrowserFrame: React.FC<{
             fontSize: 14,
             color: theme.textMuted,
             fontFamily: fonts.mono,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
           }}
         >
+          <OptSolvLogo size={14} color={theme.brand} />
           {url}
         </div>
       </div>
@@ -222,3 +284,4 @@ export const Counter: React.FC<{
     </span>
   );
 };
+

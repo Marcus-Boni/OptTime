@@ -1,5 +1,12 @@
 import type React from "react";
 import {
+  Calendar,
+  Clock,
+  FileText,
+  Folder,
+  GitPullRequest,
+} from "lucide-react";
+import {
   AbsoluteFill,
   interpolate,
   spring,
@@ -16,16 +23,17 @@ import {
 import { fonts, theme } from "../theme";
 
 const formFields = [
-  { label: "Projeto", value: "OptSolv Time Tracker", icon: "🔶" },
-  { label: "Work Item", value: "#4521 — Implementar dashboard", icon: "🔗" },
-  { label: "Data", value: "06/03/2026", icon: "📅" },
-  { label: "Duração", value: "2h30m", icon: "⏱" },
+  { label: "Projeto", value: "OptSolv Time Tracker", icon: Folder },
+  { label: "Work Item", value: "#4521 — Implementar dashboard", icon: GitPullRequest },
+  { label: "Data", value: "06/03/2026", icon: Calendar },
+  { label: "Duração", value: "2h30m", icon: Clock },
   {
     label: "Descrição",
     value: "Desenvolvimento do módulo de relatórios",
-    icon: "📝",
+    icon: FileText,
   },
 ];
+
 
 /** Scene 4 — Manual entry form showcase (frames 0–300 = 10s) */
 export const ManualEntryScene: React.FC = () => {
@@ -102,6 +110,7 @@ export const ManualEntryScene: React.FC = () => {
                 );
                 const charsToShow = Math.floor(typed * field.value.length);
 
+                const FieldIcon = field.icon;
                 return (
                   <div
                     key={field.label}
@@ -114,10 +123,15 @@ export const ManualEntryScene: React.FC = () => {
                         color: theme.textDimmed,
                         textTransform: "uppercase",
                         letterSpacing: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
                       }}
                     >
-                      {field.icon} {field.label}
+                      <FieldIcon size={14} color={theme.brand} />
+                      {field.label}
                     </span>
+
                     <div
                       style={{
                         padding: "12px 16px",
