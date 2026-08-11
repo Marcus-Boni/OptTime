@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect } from "react";
+import { TimeBotWidget } from "@/components/ai";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
           </AnimatePresence>
         </main>
       </div>
+
+      <TimeBotWidget />
     </div>
   );
 }

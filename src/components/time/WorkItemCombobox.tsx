@@ -15,6 +15,7 @@ interface WorkItemComboboxProps {
   onChange: (item: { id: number; title: string } | null) => void;
   disabled?: boolean;
   unavailableMessage?: string;
+  className?: string;
 }
 
 const typeColors: Record<WorkItemType, string> = {
@@ -31,6 +32,7 @@ export function WorkItemCombobox({
   onChange,
   disabled,
   unavailableMessage,
+  className,
 }: WorkItemComboboxProps) {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,7 +113,7 @@ export function WorkItemCombobox({
 
   if (!projectName) {
     return (
-      <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-sm text-muted-foreground">
+      <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-xs text-muted-foreground">
         {unavailableMessage ?? "Selecione um projeto primeiro"}
       </div>
     );
@@ -119,8 +121,13 @@ export function WorkItemCombobox({
 
   if (value) {
     return (
-      <div className="flex items-center gap-2 rounded-md border border-input bg-background px-3 py-2">
-        <span className="flex-1 truncate text-sm">
+      <div
+        className={cn(
+          "flex h-9 items-center gap-2 rounded-md border border-input bg-background/80 px-3 text-xs font-normal",
+          className,
+        )}
+      >
+        <span className="flex-1 truncate">
           #{value.id} — {value.title}
         </span>
         {!disabled && (
@@ -128,10 +135,10 @@ export function WorkItemCombobox({
             type="button"
             variant="ghost"
             size="icon"
-            className="h-5 w-5 shrink-0"
+            className="h-5 w-5 shrink-0 hover:bg-neutral-800"
             onClick={() => onChange(null)}
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" />
           </Button>
         )}
       </div>

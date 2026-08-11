@@ -60,6 +60,29 @@ interface BatchEmailOptions {
   }>;
 }
 
+function stripHtmlToText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<a\s+(?:[^>]*?\s+)?href="([^"]*)"[^>]*>(.*?)<\/a>/gi, "$2 ($1)")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/tr>/gi, "\n")
+    .replace(/<\/li>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function sanitizeFromEmail(fromEmail: string, user: string, host: string): string {
+  if (host.includes("gmail.com")) {
+    const displayNameMatch = fromEmail.match(/^(.*?)</);
+    const displayName = displayNameMatch ? displayNameMatch[1].trim() : "OptSolv Time";
+    return `${displayName} <${user}>`;
+  }
+  return fromEmail || `OptSolv Time <${user}>`;
+}
+
 /**
  * Core email sender for a single email. Uses DB SMTP if available, or falls back to Resend.
  */
@@ -81,11 +104,18 @@ export async function sendEmail({
       },
     });
 
+    const from = sanitizeFromEmail(smtp.fromEmail, smtp.user, smtp.host);
+
     await transporter.sendMail({
-      from: smtp.fromEmail,
+      from,
       to,
       subject,
       html,
+      text: stripHtmlToText(html),
+      headers: {
+        "X-Mailer": "OptSolv Time",
+        "X-Auto-Response-Suppress": "OOF, AutoReply",
+      },
     });
     return;
   }
@@ -138,16 +168,22 @@ export async function sendBatchEmails({
       },
     });
 
+    const from = sanitizeFromEmail(smtp.fromEmail, smtp.user, smtp.host);
     let sent = 0;
     let failed = 0;
 
     for (const item of emails) {
       try {
         await transporter.sendMail({
-          from: smtp.fromEmail,
+          from,
           to: item.to,
           subject: item.subject,
           html: item.html,
+          text: stripHtmlToText(item.html),
+          headers: {
+            "X-Mailer": "OptSolv Time",
+            "X-Auto-Response-Suppress": "OOF, AutoReply",
+          },
         });
         sent++;
       } catch (err) {
@@ -226,11 +262,8 @@ export async function sendTestSmtpEmail(
 
   await transporter.verify();
 
-  await transporter.sendMail({
-    from: config.fromEmail,
-    to: recipientEmail,
-    subject: "✨ E-mail de Teste — OptSolv Time",
-    html: `
+  const from = sanitizeFromEmail(config.fromEmail, config.user, config.host);
+  const testHtml = `
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head><meta charset="UTF-8"/><title>Teste SMTP</title></head>
@@ -244,13 +277,24 @@ export async function sendTestSmtpEmail(
       Este e-mail confirma que as configurações do servidor <strong>${config.host}</strong> (${config.user}) estão corretas e o envio está 100% operacional.
     </p>
     <div style="background:#1e1e1e;border-radius:8px;padding:12px 16px;font-size:12px;color:#737373;">
-      Remetente: <strong style="color:#e5e5e5;">${config.fromEmail}</strong><br/>
+      Remetente: <strong style="color:#e5e5e5;">${from}</strong><br/>
       Destinatário: <strong style="color:#e5e5e5;">${recipientEmail}</strong>
     </div>
   </div>
 </body>
 </html>
-    `.trim(),
+  `.trim();
+
+  await transporter.sendMail({
+    from,
+    to: recipientEmail,
+    subject: "✨ E-mail de Teste — OptSolv Time",
+    html: testHtml,
+    text: stripHtmlToText(testHtml),
+    headers: {
+      "X-Mailer": "OptSolv Time",
+      "X-Auto-Response-Suppress": "OOF, AutoReply",
+    },
   });
 }
 

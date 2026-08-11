@@ -156,6 +156,10 @@ stages:
               package: $(Pipeline.Workspace)/drop/app.zip
               runtimeStack: $(runtimeStack)
               startUpCommand: node node_modules/next/dist/bin/next start -p $PORT
+              appSettings: |
+                -GEMINI_API_KEY "$(GEMINI_API_KEY)"
+                -GROQ_API_KEY "$(GROQ_API_KEY)"
+                -OPENROUTER_API_KEY "$(OPENROUTER_API_KEY)"
 
           - script: |
               set -e
