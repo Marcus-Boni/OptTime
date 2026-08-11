@@ -263,12 +263,49 @@ export function useTimesheetDetail(id: string) {
     dispatchTimesheetsUpdated();
   }, [fetchTimesheet, id]);
 
+  const approveTimesheet = useCallback(async () => {
+    const res = await fetch(`/api/timesheets/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "approve" }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error ?? "Falha ao aprovar timesheet");
+    }
+
+    await fetchTimesheet();
+    dispatchTimesheetsUpdated();
+  }, [fetchTimesheet, id]);
+
+  const rejectTimesheet = useCallback(
+    async (rejectionReason: string) => {
+      const res = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject", rejectionReason }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Falha ao rejeitar timesheet");
+      }
+
+      await fetchTimesheet();
+      dispatchTimesheetsUpdated();
+    },
+    [fetchTimesheet, id],
+  );
+
   return {
     timesheet,
     loading,
     error,
     refetch: fetchTimesheet,
     submitTimesheet,
+    approveTimesheet,
+    rejectTimesheet,
   };
 }
 

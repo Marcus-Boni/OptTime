@@ -83,6 +83,9 @@ const collapseVariants: Variants = {
   },
 };
 
+const SKELETON_GROUPS = ["group-1", "group-2", "group-3"];
+const SKELETON_ITEMS = ["item-1", "item-2"];
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 interface WeekGroup {
@@ -224,7 +227,7 @@ function WeekGroupSection({
         onClick={onToggle}
         aria-expanded={isOpen}
         aria-label={`${isOpen ? "Recolher" : "Expandir"} grupo ${group.label}`}
-        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/40 bg-card/60 px-5 py-4 text-left backdrop-blur-sm transition-colors hover:border-border/70 hover:bg-card/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/40 bg-card/60 px-4 py-2.5 text-left backdrop-blur-sm transition-colors hover:border-border/70 hover:bg-card/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <CalendarDays
           className="h-4 w-4 flex-shrink-0 text-orange-400"
@@ -299,7 +302,7 @@ function WeekGroupSection({
               variants={groupVariants}
               initial="hidden"
               animate="visible"
-              className="mt-2 space-y-2 pl-2"
+              className="mt-1.5 space-y-1.5 pl-1.5"
             >
               {group.timesheets.map((ts) => (
                 <motion.div key={ts.id} variants={cardVariants}>
@@ -374,7 +377,7 @@ function HistoryWeekSection({
         onClick={onToggle}
         aria-expanded={isOpen}
         aria-label={`${isOpen ? "Recolher" : "Expandir"} histórico ${group.label}`}
-        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/30 bg-card/40 px-5 py-3.5 text-left backdrop-blur-sm transition-colors hover:border-border/60 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-border/30 bg-card/40 px-4 py-2.5 text-left backdrop-blur-sm transition-colors hover:border-border/60 hover:bg-card/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <CalendarDays
           className="h-4 w-4 flex-shrink-0 text-muted-foreground"
@@ -635,13 +638,14 @@ export default function TimesheetApprovalsPage() {
       {/* ── Content ── */}
       {loading ? (
         <output className="space-y-4" aria-label="Carregando aprovações">
-          {Array.from({ length: 2 }).map((_, gi) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-            <div key={gi} className="space-y-2">
+          {SKELETON_GROUPS.slice(0, 2).map((groupKey) => (
+            <div key={groupKey} className="space-y-2">
               <Skeleton className="h-14 w-full rounded-xl" />
-              {Array.from({ length: 2 }).map((_, ci) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-                <Skeleton key={ci} className="ml-2 h-20 w-full rounded-lg" />
+              {SKELETON_ITEMS.map((itemKey) => (
+                <Skeleton
+                  key={`${groupKey}-${itemKey}`}
+                  className="ml-2 h-20 w-full rounded-lg"
+                />
               ))}
             </div>
           ))}
@@ -750,14 +754,12 @@ export default function TimesheetApprovalsPage() {
                     className="space-y-2"
                     aria-label="Carregando histórico"
                   >
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
-                      <div key={i} className="space-y-1.5">
+                    {SKELETON_GROUPS.map((groupKey) => (
+                      <div key={groupKey} className="space-y-1.5">
                         <Skeleton className="h-12 w-full rounded-xl" />
-                        {Array.from({ length: 2 }).map((_, j) => (
-                          // biome-ignore lint/suspicious/noArrayIndexKey: skeleton
+                        {SKELETON_ITEMS.map((itemKey) => (
                           <Skeleton
-                            key={j}
+                            key={`hist-${groupKey}-${itemKey}`}
                             className="ml-2 h-16 w-full rounded-lg"
                           />
                         ))}

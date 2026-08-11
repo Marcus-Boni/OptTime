@@ -2,7 +2,7 @@
 
 import { ChevronRight, Home } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Fragment } from "react";
 
 /** Map path segments to display labels */
@@ -33,6 +33,8 @@ function isDynamicSegment(segment: string): boolean {
 
 export function Breadcrumb() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const fromParam = searchParams.get("from");
 
   // Dashboard home
   if (pathname === "/dashboard") {
@@ -51,7 +53,7 @@ export function Breadcrumb() {
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm">
       <Link
-        href="/"
+        href="/dashboard"
         className="text-muted-foreground transition-colors hover:text-foreground"
         aria-label="Dashboard"
       >
@@ -59,11 +61,22 @@ export function Breadcrumb() {
       </Link>
 
       {segments.map((segment, index) => {
-        const href = `/${segments.slice(0, index + 1).join("/")}`;
+        let href = `/${segments.slice(0, index + 1).join("/")}`;
         const isLast = index === segments.length - 1;
-        const label =
+        let label =
           segmentLabels[segment] ??
           (isDynamicSegment(segment) ? "Detalhe" : segment);
+
+        if (segment === "timesheets") {
+          if (fromParam?.includes("approvals")) {
+            href = "/dashboard/timesheets/approvals";
+            label = "Aprovações";
+          } else if (fromParam) {
+            href = fromParam;
+          } else {
+            href = "/dashboard/timesheets/approvals";
+          }
+        }
 
         return (
           <Fragment key={href}>

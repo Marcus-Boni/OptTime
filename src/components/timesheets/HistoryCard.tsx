@@ -27,8 +27,8 @@ export function HistoryCard({ timesheet }: HistoryCardProps) {
   const isApproved = timesheet.status === "approved";
 
   return (
-    <Card className="border-border/20 bg-card/50 transition-colors hover:bg-card/70">
-      <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+    <Card className="border-border/20 bg-card/50 py-0 shadow-sm transition-colors hover:bg-card/70">
+      <CardContent className="flex flex-col gap-2.5 px-4 py-2.5 sm:flex-row sm:items-center">
         {/* User info */}
         <div className="flex flex-1 min-w-0 items-center gap-3">
           {user && (
@@ -39,25 +39,25 @@ export function HistoryCard({ timesheet }: HistoryCardProps) {
             />
           )}
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-foreground">
+            <p className="truncate text-sm font-medium text-foreground leading-snug">
               {user?.name ?? "Usuário"}
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[11px] text-muted-foreground">
               {user?.department ?? user?.email ?? "—"}
             </p>
           </div>
         </div>
 
         {/* Hours */}
-        <div className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-xs">
           <div className="text-center">
-            <p className="font-mono font-semibold">
+            <p className="font-mono font-semibold text-sm">
               {formatDuration(timesheet.totalMinutes)}
             </p>
             <p className="text-[10px] text-muted-foreground">Total</p>
           </div>
           <div className="text-center">
-            <p className="font-mono font-semibold text-brand-500">
+            <p className="font-mono font-semibold text-sm text-brand-500">
               {formatDuration(timesheet.billableMinutes)}
             </p>
             <p className="text-[10px] text-muted-foreground">Faturável</p>
@@ -100,8 +100,17 @@ export function HistoryCard({ timesheet }: HistoryCardProps) {
         </div>
 
         {/* Details link */}
-        <Button size="sm" variant="ghost" asChild className="flex-shrink-0">
-          <Link href={`/dashboard/timesheets/${timesheet.id}`}>Detalhes</Link>
+        <Button
+          size="sm"
+          variant="ghost"
+          asChild
+          className="h-8 px-3 text-xs flex-shrink-0"
+        >
+          <Link
+            href={`/dashboard/timesheets/${timesheet.id}?from=/dashboard/timesheets/approvals`}
+          >
+            Detalhes
+          </Link>
         </Button>
       </CardContent>
     </Card>

@@ -29,6 +29,15 @@ export async function GET(
     const ts = await db.query.timesheet.findFirst({
       where: eq(timesheet.id, id),
       with: {
+        user: {
+          columns: {
+            id: true,
+            name: true,
+            email: true,
+            image: true,
+            department: true,
+          },
+        },
         approver: { columns: { id: true, name: true } },
         entries: {
           where: isNull(timeEntry.deletedAt),

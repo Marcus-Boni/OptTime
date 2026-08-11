@@ -102,8 +102,8 @@ export function ApprovalCard({
 
   return (
     <>
-      <Card className="border-border/30 bg-card/80">
-        <CardContent className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center">
+      <Card className="border-border/30 bg-card/80 py-0 shadow-sm transition-colors hover:border-border/60">
+        <CardContent className="flex flex-col gap-2.5 px-4 py-2.5 sm:flex-row sm:items-center">
           {/* User info */}
           <div className="flex items-center gap-3 flex-1 min-w-0">
             {user && (
@@ -114,25 +114,25 @@ export function ApprovalCard({
               />
             )}
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground">
+              <p className="truncate text-sm font-medium text-foreground leading-snug">
                 {user?.name ?? "Usuário"}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground">
                 {parsePeriod(timesheet.period)}
               </p>
             </div>
           </div>
 
           {/* Hours */}
-          <div className="flex gap-4 text-sm">
+          <div className="flex gap-4 text-xs">
             <div className="text-center">
-              <p className="font-mono font-semibold">
+              <p className="font-mono font-semibold text-sm">
                 {formatDuration(timesheet.totalMinutes)}
               </p>
               <p className="text-[10px] text-muted-foreground">Total</p>
             </div>
             <div className="text-center">
-              <p className="font-mono font-semibold text-brand-500">
+              <p className="font-mono font-semibold text-sm text-brand-500">
                 {formatDuration(timesheet.billableMinutes)}
               </p>
               <p className="text-[10px] text-muted-foreground">Faturável</p>
@@ -142,9 +142,16 @@ export function ApprovalCard({
           <TimesheetStatusBadge status={timesheet.status} />
 
           {/* Actions */}
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" asChild>
-              <Link href={`/dashboard/timesheets/${timesheet.id}`}>
+          <div className="flex gap-1.5 shrink-0">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-8 px-3 text-xs"
+              asChild
+            >
+              <Link
+                href={`/dashboard/timesheets/${timesheet.id}?from=/dashboard/timesheets/approvals`}
+              >
                 Detalhes
               </Link>
             </Button>
@@ -152,21 +159,21 @@ export function ApprovalCard({
               <>
                 <Button
                   size="sm"
-                  className="bg-green-600 text-white hover:bg-green-700"
+                  className="h-8 px-3 text-xs bg-green-600 text-white hover:bg-green-700"
                   onClick={() => setApproveOpen(true)}
                   disabled={loading}
                 >
-                  <Check className="mr-1.5 h-3.5 w-3.5" />
+                  <Check className="mr-1 h-3.5 w-3.5" />
                   Aprovar
                 </Button>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="text-destructive hover:text-destructive"
+                  className="h-8 px-3 text-xs text-destructive hover:text-destructive"
                   onClick={() => setRejectOpen(true)}
                   disabled={loading || timesheet.status !== "submitted"}
                 >
-                  <X className="mr-1.5 h-3.5 w-3.5" />
+                  <X className="mr-1 h-3.5 w-3.5" />
                   Rejeitar
                 </Button>
               </>

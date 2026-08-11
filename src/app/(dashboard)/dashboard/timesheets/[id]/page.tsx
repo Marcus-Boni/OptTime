@@ -7,13 +7,15 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarDays,
+  Check,
   Clock3,
   FolderKanban,
   ReceiptText,
   Send,
+  X,
 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   Bar,
@@ -26,8 +28,19 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { TimesheetEntriesTable } from "@/components/timesheets/TimesheetEntriesTable";
 import { TimesheetStatusBadge } from "@/components/timesheets/TimesheetStatusBadge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,9 +50,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useTimesheetDetail } from "@/hooks/use-timesheets";
+import { useSession } from "@/lib/auth-client";
 import { isTimesheetSubmittableStatus } from "@/lib/timesheet-status";
 import { formatDuration, getPeriodRange, parseLocalDate } from "@/lib/utils";
 
@@ -174,9 +197,29 @@ function formatTimestamp(value: string | null): string {
 
 export default function TimesheetDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { timesheet, loading, error, refetch, submitTimesheet } =
-    useTimesheetDetail(id);
+  const searchParams = useSearchParams();
+  const fromParam = searchParams.get("from");
+
+  const backHref = fromParam || "/dashboard/timesheets";
+  const backLabel = fromParam?.includes("approvals")
+    ? "Aprovação de Timesheets"
+    : "Timesheets";
+
+  const { data: session } = useSession();
+  const {
+    timesheet,
+    loading,
+    error,
+    refetch,
+    submitTimesheet,
+    approveTimesheet,
+    rejectTimesheet,
+  } = useTimesheetDetail(id);
   const [submitting, setSubmitting] = useState(false);
+  const [approveOpen, setApproveOpen] = useState(false);
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
 
   if (loading) {
     return (
@@ -205,11 +248,11 @@ export default function TimesheetDetailPage() {
     return (
       <div className="space-y-6">
         <Link
-          href="/dashboard/timesheets"
+          href={backHref}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Timesheets
+          {backLabel}
         </Link>
 
         <Card className="border-destructive/20 bg-destructive/5">
@@ -321,6 +364,60 @@ export default function TimesheetDetailPage() {
   const canSubmit = isTimesheetSubmittableStatus(timesheet.status);
   const isResubmission = timesheet.status === "rejected";
 
+  const user = session?.user as { role?: string } | undefined;
+
+  const isManagerOrAdmin = user?.role === "admin" || user?.role === "manager";
+  const isOtherUserTimesheet =
+    !!timesheet?.userId && timesheet.userId !== session?.user?.id;
+  const isFromApprovals = fromParam?.includes("approvals");
+
+  const canApproveOrReject =
+    timesheet && (isManagerOrAdmin || isOtherUserTimesheet || isFromApprovals);
+
+  const canApprove =
+    canApproveOrReject &&
+    (timesheet.status === "submitted" ||
+      timesheet.status === "open" ||
+      timesheet.status === "rejected");
+
+  const canReject = canApproveOrReject && timesheet.status === "submitted";
+
+  const handleApprove = async () => {
+    setActionLoading(true);
+    try {
+      await approveTimesheet();
+      toast.success("Timesheet aprovado com sucesso!");
+      setApproveOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao aprovar timesheet",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!rejectionReason.trim()) {
+      toast.error("Por favor, informe o motivo da rejeição.");
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await rejectTimesheet(rejectionReason.trim());
+      toast.success("Timesheet rejeitado com sucesso.");
+      setRejectOpen(false);
+      setRejectionReason("");
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao rejeitar timesheet",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     setSubmitting(true);
 
@@ -353,17 +450,35 @@ export default function TimesheetDetailPage() {
     >
       <motion.div variants={itemVariants} className="space-y-4">
         <Link
-          href="/dashboard/timesheets"
+          href={backHref}
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Timesheets
+          {backLabel}
         </Link>
 
         <Card className="border-border/60 bg-card/80 backdrop-blur">
           <CardHeader>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div className="space-y-3">
+              <div className="space-y-3 min-w-0 flex-1">
+                {timesheet.user && (
+                  <div className="inline-flex items-center gap-3 rounded-xl border border-border/40 bg-muted/40 px-3.5 py-2">
+                    <UserAvatar
+                      image={timesheet.user.image}
+                      name={timesheet.user.name ?? "Usuário"}
+                      size="sm"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        Colaborador
+                      </p>
+                      <p className="text-sm font-semibold text-foreground truncate">
+                        {timesheet.user.name}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="font-display text-2xl font-bold text-foreground">
                     {parsePeriodLabel(timesheet.period, timesheet.periodType)}
@@ -394,22 +509,47 @@ export default function TimesheetDetailPage() {
                 </div>
               </div>
 
-              {canSubmit && (
-                <Button
-                  className="gap-2 self-start bg-brand-500 text-white hover:bg-brand-600 lg:ml-auto"
-                  disabled={submitting || timesheet.entries.length === 0}
-                  onClick={handleSubmit}
-                >
-                  <Send className="h-4 w-4" />
-                  {submitting
-                    ? isResubmission
-                      ? "Submetendo novamente..."
-                      : "Submetendo..."
-                    : isResubmission
-                      ? "Submeter timesheet novamente"
-                      : "Submeter timesheet"}
-                </Button>
-              )}
+              <div className="flex flex-wrap items-center gap-2 self-start lg:ml-auto">
+                {canApprove && (
+                  <Button
+                    className="gap-1.5 bg-green-600 text-white hover:bg-green-700 font-medium"
+                    onClick={() => setApproveOpen(true)}
+                    disabled={actionLoading}
+                  >
+                    <Check className="h-4 w-4" />
+                    Aprovar
+                  </Button>
+                )}
+
+                {canReject && (
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 font-medium"
+                    onClick={() => setRejectOpen(true)}
+                    disabled={actionLoading}
+                  >
+                    <X className="h-4 w-4" />
+                    Rejeitar
+                  </Button>
+                )}
+
+                {canSubmit && (
+                  <Button
+                    className="gap-2 bg-brand-500 text-white hover:bg-brand-600 font-medium"
+                    disabled={submitting || timesheet.entries.length === 0}
+                    onClick={handleSubmit}
+                  >
+                    <Send className="h-4 w-4" />
+                    {submitting
+                      ? isResubmission
+                        ? "Submetendo novamente..."
+                        : "Submetendo..."
+                      : isResubmission
+                        ? "Submeter timesheet novamente"
+                        : "Submeter timesheet"}
+                  </Button>
+                )}
+              </div>
             </div>
           </CardHeader>
 
@@ -768,6 +908,21 @@ export default function TimesheetDetailPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
+              {timesheet.user && (
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3 border-b border-border/40 pb-3">
+                  <span className="text-muted-foreground">Colaborador</span>
+                  <div className="flex items-center gap-2 sm:justify-end">
+                    <UserAvatar
+                      image={timesheet.user.image}
+                      name={timesheet.user.name ?? "Usuário"}
+                      size="sm"
+                    />
+                    <span className="font-medium text-foreground">
+                      {timesheet.user.name}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
                 <span className="text-muted-foreground">Período</span>
                 <span className="text-left font-medium text-foreground sm:max-w-[65%] sm:text-right">
@@ -839,6 +994,75 @@ export default function TimesheetDetailPage() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Approval Modal */}
+      <AlertDialog open={approveOpen} onOpenChange={setApproveOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aprovar Timesheet</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja aprovar o timesheet de{" "}
+              <strong>{timesheet.user?.name ?? "Colaborador"}</strong> referente
+              a{" "}
+              <strong>
+                {parsePeriodLabel(timesheet.period, timesheet.periodType)}
+              </strong>{" "}
+              ({formatDuration(timesheet.totalMinutes)})?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleApprove}
+              disabled={actionLoading}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              {actionLoading ? "Aprovando..." : "Confirmar Aprovação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rejection Modal */}
+      <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rejeitar Timesheet</DialogTitle>
+            <DialogDescription>
+              Informe o motivo da rejeição do timesheet de{" "}
+              <strong>{timesheet.user?.name ?? "Colaborador"}</strong>. O
+              colaborador receberá esse motivo para realizar os ajustes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Textarea
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+              placeholder="Descreva detalhadamente o motivo da rejeição (ex: Horas lançadas no projeto incorreto)..."
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRejectOpen(false)}
+              disabled={actionLoading}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={actionLoading || !rejectionReason.trim()}
+            >
+              {actionLoading ? "Rejeitando..." : "Confirmar Rejeição"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }
