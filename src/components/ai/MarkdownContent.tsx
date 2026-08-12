@@ -5,182 +5,263 @@ export interface MarkdownContentProps {
 }
 
 /**
- * Clean Markdown renderer for TimeBot chat messages.
- * Formats **bold**, *italics*, `inline code`, headers, blockquotes, lists,
- * and strips json:quick_entry blocks so raw JSON isn't displayed in text.
+ * Dependency-free Markdown renderer tuned for TimeBot chat bubbles.
+ * Supports headings, lists, tables, blockquotes, code blocks, rules and the
+ * inline set (bold, italic, strikethrough, code, links).
  */
 export function MarkdownContent({ content }: MarkdownContentProps) {
-  // Strip json:quick_entry blocks from display text
-  const cleanContent = content
+  const cleaned = content
+    // Legacy quick-entry payloads must never leak into the transcript.
     .replace(/```json:quick_entry[\s\S]*?```/g, "")
     .trim();
 
-  // Split lines to process blocks
-  const lines = cleanContent.split("\n");
+  if (!cleaned) return null;
+
+  const lines = cleaned.split("\n");
   const elements: React.ReactNode[] = [];
-  let currentList: { type: "ul" | "ol"; items: string[] } | null = null;
-  let codeBlockLines: string[] | null = null;
+
+  let listBuffer: { ordered: boolean; items: string[] } | null = null;
+  let codeBuffer: string[] | null = null;
+  let tableBuffer: string[] | null = null;
 
   function flushList() {
-    if (!currentList) return;
-    const isUl = currentList.type === "ul";
-    const ListTag = isUl ? "ul" : "ol";
-    const key = `list-${elements.length}`;
+    if (!listBuffer) return;
 
+    const ListTag = listBuffer.ordered ? "ol" : "ul";
     elements.push(
       <ListTag
-        key={key}
-        className={`my-1.5 space-y-1 pl-4 text-xs ${
-          isUl ? "list-disc" : "list-decimal"
+        key={`list-${elements.length}`}
+        className={`my-1.5 space-y-1 pl-4 ${
+          listBuffer.ordered ? "list-decimal" : "list-disc"
         }`}
       >
-        {currentList.items.map((item) => (
-          <li key={`item-${item}`}>{formatInlineMarkdown(item)}</li>
+        {listBuffer.items.map((item, index) => (
+          <li key={`li-${index}-${item.slice(0, 12)}`}>{renderInline(item)}</li>
         ))}
       </ListTag>,
     );
-    currentList = null;
+    listBuffer = null;
   }
 
-  function flushCodeBlock() {
-    if (!codeBlockLines) return;
-    const codeText = codeBlockLines.join("\n");
-    const key = `code-${elements.length}`;
+  function flushCode() {
+    if (!codeBuffer) return;
 
     elements.push(
       <pre
-        key={key}
-        className="my-2 overflow-x-auto rounded-lg border border-border/40 bg-neutral-900 p-3 font-mono text-[11px] text-orange-300 dark:border-white/10 dark:bg-neutral-950"
+        key={`code-${elements.length}`}
+        className="my-2 overflow-x-auto rounded-lg border border-border/40 bg-neutral-100 p-2.5 font-mono text-[11px] text-neutral-800 dark:border-white/10 dark:bg-neutral-950 dark:text-orange-300"
       >
-        <code>{codeText}</code>
+        <code>{codeBuffer.join("\n")}</code>
       </pre>,
     );
-    codeBlockLines = null;
+    codeBuffer = null;
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? "";
+  function flushTable() {
+    if (!tableBuffer || tableBuffer.length < 2) {
+      tableBuffer = null;
+      return;
+    }
 
-    // Code block toggle ```
-    if (line.trim().startsWith("```")) {
-      if (codeBlockLines !== null) {
-        flushCodeBlock();
+    const rows = tableBuffer
+      .filter((row) => !/^\s*\|?[\s:|-]+\|?\s*$/.test(row))
+      .map((row) =>
+        row
+          .replace(/^\s*\|/, "")
+          .replace(/\|\s*$/, "")
+          .split("|")
+          .map((cell) => cell.trim()),
+      );
+
+    const [header, ...body] = rows;
+    if (!header) {
+      tableBuffer = null;
+      return;
+    }
+
+    elements.push(
+      <div
+        key={`table-${elements.length}`}
+        className="my-2 overflow-x-auto rounded-lg border border-border/40 dark:border-white/10"
+      >
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="bg-neutral-100 dark:bg-neutral-900">
+            <tr>
+              {header.map((cell, index) => (
+                <th
+                  key={`th-${index}-${cell}`}
+                  className="px-2 py-1.5 text-left font-semibold text-foreground"
+                >
+                  {renderInline(cell)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, rowIndex) => (
+              <tr
+                key={`tr-${rowIndex}-${row[0] ?? ""}`}
+                className="border-border/40 border-t dark:border-white/5"
+              >
+                {row.map((cell, cellIndex) => (
+                  <td
+                    key={`td-${cellIndex}-${cell}`}
+                    className="px-2 py-1.5 text-neutral-700 dark:text-neutral-300"
+                  >
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>,
+    );
+
+    tableBuffer = null;
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine ?? "";
+    const trimmed = line.trim();
+
+    // Fenced code blocks take precedence over every other rule.
+    if (trimmed.startsWith("```")) {
+      if (codeBuffer !== null) {
+        flushCode();
       } else {
         flushList();
-        codeBlockLines = [];
+        flushTable();
+        codeBuffer = [];
       }
       continue;
     }
 
-    // Inside code block
-    if (codeBlockLines !== null) {
-      codeBlockLines.push(line);
+    if (codeBuffer !== null) {
+      codeBuffer.push(line);
       continue;
     }
 
-    const trimmed = line.trim();
+    // Table rows.
+    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+      flushList();
+      tableBuffer = tableBuffer ?? [];
+      tableBuffer.push(trimmed);
+      continue;
+    }
+    if (tableBuffer) flushTable();
 
     if (!trimmed) {
       flushList();
       continue;
     }
 
-    // Unordered list (- or *)
-    const ulMatch = trimmed.match(/^[-*]\s+(.*)$/);
-    if (ulMatch?.[1]) {
-      if (!currentList || currentList.type !== "ul") {
-        flushList();
-        currentList = { type: "ul", items: [] };
-      }
-      currentList.items.push(ulMatch[1]);
+    // Horizontal rule.
+    if (/^(---|\*\*\*|___)$/.test(trimmed)) {
+      flushList();
+      elements.push(
+        <hr
+          key={`hr-${elements.length}`}
+          className="my-2 border-border/50 dark:border-white/10"
+        />,
+      );
       continue;
     }
 
-    // Ordered list (1. 2.)
-    const olMatch = trimmed.match(/^\d+\.\s+(.*)$/);
-    if (olMatch?.[1]) {
-      if (!currentList || currentList.type !== "ol") {
+    const unordered = trimmed.match(/^[-*+]\s+(.*)$/);
+    if (unordered?.[1]) {
+      if (!listBuffer || listBuffer.ordered) {
         flushList();
-        currentList = { type: "ol", items: [] };
+        listBuffer = { ordered: false, items: [] };
       }
-      currentList.items.push(olMatch[1]);
+      listBuffer.items.push(unordered[1]);
+      continue;
+    }
+
+    const ordered = trimmed.match(/^\d+[.)]\s+(.*)$/);
+    if (ordered?.[1]) {
+      if (!listBuffer || !listBuffer.ordered) {
+        flushList();
+        listBuffer = { ordered: true, items: [] };
+      }
+      listBuffer.items.push(ordered[1]);
       continue;
     }
 
     flushList();
 
-    // Headers (### ## #)
-    const headerMatch = trimmed.match(/^(#{1,3})\s+(.*)$/);
-    if (headerMatch?.[2]) {
-      const level = headerMatch[1]?.length || 3;
-      const text = headerMatch[2];
-      const key = `h-${text}`;
+    const heading = trimmed.match(/^(#{1,4})\s+(.*)$/);
+    if (heading?.[2]) {
+      const level = heading[1]?.length ?? 3;
+      const text = heading[2];
+      const className =
+        level <= 2
+          ? "mt-2.5 mb-1 font-bold text-[13px] text-foreground"
+          : "mt-2 mb-1 font-semibold text-[12px] text-foreground";
 
-      if (level === 1) {
-        elements.push(
-          <h3 key={key} className="mt-2 mb-1 font-bold text-sm text-foreground">
-            {formatInlineMarkdown(text)}
-          </h3>,
-        );
-      } else if (level === 2) {
-        elements.push(
-          <h4 key={key} className="mt-2 mb-1 font-bold text-xs text-foreground">
-            {formatInlineMarkdown(text)}
-          </h4>,
-        );
-      } else {
-        elements.push(
-          <h5
-            key={key}
-            className="mt-1.5 mb-1 font-semibold text-xs text-foreground"
-          >
-            {formatInlineMarkdown(text)}
-          </h5>,
-        );
-      }
+      elements.push(
+        <p key={`h-${elements.length}`} className={className}>
+          {renderInline(text)}
+        </p>,
+      );
       continue;
     }
 
-    // Blockquote (> text)
     if (trimmed.startsWith(">")) {
-      const text = trimmed.replace(/^>\s*/, "");
       elements.push(
         <blockquote
-          key={`bq-${text}`}
-          className="my-1.5 border-l-2 border-orange-500/60 pl-2.5 text-neutral-400 italic text-xs"
+          key={`bq-${elements.length}`}
+          className="my-1.5 border-orange-500/60 border-l-2 pl-2.5 text-neutral-600 italic dark:text-neutral-400"
         >
-          {formatInlineMarkdown(text)}
+          {renderInline(trimmed.replace(/^>\s*/, ""))}
         </blockquote>,
       );
       continue;
     }
 
-    // Paragraph line
     elements.push(
-      <p key={`p-${line}`} className="leading-relaxed">
-        {formatInlineMarkdown(line)}
+      <p key={`p-${elements.length}`} className="leading-relaxed">
+        {renderInline(trimmed)}
       </p>,
     );
   }
 
   flushList();
-  flushCodeBlock();
+  flushCode();
+  flushTable();
 
-  return <div className="space-y-1.5">{elements}</div>;
+  return <div className="space-y-1">{elements}</div>;
 }
 
-/**
- * Converts **bold**, *italics*, and `inline code` into styled React nodes.
- */
-function formatInlineMarkdown(text: string): React.ReactNode[] {
-  // Tokenize regex matching **bold**, *italic*, `code`
-  const regex = /(\*\*.*?\*\*|\*.*?\*|`.*?`)/g;
-  const parts = text.split(regex);
+const INLINE_PATTERN =
+  /(\[[^\]]+\]\((?:https?:\/\/|\/)[^)\s]+\)|\*\*[^*]+\*\*|__[^_]+__|~~[^~]+~~|`[^`]+`|\*[^*\n]+\*)/g;
 
-  return parts.map((part) => {
-    const key = `part-${part}`;
+function renderInline(text: string): React.ReactNode[] {
+  const parts = text.split(INLINE_PATTERN).filter((part) => part !== "");
 
-    if (part.startsWith("**") && part.endsWith("**") && part.length >= 4) {
+  return parts.map((part, index) => {
+    const key = `inline-${index}-${part.slice(0, 12)}`;
+
+    const link = part.match(/^\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)\s]+)\)$/);
+    if (link?.[1] && link[2]) {
+      const isExternal = link[2].startsWith("http");
+      return (
+        <a
+          key={key}
+          href={link[2]}
+          target={isExternal ? "_blank" : undefined}
+          rel={isExternal ? "noopener noreferrer" : undefined}
+          className="font-medium text-orange-600 underline underline-offset-2 hover:text-orange-500 dark:text-orange-400"
+        >
+          {link[1]}
+        </a>
+      );
+    }
+
+    if (
+      (part.startsWith("**") && part.endsWith("**") && part.length > 4) ||
+      (part.startsWith("__") && part.endsWith("__") && part.length > 4)
+    ) {
       return (
         <strong key={key} className="font-bold text-foreground">
           {part.slice(2, -2)}
@@ -188,22 +269,30 @@ function formatInlineMarkdown(text: string): React.ReactNode[] {
       );
     }
 
-    if (part.startsWith("*") && part.endsWith("*") && part.length >= 2) {
+    if (part.startsWith("~~") && part.endsWith("~~") && part.length > 4) {
+      return (
+        <s key={key} className="text-neutral-500 dark:text-neutral-400">
+          {part.slice(2, -2)}
+        </s>
+      );
+    }
+
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+      return (
+        <code
+          key={key}
+          className="rounded bg-neutral-200/80 px-1.5 py-0.5 font-mono text-[11px] text-orange-700 dark:bg-neutral-800 dark:text-orange-400"
+        >
+          {part.slice(1, -1)}
+        </code>
+      );
+    }
+
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return (
         <em key={key} className="italic">
           {part.slice(1, -1)}
         </em>
-      );
-    }
-
-    if (part.startsWith("`") && part.endsWith("`") && part.length >= 2) {
-      return (
-        <code
-          key={key}
-          className="rounded bg-neutral-800/80 px-1.5 py-0.5 font-mono text-[11px] text-orange-400 dark:bg-neutral-800"
-        >
-          {part.slice(1, -1)}
-        </code>
       );
     }
 

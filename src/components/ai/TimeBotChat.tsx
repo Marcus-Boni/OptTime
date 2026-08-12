@@ -1,321 +1,389 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { Bot, Loader2, Send, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  AlertCircle,
+  Bot,
+  Check,
+  ChevronDown,
+  Copy,
+  Loader2,
+  RefreshCw,
+  Sparkles,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AssistantActionView } from "@/components/ai/AssistantActions";
+import { AssistantCardView } from "@/components/ai/AssistantCards";
+import { BriefingPanel } from "@/components/ai/BriefingPanel";
+import { ChatComposer } from "@/components/ai/ChatComposer";
+import { MarkdownContent } from "@/components/ai/MarkdownContent";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
+import {
+  type TimeBotMessage,
+  type ToolActivityItem,
+  useTimeBot,
+} from "@/hooks/use-timebot";
+import type { AppRole } from "@/lib/access-control";
 import { useSession } from "@/lib/auth-client";
-import type { ChatMessage, ParsedTimeEntry } from "@/lib/validations/ai.schema";
-import { MarkdownContent } from "./MarkdownContent";
-import { QuickRegisterCard } from "./QuickRegisterCard";
+import { cn } from "@/lib/utils";
 
 export interface TimeBotChatProps {
   activePath?: string;
+  isOpen: boolean;
 }
 
-interface MessageItem extends ChatMessage {
-  id: string;
-  quickEntryPayload?: ParsedTimeEntry | null;
+function ToolActivity({ tools }: { tools: ToolActivityItem[] }) {
+  if (tools.length === 0) return null;
+
+  return (
+    <ul className="mb-2 space-y-1" aria-label="Consultas realizadas">
+      {tools.map((tool) => (
+        <li
+          key={tool.id}
+          className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400"
+        >
+          {tool.status === "running" ? (
+            <Loader2
+              className="h-3 w-3 shrink-0 animate-spin text-orange-500"
+              aria-hidden="true"
+            />
+          ) : tool.status === "failed" ? (
+            <AlertCircle
+              className="h-3 w-3 shrink-0 text-red-500"
+              aria-hidden="true"
+            />
+          ) : (
+            <Check
+              className="h-3 w-3 shrink-0 text-emerald-500"
+              aria-hidden="true"
+            />
+          )}
+          <span className="truncate">{tool.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
-const WELCOME_MESSAGE: MessageItem = {
-  id: "welcome",
-  role: "assistant",
-  content:
-    "Olá! Sou o **TimeBot**, seu assistente inteligente no **OptSolv Time Tracker**! 🤖⚡\n\nComo posso ajudar você hoje com registros de tempo, dúvidas ou dicas sobre o sistema?",
-};
+function MessageActions({
+  content,
+  onRetry,
+  canRetry,
+}: {
+  content: string;
+  onRetry: () => void;
+  canRetry: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
 
-const INITIAL_SUGGESTIONS = [
-  "Como submeter meu timesheet semanal?",
-  "Trabalhei 2h30 no projeto OptSolv ajustando a task #102",
-  "Como funciona a aprovação de horas?",
-  "Como vincular tarefas com Azure DevOps?",
-];
-
-export function TimeBotChat({ activePath }: TimeBotChatProps) {
-  const { data: session } = useSession();
-  const user = session?.user;
-  const storageKey = user?.id
-    ? `timebot_chat_history_${user.id}`
-    : "timebot_chat_history_guest";
-
-  const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
-  // Lazy state initialization from localStorage for session persistence
-  const [messages, setMessages] = useState<MessageItem[]>(() => {
-    if (typeof window === "undefined") return [WELCOME_MESSAGE];
+  async function handleCopy() {
     try {
-      const key = user?.id
-        ? `timebot_chat_history_${user.id}`
-        : "timebot_chat_history_guest";
-      const saved = localStorage.getItem(key);
-      if (saved) {
-        const parsed = JSON.parse(saved) as MessageItem[];
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (err: unknown) {
-      console.error(
-        "[TimeBotChat] Error reading history from localStorage:",
-        err,
-      );
-    }
-    return [WELCOME_MESSAGE];
-  });
-
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Save history to localStorage on message update
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(messages));
-    } catch (err: unknown) {
-      console.error("[TimeBotChat] Error saving history to localStorage:", err);
-    }
-  }, [messages, storageKey]);
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: auto-scroll on new messages
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
-  function handleClearChat() {
-    try {
-      localStorage.removeItem(storageKey);
-    } catch (err: unknown) {
-      console.error("[TimeBotChat] Error clearing localStorage:", err);
-    }
-    setMessages([WELCOME_MESSAGE]);
-    toast.info("Conversa limpa com sucesso!");
-  }
-
-  async function handleSendMessage(textToSend?: string) {
-    const text = (textToSend || input).trim();
-    if (!text || isLoading) return;
-
-    const userMessage: MessageItem = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: text,
-    };
-
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsLoading(true);
-
-    try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: messages.map((m) => ({ role: m.role, content: m.content })),
-          context: { activePath },
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Falha na resposta do TimeBot");
-      }
-
-      const data = (await res.json()) as {
-        content: string;
-        quickEntryPayload?: ParsedTimeEntry | null;
-      };
-
-      const botMessage: MessageItem = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: data.content,
-        quickEntryPayload: data.quickEntryPayload,
-      };
-
-      setMessages((prev) => [...prev, botMessage]);
-    } catch (err: unknown) {
-      console.error("[TimeBotChat] handleSendMessage:", err);
-      toast.error("Ocorreu um erro ao obter resposta do TimeBot.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendMessage();
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (error: unknown) {
+      console.error("[TimeBotChat] handleCopy:", error);
+      toast.error("Não foi possível copiar a resposta.");
     }
   }
 
   return (
-    <div className="flex h-full flex-col justify-between overflow-hidden bg-card text-card-foreground">
-      {/* Header Toolbar */}
-      <div className="flex items-center justify-between border-b border-border/40 bg-neutral-900/60 px-4 py-2 text-xs dark:border-white/10">
-        <span className="flex items-center gap-1.5 font-medium text-neutral-400 text-[11px]">
-          <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-          Sessão ativa salva
-        </span>
-        <div className="flex items-center gap-2">
-          {messages.length > 1 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleClearChat}
-              className="h-7 gap-1.5 text-[11px] text-neutral-400 hover:bg-neutral-800 hover:text-red-400 cursor-pointer transition-colors"
-              title="Limpar histórico de conversa"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              Limpar conversa
-            </Button>
-          )}
-        </div>
-      </div>
+    <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <button
+        type="button"
+        onClick={handleCopy}
+        aria-label="Copiar resposta"
+        className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+      >
+        {copied ? (
+          <Check className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+        ) : (
+          <Copy className="h-3 w-3" aria-hidden="true" />
+        )}
+      </button>
 
-      {/* Messages area */}
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
-        {/* Quick Suggestion Chips */}
-        {messages.length <= 2 && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mb-4 space-y-2"
-          >
-            <p className="flex items-center gap-1.5 font-medium text-neutral-400 text-xs dark:text-neutral-400">
-              <Sparkles className="h-3.5 w-3.5 text-orange-400 animate-pulse" />{" "}
-              Sugestões rápidas:
-            </p>
-            <motion.div
-              initial="hidden"
-              animate="visible"
-              variants={{
-                hidden: { opacity: 0 },
-                visible: {
-                  opacity: 1,
-                  transition: { staggerChildren: 0.06 },
-                },
-              }}
-              className="flex flex-wrap gap-2"
-            >
-              {INITIAL_SUGGESTIONS.map((suggestion) => (
-                <motion.button
-                  key={suggestion}
-                  type="button"
-                  variants={{
-                    hidden: { opacity: 0, y: 8, scale: 0.95 },
-                    visible: {
-                      opacity: 1,
-                      y: 0,
-                      scale: 1,
-                      transition: { duration: 0.25, ease: "easeOut" },
-                    },
-                  }}
-                  whileHover={{ scale: 1.04, y: -2 }}
-                  whileTap={{ scale: 0.96 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                  onClick={() => handleSendMessage(suggestion)}
-                  disabled={isLoading}
-                  className="cursor-pointer rounded-lg border border-border/60 bg-neutral-100 px-3 py-1.5 text-left font-normal text-xs text-neutral-700 transition-colors hover:border-orange-500/40 hover:bg-orange-500/10 hover:text-orange-600 active:scale-95 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-orange-950/30 dark:hover:text-orange-400"
-                >
-                  {suggestion}
-                </motion.button>
-              ))}
-            </motion.div>
-          </motion.div>
+      {canRetry && (
+        <button
+          type="button"
+          onClick={onRetry}
+          aria-label="Gerar novamente"
+          className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+        >
+          <RefreshCw className="h-3 w-3" aria-hidden="true" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function MessageBubble({
+  message,
+  userName,
+  userImage,
+  isLast,
+  isStreaming,
+  onRetry,
+}: {
+  message: TimeBotMessage;
+  userName: string;
+  userImage?: string | null;
+  isLast: boolean;
+  isStreaming: boolean;
+  onRetry: () => void;
+}) {
+  const isUser = message.role === "user";
+  const showCaret = !isUser && isLast && isStreaming && message.content === "";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={cn(
+        "group flex gap-2.5",
+        isUser ? "flex-row-reverse" : "flex-row",
+      )}
+    >
+      {isUser ? (
+        <UserAvatar
+          name={userName}
+          image={userImage}
+          size="sm"
+          className="h-7 w-7 shrink-0 border-none text-[10px]"
+        />
+      ) : (
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white dark:bg-orange-600">
+          <Bot className="h-4 w-4" aria-hidden="true" />
+        </div>
+      )}
+
+      <div
+        className={cn(
+          "min-w-0 max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm",
+          isUser
+            ? "bg-orange-500 text-white dark:bg-orange-600"
+            : "border border-border/40 bg-neutral-100 text-neutral-800 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
+        )}
+      >
+        {!isUser && <ToolActivity tools={message.tools} />}
+
+        {isUser ? (
+          <p className="whitespace-pre-wrap break-words leading-relaxed">
+            {message.content}
+          </p>
+        ) : (
+          <>
+            <MarkdownContent content={message.content} />
+            {showCaret && (
+              <span className="inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-orange-500 align-middle" />
+            )}
+          </>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex gap-3 text-xs md:text-sm ${
-              msg.role === "user" ? "flex-row-reverse" : "flex-row"
-            }`}
-          >
-            {/* Avatar */}
-            {msg.role === "user" ? (
-              <UserAvatar
-                name={user?.name ?? "Usuário"}
-                image={user?.image}
-                size="sm"
-                className="h-7 w-7 border-none text-[10px]"
-              />
-            ) : (
-              <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-white dark:bg-orange-600">
-                <Bot className="h-4 w-4" aria-hidden="true" />
-              </div>
-            )}
-
-            {/* Bubble */}
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 shadow-sm ${
-                msg.role === "user"
-                  ? "bg-orange-500 text-white dark:bg-orange-600"
-                  : "border border-border/40 bg-neutral-100 text-neutral-800 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200"
-              }`}
-            >
-              <MarkdownContent content={msg.content} />
-
-              {/* Quick Entry Action Card */}
-              {msg.quickEntryPayload && (
-                <QuickRegisterCard payload={msg.quickEntryPayload} />
-              )}
-            </div>
-          </div>
+        {message.cards.map((card, index) => (
+          <AssistantCardView key={`${card.kind}-${index}`} card={card} />
         ))}
 
-        {/* Loading Indicator */}
-        {isLoading && (
-          <div className="flex gap-3 text-xs md:text-sm">
-            <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-orange-500 text-white dark:bg-orange-600">
-              <Bot className="h-4 w-4 animate-pulse" aria-hidden="true" />
-            </div>
-            <div className="flex items-center gap-2 rounded-2xl border border-border/40 bg-neutral-100 px-4 py-2.5 dark:border-white/10 dark:bg-neutral-900">
-              <Loader2 className="h-4 w-4 animate-spin text-orange-400" />
-              <span className="text-neutral-400 dark:text-neutral-400">
-                TimeBot digitando...
-              </span>
-            </div>
-          </div>
+        {message.actions.map((action, index) => (
+          <AssistantActionView
+            key={`${action.kind}-${index}`}
+            action={action}
+          />
+        ))}
+
+        {message.error && (
+          <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-600 dark:text-red-400">
+            <AlertCircle
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span>{message.error}</span>
+          </p>
         )}
 
-        <div ref={chatEndRef} />
+        {!isUser && !isStreaming && message.content.length > 0 && (
+          <MessageActions
+            content={message.content}
+            onRetry={onRetry}
+            canRetry={isLast}
+          />
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+export function TimeBotChat({ activePath, isOpen }: TimeBotChatProps) {
+  const { data: session } = useSession();
+  const user = session?.user;
+
+  const {
+    messages,
+    isStreaming,
+    suggestions,
+    briefing,
+    isLoadingBriefing,
+    send,
+    stop,
+    retryLast,
+    clear,
+  } = useTimeBot({ userId: user?.id, activePath, enabled: isOpen });
+
+  // The server is the source of truth for the role — the session type omits it.
+  const role: AppRole = briefing?.role ?? "member";
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
+
+  // Only auto-scroll while the user is already following the conversation.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `messages` is the streaming trigger, not a value read here
+  useEffect(() => {
+    if (!isPinnedToBottom) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [isPinnedToBottom, messages]);
+
+  const handleScroll = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+
+    const distance =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+    setIsPinnedToBottom(distance < 80);
+  }, []);
+
+  function handleClear() {
+    clear();
+    toast.info("Conversa limpa.");
+  }
+
+  const hasMessages = messages.length > 0;
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden bg-card text-card-foreground">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between border-border/40 border-b bg-neutral-100/60 px-3 py-1.5 dark:border-white/10 dark:bg-neutral-900/60">
+        <span className="flex items-center gap-1.5 font-medium text-[10px] text-neutral-500 dark:text-neutral-400">
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full",
+              isStreaming ? "animate-pulse bg-orange-500" : "bg-emerald-500",
+            )}
+            aria-hidden="true"
+          />
+          {isStreaming ? "Processando..." : "Pronto"}
+        </span>
+
+        {hasMessages && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={handleClear}
+            className="h-6 cursor-pointer gap-1.5 text-[10px] text-neutral-500 hover:text-red-500 dark:text-neutral-400"
+          >
+            <Trash2 className="h-3 w-3" aria-hidden="true" />
+            Limpar
+          </Button>
+        )}
       </div>
 
-      {/* Input box */}
-      <div className="border-t border-border/40 bg-card p-3 dark:border-white/10">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSendMessage();
-          }}
-          className="flex items-center gap-2 rounded-xl border border-border/60 bg-neutral-50 p-2 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 dark:border-neutral-700 dark:bg-neutral-800"
-        >
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Pergunte algo ou lance horas..."
-            rows={1}
-            disabled={isLoading}
-            className="min-h-[36px] flex-1 resize-none bg-transparent px-3 py-1.5 text-xs text-foreground placeholder:text-neutral-400 focus:outline-none dark:placeholder:text-neutral-500"
-          />
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!input.trim() || isLoading}
-            aria-label="Enviar mensagem para o TimeBot"
-            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40 dark:bg-orange-600 dark:hover:bg-orange-500"
+      {/* Transcript */}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="relative flex-1 space-y-4 overflow-y-auto p-3.5"
+      >
+        {!hasMessages && briefing && (
+          <BriefingPanel briefing={briefing} onPrompt={send} />
+        )}
+
+        {!hasMessages && !briefing && isLoadingBriefing && (
+          <output
+            className="block space-y-3"
+            aria-label="Carregando seu resumo"
           >
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
-        <p className="mt-1.5 text-center text-[10px] text-neutral-400 dark:text-neutral-500">
-          Powered by TimeBot · Digite <kbd className="font-mono">Enter</kbd>{" "}
-          para enviar
-        </p>
+            <div className="h-5 w-40 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div className="grid grid-cols-2 gap-2">
+              <div className="h-16 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
+              <div className="h-16 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
+            </div>
+            <div className="h-12 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
+          </output>
+        )}
+
+        {messages.map((message, index) => (
+          <MessageBubble
+            key={message.id}
+            message={message}
+            userName={user?.name ?? "Usuário"}
+            userImage={user?.image}
+            isLast={index === messages.length - 1}
+            isStreaming={isStreaming}
+            onRetry={retryLast}
+          />
+        ))}
+
+        <div ref={bottomRef} />
       </div>
+
+      {/* Scroll-to-bottom affordance */}
+      <AnimatePresence>
+        {!isPinnedToBottom && hasMessages && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            onClick={() => {
+              setIsPinnedToBottom(true);
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+            }}
+            aria-label="Ir para a última mensagem"
+            className="-translate-x-1/2 absolute bottom-28 left-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-card shadow-lg dark:border-white/10"
+          >
+            <ChevronDown
+              className="h-4 w-4 text-neutral-500"
+              aria-hidden="true"
+            />
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* Follow-up suggestions */}
+      {hasMessages && !isStreaming && suggestions.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-wrap gap-1.5 border-border/40 border-t px-3 py-2 dark:border-white/10"
+        >
+          <span className="flex w-full items-center gap-1 text-[10px] text-neutral-400 dark:text-neutral-500">
+            <Sparkles className="h-3 w-3 text-orange-400" aria-hidden="true" />
+            Continue com
+          </span>
+          {suggestions.map((suggestion) => (
+            <button
+              key={suggestion}
+              type="button"
+              onClick={() => send(suggestion)}
+              className="cursor-pointer rounded-lg border border-border/60 bg-background px-2 py-1 text-[10px] text-neutral-600 transition-colors hover:border-orange-500/40 hover:bg-orange-500/10 hover:text-orange-600 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:text-orange-400"
+            >
+              {suggestion}
+            </button>
+          ))}
+        </motion.div>
+      )}
+
+      <ChatComposer
+        role={role}
+        isStreaming={isStreaming}
+        onSend={send}
+        onStop={stop}
+        onClear={handleClear}
+      />
     </div>
   );
 }

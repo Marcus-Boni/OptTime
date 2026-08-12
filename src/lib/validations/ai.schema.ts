@@ -2,25 +2,18 @@ import { z } from "zod";
 
 export const chatMessageSchema = z.object({
   role: z.enum(["user", "assistant", "system"]),
-  content: z.string().min(1).max(4000),
-  quickAction: z
-    .object({
-      type: z.enum(["parse_entry", "suggest_week", "faq"]),
-      data: z.record(z.string(), z.unknown()).optional(),
-    })
-    .optional(),
+  content: z.string().min(1).max(8000),
 });
 
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
 export const chatRequestSchema = z.object({
   message: z.string().min(1, "A mensagem não pode estar vazia").max(2000),
-  history: z.array(chatMessageSchema).optional().default([]),
+  history: z.array(chatMessageSchema).max(40).optional().default([]),
   context: z
     .object({
-      activePath: z.string().optional(),
-      userRole: z.string().optional(),
-      userName: z.string().optional(),
+      activePath: z.string().max(200).optional(),
+      timeZone: z.string().max(60).optional(),
     })
     .optional(),
 });
@@ -32,6 +25,7 @@ export const parseEntryRequestSchema = z.object({
     .string()
     .min(1, "Informe o texto com os detalhes das horas")
     .max(1000),
+  timeZone: z.string().max(60).optional(),
 });
 
 export type ParseEntryRequest = z.infer<typeof parseEntryRequestSchema>;

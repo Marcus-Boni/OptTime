@@ -1,9 +1,18 @@
-import { eq, or } from "drizzle-orm";
-import { getActiveSession } from "@/lib/access-control";
+import { eq } from "drizzle-orm";
+import { getActiveSession, getActorContext } from "@/lib/access-control";
+import { normalizeTimeZone, resolveTodayInTimeZone } from "@/lib/ai/context";
+import { parseDurationText } from "@/lib/ai/duration";
+import { listLoggableProjects, matchProject } from "@/lib/ai/tools/read-tools";
+import type { AgentUserContext } from "@/lib/ai/types";
 import { db } from "@/lib/db";
-import { project } from "@/lib/db/schema";
+import { user } from "@/lib/db/schema";
 import { parseEntryRequestSchema } from "@/lib/validations/ai.schema";
 
+/**
+ * POST - Deterministic natural-language parsing for a single time entry.
+ * Used by quick-entry inputs that need a fast, offline-safe interpretation
+ * without a full agent round-trip.
+ */
 export async function POST(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
   if (!session) {
@@ -22,61 +31,60 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const { input } = parsed.data;
-    const lower = input.toLowerCase();
+    const actor = getActorContext(session.user);
 
-    // Fetch user's active projects
-    const availableProjects = await db.query.project.findMany({
-      where: or(eq(project.status, "active"), eq(project.status, "open")),
-      columns: {
-        id: true,
-        name: true,
-        code: true,
-      },
+    const profile = await db.query.user.findFirst({
+      where: eq(user.id, session.user.id),
+      columns: { weeklyCapacity: true, name: true, email: true },
     });
 
-    // Parse duration
-    let durationMinutes = 60;
-    const hourMatch = lower.match(/(\d+[.,]?\d*)\s*(h|horas?)/);
-    const minMatch = lower.match(/(\d+)\s*(m|min|minutos?)/);
-    const comboMatch = lower.match(/(\d+)h(\d+)?/);
+    const timeZone = normalizeTimeZone(
+      parsed.data.timeZone ?? req.headers.get("x-timezone"),
+    );
 
-    if (comboMatch) {
-      const h = Number.parseInt(comboMatch[1], 10) || 0;
-      const m = Number.parseInt(comboMatch[2] || "0", 10) || 0;
-      durationMinutes = h * 60 + m;
-    } else if (hourMatch) {
-      const val = Number.parseFloat(hourMatch[1].replace(",", "."));
-      durationMinutes = Math.round(val * 60);
-    } else if (minMatch) {
-      durationMinutes = Number.parseInt(minMatch[1], 10);
-    }
+    const agentUser: AgentUserContext = {
+      userId: session.user.id,
+      name: profile?.name || session.user.name || "Colaborador",
+      email: profile?.email || session.user.email,
+      role: actor.role,
+      weeklyCapacityHours: profile?.weeklyCapacity ?? 40,
+      timeZone,
+      today: resolveTodayInTimeZone(timeZone),
+    };
 
-    // Extract Azure Work Item
-    const azMatch = lower.match(/#?(\d{3,6})/);
-    const azureWorkItemId = azMatch ? Number.parseInt(azMatch[1], 10) : null;
+    // Only projects the user may actually log against.
+    const projects = await listLoggableProjects({
+      user: agentUser,
+      actor,
+      emitCard: () => undefined,
+      emitAction: () => undefined,
+    });
 
-    // Match Project
-    let matchedProject = availableProjects[0] || null;
-    for (const p of availableProjects) {
-      if (
-        lower.includes(p.name.toLowerCase()) ||
-        lower.includes(p.code.toLowerCase())
-      ) {
-        matchedProject = p;
-        break;
-      }
-    }
+    const durationMinutes = parseDurationText(input) ?? 60;
+    const workItemMatch = input.match(/#(\d{1,7})/);
+    const azureWorkItemId = workItemMatch
+      ? Number.parseInt(workItemMatch[1], 10)
+      : null;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const matched =
+      projects.find((project) => {
+        const haystack = input.toLowerCase();
+        return (
+          haystack.includes(project.name.toLowerCase()) ||
+          haystack.includes(project.code.toLowerCase())
+        );
+      }) ??
+      matchProject(null, projects) ??
+      (projects.length === 1 ? projects[0] : null);
 
     return Response.json({
-      projectId: matchedProject ? matchedProject.id : null,
-      projectName: matchedProject ? matchedProject.name : null,
-      description: input,
-      durationMinutes: Math.max(1, Math.min(1440, durationMinutes)),
-      date: todayStr,
+      projectId: matched?.id ?? null,
+      projectName: matched?.name ?? null,
+      description: input.trim(),
+      durationMinutes,
+      date: agentUser.today,
       azureWorkItemId,
-      confidence: 0.9,
+      confidence: matched && workItemMatch ? 0.9 : matched ? 0.75 : 0.5,
       explanation: "Entrada interpretada via linguagem natural pelo TimeBot.",
     });
   } catch (error) {
