@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { TimeBotThreadSummary } from "@/hooks/use-timebot";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 function formatUpdatedAt(timestamp: number): string {
@@ -110,26 +111,32 @@ export function ConversationList({
         </p>
 
         <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={onCreate}
-            title="Nova conversa (Ctrl+Shift+O)"
-            aria-label="Nova conversa"
-            className="cursor-pointer rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-orange-500/10 hover:text-orange-500 dark:text-neutral-400"
+          <ActionTooltip
+            label="Nova conversa"
+            shortcut="Ctrl+Shift+O"
+            side="bottom"
           >
-            <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-          </button>
-
-          {onClose && (
             <button
               type="button"
-              onClick={onClose}
-              title="Fechar histórico"
-              aria-label="Fechar histórico"
-              className="cursor-pointer rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800"
+              onClick={onCreate}
+              aria-label="Nova conversa"
+              className="cursor-pointer rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-orange-500/10 hover:text-orange-500 dark:text-neutral-400"
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
             </button>
+          </ActionTooltip>
+
+          {onClose && (
+            <ActionTooltip label="Fechar histórico" side="bottom">
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Fechar histórico"
+                className="cursor-pointer rounded-lg p-1.5 text-neutral-500 transition-colors hover:bg-neutral-200 hover:text-foreground dark:text-neutral-400 dark:hover:bg-neutral-800"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </ActionTooltip>
           )}
         </div>
       </div>
@@ -202,14 +209,16 @@ export function ConversationList({
                       autoFocus
                       className="min-w-0 flex-1 rounded-md border border-orange-500/40 bg-background px-2 py-1 text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-orange-500/20 dark:bg-neutral-900"
                     />
-                    <button
-                      type="button"
-                      onClick={() => commitRename(thread.id)}
-                      aria-label="Salvar nome"
-                      className="cursor-pointer rounded-md p-1 text-emerald-500 transition-colors hover:bg-emerald-500/10"
-                    >
-                      <Check className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
+                    <ActionTooltip label="Salvar nome" side="top">
+                      <button
+                        type="button"
+                        onClick={() => commitRename(thread.id)}
+                        aria-label="Salvar nome"
+                        className="cursor-pointer rounded-md p-1 text-emerald-500 transition-colors hover:bg-emerald-500/10"
+                      >
+                        <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    </ActionTooltip>
                   </div>
                 ) : (
                   <button
@@ -244,38 +253,44 @@ export function ConversationList({
 
                 {!isEditing && (
                   <div className="absolute top-1.5 right-1.5 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                    <button
-                      type="button"
-                      onClick={() => startRename(thread)}
-                      aria-label={`Renomear conversa ${thread.title}`}
-                      title="Renomear"
-                      className="cursor-pointer rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
-                    >
-                      <Pencil className="h-3 w-3" aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(thread.id)}
-                      onBlur={() => setPendingDeleteId(null)}
-                      aria-label={
+                    <ActionTooltip label="Renomear conversa" side="left">
+                      <button
+                        type="button"
+                        onClick={() => startRename(thread)}
+                        aria-label={`Renomear conversa ${thread.title}`}
+                        className="cursor-pointer rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+                      >
+                        <Pencil className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </ActionTooltip>
+
+                    <ActionTooltip
+                      label={
                         pendingDeleteId === thread.id
-                          ? `Confirmar exclusão de ${thread.title}`
-                          : `Excluir conversa ${thread.title}`
+                          ? "Clique para confirmar exclusão"
+                          : "Excluir conversa"
                       }
-                      title={
-                        pendingDeleteId === thread.id
-                          ? "Clique novamente para excluir"
-                          : "Excluir"
-                      }
-                      className={cn(
-                        "cursor-pointer rounded-md p-1 transition-colors",
-                        pendingDeleteId === thread.id
-                          ? "bg-red-500/15 text-red-500 ring-1 ring-red-500/40"
-                          : "text-neutral-400 hover:bg-red-500/10 hover:text-red-500",
-                      )}
+                      side="left"
                     >
-                      <Trash2 className="h-3 w-3" aria-hidden="true" />
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(thread.id)}
+                        onBlur={() => setPendingDeleteId(null)}
+                        aria-label={
+                          pendingDeleteId === thread.id
+                            ? `Confirmar exclusão de ${thread.title}`
+                            : `Excluir conversa ${thread.title}`
+                        }
+                        className={cn(
+                          "cursor-pointer rounded-md p-1 transition-colors",
+                          pendingDeleteId === thread.id
+                            ? "bg-red-500/15 text-red-500 ring-1 ring-red-500/40"
+                            : "text-neutral-400 hover:bg-red-500/10 hover:text-red-500",
+                        )}
+                      >
+                        <Trash2 className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </ActionTooltip>
                   </div>
                 )}
               </motion.li>

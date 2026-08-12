@@ -11,6 +11,7 @@ import {
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
 } from "@/hooks/use-assistant-panel";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** Gap between the floating panel and the viewport edges, per mode. */
@@ -341,41 +342,45 @@ export function AssistantPanel({
             )}
           >
             {showResizeHandle && (
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Redimensionar o painel do assistente"
-                aria-valuenow={geometry.width}
-                aria-valuemin={PANEL_MIN_WIDTH}
-                aria-valuemax={PANEL_MAX_WIDTH}
-                tabIndex={0}
-                onPointerDown={handlePointerDown}
-                onPointerMove={handlePointerMove}
-                onPointerUp={handlePointerUp}
-                onPointerCancel={handlePointerUp}
-                onDoubleClick={resetWidth}
-                onKeyDown={handleHandleKeyDown}
-                title="Arraste para redimensionar · duplo clique para restaurar"
-                className={cn(
-                  "group absolute inset-y-0 left-0 z-20 flex w-3 cursor-col-resize touch-none items-center justify-center outline-none",
-                  "focus-visible:bg-orange-500/15",
-                )}
+              <ActionTooltip
+                label="Arraste para redimensionar · Duplo clique para restaurar"
+                side="right"
               >
-                <span
+                <div
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Redimensionar o painel do assistente"
+                  aria-valuenow={geometry.width}
+                  aria-valuemin={PANEL_MIN_WIDTH}
+                  aria-valuemax={PANEL_MAX_WIDTH}
+                  tabIndex={0}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                  onDoubleClick={resetWidth}
+                  onKeyDown={handleHandleKeyDown}
                   className={cn(
-                    "flex h-12 w-1 items-center justify-center rounded-full bg-border/70 transition-all duration-200 group-hover:h-20 group-hover:bg-orange-500 group-focus-visible:h-20 group-focus-visible:bg-orange-500 dark:bg-white/15",
-                    isResizing && "h-24 bg-orange-500 dark:bg-orange-500",
+                    "group absolute inset-y-0 left-0 z-20 flex w-3 cursor-col-resize touch-none items-center justify-center outline-none",
+                    "focus-visible:bg-orange-500/15",
                   )}
                 >
-                  <GripVertical
+                  <span
                     className={cn(
-                      "h-3 w-3 shrink-0 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-90",
-                      isResizing && "opacity-90",
+                      "flex h-12 w-1 items-center justify-center rounded-full bg-border/70 transition-all duration-200 group-hover:h-20 group-hover:bg-orange-500 group-focus-visible:h-20 group-focus-visible:bg-orange-500 dark:bg-white/15",
+                      isResizing && "h-24 bg-orange-500 dark:bg-orange-500",
                     )}
-                    aria-hidden="true"
-                  />
-                </span>
-              </div>
+                  >
+                    <GripVertical
+                      className={cn(
+                        "h-3 w-3 shrink-0 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-90",
+                        isResizing && "opacity-90",
+                      )}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </div>
+              </ActionTooltip>
             )}
 
             <AnimatePresence>

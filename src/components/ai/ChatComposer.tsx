@@ -12,6 +12,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import type { AppRole } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
 
@@ -472,83 +473,90 @@ export function ChatComposer({
           style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
         />
 
-        <Button
-          type="button"
-          size="icon"
-          variant="ghost"
-          onClick={() => {
-            setIsPaletteForced((previous) => !previous);
-            textareaRef.current?.focus();
-          }}
-          aria-label="Abrir comandos rápidos"
-          aria-expanded={showCommands}
-          title="Comandos rápidos (/)"
-          className={cn(
-            "h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
-            showCommands
-              ? "bg-orange-500/15 text-orange-500"
-              : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
-          )}
-        >
-          <SlashSquare className="h-4 w-4" aria-hidden="true" />
-        </Button>
-
-        {speechSupported && (
+        <ActionTooltip label="Comandos rápidos" shortcut="/" side="top">
           <Button
             type="button"
             size="icon"
             variant="ghost"
-            onClick={toggleVoice}
-            aria-label={isListening ? "Parar ditado" : "Ditar por voz"}
-            aria-pressed={isListening}
-            title={isListening ? "Parar ditado" : "Ditar por voz"}
+            onClick={() => {
+              setIsPaletteForced((previous) => !previous);
+              textareaRef.current?.focus();
+            }}
+            aria-label="Abrir comandos rápidos"
+            aria-expanded={showCommands}
             className={cn(
-              "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
-              isListening
-                ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 hover:bg-red-500/25"
+              "h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
+              showCommands
+                ? "bg-orange-500/15 text-orange-500"
                 : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
             )}
           >
-            {isListening && (
-              <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20 motion-reduce:animate-none" />
-            )}
-            {isListening ? (
-              <MicOff
-                className="relative z-10 h-4 w-4 animate-pulse motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-            ) : (
-              <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
-            )}
+            <SlashSquare className="h-4 w-4" aria-hidden="true" />
           </Button>
+        </ActionTooltip>
+
+        {speechSupported && (
+          <ActionTooltip
+            label={isListening ? "Parar ditado por voz" : "Ditar por voz"}
+            side="top"
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={toggleVoice}
+              aria-label={isListening ? "Parar ditado" : "Ditar por voz"}
+              aria-pressed={isListening}
+              className={cn(
+                "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
+                isListening
+                  ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 hover:bg-red-500/25"
+                  : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
+              )}
+            >
+              {isListening && (
+                <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20 motion-reduce:animate-none" />
+              )}
+              {isListening ? (
+                <MicOff
+                  className="relative z-10 h-4 w-4 animate-pulse motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
+              )}
+            </Button>
+          </ActionTooltip>
         )}
 
         {isStreaming ? (
-          <Button
-            type="button"
-            size="icon"
-            onClick={onStop}
-            aria-label="Parar geração da resposta"
-            title="Parar geração da resposta"
-            className="relative h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-          >
-            <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15 motion-reduce:animate-none" />
-            <Square
-              className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400"
-              aria-hidden="true"
-            />
-          </Button>
+          <ActionTooltip label="Parar geração da resposta" side="top">
+            <Button
+              type="button"
+              size="icon"
+              onClick={onStop}
+              aria-label="Parar geração da resposta"
+              className="relative h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+            >
+              <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15 motion-reduce:animate-none" />
+              <Square
+                className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400"
+                aria-hidden="true"
+              />
+            </Button>
+          </ActionTooltip>
         ) : (
-          <Button
-            type="submit"
-            size="icon"
-            disabled={!value.trim()}
-            aria-label="Enviar mensagem"
-            title="Enviar mensagem (Enter)"
-            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/25 disabled:opacity-40 disabled:shadow-none"
-          >
-            <Send className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          <ActionTooltip label="Enviar mensagem" shortcut="Enter" side="top">
+            <Button
+              type="submit"
+              size="icon"
+              disabled={!value.trim()}
+              aria-label="Enviar mensagem"
+              className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/25 disabled:opacity-40 disabled:shadow-none"
+            >
+              <Send className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
         )}
       </form>
 

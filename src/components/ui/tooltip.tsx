@@ -32,26 +32,81 @@ function TooltipTrigger({
 
 function TooltipContent({
   className,
-  sideOffset = 0,
+  sideOffset = 6,
+  showArrow = false,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: React.ComponentProps<typeof TooltipPrimitive.Content> & {
+  showArrow?: boolean;
+}) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "bg-foreground text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance",
+          "z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-lg border border-border/80 bg-neutral-900 px-2.5 py-1.5 text-xs text-neutral-100 shadow-md animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-1.5 data-[side=left]:slide-in-from-right-1.5 data-[side=right]:slide-in-from-left-1.5 data-[side=top]:slide-in-from-bottom-1.5 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100",
           className,
         )}
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
+        {showArrow && (
+          <TooltipPrimitive.Arrow className="z-50 size-2.5 fill-neutral-900 dark:fill-neutral-900" />
+        )}
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   );
 }
 
-export { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider };
+export interface ActionTooltipProps {
+  children: React.ReactNode;
+  label: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  shortcut?: string;
+  delayDuration?: number;
+  sideOffset?: number;
+}
+
+function ActionTooltip({
+  children,
+  label,
+  side = "top",
+  align = "center",
+  shortcut,
+  delayDuration = 150,
+  sideOffset = 6,
+}: ActionTooltipProps) {
+  if (!label) return <>{children}</>;
+
+  return (
+    <TooltipProvider delayDuration={delayDuration}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent
+          side={side}
+          align={align}
+          sideOffset={sideOffset}
+          showArrow={false}
+          className="z-[10002] flex items-center gap-1.5 border border-white/10 bg-neutral-900/95 px-2.5 py-1 font-medium text-[11px] text-neutral-100 shadow-xl backdrop-blur-md dark:border-white/10 dark:bg-neutral-900/95 dark:text-neutral-100"
+        >
+          <span>{label}</span>
+          {shortcut && (
+            <kbd className="rounded border border-white/20 bg-neutral-800 px-1 py-0.5 font-mono text-[9.5px] text-neutral-400">
+              {shortcut}
+            </kbd>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+export {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+  TooltipProvider,
+  ActionTooltip,
+};

@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import type { AssistantPanelMode } from "@/hooks/use-assistant-panel";
 import {
   type TimeBotMessage,
@@ -218,31 +219,34 @@ function ToolActivity({ tools }: { tools: ToolActivityItem[] }) {
 function IconAction({
   icon: Icon,
   label,
+  shortcut,
   onClick,
   active,
   className,
 }: {
   icon: LucideIcon;
   label: string;
+  shortcut?: string;
   onClick: () => void;
   active?: boolean;
   className?: string;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      aria-pressed={active}
-      className={cn(
-        "cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60",
-        active && "bg-orange-500/20 text-orange-300",
-        className,
-      )}
-    >
-      <Icon className="h-4 w-4" aria-hidden="true" />
-    </button>
+    <ActionTooltip label={label} shortcut={shortcut} side="bottom">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={label}
+        aria-pressed={active}
+        className={cn(
+          "cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60",
+          active && "bg-orange-500/20 text-orange-300",
+          className,
+        )}
+      >
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      </button>
+    </ActionTooltip>
   );
 }
 
@@ -270,36 +274,40 @@ function MessageActions({
 
   return (
     <div className="mt-1.5 flex items-center gap-1">
-      <button
-        type="button"
-        onClick={handleCopy}
-        aria-label="Copiar mensagem"
-        title="Copiar mensagem"
-        className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
-      >
-        {copied ? (
-          <Check className="h-3 w-3 text-emerald-500" aria-hidden="true" />
-        ) : (
-          <Copy className="h-3 w-3" aria-hidden="true" />
-        )}
-      </button>
-
-      {canRetry && (
+      <ActionTooltip label={copied ? "Copiado!" : "Copiar mensagem"} side="bottom">
         <button
           type="button"
-          onClick={onRetry}
-          aria-label="Gerar novamente"
-          title="Gerar novamente"
+          onClick={handleCopy}
+          aria-label="Copiar mensagem"
           className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
         >
-          <RefreshCw className="h-3 w-3" aria-hidden="true" />
+          {copied ? (
+            <Check className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+          ) : (
+            <Copy className="h-3 w-3" aria-hidden="true" />
+          )}
         </button>
+      </ActionTooltip>
+
+      {canRetry && (
+        <ActionTooltip label="Gerar resposta novamente" side="bottom">
+          <button
+            type="button"
+            onClick={onRetry}
+            aria-label="Gerar novamente"
+            className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+          >
+            <RefreshCw className="h-3 w-3" aria-hidden="true" />
+          </button>
+        </ActionTooltip>
       )}
 
       {message.provider && (
-        <span className="ml-1 rounded px-1 py-0.5 font-mono text-[9px] text-neutral-400 uppercase dark:text-neutral-500">
-          {message.provider}
-        </span>
+        <ActionTooltip label={`Provedor de IA: ${message.provider.toUpperCase()}`} side="bottom">
+          <span className="ml-1 cursor-default rounded px-1 py-0.5 font-mono text-[9px] text-neutral-400 uppercase dark:text-neutral-500">
+            {message.provider}
+          </span>
+        </ActionTooltip>
       )}
     </div>
   );
@@ -721,6 +729,7 @@ export function TimeBotChat({
                 label={
                   showHistory ? "Ocultar histórico" : "Histórico de conversas"
                 }
+                shortcut="Ctrl+Shift+H"
                 onClick={() => setShowHistory((previous) => !previous)}
                 active={showHistory}
               />
@@ -728,6 +737,7 @@ export function TimeBotChat({
               <IconAction
                 icon={MessageSquarePlus}
                 label="Nova conversa"
+                shortcut="Ctrl+Shift+O"
                 onClick={handleNewThread}
               />
 
@@ -736,24 +746,26 @@ export function TimeBotChat({
                   icon={isFullscreen ? Minimize2 : Maximize2}
                   label={
                     isFullscreen
-                      ? "Sair da tela cheia (Ctrl+Shift+F)"
-                      : "Expandir para tela cheia (Ctrl+Shift+F)"
+                      ? "Sair da tela cheia"
+                      : "Expandir para tela cheia"
                   }
+                  shortcut="Ctrl+Shift+F"
                   onClick={onToggleFullscreen}
                 />
               )}
 
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Mais opções"
-                    title="Mais opções"
-                    className="cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
-                  >
-                    <MoreVertical className="h-4 w-4" aria-hidden="true" />
-                  </button>
-                </DropdownMenuTrigger>
+                <ActionTooltip label="Mais opções" side="bottom">
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      aria-label="Mais opções"
+                      className="cursor-pointer rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+                    >
+                      <MoreVertical className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </DropdownMenuTrigger>
+                </ActionTooltip>
 
                 <DropdownMenuContent
                   align="end"
@@ -791,6 +803,7 @@ export function TimeBotChat({
               <IconAction
                 icon={X}
                 label="Fechar assistente"
+                shortcut="Esc"
                 onClick={onClose}
               />
             </div>

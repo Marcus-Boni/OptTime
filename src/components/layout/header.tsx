@@ -23,6 +23,7 @@ import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { Button } from "@/components/ui/button";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -195,69 +196,86 @@ export function Header() {
         </Button>
 
         {/* Search */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden md:flex"
-          aria-label="Buscar (Ctrl+K)"
-          onClick={openCommandPalette}
-        >
-          <Search className="h-4.5 w-4.5" />
-        </Button>
+        <ActionTooltip label="Buscar no sistema" shortcut="Ctrl+K" side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex"
+            aria-label="Buscar (Ctrl+K)"
+            onClick={openCommandPalette}
+          >
+            <Search className="h-4.5 w-4.5" />
+          </Button>
+        </ActionTooltip>
 
         {/* Changelog / Novidades */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="hidden md:flex"
-          aria-label="Ver changelog de versões"
-          asChild
-        >
-          <Link href="/dashboard/releases">
-            <Rss className="h-4.5 w-4.5" />
-          </Link>
-        </Button>
+        <ActionTooltip label="Novidades e versões" side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex"
+            aria-label="Ver changelog de versões"
+            asChild
+          >
+            <Link href="/dashboard/releases">
+              <Rss className="h-4.5 w-4.5" />
+            </Link>
+          </Button>
+        </ActionTooltip>
 
         {/* Theme toggle */}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleTheme}
-          aria-label={
+        <ActionTooltip
+          label={
             mounted
               ? theme === "dark"
                 ? "Ativar modo claro"
                 : "Ativar modo escuro"
               : "Alterar tema"
           }
+          side="bottom"
         >
-          {mounted ? (
-            theme === "dark" ? (
-              <Sun className="h-4.5 w-4.5" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            aria-label={
+              mounted
+                ? theme === "dark"
+                  ? "Ativar modo claro"
+                  : "Ativar modo escuro"
+                : "Alterar tema"
+            }
+          >
+            {mounted ? (
+              theme === "dark" ? (
+                <Sun className="h-4.5 w-4.5" />
+              ) : (
+                <Moon className="h-4.5 w-4.5" />
+              )
             ) : (
-              <Moon className="h-4.5 w-4.5" />
-            )
-          ) : (
-            <Sun className="h-4.5 w-4.5 opacity-50" />
-          )}
-        </Button>
+              <Sun className="h-4.5 w-4.5 opacity-50" />
+            )}
+          </Button>
+        </ActionTooltip>
 
         {/* User menu */}
         {mounted ? (
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="relative h-9 w-9 rounded-full"
-                aria-label="Menu do usuário"
-              >
-                <UserAvatar
-                  name={currentUser.name}
-                  image={currentUser.image}
-                  size="default"
-                />
-              </Button>
-            </DropdownMenuTrigger>
+            <ActionTooltip label={`Perfil: ${currentUser.name}`} side="bottom">
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="relative h-9 w-9 rounded-full"
+                  aria-label="Menu do usuário"
+                >
+                  <UserAvatar
+                    name={currentUser.name}
+                    image={currentUser.image}
+                    size="default"
+                  />
+                </Button>
+              </DropdownMenuTrigger>
+            </ActionTooltip>
             <DropdownMenuContent className="w-56" align="end">
               <DropdownMenuLabel className="font-normal">
                 <div className="flex flex-col space-y-1">
