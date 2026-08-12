@@ -22,6 +22,11 @@ import { MarkdownContent } from "@/components/ai/MarkdownContent";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   type TimeBotMessage,
   type ToolActivityItem,
   useTimeBot,
@@ -35,21 +40,126 @@ export interface TimeBotChatProps {
   isOpen: boolean;
 }
 
+function ThinkingIndicator({ label = "Pensando..." }: { label?: string }) {
+  return (
+    <div className="flex items-center gap-2 py-0.5 text-neutral-400 dark:text-neutral-400">
+      <div className="flex items-center gap-1">
+        <motion.span
+          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
+          transition={{
+            duration: 0.8,
+            repeat: Number.POSITIVE_INFINITY,
+            delay: 0,
+          }}
+          className="h-1.5 w-1.5 rounded-full bg-orange-500 shadow-xs shadow-orange-500/50"
+        />
+        <motion.span
+          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
+          transition={{
+            duration: 0.8,
+            repeat: Number.POSITIVE_INFINITY,
+            delay: 0.18,
+          }}
+          className="h-1.5 w-1.5 rounded-full bg-orange-500/80 shadow-xs shadow-orange-500/40"
+        />
+        <motion.span
+          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
+          transition={{
+            duration: 0.8,
+            repeat: Number.POSITIVE_INFINITY,
+            delay: 0.36,
+          }}
+          className="h-1.5 w-1.5 rounded-full bg-orange-400/60"
+        />
+      </div>
+      <span className="font-medium text-[11px] text-neutral-400 dark:text-neutral-400">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function BriefingSkeleton() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-4"
+      aria-label="Carregando seu resumo"
+    >
+      <div className="space-y-1.5">
+        <div className="h-5 w-44 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800/80" />
+        <div className="h-3 w-32 animate-pulse rounded-md bg-neutral-200/70 dark:bg-neutral-800/50" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl border border-border/40 bg-neutral-100/60 p-3 dark:border-white/10 dark:bg-neutral-900/60">
+          <div className="h-3 w-12 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div className="mt-2 h-6 w-20 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+        <div className="rounded-xl border border-border/40 bg-neutral-100/60 p-3 dark:border-white/10 dark:bg-neutral-900/60">
+          <div className="h-3 w-16 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div className="mt-2 h-6 w-20 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+          <div className="mt-2.5 h-1.5 w-full animate-pulse rounded-full bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-2.5 rounded-xl border border-border/40 bg-neutral-100/40 p-3 dark:border-white/10 dark:bg-neutral-900/40">
+          <div className="h-7 w-7 shrink-0 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3.5 w-3/4 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div className="h-2.5 w-1/2 animate-pulse rounded bg-neutral-200/70 dark:bg-neutral-800/50" />
+          </div>
+        </div>
+        <div className="flex items-center gap-2.5 rounded-xl border border-border/40 bg-neutral-100/40 p-3 dark:border-white/10 dark:bg-neutral-900/40">
+          <div className="h-7 w-7 shrink-0 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3.5 w-2/3 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+            <div className="h-2.5 w-2/5 animate-pulse rounded bg-neutral-200/70 dark:bg-neutral-800/50" />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <div className="h-3 w-28 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
+        <div className="flex flex-wrap gap-1.5">
+          <div className="h-7 w-24 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800" />
+          <div className="h-7 w-32 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800" />
+          <div className="h-7 w-28 animate-pulse rounded-lg bg-neutral-200 dark:bg-neutral-800" />
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function ToolActivity({ tools }: { tools: ToolActivityItem[] }) {
   if (tools.length === 0) return null;
 
   return (
-    <ul className="mb-2 space-y-1" aria-label="Consultas realizadas">
+    <ul className="mb-2 space-y-1.5" aria-label="Consultas realizadas">
       {tools.map((tool) => (
-        <li
+        <motion.li
           key={tool.id}
-          className="flex items-center gap-1.5 text-[10px] text-neutral-500 dark:text-neutral-400"
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            "flex items-center gap-2 rounded-lg px-2 py-1 text-[10px] transition-all",
+            tool.status === "running"
+              ? "border border-orange-500/30 bg-orange-500/10 font-medium text-orange-600 dark:text-orange-300"
+              : tool.status === "failed"
+                ? "border border-red-500/30 bg-red-500/10 text-red-500 dark:text-red-400"
+                : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+          )}
         >
           {tool.status === "running" ? (
-            <Loader2
-              className="h-3 w-3 shrink-0 animate-spin text-orange-500"
-              aria-hidden="true"
-            />
+            <span className="relative flex h-3 w-3 shrink-0 items-center justify-center">
+              <Loader2
+                className="h-3 w-3 animate-spin text-orange-500 dark:text-orange-400"
+                aria-hidden="true"
+              />
+            </span>
           ) : tool.status === "failed" ? (
             <AlertCircle
               className="h-3 w-3 shrink-0 text-red-500"
@@ -62,7 +172,7 @@ function ToolActivity({ tools }: { tools: ToolActivityItem[] }) {
             />
           )}
           <span className="truncate">{tool.label}</span>
-        </li>
+        </motion.li>
       ))}
     </ul>
   );
@@ -91,11 +201,12 @@ function MessageActions({
   }
 
   return (
-    <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+    <div className="mt-1.5 flex items-center gap-1">
       <button
         type="button"
         onClick={handleCopy}
         aria-label="Copiar resposta"
+        title="Copiar resposta"
         className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
       >
         {copied ? (
@@ -110,6 +221,7 @@ function MessageActions({
           type="button"
           onClick={onRetry}
           aria-label="Gerar novamente"
+          title="Gerar novamente"
           className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
         >
           <RefreshCw className="h-3 w-3" aria-hidden="true" />
@@ -135,7 +247,7 @@ function MessageBubble({
   onRetry: () => void;
 }) {
   const isUser = message.role === "user";
-  const showCaret = !isUser && isLast && isStreaming && message.content === "";
+  const isThinking = !isUser && isLast && isStreaming && message.content === "";
 
   return (
     <motion.div
@@ -155,14 +267,22 @@ function MessageBubble({
           className="h-7 w-7 shrink-0 border-none text-[10px]"
         />
       ) : (
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white dark:bg-orange-600">
+        <div
+          className={cn(
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white transition-all dark:bg-orange-600",
+            !isUser &&
+              isLast &&
+              isStreaming &&
+              "ring-2 ring-orange-500/40 shadow-md shadow-orange-500/20 animate-pulse",
+          )}
+        >
           <Bot className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
 
       <div
         className={cn(
-          "min-w-0 max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm",
+          "min-w-0 max-w-[88%] rounded-2xl px-3.5 py-2.5 text-xs shadow-sm transition-all",
           isUser
             ? "bg-orange-500 text-white dark:bg-orange-600"
             : "border border-border/40 bg-neutral-100 text-neutral-800 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
@@ -174,11 +294,19 @@ function MessageBubble({
           <p className="whitespace-pre-wrap break-words leading-relaxed">
             {message.content}
           </p>
+        ) : isThinking ? (
+          <ThinkingIndicator
+            label={
+              message.tools.some((t) => t.status === "running")
+                ? "Consultando..."
+                : "Pensando..."
+            }
+          />
         ) : (
           <>
             <MarkdownContent content={message.content} />
-            {showCaret && (
-              <span className="inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-orange-500 align-middle" />
+            {isStreaming && isLast && (
+              <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-xs bg-orange-500 shadow-xs shadow-orange-500/50 align-middle" />
             )}
           </>
         )}
@@ -264,32 +392,66 @@ export function TimeBotChat({ activePath, isOpen }: TimeBotChatProps) {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-card-foreground">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between border-border/40 border-b bg-neutral-100/60 px-3 py-1.5 dark:border-white/10 dark:bg-neutral-900/60">
-        <span className="flex items-center gap-1.5 font-medium text-[10px] text-neutral-500 dark:text-neutral-400">
-          <span
-            className={cn(
-              "h-1.5 w-1.5 rounded-full",
-              isStreaming ? "animate-pulse bg-orange-500" : "bg-emerald-500",
-            )}
-            aria-hidden="true"
-          />
-          {isStreaming ? "Processando..." : "Pronto"}
-        </span>
+      {/* Header with Status & Actions */}
+      <SheetHeader className="border-border/40 border-b bg-neutral-900 p-3.5 pr-12 text-white dark:border-white/10">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
+              <Bot className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <SheetTitle className="flex items-center gap-1.5 font-sora font-bold text-base text-white">
+                  TimeBot
+                  <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 font-medium text-[10px] text-orange-300">
+                    <Sparkles className="h-3 w-3" aria-hidden="true" /> IA
+                  </span>
+                </SheetTitle>
 
-        {hasMessages && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleClear}
-            className="h-6 cursor-pointer gap-1.5 text-[10px] text-neutral-500 hover:text-red-500 dark:text-neutral-400"
-          >
-            <Trash2 className="h-3 w-3" aria-hidden="true" />
-            Limpar
-          </Button>
-        )}
-      </div>
+                {/* Inline Bot Status */}
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-[10px] transition-colors",
+                    isStreaming
+                      ? "border border-orange-500/30 bg-orange-500/20 text-orange-300"
+                      : "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 rounded-full",
+                      isStreaming
+                        ? "animate-pulse bg-orange-400"
+                        : "bg-emerald-400",
+                    )}
+                    aria-hidden="true"
+                  />
+                  {isStreaming ? "Processando..." : "Pronto"}
+                </span>
+              </div>
+              <SheetDescription className="truncate text-[11px] text-neutral-400">
+                Registre horas e consulte seus dados conversando
+              </SheetDescription>
+            </div>
+          </div>
+
+          {/* Header Actions */}
+          {hasMessages && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleClear}
+              title="Limpar conversa"
+              aria-label="Limpar conversa"
+              className="h-7 cursor-pointer gap-1.5 rounded-lg px-2 text-[11px] text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-red-400"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              <span className="hidden sm:inline">Limpar</span>
+            </Button>
+          )}
+        </div>
+      </SheetHeader>
 
       {/* Transcript */}
       <div
@@ -302,17 +464,7 @@ export function TimeBotChat({ activePath, isOpen }: TimeBotChatProps) {
         )}
 
         {!hasMessages && !briefing && isLoadingBriefing && (
-          <output
-            className="block space-y-3"
-            aria-label="Carregando seu resumo"
-          >
-            <div className="h-5 w-40 animate-pulse rounded bg-neutral-200 dark:bg-neutral-800" />
-            <div className="grid grid-cols-2 gap-2">
-              <div className="h-16 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
-              <div className="h-16 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
-            </div>
-            <div className="h-12 animate-pulse rounded-xl bg-neutral-200 dark:bg-neutral-800" />
-          </output>
+          <BriefingSkeleton />
         )}
 
         {messages.map((message, index) => (

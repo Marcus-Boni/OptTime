@@ -1,17 +1,11 @@
 "use client";
 
-import { Bot, Sparkles } from "lucide-react";
+import { Bot } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { TimeBotChat } from "./TimeBotChat";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { TimeBotChat } from "@/components/ai/TimeBotChat";
 
 /** Ignore the shortcut while the user is typing somewhere else. */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -80,28 +74,7 @@ export function TimeBotWidget() {
         showOverlay={false}
         className="z-[10000] flex w-full flex-col border-border/40 border-l bg-card p-0 shadow-2xl sm:max-w-md md:max-w-lg dark:border-white/10"
       >
-        <SheetHeader className="border-border/40 border-b bg-neutral-900 p-3.5 text-white dark:border-white/10">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
-              <Bot className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div className="min-w-0">
-              <SheetTitle className="flex items-center gap-1.5 font-sora font-bold text-base text-white">
-                TimeBot
-                <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 font-medium text-[10px] text-orange-300">
-                  <Sparkles className="h-3 w-3" aria-hidden="true" /> IA
-                </span>
-              </SheetTitle>
-              <SheetDescription className="text-[11px] text-neutral-400">
-                Registre horas e consulte seus dados conversando
-              </SheetDescription>
-            </div>
-          </div>
-        </SheetHeader>
-
-        <div className="flex-1 overflow-hidden">
-          <TimeBotChat activePath={pathname} isOpen={isOpen} />
-        </div>
+        <TimeBotChat activePath={pathname} isOpen={isOpen} />
       </SheetContent>
     </Sheet>,
     document.body,

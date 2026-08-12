@@ -381,16 +381,19 @@ export function ChatComposer({
             aria-label={isListening ? "Parar ditado" : "Ditar por voz"}
             aria-pressed={isListening}
             className={cn(
-              "h-8 w-8 shrink-0 cursor-pointer rounded-lg",
+              "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
               isListening
-                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25"
+                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25 ring-2 ring-red-500/30"
                 : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
             )}
           >
+            {isListening && (
+              <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20" />
+            )}
             {isListening ? (
-              <MicOff className="h-4 w-4 animate-pulse" aria-hidden="true" />
+              <MicOff className="relative z-10 h-4 w-4 animate-pulse" aria-hidden="true" />
             ) : (
-              <Mic className="h-4 w-4" aria-hidden="true" />
+              <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
             )}
           </Button>
         )}
@@ -401,9 +404,11 @@ export function ChatComposer({
             size="icon"
             onClick={onStop}
             aria-label="Parar geração da resposta"
-            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-neutral-700 text-white hover:bg-neutral-600"
+            title="Parar geração da resposta"
+            className="relative h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
           >
-            <Square className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+            <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15" />
+            <Square className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400" aria-hidden="true" />
           </Button>
         ) : (
           <Button
@@ -411,7 +416,7 @@ export function ChatComposer({
             size="icon"
             disabled={!value.trim()}
             aria-label="Enviar mensagem"
-            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white hover:bg-orange-600 disabled:opacity-40"
+            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 disabled:opacity-40"
           >
             <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
