@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppRole } from "@/lib/access-control";
 import type {
   AgentEvent,
@@ -9,8 +9,19 @@ import type {
   ProviderName,
 } from "@/lib/ai/types";
 
-const STORAGE_VERSION = "v2";
-const MAX_PERSISTED_MESSAGES = 40;
+const STORAGE_VERSION = "v3";
+const LEGACY_STORAGE_VERSION = "v2";
+
+/** Messages kept per conversation in localStorage. */
+const MAX_PERSISTED_MESSAGES = 60;
+/** Conversations kept in the history list. */
+const MAX_THREADS = 20;
+/** Turns replayed to the model as context. */
+const HISTORY_WINDOW = 12;
+/** Delay before flushing the conversation to localStorage. */
+const PERSIST_DEBOUNCE_MS = 400;
+
+export const NEW_THREAD_TITLE = "Nova conversa";
 
 export interface ToolActivityItem {
   id: string;
@@ -29,6 +40,24 @@ export interface TimeBotMessage {
   provider?: ProviderName;
   error?: string;
   createdAt: number;
+}
+
+export interface TimeBotThread {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: TimeBotMessage[];
+}
+
+/** Lightweight projection used by the conversation list. */
+export interface TimeBotThreadSummary {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  preview: string;
 }
 
 export interface BriefingHighlight {
@@ -58,6 +87,11 @@ export interface TimeBotBriefing {
   providerConfigured: boolean;
 }
 
+interface PersistedState {
+  activeThreadId: string;
+  threads: TimeBotThread[];
+}
+
 interface UseTimeBotOptions {
   userId?: string;
   activePath?: string;
@@ -68,18 +102,56 @@ function storageKey(userId?: string): string {
   return `timebot_chat_${STORAGE_VERSION}_${userId ?? "guest"}`;
 }
 
+function legacyStorageKey(userId?: string): string {
+  return `timebot_chat_${LEGACY_STORAGE_VERSION}_${userId ?? "guest"}`;
+}
+
+function createId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+}
+
 function createMessage(
   role: TimeBotMessage["role"],
   content: string,
 ): TimeBotMessage {
   return {
-    id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    id: createId(),
     role,
     content,
     cards: [],
     actions: [],
     tools: [],
     createdAt: Date.now(),
+  };
+}
+
+function createThread(messages: TimeBotMessage[] = []): TimeBotThread {
+  const now = Date.now();
+
+  return {
+    id: createId(),
+    title: NEW_THREAD_TITLE,
+    createdAt: now,
+    updatedAt: now,
+    messages,
+  };
+}
+
+/** Derive a readable conversation title from the first thing the user asked. */
+function deriveTitle(text: string): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  if (clean.length === 0) return NEW_THREAD_TITLE;
+
+  return clean.length > 48 ? `${clean.slice(0, 48).trimEnd()}…` : clean;
+}
+
+function normalizeMessage(message: TimeBotMessage): TimeBotMessage {
+  return {
+    ...message,
+    cards: message.cards ?? [],
+    actions: message.actions ?? [],
+    // Tool activity is transient — it never survives a reload.
+    tools: [],
   };
 }
 
@@ -91,8 +163,59 @@ function resolveTimeZone(): string {
   }
 }
 
+/** Read v3 state, falling back to the single-conversation v2 layout. */
+function readPersistedState(userId?: string): PersistedState | null {
+  try {
+    const raw = localStorage.getItem(storageKey(userId));
+
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<PersistedState>;
+
+      if (Array.isArray(parsed.threads) && parsed.threads.length > 0) {
+        const threads = parsed.threads.map((thread) => ({
+          ...thread,
+          messages: (thread.messages ?? []).map(normalizeMessage),
+        }));
+
+        const activeThreadId =
+          threads.find((thread) => thread.id === parsed.activeThreadId)?.id ??
+          threads[0]?.id ??
+          "";
+
+        return { activeThreadId, threads };
+      }
+    }
+
+    const legacyRaw = localStorage.getItem(legacyStorageKey(userId));
+    if (!legacyRaw) return null;
+
+    const legacyMessages = JSON.parse(legacyRaw) as TimeBotMessage[];
+    if (!Array.isArray(legacyMessages) || legacyMessages.length === 0) {
+      return null;
+    }
+
+    const migrated = createThread(legacyMessages.map(normalizeMessage));
+    const firstUserMessage = legacyMessages.find(
+      (message) => message.role === "user",
+    );
+    if (firstUserMessage) {
+      migrated.title = deriveTitle(firstUserMessage.content);
+    }
+
+    return { activeThreadId: migrated.id, threads: [migrated] };
+  } catch (error: unknown) {
+    console.error("[useTimeBot] restore history:", error);
+    return null;
+  }
+}
+
+/**
+ * Conversation state for the TimeBot assistant: streaming, tool activity,
+ * proactive briefing and a multi-conversation history kept on the client.
+ */
 export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
-  const [messages, setMessages] = useState<TimeBotMessage[]>([]);
+  const [threads, setThreads] = useState<TimeBotThread[]>([]);
+  const [activeThreadId, setActiveThreadId] = useState<string>("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [briefing, setBriefing] = useState<TimeBotBriefing | null>(null);
@@ -101,49 +224,108 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
   const abortRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<string>("");
+  const threadsRef = useRef<TimeBotThread[]>([]);
+  const activeThreadIdRef = useRef<string>("");
+  const isStreamingRef = useRef(false);
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restore persisted history once the user id is known.
+  // Mirrors for the async streaming loop, which must never read stale state.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey(userId));
-      if (raw) {
-        const parsed = JSON.parse(raw) as TimeBotMessage[];
-        if (Array.isArray(parsed)) {
-          setMessages(
-            parsed.map((message) => ({
-              ...message,
-              cards: message.cards ?? [],
-              actions: message.actions ?? [],
-              tools: [],
-            })),
-          );
-        }
-      }
-    } catch (error: unknown) {
-      console.error("[useTimeBot] restore history:", error);
-    } finally {
-      setHydrated(true);
-    }
+    threadsRef.current = threads;
+  }, [threads]);
+
+  useEffect(() => {
+    activeThreadIdRef.current = activeThreadId;
+  }, [activeThreadId]);
+
+  useEffect(() => {
+    isStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  // Restore persisted conversations once the user id is known.
+  useEffect(() => {
+    const restored = readPersistedState(userId);
+    const initial = restored ?? {
+      threads: [createThread()],
+      activeThreadId: "",
+    };
+
+    const fallbackId = initial.threads[0]?.id ?? "";
+
+    setThreads(initial.threads);
+    setActiveThreadId(initial.activeThreadId || fallbackId);
+    setHydrated(true);
   }, [userId]);
 
-  // Persist a trimmed history — cards stay, transient tool activity does not.
+  // Persist on idle so token-by-token streaming never thrashes localStorage.
   useEffect(() => {
     if (!hydrated) return;
 
-    try {
-      localStorage.setItem(
-        storageKey(userId),
-        JSON.stringify(
-          messages.slice(-MAX_PERSISTED_MESSAGES).map((message) => ({
-            ...message,
-            tools: [],
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+
+    persistTimerRef.current = setTimeout(() => {
+      try {
+        const payload: PersistedState = {
+          activeThreadId,
+          threads: threads.map((thread) => ({
+            ...thread,
+            messages: thread.messages
+              .slice(-MAX_PERSISTED_MESSAGES)
+              .map(normalizeMessage),
           })),
+        };
+
+        localStorage.setItem(storageKey(userId), JSON.stringify(payload));
+        localStorage.removeItem(legacyStorageKey(userId));
+      } catch (error: unknown) {
+        console.error("[useTimeBot] persist history:", error);
+      }
+    }, PERSIST_DEBOUNCE_MS);
+
+    return () => {
+      if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    };
+  }, [threads, activeThreadId, userId, hydrated]);
+
+  const messages = useMemo(
+    () =>
+      threads.find((thread) => thread.id === activeThreadId)?.messages ?? [],
+    [threads, activeThreadId],
+  );
+
+  const threadSummaries = useMemo<TimeBotThreadSummary[]>(
+    () =>
+      [...threads]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .map((thread) => {
+          const lastMessage = thread.messages[thread.messages.length - 1];
+
+          return {
+            id: thread.id,
+            title: thread.title,
+            createdAt: thread.createdAt,
+            updatedAt: thread.updatedAt,
+            messageCount: thread.messages.length,
+            preview: (lastMessage?.content ?? "")
+              .replace(/[#*`>_-]/g, "")
+              .replace(/\s+/g, " ")
+              .trim()
+              .slice(0, 90),
+          };
+        }),
+    [threads],
+  );
+
+  const updateActiveThread = useCallback(
+    (updater: (thread: TimeBotThread) => TimeBotThread) => {
+      setThreads((previous) =>
+        previous.map((thread) =>
+          thread.id === activeThreadIdRef.current ? updater(thread) : thread,
         ),
       );
-    } catch (error: unknown) {
-      console.error("[useTimeBot] persist history:", error);
-    }
-  }, [messages, userId, hydrated]);
+    },
+    [],
+  );
 
   const loadBriefing = useCallback(async () => {
     setIsLoadingBriefing(true);
@@ -181,8 +363,10 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || isStreaming) return;
+      if (!trimmed || isStreamingRef.current) return;
 
+      // Guard against a double submit landing in the same tick.
+      isStreamingRef.current = true;
       lastUserMessageRef.current = trimmed;
       setSuggestions([]);
 
@@ -190,23 +374,38 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       const assistantMessage = createMessage("assistant", "");
 
       // Snapshot before appending so the server never sees the empty reply.
-      const history = messages.slice(-12).map((message) => ({
-        role: message.role,
-        content: message.content,
+      const activeThread = threadsRef.current.find(
+        (thread) => thread.id === activeThreadIdRef.current,
+      );
+
+      const history = (activeThread?.messages ?? [])
+        .slice(-HISTORY_WINDOW)
+        .map((message) => ({ role: message.role, content: message.content }))
+        .filter((item) => item.content.length > 0);
+
+      updateActiveThread((thread) => ({
+        ...thread,
+        title:
+          thread.title === NEW_THREAD_TITLE
+            ? deriveTitle(trimmed)
+            : thread.title,
+        updatedAt: Date.now(),
+        messages: [...thread.messages, userMessage, assistantMessage],
       }));
 
-      setMessages((prev) => [...prev, userMessage, assistantMessage]);
       setIsStreaming(true);
 
       const controller = new AbortController();
       abortRef.current = controller;
 
       const patch = (updater: (message: TimeBotMessage) => TimeBotMessage) => {
-        setMessages((prev) =>
-          prev.map((message) =>
+        updateActiveThread((thread) => ({
+          ...thread,
+          updatedAt: Date.now(),
+          messages: thread.messages.map((message) =>
             message.id === assistantMessage.id ? updater(message) : message,
           ),
-        );
+        }));
       };
 
       try {
@@ -218,7 +417,7 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
           },
           body: JSON.stringify({
             message: trimmed,
-            history: history.filter((item) => item.content.length > 0),
+            history,
             context: { activePath, timeZone: resolveTimeZone() },
           }),
           signal: controller.signal,
@@ -287,45 +486,117 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
         }
       } finally {
         abortRef.current = null;
+        isStreamingRef.current = false;
         setIsStreaming(false);
         loadBriefing();
       }
     },
-    [activePath, isStreaming, messages, loadBriefing],
+    [activePath, loadBriefing, updateActiveThread],
   );
 
   const retryLast = useCallback(() => {
-    if (isStreaming || !lastUserMessageRef.current) return;
+    if (isStreamingRef.current || !lastUserMessageRef.current) return;
 
     // Drop the failed exchange before replaying it.
-    setMessages((prev) => {
-      const next = [...prev];
+    updateActiveThread((thread) => {
+      const next = [...thread.messages];
+
       while (next.length > 0 && next[next.length - 1]?.role === "assistant") {
         next.pop();
       }
       if (next.length > 0 && next[next.length - 1]?.role === "user") {
         next.pop();
       }
-      return next;
+
+      return { ...thread, messages: next };
     });
 
     const message = lastUserMessageRef.current;
     setTimeout(() => {
       send(message);
     }, 0);
-  }, [isStreaming, send]);
+  }, [send, updateActiveThread]);
 
+  /** Empty the current conversation without losing its place in the history. */
   const clear = useCallback(() => {
     stop();
-    setMessages([]);
+    updateActiveThread((thread) => ({
+      ...thread,
+      title: NEW_THREAD_TITLE,
+      updatedAt: Date.now(),
+      messages: [],
+    }));
+    setSuggestions(briefing?.suggestions ?? []);
+  }, [briefing?.suggestions, stop, updateActiveThread]);
+
+  /** Start a fresh conversation — reuses the current one when it is untouched. */
+  const newThread = useCallback(() => {
+    stop();
     setSuggestions(briefing?.suggestions ?? []);
 
-    try {
-      localStorage.removeItem(storageKey(userId));
-    } catch (error: unknown) {
-      console.error("[useTimeBot] clear:", error);
+    const current = threadsRef.current.find(
+      (thread) => thread.id === activeThreadIdRef.current,
+    );
+
+    if (current && current.messages.length === 0) return;
+
+    const thread = createThread();
+
+    setThreads((previous) => {
+      const next = [thread, ...previous];
+      if (next.length <= MAX_THREADS) return next;
+
+      // Drop the least recently used conversations, never the active one.
+      const sorted = [...next].sort((a, b) => b.updatedAt - a.updatedAt);
+      const keep = new Set(sorted.slice(0, MAX_THREADS).map((item) => item.id));
+      keep.add(thread.id);
+
+      return next.filter((item) => keep.has(item.id));
+    });
+
+    setActiveThreadId(thread.id);
+  }, [briefing?.suggestions, stop]);
+
+  const selectThread = useCallback(
+    (threadId: string) => {
+      if (threadId === activeThreadIdRef.current) return;
+
+      stop();
+      setActiveThreadId(threadId);
+      setSuggestions(briefing?.suggestions ?? []);
+      // Retry must never replay a message from the conversation we just left.
+      lastUserMessageRef.current = "";
+    },
+    [briefing?.suggestions, stop],
+  );
+
+  const deleteThread = useCallback((threadId: string) => {
+    const remaining = threadsRef.current.filter(
+      (thread) => thread.id !== threadId,
+    );
+    const next = remaining.length > 0 ? remaining : [createThread()];
+
+    setThreads(next);
+
+    if (threadId === activeThreadIdRef.current) {
+      const fallback = [...next].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+      if (fallback) {
+        setActiveThreadId(fallback.id);
+        lastUserMessageRef.current = "";
+      }
     }
-  }, [briefing?.suggestions, stop, userId]);
+  }, []);
+
+  const renameThread = useCallback((threadId: string, title: string) => {
+    const clean = title.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!clean) return;
+
+    setThreads((previous) =>
+      previous.map((thread) =>
+        thread.id === threadId ? { ...thread, title: clean } : thread,
+      ),
+    );
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -333,16 +604,28 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     };
   }, []);
 
+  const activeThread = useMemo(
+    () => threads.find((thread) => thread.id === activeThreadId) ?? null,
+    [threads, activeThreadId],
+  );
+
   return {
     messages,
     isStreaming,
     suggestions,
     briefing,
     isLoadingBriefing,
+    threads: threadSummaries,
+    activeThreadId,
+    activeThreadTitle: activeThread?.title ?? NEW_THREAD_TITLE,
     send,
     stop,
     retryLast,
     clear,
+    newThread,
+    selectThread,
+    deleteThread,
+    renameThread,
     refreshBriefing: loadBriefing,
   };
 }

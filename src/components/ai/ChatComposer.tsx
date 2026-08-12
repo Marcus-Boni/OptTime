@@ -1,14 +1,22 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Mic, MicOff, Send, Square } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Mic, MicOff, Send, SlashSquare, Square } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { AppRole } from "@/lib/access-control";
 import { cn } from "@/lib/utils";
 
 const MAX_LENGTH = 2000;
+const MAX_TEXTAREA_HEIGHT = 168;
 
 // The Web Speech API is not part of the standard DOM typings.
 interface SpeechRecognitionResultLike {
@@ -50,6 +58,7 @@ export interface SlashCommand {
   prefill?: boolean;
   roles?: AppRole[];
   action?: "clear";
+  group: "Consultar" | "Registrar" | "Gestão" | "Conversa";
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
@@ -57,62 +66,79 @@ const SLASH_COMMANDS: SlashCommand[] = [
     command: "/resumo",
     description: "Horas da semana atual",
     prompt: "Quantas horas eu fiz nesta semana?",
+    group: "Consultar",
+  },
+  {
+    command: "/hoje",
+    description: "Meus lançamentos de hoje",
+    prompt: "Mostre meus lançamentos de hoje",
+    group: "Consultar",
+  },
+  {
+    command: "/mes",
+    description: "Resumo do mês atual",
+    prompt: "Como está meu mês em horas por projeto?",
+    group: "Consultar",
+  },
+  {
+    command: "/projetos",
+    description: "Projetos em que posso lançar",
+    prompt: "Quais são meus projetos ativos?",
+    group: "Consultar",
   },
   {
     command: "/lancar",
     description: "Lançar horas em linguagem natural",
     prompt: "Trabalhei ",
     prefill: true,
-  },
-  {
-    command: "/hoje",
-    description: "Meus lançamentos de hoje",
-    prompt: "Mostre meus lançamentos de hoje",
-  },
-  {
-    command: "/timesheet",
-    description: "Situação do timesheet da semana",
-    prompt: "Como está o meu timesheet desta semana?",
-  },
-  {
-    command: "/enviar",
-    description: "Submeter a semana para aprovação",
-    prompt: "Submeter meu timesheet desta semana",
+    group: "Registrar",
   },
   {
     command: "/timer",
     description: "Status do cronômetro",
     prompt: "Qual o status do meu timer?",
+    group: "Registrar",
   },
   {
-    command: "/projetos",
-    description: "Projetos em que posso lançar",
-    prompt: "Quais são meus projetos ativos?",
+    command: "/timesheet",
+    description: "Situação do timesheet da semana",
+    prompt: "Como está o meu timesheet desta semana?",
+    group: "Registrar",
   },
   {
-    command: "/mes",
-    description: "Resumo do mês atual",
-    prompt: "Como está meu mês em horas por projeto?",
+    command: "/enviar",
+    description: "Submeter a semana para aprovação",
+    prompt: "Submeter meu timesheet desta semana",
+    group: "Registrar",
   },
   {
     command: "/aprovacoes",
     description: "Timesheets aguardando aprovação",
     prompt: "O que preciso aprovar?",
     roles: ["manager", "admin"],
+    group: "Gestão",
   },
   {
     command: "/equipe",
     description: "Carga da equipe nesta semana",
     prompt: "Como está a carga da minha equipe nesta semana?",
     roles: ["manager", "admin"],
+    group: "Gestão",
   },
   {
     command: "/limpar",
     description: "Limpar a conversa",
     prompt: "",
     action: "clear",
+    group: "Conversa",
   },
 ];
+
+export interface ChatComposerHandle {
+  focus: () => void;
+  /** Replace the draft and place the caret at the end. */
+  setDraft: (text: string) => void;
+}
 
 export interface ChatComposerProps {
   role: AppRole;
@@ -120,6 +146,9 @@ export interface ChatComposerProps {
   onSend: (text: string) => void;
   onStop: () => void;
   onClear: () => void;
+  /** Fullscreen gets a roomier composer. */
+  variant?: "docked" | "fullscreen";
+  ref?: React.Ref<ChatComposerHandle>;
 }
 
 export function ChatComposer({
@@ -128,13 +157,18 @@ export function ChatComposer({
   onSend,
   onStop,
   onClear,
+  variant = "docked",
+  ref,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
+  const [isPaletteForced, setIsPaletteForced] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const isFullscreen = variant === "fullscreen";
 
   const availableCommands = useMemo(
     () =>
@@ -143,28 +177,72 @@ export function ChatComposer({
   );
 
   const matchingCommands = useMemo(() => {
+    if (isPaletteForced && !value.startsWith("/")) return availableCommands;
     if (!value.startsWith("/")) return [];
+
     const needle = value.slice(1).toLowerCase().split(" ")[0] ?? "";
 
     return availableCommands.filter((item) =>
       item.command.slice(1).startsWith(needle),
     );
-  }, [value, availableCommands]);
+  }, [availableCommands, isPaletteForced, value]);
 
-  const showCommands = matchingCommands.length > 0 && value.startsWith("/");
+  const showCommands = matchingCommands.length > 0;
 
-  // Keep the textarea height glued to its content.
-  useEffect(() => {
+  // Grouped for display, but each item keeps its flat index so the arrow keys
+  // and the rendered order never drift apart.
+  const groupedCommands = useMemo(() => {
+    const groups = new Map<
+      SlashCommand["group"],
+      Array<{ command: SlashCommand; index: number }>
+    >();
+
+    matchingCommands.forEach((command, index) => {
+      const bucket = groups.get(command.group) ?? [];
+      bucket.push({ command, index });
+      groups.set(command.group, bucket);
+    });
+
+    return [...groups.entries()];
+  }, [matchingCommands]);
+
+  const autosize = useCallback(() => {
     const element = textareaRef.current;
     if (!element) return;
 
     element.style.height = "auto";
-    element.style.height = `${Math.min(element.scrollHeight, 140)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, MAX_TEXTAREA_HEIGHT)}px`;
   }, []);
 
+  // Keep the textarea height glued to its content on every change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `value` is the resize trigger, not a value read here
   useEffect(() => {
+    autosize();
+  }, [autosize, value]);
+
+  const updateValue = useCallback((next: string) => {
+    setValue(next.slice(0, MAX_LENGTH));
     setCommandIndex(0);
   }, []);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      focus: () => textareaRef.current?.focus(),
+      setDraft: (text: string) => {
+        updateValue(text);
+        const element = textareaRef.current;
+        if (!element) return;
+
+        element.focus();
+        requestAnimationFrame(() => {
+          element.selectionStart = element.value.length;
+          element.selectionEnd = element.value.length;
+        });
+      },
+    }),
+    [updateValue],
+  );
 
   const speechSupported =
     typeof window !== "undefined" &&
@@ -176,25 +254,18 @@ export function ChatComposer({
     };
   }, []);
 
-  function updateValue(next: string) {
-    setValue(next.slice(0, MAX_LENGTH));
-
-    const element = textareaRef.current;
-    if (element) {
-      element.style.height = "auto";
-      element.style.height = `${Math.min(element.scrollHeight, 140)}px`;
-    }
-  }
-
   function submit(text: string) {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
 
     onSend(trimmed);
+    setIsPaletteForced(false);
     updateValue("");
   }
 
   function applyCommand(command: SlashCommand) {
+    setIsPaletteForced(false);
+
     if (command.action === "clear") {
       onClear();
       updateValue("");
@@ -238,7 +309,8 @@ export function ChatComposer({
 
       if (event.key === "Escape") {
         event.preventDefault();
-        updateValue("");
+        setIsPaletteForced(false);
+        if (value.startsWith("/")) updateValue("");
         return;
       }
     }
@@ -308,41 +380,61 @@ export function ChatComposer({
     }
   }
 
+  const usageRatio = value.length / MAX_LENGTH;
+
   return (
-    <div className="relative border-border/40 border-t bg-card p-3 dark:border-white/10">
+    <div
+      className={cn(
+        "relative border-border/40 border-t bg-card dark:border-white/10",
+        isFullscreen ? "px-4 py-3" : "p-3",
+      )}
+    >
       <AnimatePresence>
         {showCommands && (
-          <motion.ul
+          <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             transition={{ duration: 0.15 }}
-            className="absolute right-3 bottom-full left-3 mb-2 max-h-56 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1 shadow-xl dark:border-white/10"
-            aria-label="Comandos disponíveis"
+            className={cn(
+              "absolute bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 shadow-2xl dark:border-white/10",
+              isFullscreen
+                ? "right-4 left-4 mx-auto max-w-3xl"
+                : "right-3 left-3",
+            )}
           >
-            {matchingCommands.map((command, index) => (
-              <li key={command.command}>
-                <button
-                  type="button"
-                  onClick={() => applyCommand(command)}
-                  onMouseEnter={() => setCommandIndex(index)}
-                  className={cn(
-                    "flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
-                    index === commandIndex
-                      ? "bg-orange-500/15 text-orange-600 dark:text-orange-300"
-                      : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
-                  )}
-                >
-                  <span className="font-mono font-medium text-[11px]">
-                    {command.command}
-                  </span>
-                  <span className="truncate text-[10px] text-neutral-500 dark:text-neutral-400">
-                    {command.description}
-                  </span>
-                </button>
-              </li>
+            {groupedCommands.map(([group, commands]) => (
+              <div key={group} className="mb-1 last:mb-0">
+                <p className="px-2 py-1 font-medium text-[9.5px] text-neutral-400 uppercase tracking-wider dark:text-neutral-500">
+                  {group}
+                </p>
+                <ul aria-label={`Comandos de ${group}`}>
+                  {commands.map(({ command, index }) => (
+                    <li key={command.command}>
+                      <button
+                        type="button"
+                        onClick={() => applyCommand(command)}
+                        onMouseEnter={() => setCommandIndex(index)}
+                        className={cn(
+                          "flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                          index === commandIndex
+                            ? "bg-orange-500/15 text-orange-600 dark:text-orange-300"
+                            : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                        )}
+                      >
+                        <span className="font-mono font-medium text-[11px]">
+                          {command.command}
+                        </span>
+                        <span className="truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+                          {command.description}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </motion.ul>
+          </motion.div>
         )}
       </AnimatePresence>
 
@@ -351,7 +443,10 @@ export function ChatComposer({
           event.preventDefault();
           submit(value);
         }}
-        className="flex items-end gap-2 rounded-xl border border-border/60 bg-neutral-50 p-1.5 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 dark:border-neutral-700 dark:bg-neutral-800"
+        className={cn(
+          "flex items-end gap-2 rounded-2xl border border-border/60 bg-neutral-50 p-1.5 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 dark:border-neutral-700 dark:bg-neutral-800/70",
+          isFullscreen && "mx-auto w-full max-w-3xl",
+        )}
       >
         <label htmlFor="timebot-composer" className="sr-only">
           Mensagem para o TimeBot
@@ -369,8 +464,34 @@ export function ChatComposer({
           }
           rows={1}
           maxLength={MAX_LENGTH}
-          className="max-h-[140px] min-h-[34px] flex-1 resize-none bg-transparent px-2 py-1.5 text-foreground text-xs placeholder:text-neutral-400 focus:outline-none dark:placeholder:text-neutral-500"
+          aria-describedby="timebot-composer-hint"
+          className={cn(
+            "min-h-[34px] flex-1 resize-none bg-transparent px-2 py-1.5 text-foreground placeholder:text-neutral-400 focus:outline-none dark:placeholder:text-neutral-500",
+            isFullscreen ? "text-sm" : "text-xs",
+          )}
+          style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
         />
+
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          onClick={() => {
+            setIsPaletteForced((previous) => !previous);
+            textareaRef.current?.focus();
+          }}
+          aria-label="Abrir comandos rápidos"
+          aria-expanded={showCommands}
+          title="Comandos rápidos (/)"
+          className={cn(
+            "h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
+            showCommands
+              ? "bg-orange-500/15 text-orange-500"
+              : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
+          )}
+        >
+          <SlashSquare className="h-4 w-4" aria-hidden="true" />
+        </Button>
 
         {speechSupported && (
           <Button
@@ -380,18 +501,22 @@ export function ChatComposer({
             onClick={toggleVoice}
             aria-label={isListening ? "Parar ditado" : "Ditar por voz"}
             aria-pressed={isListening}
+            title={isListening ? "Parar ditado" : "Ditar por voz"}
             className={cn(
               "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
               isListening
-                ? "bg-red-500/15 text-red-500 hover:bg-red-500/25 ring-2 ring-red-500/30"
+                ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 hover:bg-red-500/25"
                 : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
             )}
           >
             {isListening && (
-              <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20" />
+              <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20 motion-reduce:animate-none" />
             )}
             {isListening ? (
-              <MicOff className="relative z-10 h-4 w-4 animate-pulse" aria-hidden="true" />
+              <MicOff
+                className="relative z-10 h-4 w-4 animate-pulse motion-reduce:animate-none"
+                aria-hidden="true"
+              />
             ) : (
               <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
             )}
@@ -407,8 +532,11 @@ export function ChatComposer({
             title="Parar geração da resposta"
             className="relative h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
           >
-            <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15" />
-            <Square className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400" aria-hidden="true" />
+            <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15 motion-reduce:animate-none" />
+            <Square
+              className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400"
+              aria-hidden="true"
+            />
           </Button>
         ) : (
           <Button
@@ -416,22 +544,38 @@ export function ChatComposer({
             size="icon"
             disabled={!value.trim()}
             aria-label="Enviar mensagem"
-            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 disabled:opacity-40"
+            title="Enviar mensagem (Enter)"
+            className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/25 disabled:opacity-40 disabled:shadow-none"
           >
             <Send className="h-4 w-4" aria-hidden="true" />
           </Button>
         )}
       </form>
 
-      <p className="mt-1.5 text-center text-[10px] text-neutral-400 dark:text-neutral-500">
-        <kbd className="font-mono">Enter</kbd> envia ·{" "}
-        <kbd className="font-mono">/</kbd> comandos
-        {value.length > MAX_LENGTH * 0.9 && (
-          <span className="ml-1.5 text-amber-500">
+      <div
+        id="timebot-composer-hint"
+        className={cn(
+          "mt-1.5 flex items-center justify-center gap-2 text-[10px] text-neutral-400 dark:text-neutral-500",
+          isFullscreen && "mx-auto max-w-3xl",
+        )}
+      >
+        <span>
+          <kbd className="font-mono">Enter</kbd> envia ·{" "}
+          <kbd className="font-mono">Shift+Enter</kbd> quebra linha ·{" "}
+          <kbd className="font-mono">/</kbd> comandos
+        </span>
+
+        {usageRatio > 0.6 && (
+          <span
+            className={cn(
+              "font-mono tabular-nums",
+              usageRatio > 0.9 ? "text-red-500" : "text-amber-500",
+            )}
+          >
             {value.length}/{MAX_LENGTH}
           </span>
         )}
-      </p>
+      </div>
     </div>
   );
 }
