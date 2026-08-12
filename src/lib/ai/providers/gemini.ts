@@ -140,7 +140,7 @@ function toContents(request: ProviderRequest) {
 
 export function createGeminiProvider(
   apiKey: string,
-  model = process.env.GEMINI_MODEL || "gemini-flash-latest",
+  model = process.env.GEMINI_MODEL || "gemini-3.5-flash",
 ): ChatProvider {
   return {
     name: "gemini",

@@ -207,7 +207,8 @@ export function createOpenRouterProvider(apiKey: string): ChatProvider {
     name: "openrouter",
     url: "https://openrouter.ai/api/v1/chat/completions",
     apiKey,
-    model: process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash",
+    model:
+      process.env.OPENROUTER_MODEL || "nvidia/nemotron-3.5-lightning:free",
     extraHeaders: {
       "HTTP-Referer":
         process.env.NEXT_PUBLIC_APP_URL || "https://optsolv.com.br",

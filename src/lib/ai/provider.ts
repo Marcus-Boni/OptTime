@@ -118,7 +118,11 @@ async function callGeminiAPI(
   history: ChatMessage[],
   context: UserContextInfo,
 ): Promise<string | null> {
-  const models = ["gemini-flash-latest", "gemini-flash-lite-latest"];
+  const models = [
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-lite-latest",
+  ];
   let lastError: Error | null = null;
 
   for (const model of models) {
