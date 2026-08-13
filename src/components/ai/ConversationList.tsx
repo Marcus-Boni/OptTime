@@ -13,8 +13,8 @@ import {
   X,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { TimeBotThreadSummary } from "@/hooks/use-timebot";
 import { ActionTooltip } from "@/components/ui/tooltip";
+import type { TimeBotThreadSummary } from "@/hooks/use-timebot";
 import { cn } from "@/lib/utils";
 
 function formatUpdatedAt(timestamp: number): string {

@@ -48,6 +48,32 @@ function buildGroups(modifier: string): ShortcutGroup[] {
       ],
     },
     {
+      label: "Operador",
+      items: [
+        {
+          keys: [modifier, "Shift", "V"],
+          description: "Abrir o comando por voz (mãos-livres)",
+        },
+        {
+          keys: ["Esc"],
+          description: "Fechar o modo de voz",
+        },
+      ],
+    },
+    {
+      label: "Modo Foco",
+      items: [
+        {
+          keys: [modifier, "Shift", "L"],
+          description: "Abrir ou minimizar o Modo Foco",
+        },
+        { keys: ["Espaço"], description: "Pausar ou retomar o Pomodoro" },
+        { keys: ["S"], description: "Pular para a próxima etapa" },
+        { keys: ["R"], description: "Reiniciar a etapa atual" },
+        { keys: ["M"], description: "Silenciar ou ativar o som ambiente" },
+      ],
+    },
+    {
       label: "Mensagem",
       items: [
         { keys: ["Enter"], description: "Enviar" },

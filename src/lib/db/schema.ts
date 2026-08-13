@@ -47,6 +47,18 @@ export const user = pgTable("user", {
     .default(false)
     .notNull(),
   timeShowWeekends: boolean("time_show_weekends").default(true).notNull(),
+  /** AI Operator autonomy level: always_ask | smart | autopilot */
+  operatorMode: text("operator_mode").default("always_ask").notNull(),
+  /** JSON map of action kind -> "ask" | "auto" | "never" (per-action override) */
+  operatorPolicies: text("operator_policies"),
+  operatorVoiceEnabled: boolean("operator_voice_enabled")
+    .default(true)
+    .notNull(),
+  operatorVoiceLocale: text("operator_voice_locale").default("pt-BR").notNull(),
+  /** Read assistant replies aloud via speech synthesis */
+  operatorSpeakReplies: boolean("operator_speak_replies")
+    .default(false)
+    .notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   /** Token for the Azure DevOps browser extension (Bearer auth) */
   extensionToken: text("extension_token").unique(),
@@ -673,6 +685,56 @@ export const reminderLogRelations = relations(reminderLog, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── AI Operator action log ───────────────────────────────────────────────────
+// Audit trail for every action the AI assistant proposed or executed on behalf
+// of a user. Written by the client right after each step settles, so the user
+// always has a reviewable (and where possible reversible) history.
+export const operatorActionLog = pgTable(
+  "operator_action_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Groups the steps that were confirmed together as one plan */
+    planId: text("plan_id"),
+    /** Zero-based position of this step inside its plan */
+    stepIndex: integer("step_index").notNull().default(0),
+    /** Action kind, e.g. "create_time_entry" | "notify_team" */
+    kind: text("kind").notNull(),
+    /** Short human-readable summary shown in the history list */
+    summary: text("summary").notNull(),
+    /** "executed" | "failed" | "skipped" | "undone" */
+    status: text("status").notNull(),
+    /** How it was authorized: "confirmed" | "auto" */
+    authorization: text("authorization").notNull().default("confirmed"),
+    /** Whether the command arrived by voice or typed text */
+    inputMode: text("input_mode").notNull().default("text"),
+    /** JSON snapshot of the executed action parameters */
+    params: text("params"),
+    /** Id of the row this action created, enabling undo */
+    resultId: text("result_id"),
+    errorMessage: text("error_message"),
+    undoneAt: timestamp("undone_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("operator_log_user_idx").on(table.userId),
+    index("operator_log_plan_idx").on(table.planId),
+    index("operator_log_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const operatorActionLogRelations = relations(
+  operatorActionLog,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [operatorActionLog.userId],
+      references: [user.id],
+    }),
+  }),
+);
 
 // ─── Webhook Subscriptions ────────────────────────────────────────────────────
 // Stores outgoing webhook subscriptions for the public integration API (v1).

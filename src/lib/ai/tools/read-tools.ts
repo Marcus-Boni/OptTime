@@ -726,7 +726,7 @@ export const getPendingApprovalsTool: AgentTool<EmptyArgs> = {
 };
 
 /** null = every user (admin), otherwise the manager's scope. */
-async function resolveScopedUserIds(
+export async function resolveScopedUserIds(
   ctx: ToolContext,
 ): Promise<string[] | null> {
   if (ctx.actor.role === "admin") return null;

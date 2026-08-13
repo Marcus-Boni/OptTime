@@ -9,6 +9,7 @@ import {
   CheckSquare,
   Clock3,
   FolderKanban,
+  History,
   Layers3,
   LayoutTemplate,
   Loader2,
@@ -23,6 +24,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import EmailSettingsCard from "@/components/admin/email-settings-card";
+import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
+import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -369,11 +372,33 @@ export default function SettingsPage() {
           <TabsList>
             <TabsTrigger value="experience">Experiência</TabsTrigger>
             <TabsTrigger value="productivity">Produtividade</TabsTrigger>
+            <TabsTrigger value="operator">Operador IA</TabsTrigger>
             <TabsTrigger value="integrations">Integrações</TabsTrigger>
             {isPrivileged ? (
               <TabsTrigger value="operations">Operação</TabsTrigger>
             ) : null}
           </TabsList>
+
+          <TabsContent value="operator" className="space-y-6">
+            <OperatorSettingsCard />
+
+            <Card className="border-border/50 bg-card/80 backdrop-blur">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-display text-base">
+                  <History className="h-4 w-4 text-brand-500" />
+                  Histórico do operador
+                </CardTitle>
+                <p className="text-muted-foreground text-xs leading-relaxed">
+                  Tudo que o assistente executou no seu nome, com a origem do
+                  comando. Lançamentos criados ou excluídos por ele podem ser
+                  desfeitos aqui.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <OperatorHistoryPanel />
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           <TabsContent value="experience" className="space-y-6">
             <Card className="border-border/50 bg-card/80 backdrop-blur">

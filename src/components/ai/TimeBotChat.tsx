@@ -6,11 +6,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
+  AudioLines,
   Bot,
   Check,
   ChevronDown,
   Copy,
   Download,
+  History,
   Keyboard,
   Loader2,
   Maximize2,
@@ -34,8 +36,16 @@ import {
 } from "@/components/ai/ChatComposer";
 import { ConversationList } from "@/components/ai/ConversationList";
 import { MarkdownContent } from "@/components/ai/MarkdownContent";
+import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { ShortcutsHelp } from "@/components/ai/ShortcutsHelp";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,12 +55,18 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import type { AssistantPanelMode } from "@/hooks/use-assistant-panel";
+import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
 import {
   type TimeBotMessage,
   type ToolActivityItem,
   useTimeBot,
 } from "@/hooks/use-timebot";
 import type { AppRole } from "@/lib/access-control";
+import {
+  consumePendingVoiceCommand,
+  VOICE_COMMAND_EVENT,
+} from "@/lib/ai/operator/voice-events";
 import {
   buildTranscriptFileName,
   buildTranscriptMarkdown,
@@ -68,6 +84,8 @@ export interface TimeBotChatProps {
   titleId: string;
   onToggleFullscreen: () => void;
   onClose: () => void;
+  /** Opens the hands-free voice overlay. Omitted when voice is disabled. */
+  onOpenVoiceMode?: () => void;
 }
 
 function formatDayLabel(timestamp: number): string {
@@ -274,7 +292,10 @@ function MessageActions({
 
   return (
     <div className="mt-1.5 flex items-center gap-1">
-      <ActionTooltip label={copied ? "Copiado!" : "Copiar mensagem"} side="bottom">
+      <ActionTooltip
+        label={copied ? "Copiado!" : "Copiar mensagem"}
+        side="bottom"
+      >
         <button
           type="button"
           onClick={handleCopy}
@@ -303,7 +324,10 @@ function MessageActions({
       )}
 
       {message.provider && (
-        <ActionTooltip label={`Provedor de IA: ${message.provider.toUpperCase()}`} side="bottom">
+        <ActionTooltip
+          label={`Provedor de IA: ${message.provider.toUpperCase()}`}
+          side="bottom"
+        >
           <span className="ml-1 cursor-default rounded px-1 py-0.5 font-mono text-[9px] text-neutral-400 uppercase dark:text-neutral-500">
             {message.provider}
           </span>
@@ -408,6 +432,7 @@ function MessageBubble({
             <AssistantActionView
               key={`${action.kind}-${index}`}
               action={action}
+              inputMode={message.inputMode}
             />
           ))}
 
@@ -466,6 +491,7 @@ export function TimeBotChat({
   titleId,
   onToggleFullscreen,
   onClose,
+  onOpenVoiceMode,
 }: TimeBotChatProps) {
   const { data: session } = useSession();
   const user = session?.user;
@@ -501,6 +527,7 @@ export function TimeBotChat({
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showActionLog, setShowActionLog] = useState(false);
 
   const hasMessages = messages.length > 0;
 
@@ -524,6 +551,52 @@ export function TimeBotChat({
   useEffect(() => {
     if (!isFullscreen) setShowHistory(false);
   }, [isFullscreen]);
+
+  // A command spoken in the voice overlay is parked while this chat is still
+  // mounting, so it is drained here and on every later hand-off.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function drain() {
+      const command = consumePendingVoiceCommand();
+      if (command) send(command, "voice");
+    }
+
+    drain();
+
+    window.addEventListener(VOICE_COMMAND_EVENT, drain);
+    return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
+  }, [isOpen, send]);
+
+  const { settings } = useOperatorPolicy();
+  const speech = useSpeechSynthesis(settings.voiceLocale);
+
+  /** Guards against re-reading the same reply on unrelated re-renders. */
+  const spokenMessageIdRef = useRef<string | null>(null);
+  const speakRef = useRef(speech.speak);
+
+  useEffect(() => {
+    speakRef.current = speech.speak;
+  }, [speech.speak]);
+
+  const lastMessage = messages.at(-1);
+  const finishedReplyId =
+    !isStreaming && lastMessage?.role === "assistant" && lastMessage.content
+      ? lastMessage.id
+      : null;
+
+  // Reads a reply aloud once, and only after it has fully streamed in.
+  useEffect(() => {
+    if (!settings.speakReplies || !finishedReplyId) return;
+    if (spokenMessageIdRef.current === finishedReplyId) return;
+
+    spokenMessageIdRef.current = finishedReplyId;
+
+    const content = messages.find(
+      (item) => item.id === finishedReplyId,
+    )?.content;
+    if (content) speakRef.current(content);
+  }, [settings.speakReplies, finishedReplyId, messages]);
 
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
@@ -784,6 +857,16 @@ export function TimeBotChat({
                     <Copy className="h-4 w-4" aria-hidden="true" />
                     Copiar transcrição
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowActionLog(true)}>
+                    <History className="h-4 w-4" aria-hidden="true" />
+                    Ações executadas
+                  </DropdownMenuItem>
+                  {onOpenVoiceMode && (
+                    <DropdownMenuItem onClick={onOpenVoiceMode}>
+                      <AudioLines className="h-4 w-4" aria-hidden="true" />
+                      Comando por voz
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
                     <Keyboard className="h-4 w-4" aria-hidden="true" />
                     Atalhos do teclado
@@ -957,6 +1040,8 @@ export function TimeBotChat({
             onStop={stop}
             onClear={handleClear}
             variant={isFullscreen ? "fullscreen" : "docked"}
+            voiceLocale={settings.voiceLocale}
+            onOpenVoiceMode={onOpenVoiceMode}
           />
 
           {/* Docked history overlay */}
@@ -1004,6 +1089,23 @@ export function TimeBotChat({
       </div>
 
       <ShortcutsHelp open={showShortcuts} onOpenChange={setShowShortcuts} />
+
+      <Dialog open={showActionLog} onOpenChange={setShowActionLog}>
+        <DialogContent className="z-[10002] max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-orange-500" aria-hidden="true" />
+              Ações executadas
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              O que o assistente fez no seu nome, de onde veio o comando e o que
+              ainda pode ser desfeito.
+            </DialogDescription>
+          </DialogHeader>
+
+          <OperatorHistoryPanel isActive={showActionLog} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

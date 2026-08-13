@@ -3,12 +3,15 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { AssistantPanel } from "@/components/ai/AssistantPanel";
+import { VoiceCommandOverlay } from "@/components/ai/operator/VoiceCommandOverlay";
 import { TimeBotChat } from "@/components/ai/TimeBotChat";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import { useAssistantPanel } from "@/hooks/use-assistant-panel";
+import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
 
 /** Ignore the shortcut while the user is typing somewhere else. */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -20,15 +23,46 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 export function TimeBotWidget() {
   const [mounted, setMounted] = useState(false);
+  const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
   const pathname = usePathname();
   const panel = useAssistantPanel();
+  const { settings } = useOperatorPolicy();
   const titleId = useId();
 
-  const { isOpen, toggle } = panel;
+  const { isOpen, toggle, open } = panel;
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Ctrl/Cmd+Shift+V opens hands-free voice command mode from anywhere.
+  useEffect(() => {
+    if (!settings.voiceEnabled) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      const isVoiceShortcut =
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        (event.key === "v" || event.key === "V");
+
+      if (!isVoiceShortcut) return;
+
+      event.preventDefault();
+      setIsVoiceModeOpen((current) => !current);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [settings.voiceEnabled]);
+
+  // The spoken command is parked, then the panel takes over to show the plan.
+  const handleVoiceCommand = useCallback(
+    (text: string) => {
+      queueVoiceCommand(text);
+      open();
+    },
+    [open],
+  );
 
   // Ctrl/Cmd+J toggles the assistant from anywhere in the app.
   useEffect(() => {
@@ -57,7 +91,11 @@ export function TimeBotWidget() {
       {createPortal(
         <AnimatePresence>
           {!isOpen && (
-            <ActionTooltip label="TimeBot — Assistente de IA" shortcut="Ctrl+J" side="left">
+            <ActionTooltip
+              label="TimeBot — Assistente de IA"
+              shortcut="Ctrl+J"
+              side="left"
+            >
               <motion.button
                 type="button"
                 initial={{ opacity: 0, scale: 0.8, y: 12 }}
@@ -99,8 +137,21 @@ export function TimeBotWidget() {
           titleId={titleId}
           onToggleFullscreen={panel.toggleFullscreen}
           onClose={panel.close}
+          onOpenVoiceMode={
+            settings.voiceEnabled ? () => setIsVoiceModeOpen(true) : undefined
+          }
         />
       </AssistantPanel>
+
+      {createPortal(
+        <VoiceCommandOverlay
+          open={isVoiceModeOpen}
+          locale={settings.voiceLocale}
+          onClose={() => setIsVoiceModeOpen(false)}
+          onSubmit={handleVoiceCommand}
+        />,
+        document.body,
+      )}
     </>
   );
 }

@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { runAgent } from "@/lib/ai/agent";
 import { normalizeTimeZone, resolveTodayInTimeZone } from "@/lib/ai/context";
+import { toOperatorSettings } from "@/lib/ai/operator/policy";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import type { AgentEvent, AgentUserContext } from "@/lib/ai/types";
 import { db } from "@/lib/db";
@@ -55,12 +56,23 @@ export async function POST(req: Request): Promise<Response> {
 
     const profile = await db.query.user.findFirst({
       where: eq(user.id, session.user.id),
-      columns: { weeklyCapacity: true, name: true, email: true },
+      columns: {
+        weeklyCapacity: true,
+        name: true,
+        email: true,
+        operatorMode: true,
+        operatorPolicies: true,
+        operatorVoiceEnabled: true,
+        operatorVoiceLocale: true,
+        operatorSpeakReplies: true,
+      },
     });
 
     const timeZone = normalizeTimeZone(
       context?.timeZone ?? req.headers.get("x-timezone"),
     );
+
+    const operatorSettings = toOperatorSettings(profile ?? {});
 
     const agentUser: AgentUserContext = {
       userId: session.user.id,
@@ -87,6 +99,7 @@ export async function POST(req: Request): Promise<Response> {
             history,
             user: agentUser,
             actor,
+            settings: operatorSettings,
             signal: abortController.signal,
           })) {
             controller.enqueue(encoder.encode(encodeEvent(event)));

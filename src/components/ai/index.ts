@@ -5,6 +5,7 @@ export * from "./BriefingPanel";
 export * from "./ChatComposer";
 export * from "./ConversationList";
 export * from "./MarkdownContent";
+export * from "./operator";
 export * from "./ShortcutsHelp";
 export * from "./TimeBotChat";
 export * from "./TimeBotWidget";

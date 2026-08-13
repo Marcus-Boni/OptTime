@@ -243,10 +243,135 @@ export interface SubmitTimesheetAction {
   warning: string | null;
 }
 
+export interface UpdateTimeEntryAction {
+  kind: "update_time_entry";
+  entryId: string;
+  projectName: string | null;
+  projectColor: string | null;
+  date: string;
+  /** Values currently stored, shown as the "before" side of the diff. */
+  current: {
+    description: string;
+    durationMinutes: number;
+    billable: boolean;
+  };
+  /** Values the assistant proposes, shown as the "after" side. */
+  next: {
+    description: string;
+    durationMinutes: number;
+    billable: boolean;
+  };
+  warning: string | null;
+}
+
+export interface DeleteTimeEntryAction {
+  kind: "delete_time_entry";
+  entryId: string;
+  projectName: string | null;
+  projectColor: string | null;
+  description: string;
+  date: string;
+  durationMinutes: number;
+  warning: string | null;
+}
+
+export interface PauseTimerAction {
+  kind: "pause_timer";
+  projectName: string | null;
+  description: string | null;
+  elapsedMinutes: number;
+}
+
+export interface ResumeTimerAction {
+  kind: "resume_timer";
+  projectName: string | null;
+  description: string | null;
+  elapsedMinutes: number;
+}
+
+export interface ApproveTimesheetAction {
+  kind: "approve_timesheet";
+  timesheetId: string;
+  userName: string;
+  period: string;
+  periodLabel: string;
+  totalMinutes: number;
+  warning: string | null;
+}
+
+export interface RejectTimesheetAction {
+  kind: "reject_timesheet";
+  timesheetId: string;
+  userName: string;
+  period: string;
+  periodLabel: string;
+  totalMinutes: number;
+  reason: string;
+  warning: string | null;
+}
+
+export type ReportFormat = "pdf" | "xlsx";
+export type ReportKind = "summary" | "detailed";
+export type ReportScope = "me" | "project" | "team";
+
+export interface ExportReportAction {
+  kind: "export_report";
+  format: ReportFormat;
+  reportKind: ReportKind;
+  scope: ReportScope;
+  projectId: string | null;
+  projectName: string | null;
+  from: string;
+  to: string;
+  periodLabel: string;
+  title: string;
+  /** Row count previewed server-side so the card can warn about empty ranges. */
+  entryCount: number;
+  totalMinutes: number;
+  warning: string | null;
+}
+
+export type NotifyAudience = "project_members" | "direct_reports" | "custom";
+
+export interface NotifyTeamAction {
+  kind: "notify_team";
+  audience: NotifyAudience;
+  projectId: string | null;
+  projectName: string | null;
+  recipients: Array<{ id: string; name: string; email: string }>;
+  subject: string;
+  message: string;
+  /** Extra factual lines rendered as a highlight block in the email. */
+  contextLines: string[];
+  warning: string | null;
+}
+
 export interface NavigateAction {
   kind: "navigate";
   path: string;
   label: string;
+}
+
+// ─── Multi-step plans ────────────────────────────────────────────────
+
+export interface OperatorPlanStep {
+  /** Stable id used as the React key and in the audit log. */
+  id: string;
+  index: number;
+  title: string;
+  detail: string | null;
+  action: OperatorStepAction;
+}
+
+/**
+ * Wraps two or more actions proposed in the same turn so the user confirms
+ * once and the steps run in order — e.g. "log 3h and submit my timesheet".
+ */
+export interface OperatorPlanAction {
+  kind: "operator_plan";
+  planId: string;
+  title: string;
+  steps: OperatorPlanStep[];
 }
 
 export type AssistantAction =
@@ -254,10 +379,28 @@ export type AssistantAction =
   | StartTimerAction
   | StopTimerAction
   | SubmitTimesheetAction
-  | NavigateAction;
+  | UpdateTimeEntryAction
+  | DeleteTimeEntryAction
+  | PauseTimerAction
+  | ResumeTimerAction
+  | ApproveTimesheetAction
+  | RejectTimesheetAction
+  | ExportReportAction
+  | NotifyTeamAction
+  | NavigateAction
+  | OperatorPlanAction;
 
-/** Actions that mutate data and therefore require explicit confirmation. */
-export type ConfirmableAction = Exclude<AssistantAction, NavigateAction>;
+/** A single action, i.e. anything that can sit inside a plan step. */
+export type OperatorStepAction = Exclude<AssistantAction, OperatorPlanAction>;
+
+/** Actions that change state and therefore require explicit confirmation. */
+export type ConfirmableAction = Exclude<
+  AssistantAction,
+  NavigateAction | OperatorPlanAction
+>;
+
+/** Discriminator values of every confirmable action. */
+export type ConfirmableActionKind = ConfirmableAction["kind"];
 
 // ─── Streaming protocol (SSE) ────────────────────────────────────────
 
