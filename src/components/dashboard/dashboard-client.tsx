@@ -37,6 +37,7 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { AutofillRadar } from "@/components/dashboard/AutofillRadar";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -664,6 +665,10 @@ export function DashboardClient() {
       animate="visible"
       className="space-y-8"
     >
+      {/* Proactive logging: sits above everything and hides itself when there
+          is nothing pending. */}
+      <AutofillRadar />
+
       <motion.div variants={itemVariants}>
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardContent className="flex flex-col gap-6 p-6">

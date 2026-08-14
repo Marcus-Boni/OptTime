@@ -44,6 +44,8 @@ export interface OperatorSettings {
   voiceEnabled: boolean;
   voiceLocale: string;
   speakReplies: boolean;
+  /** Receive the Monday-morning AI weekly digest by e-mail. */
+  digestEnabled: boolean;
 }
 
 export const DEFAULT_OPERATOR_SETTINGS: OperatorSettings = {
@@ -52,6 +54,7 @@ export const DEFAULT_OPERATOR_SETTINGS: OperatorSettings = {
   voiceEnabled: true,
   voiceLocale: "pt-BR",
   speakReplies: false,
+  digestEnabled: true,
 };
 
 // ─── Audit log ───────────────────────────────────────────────────────

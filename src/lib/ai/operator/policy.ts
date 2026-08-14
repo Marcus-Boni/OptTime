@@ -243,6 +243,7 @@ export function toOperatorSettings(row: {
   operatorVoiceEnabled?: boolean | null;
   operatorVoiceLocale?: string | null;
   operatorSpeakReplies?: boolean | null;
+  digestEnabled?: boolean | null;
 }): OperatorSettings {
   return {
     mode: isOperatorMode(row.operatorMode)
@@ -255,6 +256,7 @@ export function toOperatorSettings(row: {
       row.operatorVoiceLocale ?? DEFAULT_OPERATOR_SETTINGS.voiceLocale,
     speakReplies:
       row.operatorSpeakReplies ?? DEFAULT_OPERATOR_SETTINGS.speakReplies,
+    digestEnabled: row.digestEnabled ?? DEFAULT_OPERATOR_SETTINGS.digestEnabled,
   };
 }
 

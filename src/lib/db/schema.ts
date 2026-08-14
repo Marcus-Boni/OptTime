@@ -59,6 +59,8 @@ export const user = pgTable("user", {
   operatorSpeakReplies: boolean("operator_speak_replies")
     .default(false)
     .notNull(),
+  /** Receive the Monday-morning AI weekly digest by e-mail */
+  digestEnabled: boolean("digest_enabled").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   /** Token for the Azure DevOps browser extension (Bearer auth) */
   extensionToken: text("extension_token").unique(),
@@ -735,6 +737,51 @@ export const operatorActionLogRelations = relations(
     }),
   }),
 );
+
+// ─── Weekly AI digest ─────────────────────────────────────────────────────────
+// One row per user/period/audience. The unique index is what makes the cron
+// idempotent: re-running it in the same ISO week cannot send a second e-mail.
+// The rendered narrative and stats snapshot are kept so the in-app view shows
+// exactly what was mailed.
+export const digestLog = pgTable(
+  "digest_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** ISO week the digest covers, e.g. "2026-W32" */
+    period: text("period").notNull(),
+    /** "member" | "manager" */
+    audience: text("audience").notNull(),
+    /** "sent" | "skipped" | "failed" */
+    status: text("status").notNull(),
+    /** Natural-language summary as delivered */
+    narrative: text("narrative"),
+    /** JSON snapshot of the computed statistics */
+    stats: text("stats"),
+    totalMinutes: integer("total_minutes").notNull().default(0),
+    /** AI provider that wrote the narrative, or "deterministic" */
+    provider: text("provider"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("digest_log_user_period_audience_unique").on(
+      table.userId,
+      table.period,
+      table.audience,
+    ),
+    index("digest_log_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const digestLogRelations = relations(digestLog, ({ one }) => ({
+  user: one(user, {
+    fields: [digestLog.userId],
+    references: [user.id],
+  }),
+}));
 
 // ─── Webhook Subscriptions ────────────────────────────────────────────────────
 // Stores outgoing webhook subscriptions for the public integration API (v1).

@@ -19,6 +19,7 @@ const POLICY_COLUMNS = {
   operatorVoiceEnabled: true,
   operatorVoiceLocale: true,
   operatorSpeakReplies: true,
+  digestEnabled: true,
 } as const;
 
 /**
@@ -85,8 +86,14 @@ export async function PATCH(req: Request): Promise<Response> {
 
   try {
     const actor = getActorContext(session.user);
-    const { mode, overrides, voiceEnabled, voiceLocale, speakReplies } =
-      parsed.data;
+    const {
+      mode,
+      overrides,
+      voiceEnabled,
+      voiceLocale,
+      speakReplies,
+      digestEnabled,
+    } = parsed.data;
 
     const updates: Partial<{
       operatorMode: string;
@@ -94,6 +101,7 @@ export async function PATCH(req: Request): Promise<Response> {
       operatorVoiceEnabled: boolean;
       operatorVoiceLocale: string;
       operatorSpeakReplies: boolean;
+      digestEnabled: boolean;
     }> = {};
 
     if (mode) updates.operatorMode = mode;
@@ -103,6 +111,9 @@ export async function PATCH(req: Request): Promise<Response> {
     if (voiceLocale) updates.operatorVoiceLocale = voiceLocale;
     if (typeof speakReplies === "boolean") {
       updates.operatorSpeakReplies = speakReplies;
+    }
+    if (typeof digestEnabled === "boolean") {
+      updates.digestEnabled = digestEnabled;
     }
 
     if (overrides) {
@@ -143,6 +154,7 @@ export async function PATCH(req: Request): Promise<Response> {
         operatorVoiceEnabled: user.operatorVoiceEnabled,
         operatorVoiceLocale: user.operatorVoiceLocale,
         operatorSpeakReplies: user.operatorSpeakReplies,
+        digestEnabled: user.digestEnabled,
       });
 
     if (!updated) {

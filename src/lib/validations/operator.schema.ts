@@ -13,6 +13,7 @@ export const updateOperatorPolicySchema = z.object({
   voiceEnabled: z.boolean().optional(),
   voiceLocale: z.string().min(2).max(20).optional(),
   speakReplies: z.boolean().optional(),
+  digestEnabled: z.boolean().optional(),
 });
 
 export type UpdateOperatorPolicyInput = z.infer<

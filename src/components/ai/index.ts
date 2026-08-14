@@ -4,6 +4,7 @@ export * from "./AssistantPanel";
 export * from "./BriefingPanel";
 export * from "./ChatComposer";
 export * from "./ConversationList";
+export * from "./digest";
 export * from "./MarkdownContent";
 export * from "./operator";
 export * from "./ShortcutsHelp";

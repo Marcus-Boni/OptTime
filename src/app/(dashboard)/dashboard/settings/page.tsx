@@ -24,6 +24,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import EmailSettingsCard from "@/components/admin/email-settings-card";
+import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { Badge } from "@/components/ui/badge";
@@ -381,6 +382,8 @@ export default function SettingsPage() {
 
           <TabsContent value="operator" className="space-y-6">
             <OperatorSettingsCard />
+
+            <WeeklyDigestCard />
 
             <Card className="border-border/50 bg-card/80 backdrop-blur">
               <CardHeader>

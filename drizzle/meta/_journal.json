@@ -113,6 +113,13 @@
       "when": 1786590695830,
       "tag": "0015_ai_operator",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1786708090984,
+      "tag": "0016_weekly_digest",
+      "breakpoints": true
     }
   ]
 }

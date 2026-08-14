@@ -17,6 +17,7 @@ import {
   getCachedSuggestions,
   setCachedSuggestions,
 } from "@/lib/time-assistant/cache";
+import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import {
   buildDeterministicSuggestions,
   type NormalizedCommitActivity,
@@ -107,29 +108,6 @@ function toIsoDayBounds(date: string) {
     start: `${date}T00:00:00`,
     end: `${date}T23:59:59`,
   };
-}
-
-async function mapWithConcurrencyLimit<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  async function worker() {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await mapper(items[currentIndex]);
-    }
-  }
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, () => worker()),
-  );
-
-  return results;
 }
 
 export async function GET(req: Request): Promise<Response> {
