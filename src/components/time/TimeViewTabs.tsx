@@ -12,6 +12,13 @@ import {
 
 export type TimeView = "day" | "week" | "month" | "timesheets";
 
+const TIME_VIEWS: readonly TimeView[] = ["day", "week", "month", "timesheets"];
+
+/** Narrows a raw `?view=` value coming from a deep link. */
+export function isTimeView(value: unknown): value is TimeView {
+  return TIME_VIEWS.includes(value as TimeView);
+}
+
 interface TimeViewTabsProps {
   activeView: TimeView;
   onViewChange: (view: TimeView) => void;

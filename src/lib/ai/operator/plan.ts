@@ -40,7 +40,7 @@ const STEP_RANK: Record<ConfirmableAction["kind"], number> = {
 export function isConfirmableAction(
   action: OperatorStepAction,
 ): action is ConfirmableAction {
-  return action.kind !== "navigate";
+  return action.kind !== "navigate" && action.kind !== "ui_command";
 }
 
 /** One-line description of a step, shown in the plan checklist. */
@@ -151,7 +151,8 @@ export interface BuildPlanResult {
 
 /**
  * Splits the turn's actions into a plan (2+ confirmable actions) and the
- * standalone actions. A lone action keeps the familiar single-card UX.
+ * standalone actions. A lone action keeps the familiar single-card UX, and
+ * interface actions (navigation, UI commands) always stay standalone.
  */
 export function buildOperatorPlan(
   actions: OperatorStepAction[],

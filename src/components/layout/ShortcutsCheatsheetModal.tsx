@@ -111,6 +111,7 @@ export function ShortcutsCheatsheetModal() {
         { keys: ["G", "D"], description: "Ir para Dashboard" },
         { keys: ["G", "T"], description: "Ir para Registro de Tempo" },
         { keys: ["G", "S"], description: "Ir para Timesheets" },
+        { keys: ["G", "J"], description: "Ir para Minha Jornada" },
         { keys: ["G", "P"], description: "Ir para Projetos" },
         { keys: ["G", "R"], description: "Ir para Relatórios" },
       ],

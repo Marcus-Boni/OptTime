@@ -3,8 +3,8 @@ import type { ActorContext, AppRole } from "@/lib/access-control";
 import type {
   AgentUserContext,
   AssistantCard,
-  ConfirmableActionKind,
   JsonSchemaObject,
+  OperatorActionKind,
   OperatorStepAction,
   ToolSpec,
 } from "@/lib/ai/types";
@@ -41,7 +41,7 @@ export interface AgentTool<TArgs> {
    * Action this tool proposes, when it proposes one. Lets the registry hide
    * tools whose action the user switched off in the operator settings.
    */
-  actionKind?: ConfirmableActionKind;
+  actionKind?: OperatorActionKind;
   /** Label shown in the UI while the tool runs. */
   label: (args: TArgs) => string;
   execute: (args: TArgs, ctx: ToolContext) => Promise<ToolExecutionResult>;

@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { OPERATOR_ACTIONS } from "@/lib/ai/operator/policy";
 import type { OperatorLogEntry } from "@/lib/ai/operator/types";
-import type { ConfirmableActionKind } from "@/lib/ai/types";
+import type { OperatorActionKind } from "@/lib/ai/types";
 import {
   dispatchTimeEntriesUpdated,
   dispatchTimesheetsUpdated,
@@ -66,7 +66,7 @@ function relativeTime(iso: string): string {
 }
 
 function actionLabel(kind: string): string {
-  return OPERATOR_ACTIONS[kind as ConfirmableActionKind]?.label ?? kind;
+  return OPERATOR_ACTIONS[kind as OperatorActionKind]?.label ?? kind;
 }
 
 // ─── Row ─────────────────────────────────────────────────────────────

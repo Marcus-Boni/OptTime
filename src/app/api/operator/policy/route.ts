@@ -8,7 +8,7 @@ import {
   toOperatorSettings,
 } from "@/lib/ai/operator/policy";
 import type { OperatorPermission } from "@/lib/ai/operator/types";
-import type { ConfirmableActionKind } from "@/lib/ai/types";
+import type { OperatorActionKind } from "@/lib/ai/types";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 import { updateOperatorPolicySchema } from "@/lib/validations/operator.schema";
@@ -46,6 +46,7 @@ export async function GET(req: Request): Promise<Response> {
       isActionAllowedForRole(meta.kind, actor.role),
     ).map((meta) => ({
       kind: meta.kind,
+      category: meta.category,
       label: meta.label,
       description: meta.description,
       risk: meta.risk,
@@ -117,12 +118,11 @@ export async function PATCH(req: Request): Promise<Response> {
     }
 
     if (overrides) {
-      const sanitized: Partial<
-        Record<ConfirmableActionKind, OperatorPermission>
-      > = {};
+      const sanitized: Partial<Record<OperatorActionKind, OperatorPermission>> =
+        {};
 
       for (const [rawKind, permission] of Object.entries(overrides)) {
-        const kind = rawKind as ConfirmableActionKind;
+        const kind = rawKind as OperatorActionKind;
 
         if (!isActionAllowedForRole(kind, actor.role)) continue;
 

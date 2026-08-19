@@ -75,11 +75,15 @@ export function useGlobalShortcuts(): void {
             return;
           case "s":
             event.preventDefault();
-            router.push("/dashboard/timesheets");
+            router.push("/dashboard/time?view=timesheets");
             return;
           case "p":
             event.preventDefault();
             router.push("/dashboard/projects");
+            return;
+          case "j":
+            event.preventDefault();
+            router.push("/dashboard/journey");
             return;
           case "r":
             event.preventDefault();

@@ -6,13 +6,14 @@ import {
   renderSnapshotForPrompt,
 } from "@/lib/ai/context";
 import { runFallbackAssistant } from "@/lib/ai/fallback";
-import { buildOperatorPlan, isConfirmableAction } from "@/lib/ai/operator/plan";
+import { buildOperatorPlan } from "@/lib/ai/operator/plan";
 import { getDisabledKinds, resolvePermission } from "@/lib/ai/operator/policy";
 import {
   DEFAULT_OPERATOR_SETTINGS,
   type OperatorSettings,
 } from "@/lib/ai/operator/types";
 import {
+  renderAutonomyForPrompt,
   TIMEBOT_OFFLINE_NOTICE,
   TIMEBOT_SYSTEM_PROMPT,
 } from "@/lib/ai/prompts";
@@ -55,19 +56,20 @@ export interface RunAgentOptions {
  */
 function actionFingerprint(action: OperatorStepAction): string {
   if (action.kind === "navigate") return `navigate:${action.path}`;
+  if (action.kind === "ui_command") return `ui_command:${action.command}`;
   return JSON.stringify(action);
 }
 
 /**
  * Last line of defence: even if a tool slips past the registry filter, an
- * action the user switched off never reaches the client.
+ * action the user switched off never reaches the client. Navigation and UI
+ * commands go through the same gate as the write actions.
  */
 function isBlockedAction(
   action: OperatorStepAction,
   settings: OperatorSettings,
   role: ActorContext["role"],
 ): boolean {
-  if (!isConfirmableAction(action)) return false;
   return resolvePermission(action.kind, settings, role) === "never";
 }
 
@@ -291,7 +293,11 @@ async function* runProvider(
     onText,
   } = options;
 
-  const system = `${TIMEBOT_SYSTEM_PROMPT}\n\n${renderSnapshotForPrompt(user, snapshot)}`;
+  const system = [
+    TIMEBOT_SYSTEM_PROMPT,
+    renderAutonomyForPrompt(settings, actor.role),
+    renderSnapshotForPrompt(user, snapshot),
+  ].join("\n\n");
   const tools = getToolSpecsForRole(actor.role, { disabledKinds });
 
   const turns: AgentTurn[] = [

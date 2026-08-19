@@ -2,6 +2,7 @@
 
 import { Check, ChevronsUpDown } from "lucide-react";
 import { useMemo, useState } from "react";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -15,7 +16,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { UserAvatar } from "@/components/shared/user-avatar";
 import { cn } from "@/lib/utils";
 
 interface UserOption {

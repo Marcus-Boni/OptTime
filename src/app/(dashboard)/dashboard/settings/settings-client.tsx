@@ -28,6 +28,7 @@ import EmailSettingsCard from "@/components/admin/email-settings-card";
 import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
+import { GamificationPreferencesCard } from "@/components/gamification/GamificationPreferencesCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -516,6 +517,8 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                 />
               </CardContent>
             </Card>
+
+            <GamificationPreferencesCard />
           </TabsContent>
 
           <TabsContent value="productivity" className="space-y-6">
@@ -817,7 +820,13 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
           {isPrivileged ? (
             <TabsContent value="operations" className="space-y-6">
               {user.role === "admin" ? (
-                <EmailSettingsCard userRole={user.role} />
+                <>
+                  <EmailSettingsCard userRole={user.role} />
+                  <GamificationPreferencesCard
+                    showAdminControls
+                    showPersonalControls={false}
+                  />
+                </>
               ) : null}
               <Card className="border-border/50 bg-card/80 backdrop-blur">
                 <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">

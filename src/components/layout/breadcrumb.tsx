@@ -10,6 +10,7 @@ const segmentLabels: Record<string, string> = {
   dashboard: "Dashboard",
   time: "Registrar Tempo",
   timesheets: "Timesheets",
+  journey: "Minha Jornada",
   approvals: "Aprovações",
   calendar: "Calendário",
   projects: "Projetos",
@@ -68,6 +69,16 @@ export function Breadcrumb() {
           (isDynamicSegment(segment) ? "Detalhe" : segment);
 
         if (segment === "timesheets") {
+          const nextSegment = segments[index + 1];
+
+          if (nextSegment === "approvals") {
+            // The approvals page renders its own crumb right after this one.
+            // /dashboard/timesheets has no real page of its own (it only
+            // redirects), so forcing a link here would collide with that
+            // next crumb's href and duplicate the React key.
+            return null;
+          }
+
           if (fromParam?.includes("approvals")) {
             href = "/dashboard/timesheets/approvals";
             label = "Aprovações";

@@ -9,11 +9,11 @@ import {
   Clock,
   Folder,
   Home,
-  Layers,
   Lightbulb,
   Pause,
   Settings,
   Square,
+  Trophy,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -21,6 +21,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
 import { FocusModeButton } from "@/components/focus";
+import { StreakPill } from "@/components/gamification/StreakPill";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -48,10 +49,12 @@ interface NavigationItem {
   badge?: number;
 }
 
+const JOURNEY_HREF = "/dashboard/journey";
+
 const baseNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
-  { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
+  { name: "Minha Jornada", href: JOURNEY_HREF, icon: Trophy },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   {
     name: "Sugestões",
@@ -418,6 +421,9 @@ export function Sidebar() {
                       {!sidebarCollapsed ? (
                         <>
                           <span className="flex-1">{item.name}</span>
+                          {item.href === JOURNEY_HREF ? (
+                            <StreakPill enabled={!isPending && !!user} />
+                          ) : null}
                           {item.badge ? (
                             <PendingSubmitWeeksBadge count={item.badge} />
                           ) : null}

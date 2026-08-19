@@ -59,7 +59,8 @@ export type EarconType =
   | "voice_start"
   | "voice_end"
   | "undo"
-  | "phase_complete";
+  | "phase_complete"
+  | "celebration";
 
 export function playEarcon(type: EarconType): void {
   if (!isAudioFeedbackEnabled()) return;
@@ -111,6 +112,16 @@ export function playEarcon(type: EarconType): void {
         playPing(ctx, 698.46, now, 0.35, 0.12);
         playPing(ctx, 880.0, now + 0.04, 0.4, 0.14);
         playPing(ctx, 1046.5, now + 0.08, 0.5, 0.16);
+        break;
+      }
+      case "celebration": {
+        // Rising major arpeggio into a held triad — the week-closed fanfare.
+        playPing(ctx, 523.25, now, 0.14, 0.13); // C5
+        playPing(ctx, 659.25, now + 0.09, 0.14, 0.14); // E5
+        playPing(ctx, 783.99, now + 0.18, 0.16, 0.15); // G5
+        playPing(ctx, 1046.5, now + 0.27, 0.5, 0.17); // C6
+        playPing(ctx, 1318.51, now + 0.31, 0.55, 0.12); // E6
+        playPing(ctx, 1567.98, now + 0.35, 0.6, 0.1); // G6
         break;
       }
     }

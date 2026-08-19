@@ -19,6 +19,7 @@ import {
   Settings,
   Sparkles,
   Sun,
+  Trophy,
   Users,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -290,11 +291,23 @@ export function CommandPalette() {
             </kbd>
           </CommandItem>
 
-          <CommandItem onSelect={() => navigate("/dashboard/timesheets")}>
+          <CommandItem
+            onSelect={() => navigate("/dashboard/time?view=timesheets")}
+          >
             <Layers className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Timesheets & Submissões</span>
             <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
               G S
+            </kbd>
+          </CommandItem>
+
+          <CommandItem onSelect={() => navigate("/dashboard/journey")}>
+            <Trophy className="mr-2 h-4 w-4 text-neutral-400" />
+            <span className="flex-1">
+              Minha Jornada · Conquistas & Insights
+            </span>
+            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+              G J
             </kbd>
           </CommandItem>
 

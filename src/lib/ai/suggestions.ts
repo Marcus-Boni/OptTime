@@ -35,6 +35,7 @@ export function buildOpeningSuggestions(
 
   if (role !== "member" && snapshot.pendingApprovals > 0) {
     suggestions.push("O que preciso aprovar?");
+    suggestions.push("Me leva para as aprovações");
   }
 
   if (activePath?.includes("/reports")) {
@@ -45,11 +46,14 @@ export function buildOpeningSuggestions(
     suggestions.push("Como minhas horas se distribuem por projeto?");
   }
 
+  // The last two teach the interface commands, which nobody discovers on
+  // their own from a chat box.
   const defaults = [
     "Quantas horas eu fiz nesta semana?",
     "Trabalhei 2h30 no projeto ajustando a task #102",
     "Meu timesheet está pronto para enviar?",
-    "Mostre meus lançamentos de hoje",
+    "Abrir o registro de horas",
+    "Quero focar: abre o Modo Foco",
   ];
 
   for (const suggestion of defaults) {
@@ -83,7 +87,21 @@ export function buildFollowUpSuggestions(
   }
 
   if (usedTools.has("get_pending_approvals") && role !== "member") {
+    suggestions.push("Me leva para as aprovações");
     suggestions.push("Como está a carga da equipe nesta semana?");
+  }
+
+  if (usedTools.has("get_project_budget")) {
+    suggestions.push("Abrir a tela desse projeto");
+  }
+
+  if (usedTools.has("list_projects")) {
+    suggestions.push("Abrir Projetos");
+  }
+
+  // Right after a navigation the useful follow-up is what to do on arrival.
+  if (usedTools.has("navigate_to")) {
+    suggestions.push("Quero focar: abre o Modo Foco");
   }
 
   const defaults = [
