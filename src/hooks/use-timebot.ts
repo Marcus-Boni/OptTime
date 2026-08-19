@@ -229,6 +229,10 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
   const abortRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<string>("");
+  const lastSubmittedRef = useRef<{ text: string; timestamp: number }>({
+    text: "",
+    timestamp: 0,
+  });
   const threadsRef = useRef<TimeBotThread[]>([]);
   const activeThreadIdRef = useRef<string>("");
   const isStreamingRef = useRef(false);
@@ -372,6 +376,15 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     async (text: string, inputMode: OperatorInputMode = "text") => {
       const trimmed = text.trim();
       if (!trimmed) return;
+
+      const now = Date.now();
+      if (
+        trimmed === lastSubmittedRef.current.text &&
+        now - lastSubmittedRef.current.timestamp < 1000
+      ) {
+        return;
+      }
+      lastSubmittedRef.current = { text: trimmed, timestamp: now };
 
       if (abortRef.current) {
         abortRef.current.abort();

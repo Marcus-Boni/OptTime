@@ -79,6 +79,7 @@ export function useSpeechRecognition(
   const wantsToListenRef = useRef(false);
   const transcriptRef = useRef("");
   const interimRef = useRef("");
+  const hasDeliveredResultRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Latest callback, so restarts never call a stale closure. */
   const onResultRef = useRef(onResult);
@@ -104,11 +105,17 @@ export function useSpeechRecognition(
   }, []);
 
   const finish = useCallback(() => {
+    if (hasDeliveredResultRef.current) return;
+
     const full = [transcriptRef.current, interimRef.current]
       .filter(Boolean)
       .join(" ")
       .trim();
+
     if (full) {
+      hasDeliveredResultRef.current = true;
+      transcriptRef.current = "";
+      interimRef.current = "";
       onResultRef.current?.(full);
     }
   }, []);
@@ -148,6 +155,7 @@ export function useSpeechRecognition(
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
+    hasDeliveredResultRef.current = false;
     transcriptRef.current = "";
     interimRef.current = "";
     wantsToListenRef.current = true;
@@ -254,6 +262,7 @@ export function useSpeechRecognition(
   }, [start, stop]);
 
   const reset = useCallback(() => {
+    hasDeliveredResultRef.current = false;
     transcriptRef.current = "";
     interimRef.current = "";
     setTranscript("");

@@ -122,6 +122,7 @@ export function VoiceCommandOverlay({
   const containerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [isSending, setIsSending] = useState(false);
+  const hasSubmittedRef = useRef(false);
 
   /** Latest props for the recognition callback, which is created once. */
   const submitRef = useRef(onSubmit);
@@ -133,9 +134,11 @@ export function VoiceCommandOverlay({
   }, [onSubmit, onClose]);
 
   const handleResult = useCallback((transcript: string) => {
+    if (hasSubmittedRef.current) return;
     const command = transcript.trim();
     if (!command) return;
 
+    hasSubmittedRef.current = true;
     playEarcon("voice_end");
     setIsSending(true);
     submitRef.current(command);
@@ -161,6 +164,7 @@ export function VoiceCommandOverlay({
   useEffect(() => {
     if (!open) return;
 
+    hasSubmittedRef.current = false;
     playEarcon("voice_start");
     reset();
     setIsSending(false);
