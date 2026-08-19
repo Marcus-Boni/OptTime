@@ -16,11 +16,16 @@ import type {
   DeleteTimeEntryAction,
   ExportReportAction,
   NotifyTeamAction,
+  OperatorActionKind,
   RejectTimesheetAction,
   StartTimerAction,
   SubmitTimesheetAction,
   UpdateTimeEntryAction,
 } from "@/lib/ai/types";
+import {
+  dispatchCelebration,
+  readCelebration,
+} from "@/lib/gamification/celebration-bus";
 import {
   dispatchTimeEntriesUpdated,
   dispatchTimerUpdated,
@@ -255,11 +260,16 @@ async function submitTimesheet(
     throw new ExecutionError("Timesheet não encontrado para este período.");
   }
 
-  await request(
+  const submitted = await request<unknown>(
     `/api/timesheets/${timesheetId}`,
     { method: "PATCH", body: JSON.stringify({ action: "submit" }) },
     "Falha ao submeter o timesheet.",
   );
+
+  // Closing a week through the assistant deserves the same celebration as
+  // closing it by hand.
+  const celebration = readCelebration(submitted);
+  if (celebration) dispatchCelebration(celebration);
 
   dispatchTimesheetsUpdated();
   dispatchTimeEntriesUpdated();
@@ -486,7 +496,7 @@ export async function executeAction(
 export async function logOperatorAction(input: {
   planId: string | null;
   stepIndex: number;
-  kind: ConfirmableAction["kind"];
+  kind: OperatorActionKind;
   summary: string;
   status: "executed" | "failed" | "skipped";
   authorization: "confirmed" | "auto";

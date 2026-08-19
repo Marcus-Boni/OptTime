@@ -120,6 +120,13 @@
       "when": 1786708090984,
       "tag": "0016_weekly_digest",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787096700000,
+      "tag": "0017_gamification",
+      "breakpoints": true
     }
   ]
 }

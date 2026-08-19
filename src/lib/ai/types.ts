@@ -4,6 +4,7 @@
  */
 
 import type { AppRole } from "@/lib/access-control";
+import type { UiCommandId } from "@/lib/ai/operator/ui-commands";
 
 export type ProviderName = "gemini" | "groq" | "openrouter" | "local_fallback";
 
@@ -348,8 +349,41 @@ export interface NotifyTeamAction {
 
 export interface NavigateAction {
   kind: "navigate";
+  /**
+   * Unique per proposal. Interface actions repeat verbatim ("abre os
+   * projetos" twice), and the executed-store keys off the action's contents —
+   * without an id the second request would be treated as already done.
+   */
+  id: string;
   path: string;
   label: string;
+  /** Why this screen answers the request — shown under the button. */
+  detail: string | null;
+}
+
+/**
+ * A command aimed at the interface itself (focus mode, quick-entry dialog,
+ * theme) rather than at the data. See `@/lib/ai/operator/ui-commands`.
+ */
+export interface UiCommandAction {
+  kind: "ui_command";
+  /** Unique per proposal — see `NavigateAction.id`. */
+  id: string;
+  command: UiCommandId;
+  label: string;
+  detail: string | null;
+  /** Prefill handed to the dialog the command opens, when it takes one. */
+  payload: UiCommandPayload | null;
+}
+
+/** Fields the quick-entry dialog accepts as a prefill. */
+export interface UiCommandPayload {
+  projectId?: string;
+  projectName?: string;
+  description?: string;
+  date?: string;
+  durationMinutes?: number;
+  billable?: boolean;
 }
 
 // ─── Multi-step plans ────────────────────────────────────────────────
@@ -388,19 +422,30 @@ export type AssistantAction =
   | ExportReportAction
   | NotifyTeamAction
   | NavigateAction
+  | UiCommandAction
   | OperatorPlanAction;
 
 /** A single action, i.e. anything that can sit inside a plan step. */
 export type OperatorStepAction = Exclude<AssistantAction, OperatorPlanAction>;
 
+/**
+ * Actions that only move the user around the app. They touch no data, so they
+ * never join a multi-step plan — but they still obey the operator permissions.
+ */
+export type UiAction = NavigateAction | UiCommandAction;
+export type UiActionKind = UiAction["kind"];
+
 /** Actions that change state and therefore require explicit confirmation. */
 export type ConfirmableAction = Exclude<
   AssistantAction,
-  NavigateAction | OperatorPlanAction
+  UiAction | OperatorPlanAction
 >;
 
 /** Discriminator values of every confirmable action. */
 export type ConfirmableActionKind = ConfirmableAction["kind"];
+
+/** Every kind the operator permission model knows about. */
+export type OperatorActionKind = ConfirmableActionKind | UiActionKind;
 
 // ─── Streaming protocol (SSE) ────────────────────────────────────────
 

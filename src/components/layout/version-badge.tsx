@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Sparkles, Tag } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { DEFAULT_APP_VERSION_TAG, CHANGELOG_HREF } from "@/lib/version";
+import { CHANGELOG_HREF, DEFAULT_APP_VERSION_TAG } from "@/lib/version";
 
 export interface VersionBadgeProps {
   variant?: "sidebar-footer" | "header-dropdown" | "standalone";

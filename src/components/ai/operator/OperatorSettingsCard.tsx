@@ -32,7 +32,11 @@ import {
   useOperatorPolicy,
 } from "@/hooks/use-operator-policy";
 import { OPERATOR_MODE_META } from "@/lib/ai/operator/policy";
-import type { OperatorMode, OperatorPermission } from "@/lib/ai/operator/types";
+import type {
+  OperatorActionCategory,
+  OperatorMode,
+  OperatorPermission,
+} from "@/lib/ai/operator/types";
 import { cn } from "@/lib/utils";
 
 const MODES: OperatorMode[] = ["always_ask", "smart", "autopilot"];
@@ -42,6 +46,22 @@ const MODE_ICONS: Record<OperatorMode, React.ReactNode> = {
   smart: <Sparkles className="h-4 w-4" aria-hidden="true" />,
   autopilot: <Zap className="h-4 w-4" aria-hidden="true" />,
 };
+
+const CATEGORY_META: Record<
+  OperatorActionCategory,
+  { label: string; hint: string }
+> = {
+  data: {
+    label: "Seus dados",
+    hint: "Ações que criam, alteram ou enviam registros.",
+  },
+  interface: {
+    label: "Interface do app",
+    hint: "Abrir telas e controlar a interface. Não gravam nada.",
+  },
+};
+
+const CATEGORY_ORDER: OperatorActionCategory[] = ["data", "interface"];
 
 const RISK_LABELS: Record<OperatorActionOption["risk"], string> = {
   low: "Baixo risco",
@@ -244,9 +264,9 @@ export function OperatorSettingsCard() {
           )}
         </CardTitle>
         <p className="text-muted-foreground text-xs leading-relaxed">
-          Defina quanto o TimeBot pode fazer por você. Ele executa ações no
-          sistema — lançar horas, gerar relatórios, avisar o time — sempre
-          dentro do que você autorizar aqui.
+          Defina quanto o TimeBot pode fazer por você. Ele opera o sistema —
+          lança horas, gera relatórios, abre telas, controla o Modo Foco e avisa
+          o time — sempre dentro do que você autorizar aqui.
         </p>
       </CardHeader>
 
@@ -408,18 +428,45 @@ export function OperatorSettingsCard() {
           </div>
 
           {showAdvanced && (
-            <div className="divide-y divide-border/60 rounded-xl border border-border/60 px-4">
-              {actions.map((option) => (
-                <ActionRow
-                  key={option.kind}
-                  option={option}
-                  permission={permissionFor(option.kind)}
-                  onChange={(next) => handlePermissionChange(option.kind, next)}
-                />
-              ))}
+            <div className="space-y-3">
+              {CATEGORY_ORDER.map((category) => {
+                const rows = actions.filter(
+                  (option) => option.category === category,
+                );
+                if (rows.length === 0) return null;
+
+                return (
+                  <div
+                    key={category}
+                    className="rounded-xl border border-border/60"
+                  >
+                    <div className="border-border/60 border-b px-4 py-2">
+                      <p className="font-medium text-foreground text-xs">
+                        {CATEGORY_META[category].label}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {CATEGORY_META[category].hint}
+                      </p>
+                    </div>
+
+                    <div className="divide-y divide-border/60 px-4">
+                      {rows.map((option) => (
+                        <ActionRow
+                          key={option.kind}
+                          option={option}
+                          permission={permissionFor(option.kind)}
+                          onChange={(next) =>
+                            handlePermissionChange(option.kind, next)
+                          }
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
 
               {overrideCount > 0 && (
-                <div className="flex justify-end py-3">
+                <div className="flex justify-end">
                   <Button
                     type="button"
                     variant="ghost"

@@ -5,6 +5,8 @@
  * drift: what the preview shows is literally what gets mailed.
  */
 
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { formatDuration } from "@/lib/utils";
 import type {
   Digest,
@@ -55,6 +57,45 @@ const MAX_BARS = 5;
 function formatSignedDuration(minutes: number): string {
   const sign = minutes >= 0 ? "+" : "−";
   return `${sign}${formatDuration(Math.abs(minutes))}`;
+}
+
+export function formatDigestPeriodRange(
+  fromStr: string,
+  toStr: string,
+): string {
+  try {
+    const from = parseISO(fromStr);
+    const to = parseISO(toStr);
+    if (
+      from.getMonth() === to.getMonth() &&
+      from.getFullYear() === to.getFullYear()
+    ) {
+      return `${format(from, "d", { locale: ptBR })} a ${format(
+        to,
+        "d 'de' MMMM 'de' yyyy",
+        { locale: ptBR },
+      )}`;
+    }
+    if (from.getFullYear() === to.getFullYear()) {
+      return `${format(from, "d 'de' MMMM", { locale: ptBR })} a ${format(
+        to,
+        "d 'de' MMMM 'de' yyyy",
+        { locale: ptBR },
+      )}`;
+    }
+    return `${format(from, "d 'de' MMMM 'de' yyyy", { locale: ptBR })} a ${format(
+      to,
+      "d 'de' MMMM 'de' yyyy",
+      { locale: ptBR },
+    )}`;
+  } catch {
+    return `${fromStr} a ${toStr}`;
+  }
+}
+
+function capitalize(str: string): string {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function presentMember(digest: MemberDigest): DigestPresentation {
@@ -116,10 +157,16 @@ function presentMember(digest: MemberDigest): DigestPresentation {
     attention = `${digest.incompleteDays} dia(s) útil(eis) ficaram abaixo de 6h registradas.`;
   }
 
+  const formattedPeriodRange = formatDigestPeriodRange(
+    digest.period.from,
+    digest.period.to,
+  );
+  const capitalizedLabel = capitalize(digest.period.label);
+
   return {
-    subject: `Seu resumo semanal — ${digest.period.label}`,
+    subject: `Seu resumo semanal — ${capitalizedLabel}`,
     headline: "Seu resumo da semana",
-    periodLabel: `${digest.period.label} · ${digest.period.from} a ${digest.period.to}`,
+    periodLabel: `${capitalizedLabel} · ${formattedPeriodRange}`,
     metrics,
     bars,
     barsTitle: "Distribuição por tipo de trabalho",
@@ -188,10 +235,16 @@ function presentManager(digest: ManagerDigest): DigestPresentation {
       .join(", ")}.`;
   }
 
+  const formattedPeriodRange = formatDigestPeriodRange(
+    digest.period.from,
+    digest.period.to,
+  );
+  const capitalizedLabel = capitalize(digest.period.label);
+
   return {
-    subject: `Resumo da equipe — ${digest.period.label}`,
+    subject: `Resumo da equipe — ${capitalizedLabel}`,
     headline: "Resumo da sua equipe",
-    periodLabel: `${digest.period.label} · ${digest.period.from} a ${digest.period.to}`,
+    periodLabel: `${capitalizedLabel} · ${formattedPeriodRange}`,
     metrics,
     bars,
     barsTitle: "Horas por projeto",

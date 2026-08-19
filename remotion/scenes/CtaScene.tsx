@@ -17,7 +17,6 @@ import {
 } from "../components/shared";
 import { fonts, theme } from "../theme";
 
-
 /** Scene 9 — CTA / Closing (frames 0–240 = 8s) */
 export const CtaScene: React.FC = () => {
   const frame = useCurrentFrame();
@@ -101,7 +100,6 @@ export const CtaScene: React.FC = () => {
           >
             <AzureDevOpsLogo size={52} />
           </div>
-
         </div>
 
         <FadeIn delay={10} durationFrames={20}>
@@ -164,7 +162,6 @@ export const CtaScene: React.FC = () => {
               Comece a usar agora
               <ArrowRight size={22} color="white" />
             </div>
-
           </div>
         </FadeIn>
 
@@ -225,4 +222,3 @@ export const CtaScene: React.FC = () => {
     </AbsoluteFill>
   );
 };
-

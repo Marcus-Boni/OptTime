@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  dispatchCelebration,
+  readCelebration,
+} from "@/lib/gamification/celebration-bus";
+import {
   dispatchTimesheetsUpdated,
   TIMESHEETS_UPDATED_EVENT,
 } from "@/lib/time-events";
@@ -158,6 +162,10 @@ export function useTimesheets(
         const err = await res.json();
         throw new Error(err.error ?? "Falha ao submeter timesheet");
       }
+
+      const celebration = readCelebration(await res.json().catch(() => null));
+      if (celebration) dispatchCelebration(celebration);
+
       await fetchTimesheets();
       dispatchTimesheetsUpdated();
     },
@@ -258,6 +266,9 @@ export function useTimesheetDetail(id: string) {
       const err = await res.json();
       throw new Error(err.error ?? "Falha ao submeter timesheet");
     }
+
+    const celebration = readCelebration(await res.json().catch(() => null));
+    if (celebration) dispatchCelebration(celebration);
 
     await fetchTimesheet();
     dispatchTimesheetsUpdated();

@@ -12,6 +12,10 @@ import { ActionTooltip } from "@/components/ui/tooltip";
 import { useAssistantPanel } from "@/hooks/use-assistant-panel";
 import { useModifierKey } from "@/hooks/use-modifier-key";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import {
+  ASSISTANT_REVEAL_EVENT,
+  type AssistantRevealDetail,
+} from "@/lib/ai/operator/ui-bridge";
 import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
 
 /** Ignore the shortcut while the user is typing somewhere else. */
@@ -31,7 +35,8 @@ export function TimeBotWidget() {
   const modifier = useModifierKey();
   const titleId = useId();
 
-  const { isOpen, toggle, open, close } = panel;
+  const { isOpen, toggle, open, close, mode, setMode, isCompactViewport } =
+    panel;
 
   /** True when voice mode took over an open panel and should hand it back. */
   const shouldRestorePanelRef = useRef(false);
@@ -39,6 +44,28 @@ export function TimeBotWidget() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // An action the assistant runs on its own (opening a screen, popping a
+  // dialog) is worthless if the panel is covering it. The executors announce
+  // what they are about to do and the shell makes room.
+  useEffect(() => {
+    function handleReveal(event: Event) {
+      const detail = (event as CustomEvent<AssistantRevealDetail>).detail;
+
+      if (detail?.closePanel || isCompactViewport) {
+        close();
+        return;
+      }
+
+      // Docked is enough on a wide screen: the chat stays visible next to the
+      // page it just opened.
+      if (mode === "fullscreen") setMode("docked");
+    }
+
+    window.addEventListener(ASSISTANT_REVEAL_EVENT, handleReveal);
+    return () =>
+      window.removeEventListener(ASSISTANT_REVEAL_EVENT, handleReveal);
+  }, [close, isCompactViewport, mode, setMode]);
 
   // Voice mode owns the whole screen, so the panel steps aside while it runs
   // and comes back if the user leaves without speaking a command.
@@ -110,9 +137,24 @@ export function TimeBotWidget() {
       toggle();
     }
 
+    function handleOpenEvent() {
+      open();
+    }
+
+    function handleVoiceEvent() {
+      openVoiceMode();
+    }
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, toggle]);
+    window.addEventListener("timebot:open", handleOpenEvent);
+    window.addEventListener("timebot:voice", handleVoiceEvent);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("timebot:open", handleOpenEvent);
+      window.removeEventListener("timebot:voice", handleVoiceEvent);
+    };
+  }, [isOpen, open, openVoiceMode, toggle]);
 
   if (!mounted) return null;
 

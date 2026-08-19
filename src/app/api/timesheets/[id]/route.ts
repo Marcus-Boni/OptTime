@@ -7,6 +7,8 @@ import {
 import { syncCompletedWorkToAzDO } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
+import type { CelebrationPayload } from "@/lib/gamification";
+import { awardWeekApproval, awardWeekSubmission } from "@/lib/gamification";
 import { getPeriodRange } from "@/lib/utils";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -210,7 +212,22 @@ export async function PATCH(
         return submittedTimesheet;
       });
 
-      return Response.json({ timesheet: updated });
+      // Gamification is a reward layer on top of the submission, never a
+      // gate for it: a failure here must not fail the week the user closed.
+      let celebration: CelebrationPayload | null = null;
+      try {
+        celebration = await awardWeekSubmission({
+          userId: ts.userId,
+          period: ts.period,
+          periodType: ts.periodType,
+          submittedAt: updated?.submittedAt ?? new Date(),
+          totalMinutes: updated?.totalMinutes ?? 0,
+        });
+      } catch (error: unknown) {
+        console.error("[PATCH /api/timesheets/:id] gamification:", error);
+      }
+
+      return Response.json({ timesheet: updated, celebration });
     }
 
     if (action === "approve") {
@@ -320,6 +337,15 @@ export async function PATCH(
 
       for (const workItemId of uniqueWiIds) {
         syncCompletedWorkToAzDO(ts.userId, workItemId);
+      }
+
+      try {
+        await awardWeekApproval(ts.userId, ts.period, ts.periodType);
+      } catch (error: unknown) {
+        console.error(
+          "[PATCH /api/timesheets/:id] gamification approval:",
+          error,
+        );
       }
 
       return Response.json({ timesheet: updated });

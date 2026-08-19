@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getActiveSession } from "@/lib/access-control";
 import { OPERATOR_ACTIONS } from "@/lib/ai/operator/policy";
 import type { OperatorLogEntry } from "@/lib/ai/operator/types";
-import type { ConfirmableActionKind } from "@/lib/ai/types";
+import type { OperatorActionKind } from "@/lib/ai/types";
 import { db } from "@/lib/db";
 import { operatorActionLog } from "@/lib/db/schema";
 import { createOperatorLogSchema } from "@/lib/validations/operator.schema";
@@ -13,7 +13,7 @@ const MAX_PAGE_SIZE = 50;
 type LogRow = typeof operatorActionLog.$inferSelect;
 
 function serialize(row: LogRow): OperatorLogEntry & { reversible: boolean } {
-  const meta = OPERATOR_ACTIONS[row.kind as ConfirmableActionKind];
+  const meta = OPERATOR_ACTIONS[row.kind as OperatorActionKind];
 
   return {
     id: row.id,

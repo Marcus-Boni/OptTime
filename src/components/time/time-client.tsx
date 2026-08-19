@@ -9,7 +9,8 @@ import {
   startOfMonth,
 } from "date-fns";
 import { motion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { DayView } from "@/components/time/DayView";
 import { MonthView } from "@/components/time/MonthView";
@@ -18,7 +19,11 @@ import {
   type TimeEntryFormInitialValues,
 } from "@/components/time/TimeEntryForm";
 import { TimesheetsView } from "@/components/time/TimesheetsView";
-import { type TimeView, TimeViewTabs } from "@/components/time/TimeViewTabs";
+import {
+  isTimeView,
+  type TimeView,
+  TimeViewTabs,
+} from "@/components/time/TimeViewTabs";
 import { WeekView } from "@/components/time/WeekView";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -186,9 +191,18 @@ export function TimeClient() {
   const openQuickEntry = useUIStore((state) => state.openQuickEntry);
   const setTimePageDate = useUIStore((state) => state.setTimePageDate);
 
+  // Deep links such as /dashboard/time?view=timesheets land straight on the
+  // right tab — the Journey page and the sidebar rely on it.
+  const searchParams = useSearchParams();
+  const requestedView = useMemo(() => {
+    const raw = searchParams.get("view");
+    return isTimeView(raw) ? raw : null;
+  }, [searchParams]);
+
   const [activeView, setActiveView] = useState<TimeView>(
-    preferences.defaultView,
+    requestedView ?? preferences.defaultView,
   );
+  const deepLinkedViewRef = useRef(requestedView !== null);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [createTarget, setCreateTarget] = useState<
     TimeEntryFormInitialValues | undefined
@@ -247,6 +261,11 @@ export function TimeClient() {
   }, [timesheets]);
 
   useEffect(() => {
+    // A deep link wins over the stored default on the first render only.
+    if (deepLinkedViewRef.current) {
+      deepLinkedViewRef.current = false;
+      return;
+    }
     setActiveView(preferences.defaultView);
   }, [preferences.defaultView]);
 

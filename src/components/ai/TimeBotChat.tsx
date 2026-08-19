@@ -40,6 +40,7 @@ import {
 import { ConversationList } from "@/components/ai/ConversationList";
 import { MarkdownContent } from "@/components/ai/MarkdownContent";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
+import { OperatorModeChip } from "@/components/ai/operator/OperatorModeChip";
 import { ShortcutsHelp } from "@/components/ai/ShortcutsHelp";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import {
@@ -72,6 +73,7 @@ import {
 import type { AppRole } from "@/lib/access-control";
 import { OPERATOR_MODE_META } from "@/lib/ai/operator/policy";
 import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
+import type { OperatorMode } from "@/lib/ai/operator/types";
 import {
   consumePendingVoiceCommand,
   VOICE_COMMAND_EVENT,
@@ -581,7 +583,11 @@ export function TimeBotChat({
     return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
   }, [isOpen, send]);
 
-  const { settings } = useOperatorPolicy();
+  const {
+    settings,
+    isSaving: isSavingPolicy,
+    save: savePolicy,
+  } = useOperatorPolicy();
   const speech = useSpeechSynthesis(settings.voiceLocale);
   const modifier = useModifierKey();
   const operatorModeLabel = OPERATOR_MODE_META[settings.mode].label;
@@ -626,6 +632,21 @@ export function TimeBotChat({
     clear();
     toast.info("Conversa limpa.");
   }, [clear]);
+
+  const handleModeChange = useCallback(
+    async (next: OperatorMode) => {
+      const ok = await savePolicy({ mode: next });
+
+      if (ok) {
+        toast.success(`Autonomia: ${OPERATOR_MODE_META[next].label}`, {
+          description: OPERATOR_MODE_META[next].description,
+        });
+      } else {
+        toast.error("Não foi possível alterar a autonomia do assistente.");
+      }
+    },
+    [savePolicy],
+  );
 
   const handleNewThread = useCallback(() => {
     newThread();
@@ -801,6 +822,14 @@ export function TimeBotChat({
                     />
                     {isStreaming ? "Processando..." : "Pronto"}
                   </span>
+
+                  <OperatorModeChip
+                    mode={settings.mode}
+                    isSaving={isSavingPolicy}
+                    onChange={handleModeChange}
+                    compact={!isFullscreen}
+                    onNavigateAway={onClose}
+                  />
                 </div>
 
                 <p className="truncate text-[11px] text-neutral-400">

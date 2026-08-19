@@ -10,7 +10,11 @@ import {
   listTimeEntriesTool,
 } from "@/lib/ai/tools/read-tools";
 import type { ToolContext } from "@/lib/ai/tools/types";
-import { prepareTimeEntryTool } from "@/lib/ai/tools/write-tools";
+import {
+  navigateToTool,
+  prepareTimeEntryTool,
+  runUiCommandTool,
+} from "@/lib/ai/tools/write-tools";
 import { formatDuration } from "@/lib/utils";
 
 interface FallbackResult {
@@ -21,6 +25,55 @@ interface FallbackResult {
 const TIME_LOG_PATTERN =
   /(trabalhei|lancei|lançei|registr|apontei|dediquei|fiquei|gastei|fiz)\b/i;
 const DURATION_PATTERN = /\d+\s*(h|hora|min|m\b|:\d{2})/i;
+
+/** "abre", "me leva para", "quero ver a tela de…" and friends. */
+const NAVIGATION_PATTERN =
+  /(abr(?:a|ir|e)|ir para|v[áa] para|vai para|me lev[ae]|leve[ -]?me|navegar|acess(?:ar|e)|ver a tela|mostrar? a tela|volt(?:ar|e) para)/i;
+
+/**
+ * Destination keywords, most specific first: "horas da equipe" must win over
+ * the bare "equipe", and "operador" over the generic "configurações".
+ */
+const NAVIGATION_HINTS: Array<{ target: string; pattern: RegExp }> = [
+  { target: "operator_settings", pattern: /operador|autonomia|piloto autom/i },
+  { target: "azure_devops", pattern: /azure|devops|azdo/i },
+  { target: "integrations", pattern: /integra[çc]/i },
+  { target: "approvals", pattern: /aprova[çc]|aprovar/i },
+  { target: "team_hours", pattern: /horas da equipe|carga da equipe/i },
+  { target: "people", pattern: /pessoas|colaboradores/i },
+  { target: "project_scopes", pattern: /escopos?/i },
+  { target: "projects", pattern: /projetos?/i },
+  { target: "suggestions", pattern: /sugest/i },
+  { target: "releases", pattern: /novidades|releases|vers[õo]es/i },
+  { target: "profile", pattern: /perfil|minha conta/i },
+  { target: "settings", pattern: /configura[çc]|prefer[êe]ncias|ajustes/i },
+  {
+    target: "time",
+    pattern:
+      /registro de horas|lan[çc]amentos?|apontamento|minhas horas|timesheet|calend[áa]rio/i,
+  },
+  { target: "dashboard", pattern: /dashboard|in[íi]cio|home|painel/i },
+];
+
+/** Interface commands recognisable without a model. */
+const UI_COMMAND_HINTS: Array<{ command: string; pattern: RegExp }> = [
+  {
+    command: "focus_mode_start",
+    pattern: /modo foco|pomodoro|quero focar|preciso focar|me ajuda a focar/i,
+  },
+  { command: "theme_dark", pattern: /tema escuro|modo escuro|dark mode/i },
+  { command: "theme_light", pattern: /tema claro|modo claro|light mode/i },
+  { command: "weekly_digest", pattern: /resumo semanal|digest/i },
+  { command: "shortcuts", pattern: /atalhos?( de teclado)?/i },
+  {
+    command: "quick_timer",
+    pattern: /iniciar cron[óo]metro|come[çc]ar timer/i,
+  },
+  {
+    command: "quick_entry",
+    pattern: /lan[çc]amento r[áa]pido|formul[áa]rio de horas/i,
+  },
+];
 
 /**
  * Deterministic assistant used when no LLM provider is configured or every
@@ -62,7 +115,29 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 2. Approvals (managers/admins).
+  // 2. Interface commands — "quero focar", "tema escuro".
+  const uiHint = UI_COMMAND_HINTS.find((hint) => hint.pattern.test(text));
+  if (uiHint) {
+    const result = await runUiCommandTool.execute(
+      { command: uiHint.command },
+      ctx,
+    );
+
+    return { toolName: runUiCommandTool.name, text: `${result.label}.` };
+  }
+
+  // 3. Navigation — "abre os projetos", "me leva para as aprovações".
+  if (NAVIGATION_PATTERN.test(text)) {
+    const hint = NAVIGATION_HINTS.find((item) => item.pattern.test(text));
+
+    if (hint) {
+      const result = await navigateToTool.execute({ target: hint.target }, ctx);
+
+      return { toolName: navigateToTool.name, text: `${result.label}.` };
+    }
+  }
+
+  // 4. Approvals (managers/admins).
   if (
     /aprova|pendente de aprova|preciso aprovar|fila de aprova/.test(text) &&
     ctx.actor.role !== "member"
@@ -79,7 +154,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 3. Team overview.
+  // 5. Team overview.
   if (
     /(equipe|time|colaboradores|meu pessoal)/.test(text) &&
     ctx.actor.role !== "member"
@@ -91,7 +166,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 4. Timesheet status / submission.
+  // 6. Timesheet status / submission.
   if (/timesheet|submet|enviar semana|fechar semana|aprovaç/.test(text)) {
     const period = /passada|anterior/.test(text) ? "last_week" : "this_week";
     await getTimesheetStatusTool.execute({ period }, ctx);
@@ -102,7 +177,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 5. Timer.
+  // 7. Timer.
   if (/timer|cronômetro|cronometro|contador/.test(text)) {
     await getActiveTimerTool.execute({}, ctx);
     return {
@@ -113,7 +188,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 6. Entry listing.
+  // 8. Entry listing.
   if (
     /lançamento|lancamento|entradas|o que registrei|meus registros/.test(text)
   ) {
@@ -125,7 +200,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 7. Projects.
+  // 9. Projects.
   if (/projeto/.test(text) && !/hora/.test(text)) {
     await listProjectsTool.execute({}, ctx);
     return {
@@ -134,7 +209,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 8. Hours / summary / productivity.
+  // 10. Hours / summary / productivity.
   if (
     /hora|resumo|quanto|total|produtiv|relat[óo]rio|semana|m[êe]s/.test(text)
   ) {
@@ -154,7 +229,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 9. Azure DevOps help.
+  // 11. Azure DevOps help.
   if (/azure|devops|azdo|work item/.test(text)) {
     return {
       toolName: null,
@@ -162,7 +237,7 @@ export async function runFallbackAssistant(
     };
   }
 
-  // 10. Default briefing.
+  // 12. Default briefing.
   return { toolName: null, text: buildBriefing(snapshot) };
 }
 

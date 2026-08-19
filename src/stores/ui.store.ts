@@ -32,6 +32,10 @@ interface UIState {
   } | null;
   /** Whether the command palette is open */
   commandPaletteOpen: boolean;
+  /** Whether the keyboard shortcuts cheatsheet modal is open */
+  shortcutsModalOpen: boolean;
+  /** Whether the weekly AI digest dialog is open */
+  weeklyDigestModalOpen: boolean;
   /** Currently selected date in the time workspace */
   timePageDate: string | null;
 }
@@ -50,6 +54,10 @@ interface UIActions {
   closeQuickTimer: () => void;
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
+  openShortcutsModal: () => void;
+  closeShortcutsModal: () => void;
+  openWeeklyDigestModal: () => void;
+  closeWeeklyDigestModal: () => void;
   setTimePageDate: (date: string | null) => void;
 }
 
@@ -64,6 +72,8 @@ export const useUIStore = create<UIState & UIActions>()(
       quickTimerOpen: false,
       quickEntryContext: null,
       commandPaletteOpen: false,
+      shortcutsModalOpen: false,
+      weeklyDigestModalOpen: false,
       timePageDate: null,
 
       toggleSidebar: () =>
@@ -83,6 +93,10 @@ export const useUIStore = create<UIState & UIActions>()(
       closeQuickTimer: () => set({ quickTimerOpen: false }),
       openCommandPalette: () => set({ commandPaletteOpen: true }),
       closeCommandPalette: () => set({ commandPaletteOpen: false }),
+      openShortcutsModal: () => set({ shortcutsModalOpen: true }),
+      closeShortcutsModal: () => set({ shortcutsModalOpen: false }),
+      openWeeklyDigestModal: () => set({ weeklyDigestModalOpen: true }),
+      closeWeeklyDigestModal: () => set({ weeklyDigestModalOpen: false }),
       setTimePageDate: (date) => set({ timePageDate: date }),
     }),
     {

@@ -893,3 +893,131 @@ export const systemSettingRelations = relations(systemSetting, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── Gamification, Culture & Wellbeing ────────────────────────────────
+/** Rarity ladder shared by every tiered achievement. */
+export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
+
+/** Every entry written to the gamification ledger. */
+export type GamificationEventKind =
+  | "week_submitted"
+  | "week_approved"
+  | "achievement_unlocked"
+  | "streak_extended"
+  | "streak_reset";
+
+/**
+ * Per-user gamification state.
+ *
+ * Counters are denormalized on purpose: achievement progress is read on every
+ * page load, and recomputing it from `time_entry` each time would mean a
+ * multi-week scan per request.
+ */
+export const userGamification = pgTable("user_gamification", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  xp: integer("xp").notNull().default(0),
+  /** Consecutive ISO weeks closed without skipping one. */
+  currentStreak: integer("current_streak").notNull().default(0),
+  bestStreak: integer("best_streak").notNull().default(0),
+  /** Last ISO week credited, e.g. "2026-W33". Guards double awarding. */
+  lastSubmittedPeriod: text("last_submitted_period"),
+  lastSubmittedAt: timestamp("last_submitted_at"),
+  submittedWeeks: integer("submitted_weeks").notNull().default(0),
+  onTimeWeeks: integer("on_time_weeks").notNull().default(0),
+  consistentWeeks: integer("consistent_weeks").notNull().default(0),
+  balancedWeeks: integer("balanced_weeks").notNull().default(0),
+  detailedWeeks: integer("detailed_weeks").notNull().default(0),
+  approvedWeeks: integer("approved_weeks").notNull().default(0),
+  /** Show this person on the team mural and on the opt-in ranking. */
+  publicProfile: boolean("public_profile").notNull().default(true),
+  /** Confetti and the celebration overlay after closing a week. */
+  celebrationsEnabled: boolean("celebrations_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const userGamificationRelations = relations(
+  userGamification,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userGamification.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+export const userAchievement = pgTable(
+  "user_achievement",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Key from the achievement catalogue, e.g. "streak". */
+    achievementKey: text("achievement_key").notNull(),
+    /** bronze | silver | gold | platinum */
+    tier: text("tier").notNull(),
+    /** ISO week the tier was unlocked in, when applicable. */
+    period: text("period"),
+    unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_achievement_unique_idx").on(
+      table.userId,
+      table.achievementKey,
+      table.tier,
+    ),
+    index("user_achievement_user_idx").on(table.userId, table.unlockedAt),
+  ],
+);
+
+export const userAchievementRelations = relations(
+  userAchievement,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userAchievement.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+/** Append-only ledger. Every XP change is traceable back to one event. */
+export const gamificationEvent = pgTable(
+  "gamification_event",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    xpDelta: integer("xp_delta").notNull().default(0),
+    period: text("period"),
+    /** Human-readable summary rendered in the activity timeline. */
+    label: text("label").notNull(),
+    /** JSON payload with the reason breakdown. */
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("gamification_event_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("gamification_event_period_idx").on(table.period),
+  ],
+);
+
+export const gamificationEventRelations = relations(
+  gamificationEvent,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [gamificationEvent.userId],
+      references: [user.id],
+    }),
+  }),
+);

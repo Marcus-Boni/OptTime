@@ -3,7 +3,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
-  ArrowRight,
   Check,
   Clock,
   Edit3,
@@ -14,7 +13,6 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -26,6 +24,10 @@ import {
   UpdateTimeEntryCard,
 } from "@/components/ai/operator/OperatorActionCards";
 import { OperatorPlanCard } from "@/components/ai/operator/OperatorPlanCard";
+import {
+  NavigateCard,
+  UiCommandCard,
+} from "@/components/ai/operator/UiActionCards";
 import { DurationInput } from "@/components/time/DurationInput";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
@@ -38,11 +40,14 @@ import type { OperatorInputMode } from "@/lib/ai/operator/types";
 import type {
   AssistantAction,
   CreateTimeEntryAction,
-  NavigateAction,
   StartTimerAction,
   StopTimerAction,
   SubmitTimesheetAction,
 } from "@/lib/ai/types";
+import {
+  dispatchCelebration,
+  readCelebration,
+} from "@/lib/gamification/celebration-bus";
 import {
   dispatchTimeEntriesUpdated,
   dispatchTimerUpdated,
@@ -793,6 +798,11 @@ function SubmitTimesheetCard({
         );
       }
 
+      const celebration = readCelebration(
+        await submitRes.json().catch(() => null),
+      );
+      if (celebration) dispatchCelebration(celebration);
+
       markExecuted(actionKey(action));
       setIsSubmitted(true);
       dispatchTimesheetsUpdated();
@@ -877,27 +887,6 @@ function SubmitTimesheetCard({
   );
 }
 
-// ─── Navigate ────────────────────────────────────────────────────────
-
-function NavigateCard({ action }: { action: NavigateAction }) {
-  const router = useRouter();
-
-  return (
-    <div className="mt-3">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => router.push(action.path)}
-        className="h-8 cursor-pointer gap-1.5 border-orange-500/40 text-[11px] text-orange-600 hover:bg-orange-500/10 dark:text-orange-300"
-      >
-        {action.label}
-        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-      </Button>
-    </div>
-  );
-}
-
 // ─── Renderer ────────────────────────────────────────────────────────
 
 export interface AssistantActionViewProps {
@@ -936,7 +925,9 @@ export function AssistantActionView({
     case "operator_plan":
       return <OperatorPlanCard action={action} inputMode={inputMode} />;
     case "navigate":
-      return <NavigateCard action={action} />;
+      return <NavigateCard action={action} inputMode={inputMode} />;
+    case "ui_command":
+      return <UiCommandCard action={action} inputMode={inputMode} />;
     default:
       return null;
   }

@@ -7,7 +7,7 @@
  */
 
 import type { AppRole } from "@/lib/access-control";
-import type { ConfirmableActionKind } from "@/lib/ai/types";
+import type { OperatorActionKind } from "@/lib/ai/types";
 
 /** How much autonomy the user granted the assistant. */
 export type OperatorMode = "always_ask" | "smart" | "autopilot";
@@ -18,8 +18,15 @@ export type OperatorPermission = "ask" | "auto" | "never";
 /** Risk tier, used for the mode defaults and for UI colouring. */
 export type OperatorRisk = "low" | "medium" | "high";
 
+/**
+ * Grouping used by the settings screen: actions that touch the user's data vs.
+ * actions that only drive the interface.
+ */
+export type OperatorActionCategory = "data" | "interface";
+
 export interface OperatorActionMeta {
-  kind: ConfirmableActionKind;
+  kind: OperatorActionKind;
+  category: OperatorActionCategory;
   /** Short pt-BR label shown in settings and in the history list. */
   label: string;
   description: string;
@@ -40,7 +47,7 @@ export interface OperatorActionMeta {
 
 export interface OperatorSettings {
   mode: OperatorMode;
-  overrides: Partial<Record<ConfirmableActionKind, OperatorPermission>>;
+  overrides: Partial<Record<OperatorActionKind, OperatorPermission>>;
   voiceEnabled: boolean;
   voiceLocale: string;
   speakReplies: boolean;

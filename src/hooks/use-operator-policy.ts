@@ -5,15 +5,17 @@ import type { AppRole } from "@/lib/access-control";
 import { resolvePermission } from "@/lib/ai/operator/policy";
 import {
   DEFAULT_OPERATOR_SETTINGS,
+  type OperatorActionCategory,
   type OperatorPermission,
   type OperatorSettings,
 } from "@/lib/ai/operator/types";
-import type { ConfirmableActionKind } from "@/lib/ai/types";
+import type { OperatorActionKind } from "@/lib/ai/types";
 import type { UpdateOperatorPolicyInput } from "@/lib/validations/operator.schema";
 
 /** Action catalogue as served by the API for the current role. */
 export interface OperatorActionOption {
-  kind: ConfirmableActionKind;
+  kind: OperatorActionKind;
+  category: OperatorActionCategory;
   label: string;
   description: string;
   risk: "low" | "medium" | "high";
@@ -43,7 +45,7 @@ export interface OperatorPolicyController {
   isLoading: boolean;
   isSaving: boolean;
   /** Verdict for one action, using the same rules the server applies. */
-  permissionFor: (kind: ConfirmableActionKind) => OperatorPermission;
+  permissionFor: (kind: OperatorActionKind) => OperatorPermission;
   save: (input: UpdateOperatorPolicyInput) => Promise<boolean>;
   refresh: () => Promise<void>;
 }
@@ -130,7 +132,7 @@ export function useOperatorPolicy(): OperatorPolicyController {
   );
 
   const permissionFor = useCallback(
-    (kind: ConfirmableActionKind) => resolvePermission(kind, settings, role),
+    (kind: OperatorActionKind) => resolvePermission(kind, settings, role),
     [settings, role],
   );
 

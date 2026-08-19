@@ -1,5 +1,5 @@
 import type { AppRole } from "@/lib/access-control";
-import type { ConfirmableActionKind, ToolSpec } from "@/lib/ai/types";
+import type { OperatorActionKind, ToolSpec } from "@/lib/ai/types";
 import { OPERATOR_TOOLS } from "./operator-tools";
 import { READ_TOOLS } from "./read-tools";
 import { type AnyAgentTool, toToolSpec } from "./types";
@@ -17,7 +17,7 @@ export interface ToolFilter {
    * propose them are hidden from the model entirely, so it never offers what
    * the user forbade.
    */
-  disabledKinds?: ConfirmableActionKind[];
+  disabledKinds?: OperatorActionKind[];
 }
 
 function isAvailable(
