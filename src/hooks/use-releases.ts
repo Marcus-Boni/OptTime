@@ -10,6 +10,7 @@ export interface Release {
   versionTag: string;
   title: string;
   description: string;
+  videoUrl?: string | null;
   status: AppReleaseStatus;
   authorId: string;
   publishedAt: string | null;

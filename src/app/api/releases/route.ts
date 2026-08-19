@@ -62,6 +62,7 @@ export async function POST(req: Request): Promise<Response> {
         versionTag: parsed.data.versionTag,
         title: parsed.data.title,
         description: parsed.data.description,
+        videoUrl: parsed.data.videoUrl ?? null,
         status: "draft",
         authorId: actor.userId,
       })

@@ -15,6 +15,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
+import { playEarcon } from "@/lib/sound/sound-effects";
 import { cn } from "@/lib/utils";
 
 /** Silence that ends the utterance and fires the command. */
@@ -135,6 +136,7 @@ export function VoiceCommandOverlay({
     const command = transcript.trim();
     if (!command) return;
 
+    playEarcon("voice_end");
     setIsSending(true);
     submitRef.current(command);
 
@@ -159,6 +161,7 @@ export function VoiceCommandOverlay({
   useEffect(() => {
     if (!open) return;
 
+    playEarcon("voice_start");
     reset();
     setIsSending(false);
     start();

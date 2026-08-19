@@ -5,3 +5,5 @@ export { default as ReleaseCard } from "./ReleaseCard";
 export { ReleaseDescription } from "./ReleaseDescription";
 export type { ReleaseFormDialogProps } from "./ReleaseFormDialog";
 export { default as ReleaseFormDialog } from "./ReleaseFormDialog";
+export type { ReleaseVideoPlayerProps } from "./ReleaseVideoPlayer";
+export { ReleaseVideoPlayer } from "./ReleaseVideoPlayer";

@@ -418,6 +418,7 @@ export interface ReleaseEmailData {
   versionTag: string;
   title: string;
   description: string;
+  videoUrl?: string | null;
   authorName: string;
   publishedAt: string;
   changelogUrl: string;
@@ -433,6 +434,7 @@ export async function sendReleaseNotesBatch(
     versionTag: string;
     title: string;
     description: string;
+    videoUrl?: string | null;
     authorName: string;
     publishedAt: string;
     changelogUrl: string;
@@ -676,6 +678,33 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
           <!-- Release notes body -->
           <tr>
             <td style="padding:24px 40px 8px;">
+              ${
+                data.videoUrl
+                  ? `
+              <!-- Video Showcase Card -->
+              <div style="background:linear-gradient(135deg,rgba(249,115,22,0.12) 0%,rgba(168,85,247,0.1) 100%);border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:20px 24px;margin-bottom:20px;text-align:center;">
+                <span style="display:inline-block;background:rgba(249,115,22,0.2);color:#fb923c;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:4px 10px;border-radius:99px;margin-bottom:8px;">
+                  🎬 VÍDEO DE DEMONSTRAÇÃO DISPONÍVEL
+                </span>
+                <h3 style="margin:4px 0 8px;color:#ffffff;font-size:16px;font-weight:700;">
+                  Veja as novidades em ação no vídeo de lançamento
+                </h3>
+                <p style="margin:0 0 14px;color:#a3a3a3;font-size:13px;line-height:1.5;">
+                  Preparamos um tour completo em vídeo demonstrando cada uma das novidades da versão ${data.versionTag}.
+                </p>
+                <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                  <tr>
+                    <td style="border-radius:8px;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);">
+                      <a href="${data.changelogUrl}" style="display:inline-block;padding:10px 22px;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">
+                        ▶ Assistir Vídeo no Changelog
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+              `
+                  : ""
+              }
               <div style="background:#1a1a1a;border-radius:12px;border:1px solid rgba(255,255,255,0.06);padding:24px;">
                 <p style="margin:0 0 12px;color:#a3a3a3;font-size:14px;line-height:1.7;">${descriptionHtml}</p>
               </div>

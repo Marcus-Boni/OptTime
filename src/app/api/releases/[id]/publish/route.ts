@@ -71,6 +71,7 @@ export async function POST(
           versionTag: published.versionTag,
           title: published.title,
           description: published.description,
+          videoUrl: published.videoUrl,
           authorName: existing.author.name,
           publishedAt: publishedAt.toISOString(),
           changelogUrl: `${appUrl}/dashboard/releases`,

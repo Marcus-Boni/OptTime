@@ -1,5 +1,5 @@
-import type React from "react";
 import { CheckCircle2, FileEdit, Send, XCircle } from "lucide-react";
+import type React from "react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
 import { fonts, theme } from "../theme";

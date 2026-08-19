@@ -591,6 +591,8 @@ export const appRelease = pgTable(
     title: text("title").notNull(),
     /** Markdown-enabled release notes */
     description: text("description").notNull(),
+    /** Optional demo video (Remotion composition id or external URL) */
+    videoUrl: text("video_url"),
     /** draft | published */
     status: text("status").notNull().default("draft"),
     authorId: text("author_id")

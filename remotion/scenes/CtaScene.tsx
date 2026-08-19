@@ -1,5 +1,5 @@
-import type React from "react";
 import { ArrowRight } from "lucide-react";
+import type React from "react";
 import {
   AbsoluteFill,
   interpolate,
@@ -9,7 +9,6 @@ import {
 } from "remotion";
 import {
   AzureDevOpsLogo,
-  Badge,
   FadeIn,
   GlowDot,
   GradientText,

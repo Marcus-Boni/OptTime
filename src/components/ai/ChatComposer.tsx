@@ -23,6 +23,7 @@ import { ActionTooltip } from "@/components/ui/tooltip";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import type { AppRole } from "@/lib/access-control";
 import type { OperatorInputMode } from "@/lib/ai/operator/types";
+import { playEarcon } from "@/lib/sound/sound-effects";
 import { cn } from "@/lib/utils";
 
 const MAX_LENGTH = 2000;
@@ -366,6 +367,7 @@ export function ChatComposer({
 
   function toggleVoice() {
     if (speech.isListening) {
+      playEarcon("voice_end");
       speech.stop();
       textareaRef.current?.focus();
       return;
@@ -376,6 +378,7 @@ export function ChatComposer({
       return;
     }
 
+    playEarcon("voice_start");
     dictationBaseRef.current = value.trim();
     cameFromVoiceRef.current = true;
     speech.reset();
@@ -506,7 +509,10 @@ export function ChatComposer({
               type="button"
               size="icon"
               variant="ghost"
-              onClick={onOpenVoiceMode}
+              onClick={() => {
+                playEarcon("voice_start");
+                onOpenVoiceMode();
+              }}
               aria-label="Abrir o modo de comando por voz"
               className="h-8 w-8 shrink-0 cursor-pointer rounded-lg text-neutral-500 transition-all hover:text-orange-500 dark:text-neutral-400"
             >

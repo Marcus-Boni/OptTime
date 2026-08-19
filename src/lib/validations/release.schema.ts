@@ -17,6 +17,11 @@ export const createReleaseSchema = z.object({
     .string()
     .min(10, "A descrição (release notes) precisa ser mais detalhada")
     .max(10000, "A descrição é muito longa"),
+  videoUrl: z
+    .string()
+    .max(500, "A URL do vídeo é muito longa")
+    .optional()
+    .nullable(),
 });
 
 export const updateReleaseSchema = createReleaseSchema.partial();

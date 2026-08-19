@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/collapsible";
 import type { Release } from "@/hooks/use-releases";
 import { ReleaseDescription } from "./ReleaseDescription";
+import { ReleaseVideoPlayer } from "./ReleaseVideoPlayer";
 
 export interface ReleaseCardProps {
   release: Release;
@@ -96,7 +97,7 @@ export default function ReleaseCard({
           isDraft ? "border-dashed opacity-75 hover:opacity-100" : ""
         }`}
       >
-        <CardHeader className="pb-3">
+        <CardHeader>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               {/* Version tag + status badge */}
@@ -155,6 +156,13 @@ export default function ReleaseCard({
         </CardHeader>
 
         <CardContent className="pt-0">
+          {release.videoUrl && (
+            <ReleaseVideoPlayer
+              videoUrl={release.videoUrl}
+              versionTag={release.versionTag}
+            />
+          )}
+
           <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
             <div className={isLong && !isExpanded ? "line-clamp-5" : ""}>
               <ReleaseDescription text={release.description} />

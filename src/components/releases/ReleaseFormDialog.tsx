@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2, PencilLine, Plus } from "lucide-react";
+import { Loader2, PencilLine, Plus, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -71,6 +71,7 @@ export default function ReleaseFormDialog({
       versionTag: release?.versionTag ?? "",
       title: release?.title ?? "",
       description: release?.description ?? "",
+      videoUrl: release?.videoUrl ?? "",
     },
   });
 
@@ -80,9 +81,15 @@ export default function ReleaseFormDialog({
         versionTag: release.versionTag,
         title: release.title,
         description: release.description,
+        videoUrl: release.videoUrl ?? "",
       });
     } else if (isOpen && !release) {
-      form.reset({ versionTag: "", title: "", description: "" });
+      form.reset({
+        versionTag: "",
+        title: "",
+        description: "",
+        videoUrl: "remotion:ReleaseShowcaseV16",
+      });
     }
   }, [form, isOpen, release]);
 
@@ -240,6 +247,90 @@ export default function ReleaseFormDialog({
                       className="text-xs"
                     >
                       Suporta Markdown simples: ## Título, - lista, **negrito**
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="videoUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between">
+                      <FormLabel
+                        htmlFor="release-video-url"
+                        className="flex items-center gap-1.5"
+                      >
+                        <Video className="h-4 w-4 text-brand-400" />
+                        Vídeo de Demonstração (Opcional)
+                      </FormLabel>
+                      {field.value && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => field.onChange("")}
+                          className="h-6 px-1.5 text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          Limpar vídeo
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Quick Preset Buttons */}
+                    <div className="flex flex-wrap gap-1.5 py-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          field.value === "remotion:ReleaseShowcaseV16"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          field.onChange("remotion:ReleaseShowcaseV16")
+                        }
+                        className={`h-7 text-xs ${
+                          field.value === "remotion:ReleaseShowcaseV16"
+                            ? "bg-brand-500 text-white"
+                            : ""
+                        }`}
+                      >
+                        🎬 Showcase v1.6.0
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          field.value === "remotion:ProductDemo"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() => field.onChange("remotion:ProductDemo")}
+                        className={`h-7 text-xs ${
+                          field.value === "remotion:ProductDemo"
+                            ? "bg-brand-500 text-white"
+                            : ""
+                        }`}
+                      >
+                        🎥 Demo Geral
+                      </Button>
+                    </div>
+
+                    <FormControl>
+                      <Input
+                        id="release-video-url"
+                        placeholder="remotion:ReleaseShowcaseV16 ou URL do YouTube/Loom/MP4"
+                        className="font-mono text-xs"
+                        value={field.value ?? ""}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormDescription className="text-xs">
+                      Escolha uma composição do Remotion ou cole o link do
+                      YouTube, Loom ou arquivo de vídeo.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

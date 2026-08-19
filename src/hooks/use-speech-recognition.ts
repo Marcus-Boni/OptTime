@@ -78,6 +78,7 @@ export function useSpeechRecognition(
   /** True while the user wants to listen, across engine auto-restarts. */
   const wantsToListenRef = useRef(false);
   const transcriptRef = useRef("");
+  const interimRef = useRef("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Latest callback, so restarts never call a stale closure. */
   const onResultRef = useRef(onResult);
@@ -103,9 +104,12 @@ export function useSpeechRecognition(
   }, []);
 
   const finish = useCallback(() => {
-    const finalText = transcriptRef.current.trim();
-    if (finalText) {
-      onResultRef.current?.(finalText);
+    const full = [transcriptRef.current, interimRef.current]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (full) {
+      onResultRef.current?.(full);
     }
   }, []);
 
@@ -145,6 +149,7 @@ export function useSpeechRecognition(
     recognition.maxAlternatives = 1;
 
     transcriptRef.current = "";
+    interimRef.current = "";
     wantsToListenRef.current = true;
     setTranscript("");
     setInterim("");
@@ -175,8 +180,10 @@ export function useSpeechRecognition(
       if (finalChunk) {
         transcriptRef.current = `${transcriptRef.current} ${finalChunk}`.trim();
         setTranscript(transcriptRef.current);
+        interimRef.current = "";
       }
 
+      interimRef.current = interimChunk;
       setInterim(interimChunk);
 
       if (silenceTimeoutMs && (finalChunk || interimChunk)) {
@@ -186,6 +193,7 @@ export function useSpeechRecognition(
     };
 
     recognition.onerror = (event) => {
+      console.error("[useSpeechRecognition] error event:", event.error);
       // Silence and manual aborts are normal control flow, not failures.
       if (event.error === "aborted") return;
 
@@ -222,6 +230,7 @@ export function useSpeechRecognition(
 
       setStatus((current) => (current === "listening" ? "idle" : current));
       setInterim("");
+      finish();
     };
 
     recognitionRef.current = recognition;
@@ -234,7 +243,7 @@ export function useSpeechRecognition(
       setStatus("error");
       setErrorMessage("Não foi possível iniciar o microfone.");
     }
-  }, [clearSilenceTimer, continuous, locale, silenceTimeoutMs, stop]);
+  }, [clearSilenceTimer, continuous, finish, locale, silenceTimeoutMs, stop]);
 
   const toggle = useCallback(() => {
     if (wantsToListenRef.current) {
@@ -246,6 +255,7 @@ export function useSpeechRecognition(
 
   const reset = useCallback(() => {
     transcriptRef.current = "";
+    interimRef.current = "";
     setTranscript("");
     setInterim("");
     setErrorMessage(null);

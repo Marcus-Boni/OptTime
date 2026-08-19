@@ -438,8 +438,9 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let isDone = false;
 
-        while (true) {
+        while (!isDone) {
           const { done, value } = await reader.read();
           if (done) break;
 
@@ -464,7 +465,18 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
                 console.error("[useTimeBot] parse event:", error);
               }
 
-              if (event) applyEvent(event, patch, setSuggestions);
+              if (event) {
+                applyEvent(event, patch, setSuggestions);
+                if (event.type === "done") {
+                  isDone = true;
+                  try {
+                    await reader.cancel();
+                  } catch {
+                    // Ignore cancel error
+                  }
+                  break;
+                }
+              }
             }
 
             boundary = buffer.indexOf("\n\n");

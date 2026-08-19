@@ -1,4 +1,3 @@
-import type React from "react";
 import {
   Calendar,
   Clock,
@@ -6,6 +5,7 @@ import {
   Folder,
   GitPullRequest,
 } from "lucide-react";
+import type React from "react";
 import {
   AbsoluteFill,
   interpolate,
@@ -139,7 +139,7 @@ export const ManualEntryScene: React.FC = () => {
                       style={{
                         padding: "12px 16px",
                         borderRadius: 10,
-                        border: `1px solid ${typed > 0 ? theme.brand + "60" : theme.border}`,
+                        border: `1px solid ${typed > 0 ? `${theme.brand}60` : theme.border}`,
                         background: theme.bgCard,
                         color: typed > 0 ? theme.white : theme.textDimmed,
                         fontSize: 16,
