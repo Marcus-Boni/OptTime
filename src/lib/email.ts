@@ -121,6 +121,8 @@ export async function sendEmail({
       headers: {
         "X-Mailer": "OptSolv Time",
         "X-Auto-Response-Suppress": "OOF, AutoReply",
+        "Auto-Submitted": "auto-generated",
+        Precedence: "bulk",
       },
     });
     return;
@@ -146,7 +148,7 @@ export async function sendEmail({
   });
 
   if (error) {
-    console.error("[sendEmail] Resend error:", JSON.stringify(error));
+    console.error("[sendEmail] Resend error:", error);
     throw new Error(
       `Falha ao enviar e-mail via Resend: ${error.message ?? JSON.stringify(error)}`,
     );
@@ -189,6 +191,8 @@ export async function sendBatchEmails({
           headers: {
             "X-Mailer": "OptSolv Time",
             "X-Auto-Response-Suppress": "OOF, AutoReply",
+            "Auto-Submitted": "auto-generated",
+            Precedence: "bulk",
           },
         });
         sent++;
@@ -442,7 +446,7 @@ export async function sendReleaseNotesBatch(
 ): Promise<{ sent: number; failed: number }> {
   const emails = recipients.map((r) => ({
     to: r.email,
-    subject: `🚀 OptSolv Time ${release.versionTag} — ${release.title}`,
+    subject: `OptSolv Time ${release.versionTag} — ${release.title}`,
     html: buildReleaseEmailHtml({
       to: r.email,
       recipientName: r.name,
@@ -653,7 +657,7 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
                   </td>
                 </tr>
               </table>
-              <h1 style="margin:20px 0 0;color:#ffffff;font-size:26px;font-weight:800;line-height:1.25;letter-spacing:-0.5px;">🚀 Nova versão disponível</h1>
+              <h1 style="margin:20px 0 0;color:#ffffff;font-size:26px;font-weight:800;line-height:1.25;letter-spacing:-0.5px;">Nova versão disponível</h1>
               <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:15px;">${data.title}</p>
             </td>
           </tr>
@@ -661,7 +665,7 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
           <!-- Greeting -->
           <tr>
             <td style="padding:32px 40px 0;">
-              <p style="margin:0 0 4px;color:#a3a3a3;font-size:14px;">Olá, <strong style="color:#e5e5e5;">${data.recipientName}</strong> 👋</p>
+              <p style="margin:0 0 4px;color:#a3a3a3;font-size:14px;">Olá, <strong style="color:#e5e5e5;">${data.recipientName}</strong>,</p>
               <p style="margin:0 0 20px;color:#a3a3a3;font-size:14px;line-height:1.6;">
                 O <strong style="color:#f97316;">OptSolv Time</strong> acaba de receber uma nova atualização. Veja as novidades desta versão abaixo:
               </p>
@@ -684,7 +688,7 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
               <!-- Video Showcase Card -->
               <div style="background:linear-gradient(135deg,rgba(249,115,22,0.12) 0%,rgba(168,85,247,0.1) 100%);border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:20px 24px;margin-bottom:20px;text-align:center;">
                 <span style="display:inline-block;background:rgba(249,115,22,0.2);color:#fb923c;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:4px 10px;border-radius:99px;margin-bottom:8px;">
-                  🎬 VÍDEO DE DEMONSTRAÇÃO DISPONÍVEL
+                  Vídeo de demonstração disponível
                 </span>
                 <h3 style="margin:4px 0 8px;color:#ffffff;font-size:16px;font-weight:700;">
                   Veja as novidades em ação no vídeo de lançamento
@@ -696,7 +700,7 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
                   <tr>
                     <td style="border-radius:8px;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);">
                       <a href="${data.changelogUrl}" style="display:inline-block;padding:10px 22px;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">
-                        ▶ Assistir Vídeo no Changelog
+                        Assistir vídeo no Changelog →
                       </a>
                     </td>
                   </tr>
@@ -717,7 +721,7 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td style="padding:4px 0;">
-                    <span style="color:#525252;font-size:12px;">📅 Publicado em </span>
+                    <span style="color:#525252;font-size:12px;">Publicado em </span>
                     <span style="color:#737373;font-size:12px;font-weight:500;">${formattedDate}</span>
                   </td>
                   <td align="right" style="padding:4px 0;">
