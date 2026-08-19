@@ -685,26 +685,12 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
               ${
                 data.videoUrl
                   ? `
-              <!-- Video Showcase Card -->
-              <div style="background:linear-gradient(135deg,rgba(249,115,22,0.12) 0%,rgba(168,85,247,0.1) 100%);border-radius:12px;border:1px solid rgba(249,115,22,0.3);padding:20px 24px;margin-bottom:20px;text-align:center;">
-                <span style="display:inline-block;background:rgba(249,115,22,0.2);color:#fb923c;font-size:11px;font-weight:700;letter-spacing:0.5px;padding:4px 10px;border-radius:99px;margin-bottom:8px;">
-                  Vídeo de demonstração disponível
-                </span>
-                <h3 style="margin:4px 0 8px;color:#ffffff;font-size:16px;font-weight:700;">
-                  Veja as novidades em ação no vídeo de lançamento
-                </h3>
-                <p style="margin:0 0 14px;color:#a3a3a3;font-size:13px;line-height:1.5;">
-                  Preparamos um tour completo em vídeo demonstrando cada uma das novidades da versão ${data.versionTag}.
+              <!-- Video Showcase Notice -->
+              <div style="background:#1e1a14;border-left:3px solid #f97316;border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:20px;">
+                <p style="margin:0 0 4px;color:#f97316;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Vídeo de Demonstração</p>
+                <p style="margin:0;color:#d4d4d4;font-size:13px;line-height:1.6;">
+                  Preparamos um tour completo em vídeo demonstrando as novidades da versão ${data.versionTag}. <a href="${data.changelogUrl}" style="color:#f97316;font-weight:600;text-decoration:underline;">Assistir no Changelog →</a>
                 </p>
-                <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
-                  <tr>
-                    <td style="border-radius:8px;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);">
-                      <a href="${data.changelogUrl}" style="display:inline-block;padding:10px 22px;color:#ffffff;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;">
-                        Assistir vídeo no Changelog →
-                      </a>
-                    </td>
-                  </tr>
-                </table>
               </div>
               `
                   : ""
