@@ -567,24 +567,38 @@ export function TimeBotChat({
     if (!isFullscreen) setShowHistory(false);
   }, [isFullscreen]);
 
+  /** Latest handlers for the voice hand-off, which must not re-subscribe. */
+  const sendRef = useRef(send);
+  const stopRef = useRef(stop);
+
+  useEffect(() => {
+    sendRef.current = send;
+    stopRef.current = stop;
+  }, [send, stop]);
+
   // A command spoken in the voice overlay is parked while this chat is still
   // mounting, so it is drained here and on every later hand-off.
+  //
+  // The subscription is keyed on `isOpen` alone. Keying it on `send` as well
+  // re-ran the whole effect — drain included — whenever that callback changed
+  // identity, which replayed the hand-off; the parked command carries an id so
+  // a replay cannot deliver the same utterance twice either way.
   useEffect(() => {
     if (!isOpen) return;
 
     function drain() {
       const command = consumePendingVoiceCommand();
-      if (command) {
-        stop();
-        send(command, "voice");
-      }
+      if (!command) return;
+
+      stopRef.current();
+      sendRef.current(command.text, "voice");
     }
 
     drain();
 
     window.addEventListener(VOICE_COMMAND_EVENT, drain);
     return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
-  }, [isOpen, send, stop]);
+  }, [isOpen]);
 
   const {
     settings,

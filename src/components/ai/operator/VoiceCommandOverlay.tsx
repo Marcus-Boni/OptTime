@@ -150,6 +150,15 @@ export function VoiceCommandOverlay({
     }, 550);
   }, []);
 
+  /**
+   * Leaving the overlay cancels the utterance. Raising the submit guard first
+   * keeps the teardown from delivering the half-sentence on the way out.
+   */
+  const handleDismiss = useCallback(() => {
+    hasSubmittedRef.current = true;
+    closeRef.current();
+  }, []);
+
   const speech = useSpeechRecognition({
     locale,
     continuous: true,
@@ -159,21 +168,37 @@ export function VoiceCommandOverlay({
 
   const { start, stop, reset } = speech;
 
+  /** Latest engine controls, so the session effect can key on `open` alone. */
+  const controlsRef = useRef({ start, stop, reset });
+
+  useEffect(() => {
+    controlsRef.current = { start, stop, reset };
+  }, [start, stop, reset]);
+
   // Listening begins with the overlay and always stops when it closes, so the
   // microphone is never left open behind a dismissed dialog.
+  //
+  // Only `open` belongs in the dependency list. `start` changes identity when
+  // the locale arrives from the operator policy, and re-running this effect
+  // tore down a live session mid-sentence: the teardown delivered what had been
+  // said so far, then the fresh setup cleared the guard below, so the rest of
+  // the sentence arrived as a second command.
   useEffect(() => {
     if (!open) return;
 
+    // Captured once so the teardown always closes the session it opened.
+    const controls = controlsRef.current;
+
     hasSubmittedRef.current = false;
     playEarcon("voice_start");
-    reset();
+    controls.reset();
     setIsSending(false);
-    start();
+    controls.start();
 
     return () => {
-      stop();
+      controls.stop();
     };
-  }, [open, reset, start, stop]);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -181,7 +206,7 @@ export function VoiceCommandOverlay({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        handleDismiss();
       }
     }
 
@@ -189,7 +214,7 @@ export function VoiceCommandOverlay({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open, onClose]);
+  }, [open, handleDismiss]);
 
   // Focus lands inside the dialog so screen readers and Tab stay contained.
   useEffect(() => {
@@ -259,7 +284,7 @@ export function VoiceCommandOverlay({
             type="button"
             size="icon"
             variant="ghost"
-            onClick={onClose}
+            onClick={handleDismiss}
             aria-label="Fechar o modo de voz"
             className="absolute top-5 right-5 h-9 w-9 cursor-pointer rounded-lg text-neutral-400 hover:text-white"
           >
@@ -419,7 +444,7 @@ export function VoiceCommandOverlay({
 
               <Link
                 href={OPERATOR_SETTINGS_PATH}
-                onClick={onClose}
+                onClick={handleDismiss}
                 className="flex items-center gap-1 rounded-md px-1 py-0.5 text-neutral-400 transition-colors hover:text-orange-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
               >
                 <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />

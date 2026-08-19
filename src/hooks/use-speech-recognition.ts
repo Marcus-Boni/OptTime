@@ -148,6 +148,25 @@ export function useSpeechRecognition(
 
     if (wantsToListenRef.current) return;
 
+    // Release the previous session before opening a new one. Its `onend` reads
+    // the shared "wants to listen" flag, so an instance left alive restarts
+    // itself the moment this session raises that flag — two engines then feed
+    // the same transcript and the utterance is delivered twice.
+    const previous = recognitionRef.current;
+    if (previous) {
+      previous.onresult = null;
+      previous.onerror = null;
+      previous.onend = null;
+      previous.onstart = null;
+      recognitionRef.current = null;
+
+      try {
+        previous.abort();
+      } catch {
+        // The instance may already be closed; nothing to release.
+      }
+    }
+
     // A fresh instance per session avoids stale handlers from a denied attempt.
     const recognition = new Constructor();
     recognition.lang = locale;

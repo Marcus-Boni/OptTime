@@ -21,6 +21,12 @@ const MAX_THREADS = 20;
 const HISTORY_WINDOW = 12;
 /** Delay before flushing the conversation to localStorage. */
 const PERSIST_DEBOUNCE_MS = 400;
+/**
+ * Window in which an identical spoken command is treated as a redelivery of the
+ * same utterance rather than a deliberate repeat. Only voice input is guarded —
+ * typing the same question twice is a legitimate thing to do.
+ */
+const VOICE_REDELIVERY_WINDOW_MS = 5_000;
 
 export const NEW_THREAD_TITLE = "Nova conversa";
 
@@ -229,7 +235,8 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
   const abortRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<string>("");
-  const lastSubmittedRef = useRef<{ text: string; timestamp: number }>({
+  /** Last spoken command accepted, so a redelivered utterance is dropped. */
+  const lastVoiceSubmitRef = useRef<{ text: string; timestamp: number }>({
     text: "",
     timestamp: 0,
   });
@@ -260,9 +267,18 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     };
 
     const fallbackId = initial.threads[0]?.id ?? "";
+    const nextActiveId = initial.activeThreadId || fallbackId;
+
+    // The mirrors are written here as well as in their own effects. A sibling
+    // effect in this very commit — the voice hand-off drains one — would
+    // otherwise call `send` while the refs still hold the pre-restore values
+    // and the resulting messages would be written to a thread that does not
+    // exist, leaving the panel silent.
+    threadsRef.current = initial.threads;
+    activeThreadIdRef.current = nextActiveId;
 
     setThreads(initial.threads);
-    setActiveThreadId(initial.activeThreadId || fallbackId);
+    setActiveThreadId(nextActiveId);
     setHydrated(true);
   }, [userId]);
 
@@ -325,15 +341,39 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     [threads],
   );
 
-  const updateActiveThread = useCallback(
-    (updater: (thread: TimeBotThread) => TimeBotThread) => {
+  const updateThread = useCallback(
+    (threadId: string, updater: (thread: TimeBotThread) => TimeBotThread) => {
       setThreads((previous) =>
         previous.map((thread) =>
-          thread.id === activeThreadIdRef.current ? updater(thread) : thread,
+          thread.id === threadId ? updater(thread) : thread,
         ),
       );
     },
     [],
+  );
+
+  /**
+   * The conversation a write belongs to, falling back to the most recent one
+   * when the active id has not landed yet. Returns an empty string only when
+   * there is no conversation at all — the caller creates one.
+   */
+  const resolveTargetThreadId = useCallback((): string => {
+    const current = activeThreadIdRef.current;
+    if (current && threadsRef.current.some((thread) => thread.id === current)) {
+      return current;
+    }
+
+    return threadsRef.current[0]?.id ?? "";
+  }, []);
+
+  const updateActiveThread = useCallback(
+    (updater: (thread: TimeBotThread) => TimeBotThread) => {
+      const threadId = resolveTargetThreadId();
+      if (!threadId) return;
+
+      updateThread(threadId, updater);
+    },
+    [resolveTargetThreadId, updateThread],
   );
 
   const loadBriefing = useCallback(async () => {
@@ -377,14 +417,22 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       const trimmed = text.trim();
       if (!trimmed) return;
 
-      const now = Date.now();
-      if (
-        trimmed === lastSubmittedRef.current.text &&
-        now - lastSubmittedRef.current.timestamp < 1000
-      ) {
-        return;
+      // The overlay, the recognition engine and the panel hand-off can each
+      // replay the same utterance. Guarding voice only keeps a deliberate
+      // repeat typed by the user working as expected.
+      if (inputMode === "voice") {
+        const now = Date.now();
+        const last = lastVoiceSubmitRef.current;
+
+        if (
+          trimmed === last.text &&
+          now - last.timestamp < VOICE_REDELIVERY_WINDOW_MS
+        ) {
+          return;
+        }
+
+        lastVoiceSubmitRef.current = { text: trimmed, timestamp: now };
       }
-      lastSubmittedRef.current = { text: trimmed, timestamp: now };
 
       if (abortRef.current) {
         abortRef.current.abort();
@@ -399,9 +447,25 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       const userMessage = createMessage("user", trimmed, inputMode);
       const assistantMessage = createMessage("assistant", "", inputMode);
 
+      // Pinned once, so every later patch lands in the same conversation even
+      // if the user switches threads mid-stream.
+      let threadId = resolveTargetThreadId();
+
+      // Restoring history has not produced a conversation yet — a send fired
+      // from a mount-time effect gets one rather than being written nowhere.
+      if (!threadId) {
+        const thread = createThread();
+        threadId = thread.id;
+
+        threadsRef.current = [thread, ...threadsRef.current];
+        activeThreadIdRef.current = threadId;
+        setThreads((previous) => [thread, ...previous]);
+        setActiveThreadId(threadId);
+      }
+
       // Snapshot before appending so the server never sees the empty reply.
       const activeThread = threadsRef.current.find(
-        (thread) => thread.id === activeThreadIdRef.current,
+        (thread) => thread.id === threadId,
       );
 
       const history = (activeThread?.messages ?? [])
@@ -409,7 +473,7 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
         .map((message) => ({ role: message.role, content: message.content }))
         .filter((item) => item.content.length > 0);
 
-      updateActiveThread((thread) => ({
+      updateThread(threadId, (thread) => ({
         ...thread,
         title:
           thread.title === NEW_THREAD_TITLE
@@ -423,7 +487,7 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       abortRef.current = controller;
 
       const patch = (updater: (message: TimeBotMessage) => TimeBotMessage) => {
-        updateActiveThread((thread) => ({
+        updateThread(threadId, (thread) => ({
           ...thread,
           updatedAt: Date.now(),
           messages: thread.messages.map((message) =>
@@ -521,13 +585,19 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
           }));
         }
       } finally {
-        abortRef.current = null;
-        isStreamingRef.current = false;
-        setIsStreaming(false);
-        loadBriefing();
+        // A preempted request settles *after* its replacement has already
+        // claimed `abortRef` and raised the streaming flag. Clearing them
+        // unconditionally stripped the live request of its abort handle and
+        // dropped the panel back to idle while it was still streaming.
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+          isStreamingRef.current = false;
+          setIsStreaming(false);
+          loadBriefing();
+        }
       }
     },
-    [activePath, loadBriefing, updateActiveThread],
+    [activePath, loadBriefing, resolveTargetThreadId, updateThread],
   );
 
   const retryLast = useCallback(() => {
@@ -578,6 +648,9 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
     const thread = createThread();
 
+    threadsRef.current = [thread, ...threadsRef.current];
+    activeThreadIdRef.current = thread.id;
+
     setThreads((previous) => {
       const next = [thread, ...previous];
       if (next.length <= MAX_THREADS) return next;
@@ -598,6 +671,7 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       if (threadId === activeThreadIdRef.current) return;
 
       stop();
+      activeThreadIdRef.current = threadId;
       setActiveThreadId(threadId);
       setSuggestions(briefing?.suggestions ?? []);
       // Retry must never replay a message from the conversation we just left.
@@ -612,11 +686,13 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     );
     const next = remaining.length > 0 ? remaining : [createThread()];
 
+    threadsRef.current = next;
     setThreads(next);
 
     if (threadId === activeThreadIdRef.current) {
       const fallback = [...next].sort((a, b) => b.updatedAt - a.updatedAt)[0];
       if (fallback) {
+        activeThreadIdRef.current = fallback.id;
         setActiveThreadId(fallback.id);
         lastUserMessageRef.current = "";
       }
