@@ -9,7 +9,6 @@ import {
   Mic,
   Moon,
   Plus,
-  Rss,
   Search,
   Settings,
   Sun,
@@ -21,6 +20,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { WeeklyDigestDialog } from "@/components/ai/digest/WeeklyDigestDialog";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
+import { ChangelogHeaderButton } from "@/components/layout/ChangelogHeaderButton";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
 import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
@@ -273,19 +273,7 @@ export function Header() {
         </ActionTooltip>
 
         {/* Changelog / Novidades */}
-        <ActionTooltip label="Novidades e versões" side="bottom">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:flex"
-            aria-label="Ver changelog de versões"
-            asChild
-          >
-            <Link href="/dashboard/releases">
-              <Rss className="h-4.5 w-4.5" />
-            </Link>
-          </Button>
-        </ActionTooltip>
+        <ChangelogHeaderButton />
 
         {/* Theme toggle */}
         <ActionTooltip
