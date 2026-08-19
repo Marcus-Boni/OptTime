@@ -3,13 +3,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AssistantPanel } from "@/components/ai/AssistantPanel";
 import { VoiceCommandOverlay } from "@/components/ai/operator/VoiceCommandOverlay";
 import { TimeBotChat } from "@/components/ai/TimeBotChat";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import { useAssistantPanel } from "@/hooks/use-assistant-panel";
+import { useModifierKey } from "@/hooks/use-modifier-key";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
 
@@ -27,13 +28,34 @@ export function TimeBotWidget() {
   const pathname = usePathname();
   const panel = useAssistantPanel();
   const { settings } = useOperatorPolicy();
+  const modifier = useModifierKey();
   const titleId = useId();
 
-  const { isOpen, toggle, open } = panel;
+  const { isOpen, toggle, open, close } = panel;
+
+  /** True when voice mode took over an open panel and should hand it back. */
+  const shouldRestorePanelRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Voice mode owns the whole screen, so the panel steps aside while it runs
+  // and comes back if the user leaves without speaking a command.
+  const openVoiceMode = useCallback(() => {
+    shouldRestorePanelRef.current = isOpen;
+    close();
+    setIsVoiceModeOpen(true);
+  }, [close, isOpen]);
+
+  const closeVoiceMode = useCallback(() => {
+    setIsVoiceModeOpen(false);
+
+    if (shouldRestorePanelRef.current) {
+      shouldRestorePanelRef.current = false;
+      open();
+    }
+  }, [open]);
 
   // Ctrl/Cmd+Shift+V opens hands-free voice command mode from anywhere.
   useEffect(() => {
@@ -48,16 +70,24 @@ export function TimeBotWidget() {
       if (!isVoiceShortcut) return;
 
       event.preventDefault();
-      setIsVoiceModeOpen((current) => !current);
+
+      if (isVoiceModeOpen) {
+        closeVoiceMode();
+        return;
+      }
+
+      openVoiceMode();
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [settings.voiceEnabled]);
+  }, [closeVoiceMode, isVoiceModeOpen, openVoiceMode, settings.voiceEnabled]);
 
   // The spoken command is parked, then the panel takes over to show the plan.
   const handleVoiceCommand = useCallback(
     (text: string) => {
+      // The panel is about to open with the result, so the restore is moot.
+      shouldRestorePanelRef.current = false;
       queueVoiceCommand(text);
       open();
     },
@@ -93,7 +123,7 @@ export function TimeBotWidget() {
           {!isOpen && (
             <ActionTooltip
               label="TimeBot — Assistente de IA"
-              shortcut="Ctrl+J"
+              shortcut={`${modifier}+J`}
               side="left"
             >
               <motion.button
@@ -105,7 +135,7 @@ export function TimeBotWidget() {
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.94 }}
                 onClick={panel.open}
-                aria-label="Abrir o TimeBot, assistente de IA (Ctrl+J)"
+                aria-label={`Abrir o TimeBot, assistente de IA (${modifier}+J)`}
                 style={{
                   position: "fixed",
                   bottom: "24px",
@@ -137,9 +167,7 @@ export function TimeBotWidget() {
           titleId={titleId}
           onToggleFullscreen={panel.toggleFullscreen}
           onClose={panel.close}
-          onOpenVoiceMode={
-            settings.voiceEnabled ? () => setIsVoiceModeOpen(true) : undefined
-          }
+          onOpenVoiceMode={settings.voiceEnabled ? openVoiceMode : undefined}
         />
       </AssistantPanel>
 
@@ -147,7 +175,7 @@ export function TimeBotWidget() {
         <VoiceCommandOverlay
           open={isVoiceModeOpen}
           locale={settings.voiceLocale}
-          onClose={() => setIsVoiceModeOpen(false)}
+          onClose={closeVoiceMode}
           onSubmit={handleVoiceCommand}
         />,
         document.body,

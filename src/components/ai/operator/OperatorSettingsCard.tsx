@@ -291,7 +291,7 @@ export function OperatorSettingsCard() {
           <div className="flex items-center justify-between gap-4">
             <Label
               htmlFor="operator-voice-enabled"
-              className="flex flex-col gap-0.5"
+              className="flex flex-col items-start gap-0.5 text-left"
             >
               <span className="flex items-center gap-1.5 font-medium text-sm">
                 <AudioLines
@@ -320,7 +320,7 @@ export function OperatorSettingsCard() {
           <div className="flex items-center justify-between gap-4">
             <Label
               htmlFor="operator-speak-replies"
-              className="flex flex-col gap-0.5"
+              className="flex flex-col items-start gap-0.5 text-left"
             >
               <span className="flex items-center gap-1.5 font-medium text-sm">
                 <Volume2
@@ -349,7 +349,7 @@ export function OperatorSettingsCard() {
           <div className="flex items-center justify-between gap-4">
             <Label
               htmlFor="operator-voice-locale"
-              className="flex flex-col gap-0.5"
+              className="flex flex-col items-start gap-0.5 text-left"
             >
               <span className="font-medium text-sm">Idioma do microfone</span>
               <span className="font-normal text-muted-foreground text-xs">

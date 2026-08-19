@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
+  ArrowUpRight,
   AudioLines,
   Bot,
   Check,
@@ -21,10 +22,12 @@ import {
   MoreVertical,
   PanelLeft,
   RefreshCw,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AssistantActionView } from "@/components/ai/AssistantActions";
@@ -49,12 +52,16 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import type { AssistantPanelMode } from "@/hooks/use-assistant-panel";
+import { useModifierKey } from "@/hooks/use-modifier-key";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
 import {
@@ -63,6 +70,8 @@ import {
   useTimeBot,
 } from "@/hooks/use-timebot";
 import type { AppRole } from "@/lib/access-control";
+import { OPERATOR_MODE_META } from "@/lib/ai/operator/policy";
+import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
 import {
   consumePendingVoiceCommand,
   VOICE_COMMAND_EVENT,
@@ -87,6 +96,10 @@ export interface TimeBotChatProps {
   /** Opens the hands-free voice overlay. Omitted when voice is disabled. */
   onOpenVoiceMode?: () => void;
 }
+
+/** Section heading inside the overflow menu. */
+const MENU_SECTION_CLASS =
+  "px-2 py-1 font-medium text-[10px] text-muted-foreground uppercase tracking-wide";
 
 function formatDayLabel(timestamp: number): string {
   const date = new Date(timestamp);
@@ -570,6 +583,8 @@ export function TimeBotChat({
 
   const { settings } = useOperatorPolicy();
   const speech = useSpeechSynthesis(settings.voiceLocale);
+  const modifier = useModifierKey();
+  const operatorModeLabel = OPERATOR_MODE_META[settings.mode].label;
 
   /** Guards against re-reading the same reply on unrelated re-renders. */
   const spokenMessageIdRef = useRef<string | null>(null);
@@ -802,7 +817,7 @@ export function TimeBotChat({
                 label={
                   showHistory ? "Ocultar histórico" : "Histórico de conversas"
                 }
-                shortcut="Ctrl+Shift+H"
+                shortcut={`${modifier}+Shift+H`}
                 onClick={() => setShowHistory((previous) => !previous)}
                 active={showHistory}
               />
@@ -810,7 +825,7 @@ export function TimeBotChat({
               <IconAction
                 icon={MessageSquarePlus}
                 label="Nova conversa"
-                shortcut="Ctrl+Shift+O"
+                shortcut={`${modifier}+Shift+O`}
                 onClick={handleNewThread}
               />
 
@@ -822,7 +837,7 @@ export function TimeBotChat({
                       ? "Sair da tela cheia"
                       : "Expandir para tela cheia"
                   }
-                  shortcut="Ctrl+Shift+F"
+                  shortcut={`${modifier}+Shift+F`}
                   onClick={onToggleFullscreen}
                 />
               )}
@@ -842,36 +857,96 @@ export function TimeBotChat({
 
                 <DropdownMenuContent
                   align="end"
-                  className="z-[10001] w-56"
+                  className="z-[10001] w-72"
                   sideOffset={8}
                 >
-                  <DropdownMenuItem onClick={handleNewThread}>
-                    <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-                    Nova conversa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    Exportar em Markdown
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleCopyTranscript}>
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                    Copiar transcrição
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setShowActionLog(true)}>
-                    <History className="h-4 w-4" aria-hidden="true" />
-                    Ações executadas
-                  </DropdownMenuItem>
-                  {onOpenVoiceMode && (
-                    <DropdownMenuItem onClick={onOpenVoiceMode}>
-                      <AudioLines className="h-4 w-4" aria-hidden="true" />
-                      Comando por voz
+                  <DropdownMenuLabel className={MENU_SECTION_CLASS}>
+                    Conversa
+                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={handleNewThread}>
+                      <MessageSquarePlus
+                        className="h-4 w-4"
+                        aria-hidden="true"
+                      />
+                      Nova conversa
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+O
+                      </DropdownMenuShortcut>
                     </DropdownMenuItem>
-                  )}
+                    <DropdownMenuItem
+                      onClick={() => setShowHistory((previous) => !previous)}
+                    >
+                      <PanelLeft className="h-4 w-4" aria-hidden="true" />
+                      {showHistory ? "Ocultar histórico" : "Histórico"}
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+H
+                      </DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExport}>
+                      <Download className="h-4 w-4" aria-hidden="true" />
+                      Exportar em Markdown
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+E
+                      </DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyTranscript}>
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      Copiar transcrição
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className={MENU_SECTION_CLASS}>
+                    Operador IA
+                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    {onOpenVoiceMode && (
+                      <DropdownMenuItem onClick={onOpenVoiceMode}>
+                        <AudioLines className="h-4 w-4" aria-hidden="true" />
+                        Comando por voz
+                        <DropdownMenuShortcut>
+                          {modifier}+Shift+V
+                        </DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setShowActionLog(true)}>
+                      <History className="h-4 w-4" aria-hidden="true" />
+                      Ações executadas
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="items-start py-2">
+                      <Link href={OPERATOR_SETTINGS_PATH} onClick={onClose}>
+                        <SlidersHorizontal
+                          className="mt-0.5 h-4 w-4"
+                          aria-hidden="true"
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-center gap-1">
+                            Configurar Operador IA
+                            <ArrowUpRight
+                              className="size-3.5 opacity-60"
+                              aria-hidden="true"
+                            />
+                          </span>
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {operatorModeLabel} · voz, permissões e digest
+                          </span>
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
                   <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
                     <Keyboard className="h-4 w-4" aria-hidden="true" />
                     Atalhos do teclado
+                    <DropdownMenuShortcut>{modifier}+/</DropdownMenuShortcut>
                   </DropdownMenuItem>
+
                   <DropdownMenuSeparator />
+
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={handleClear}
@@ -1088,7 +1163,11 @@ export function TimeBotChat({
         </div>
       </div>
 
-      <ShortcutsHelp open={showShortcuts} onOpenChange={setShowShortcuts} />
+      <ShortcutsHelp
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+        onNavigateAway={onClose}
+      />
 
       <Dialog open={showActionLog} onOpenChange={setShowActionLog}>
         <DialogContent className="z-[10002] max-h-[80vh] overflow-y-auto sm:max-w-lg">
@@ -1104,6 +1183,24 @@ export function TimeBotChat({
           </DialogHeader>
 
           <OperatorHistoryPanel isActive={showActionLog} />
+
+          <Link
+            href={OPERATOR_SETTINGS_PATH}
+            onClick={onClose}
+            className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs transition-colors hover:border-orange-500/40 hover:bg-orange-500/5 dark:border-white/10"
+          >
+            <span className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+              <SlidersHorizontal
+                className="h-4 w-4 text-orange-500"
+                aria-hidden="true"
+              />
+              Ajustar o que o TimeBot pode fazer sozinho
+            </span>
+            <ArrowUpRight
+              className="size-3.5 shrink-0 text-neutral-400"
+              aria-hidden="true"
+            />
+          </Link>
         </DialogContent>
       </Dialog>
     </div>

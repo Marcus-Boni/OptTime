@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Bot,
   CheckSquare,
   Clock,
   Folder,
@@ -8,10 +9,10 @@ import {
   Hourglass,
   Layers,
   Lightbulb,
-  Link2,
   Moon,
   Plus,
   Settings,
+  Sparkles,
   Sun,
   Users,
 } from "lucide-react";
@@ -26,6 +27,8 @@ import {
   CommandList,
   CommandSeparator,
 } from "@/components/ui/command";
+import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
+import { useFocusStore } from "@/stores/focus.store";
 import { useUIStore } from "@/stores/ui.store";
 
 const navigationItems = [
@@ -45,6 +48,7 @@ const managementItems = [
   { name: "Horas da Equipe", href: "/dashboard/team-hours", icon: Clock },
   { name: "Equipe", href: "/dashboard/people", icon: Users },
   { name: "Configurações", href: "/dashboard/settings", icon: Settings },
+  { name: "Configurar Operador IA", href: OPERATOR_SETTINGS_PATH, icon: Bot },
 ];
 
 export function CommandPalette() {
@@ -92,6 +96,13 @@ export function CommandPalette() {
     toggleTheme();
   };
 
+  const handleFocusMode = () => {
+    closeCommandPalette();
+    const focus = useFocusStore.getState();
+    if (focus.session) focus.open();
+    else focus.startSession();
+  };
+
   return (
     <CommandDialog
       open={commandPaletteOpen}
@@ -111,6 +122,10 @@ export function CommandPalette() {
           <CommandItem onSelect={handleNewTimerEntry}>
             <Hourglass className="mr-2 h-4 w-4" />
             Novo Registro com Timer
+          </CommandItem>
+          <CommandItem onSelect={handleFocusMode}>
+            <Sparkles className="mr-2 h-4 w-4" />
+            Modo Foco (Pomodoro)
           </CommandItem>
           <CommandItem onSelect={handleToggleTheme}>
             {theme === "dark" ? (

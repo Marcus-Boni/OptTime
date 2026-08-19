@@ -1,7 +1,7 @@
 "use client";
 
-import { Keyboard } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowUpRight, Keyboard, SlidersHorizontal } from "lucide-react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -9,6 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useModifierKey } from "@/hooks/use-modifier-key";
+import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
 
 interface ShortcutGroup {
   label: string;
@@ -88,22 +90,22 @@ function buildGroups(modifier: string): ShortcutGroup[] {
 export interface ShortcutsHelpProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Runs before the dialog links away, so the host surface can step aside. */
+  onNavigateAway?: () => void;
 }
 
 /** Keyboard reference for power users of the assistant. */
-export function ShortcutsHelp({ open, onOpenChange }: ShortcutsHelpProps) {
-  const [modifier, setModifier] = useState("Ctrl");
-
-  useEffect(() => {
-    const isApple = /mac|iphone|ipad/i.test(navigator.userAgent);
-    setModifier(isApple ? "⌘" : "Ctrl");
-  }, []);
-
+export function ShortcutsHelp({
+  open,
+  onOpenChange,
+  onNavigateAway,
+}: ShortcutsHelpProps) {
+  const modifier = useModifierKey();
   const groups = buildGroups(modifier);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="z-[10001] max-w-lg">
+      <DialogContent className="z-[10001] max-h-[80vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 font-sora">
             <Keyboard className="h-4 w-4 text-orange-500" aria-hidden="true" />
@@ -145,6 +147,27 @@ export function ShortcutsHelp({ open, onOpenChange }: ShortcutsHelpProps) {
             </div>
           ))}
         </div>
+
+        <Link
+          href={OPERATOR_SETTINGS_PATH}
+          onClick={() => {
+            onOpenChange(false);
+            onNavigateAway?.();
+          }}
+          className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs transition-colors hover:border-orange-500/40 hover:bg-orange-500/5 dark:border-white/10"
+        >
+          <span className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+            <SlidersHorizontal
+              className="h-4 w-4 text-orange-500"
+              aria-hidden="true"
+            />
+            Configurar o Operador IA
+          </span>
+          <ArrowUpRight
+            className="h-3.5 w-3.5 shrink-0 text-neutral-400"
+            aria-hidden="true"
+          />
+        </Link>
       </DialogContent>
     </Dialog>
   );

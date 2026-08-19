@@ -1,10 +1,20 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Mic, MicOff, Send, Sparkles, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Mic,
+  MicOff,
+  Send,
+  SlidersHorizontal,
+  Sparkles,
+  X,
+} from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
+import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
 import { cn } from "@/lib/utils";
 
 /** Silence that ends the utterance and fires the command. */
@@ -16,6 +26,12 @@ const EXAMPLES = [
   "Quantas horas eu fiz nesta semana?",
   "Pare o cronômetro e lance 1 hora de reunião de ontem",
 ];
+
+const FOCUSABLE_SELECTOR = [
+  "a[href]",
+  "button:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
 
 /** Stable keys for the decorative bars, which never reorder. */
 const BARS = Array.from({ length: 28 }, (_, index) => ({
@@ -101,6 +117,8 @@ export function VoiceCommandOverlay({
 }: VoiceCommandOverlayProps) {
   const prefersReducedMotion = useReducedMotion();
   const titleId = useId();
+  const descriptionId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [isSending, setIsSending] = useState(false);
 
@@ -171,6 +189,41 @@ export function VoiceCommandOverlay({
     if (open) closeButtonRef.current?.focus();
   }, [open]);
 
+  // Tab cycles inside the overlay — it covers the whole screen, so nothing
+  // behind it should ever take focus.
+  useEffect(() => {
+    if (!open) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Tab") return;
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const focusable = Array.from(
+        container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+      ).filter((element) => element.offsetParent !== null);
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+        return;
+      }
+
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open]);
+
   const spoken = `${speech.transcript} ${speech.interim}`.trim();
 
   function handleManualSend() {
@@ -183,6 +236,7 @@ export function VoiceCommandOverlay({
     <AnimatePresence>
       {open && (
         <motion.div
+          ref={containerRef}
           initial={prefersReducedMotion ? undefined : { opacity: 0 }}
           animate={prefersReducedMotion ? undefined : { opacity: 1 }}
           exit={prefersReducedMotion ? undefined : { opacity: 0 }}
@@ -190,7 +244,8 @@ export function VoiceCommandOverlay({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
-          className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-neutral-950/80 px-6 backdrop-blur-xl"
+          aria-describedby={descriptionId}
+          className="fixed inset-0 z-[10001] flex flex-col items-center justify-center bg-neutral-950/80 px-6 backdrop-blur-xl"
         >
           <Button
             ref={closeButtonRef}
@@ -263,7 +318,10 @@ export function VoiceCommandOverlay({
                     ? "Estou ouvindo"
                     : "Microfone parado"}
               </h2>
-              <p className="mt-1 text-[12px] text-neutral-400">
+              <p
+                id={descriptionId}
+                className="mt-1 text-[12px] text-neutral-400"
+              >
                 {isSending
                   ? "Abrindo o assistente com o resultado"
                   : speech.isListening
@@ -344,12 +402,24 @@ export function VoiceCommandOverlay({
               </Button>
             </div>
 
-            <p className="text-[10px] text-neutral-500">
-              <kbd className="rounded border border-white/15 px-1 py-0.5 font-mono">
-                Esc
-              </kbd>{" "}
-              para fechar
-            </p>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 text-[10px] text-neutral-500">
+              <p>
+                <kbd className="rounded border border-white/15 px-1 py-0.5 font-mono">
+                  Esc
+                </kbd>{" "}
+                para fechar
+              </p>
+
+              <Link
+                href={OPERATOR_SETTINGS_PATH}
+                onClick={onClose}
+                className="flex items-center gap-1 rounded-md px-1 py-0.5 text-neutral-400 transition-colors hover:text-orange-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/60"
+              >
+                <SlidersHorizontal className="h-3 w-3" aria-hidden="true" />
+                Idioma, permissões e leitura em voz alta
+                <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+              </Link>
+            </div>
           </motion.div>
         </motion.div>
       )}
