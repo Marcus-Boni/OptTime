@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ActorContext } from "@/lib/access-control";
 import {
   type AssistantSnapshot,
@@ -5,6 +6,12 @@ import {
   renderSnapshotForPrompt,
 } from "@/lib/ai/context";
 import { runFallbackAssistant } from "@/lib/ai/fallback";
+import { buildOperatorPlan, isConfirmableAction } from "@/lib/ai/operator/plan";
+import { getDisabledKinds, resolvePermission } from "@/lib/ai/operator/policy";
+import {
+  DEFAULT_OPERATOR_SETTINGS,
+  type OperatorSettings,
+} from "@/lib/ai/operator/types";
 import {
   TIMEBOT_OFFLINE_NOTICE,
   TIMEBOT_SYSTEM_PROMPT,
@@ -17,8 +24,8 @@ import type {
   AgentEvent,
   AgentTurn,
   AgentUserContext,
-  AssistantAction,
   AssistantCard,
+  OperatorStepAction,
   ToolCall,
 } from "@/lib/ai/types";
 import type { ChatMessage } from "@/lib/validations/ai.schema";
@@ -37,19 +44,72 @@ export interface RunAgentOptions {
   user: AgentUserContext;
   actor: ActorContext;
   signal: AbortSignal;
+  /** Operator permissions; defaults to "always ask" when omitted. */
+  settings?: OperatorSettings;
+}
+
+/**
+ * Identity of a proposal. Content-based rather than kind-based, so a chain like
+ * "2h on A and 3h on B" keeps both steps while a model that repeats the exact
+ * same proposal only gets one card.
+ */
+function actionFingerprint(action: OperatorStepAction): string {
+  if (action.kind === "navigate") return `navigate:${action.path}`;
+  return JSON.stringify(action);
+}
+
+/**
+ * Last line of defence: even if a tool slips past the registry filter, an
+ * action the user switched off never reaches the client.
+ */
+function isBlockedAction(
+  action: OperatorStepAction,
+  settings: OperatorSettings,
+  role: ActorContext["role"],
+): boolean {
+  if (!isConfirmableAction(action)) return false;
+  return resolvePermission(action.kind, settings, role) === "never";
+}
+
+/**
+ * Emits the turn's proposals: two or more confirmable actions become a single
+ * ordered plan, anything else stays a standalone card.
+ */
+function* emitCollectedActions(
+  actions: OperatorStepAction[],
+): Generator<AgentEvent> {
+  if (actions.length === 0) return;
+
+  const { plan, singles } = buildOperatorPlan(actions, randomUUID());
+
+  for (const action of singles) {
+    yield { type: "action", action };
+  }
+
+  if (plan) {
+    yield { type: "action", action: plan };
+  }
 }
 
 export async function* runAgent(
   options: RunAgentOptions,
 ): AsyncGenerator<AgentEvent> {
-  const { message, history, user, actor, signal } = options;
+  const {
+    message,
+    history,
+    user,
+    actor,
+    signal,
+    settings = DEFAULT_OPERATOR_SETTINGS,
+  } = options;
 
   const snapshot = await buildAssistantSnapshot(user, actor);
   const providers = resolveProviderChain();
+  const disabledKinds = getDisabledKinds(settings, actor.role);
 
   // Buffers filled synchronously by tools, drained into the stream after each call.
   const pendingCards: AssistantCard[] = [];
-  const pendingActions: AssistantAction[] = [];
+  const pendingActions: OperatorStepAction[] = [];
 
   const toolContext: ToolContext = {
     user,
@@ -61,8 +121,14 @@ export async function* runAgent(
   const usedTools = new Set<string>();
   /** Cached results keyed by tool-call fingerprint, per user message. */
   const executedCalls = new Map<string, unknown>();
-  /** Confirmation cards already shown, so a write is never proposed twice. */
+  /** Fingerprints already collected, so a write is never proposed twice. */
   const proposedActions = new Set<string>();
+  /**
+   * Proposals gathered across the whole message. Held until the turn ends so
+   * a multi-action command can be rendered as one plan, and kept outside the
+   * provider loop so a failover does not lose what was already collected.
+   */
+  const collectedActions: OperatorStepAction[] = [];
   let emittedText = false;
   let lastError: unknown = null;
 
@@ -78,18 +144,25 @@ export async function* runAgent(
         snapshot,
         actor,
         signal,
+        settings,
+        disabledKinds,
         toolContext,
         pendingCards,
         pendingActions,
         usedTools,
         executedCalls,
         proposedActions,
+        collectedActions,
         onText: () => {
           emittedText = true;
         },
       });
 
       for await (const event of stream) {
+        yield event;
+      }
+
+      for (const event of emitCollectedActions(collectedActions)) {
         yield event;
       }
 
@@ -142,8 +215,14 @@ export async function* runAgent(
     for (const card of pendingCards.splice(0)) {
       yield { type: "card", card };
     }
+
     for (const action of pendingActions.splice(0)) {
-      yield { type: "action", action };
+      if (isBlockedAction(action, settings, actor.role)) continue;
+      collectedActions.push(action);
+    }
+
+    for (const event of emitCollectedActions(collectedActions)) {
+      yield event;
     }
 
     const notice = providers.length === 0 ? TIMEBOT_OFFLINE_NOTICE : null;
@@ -177,12 +256,15 @@ interface RunProviderOptions {
   snapshot: AssistantSnapshot;
   actor: ActorContext;
   signal: AbortSignal;
+  settings: OperatorSettings;
+  disabledKinds: ReturnType<typeof getDisabledKinds>;
   toolContext: ToolContext;
   pendingCards: AssistantCard[];
-  pendingActions: AssistantAction[];
+  pendingActions: OperatorStepAction[];
   usedTools: Set<string>;
   executedCalls: Map<string, unknown>;
   proposedActions: Set<string>;
+  collectedActions: OperatorStepAction[];
   onText: () => void;
 }
 
@@ -197,17 +279,20 @@ async function* runProvider(
     snapshot,
     actor,
     signal,
+    settings,
+    disabledKinds,
     toolContext,
     pendingCards,
     pendingActions,
     usedTools,
     executedCalls,
     proposedActions,
+    collectedActions,
     onText,
   } = options;
 
   const system = `${TIMEBOT_SYSTEM_PROMPT}\n\n${renderSnapshotForPrompt(user, snapshot)}`;
-  const tools = getToolSpecsForRole(actor.role);
+  const tools = getToolSpecsForRole(actor.role, { disabledKinds });
 
   const turns: AgentTurn[] = [
     ...history
@@ -263,7 +348,7 @@ async function* runProvider(
     });
 
     for (const call of toolCalls) {
-      const tool = findTool(actor.role, call.name);
+      const tool = findTool(actor.role, call.name, { disabledKinds });
 
       if (!tool) {
         turns.push({
@@ -321,15 +406,15 @@ async function* runProvider(
           yield { type: "card", card };
         }
 
-        // A second confirmation card of the same kind would let the user log
-        // the same work twice, so only the first proposal per kind is shown.
+        // Proposals are buffered until the turn ends: only then do we know
+        // whether this is a single action or one step of a chain. An identical
+        // repeat is dropped so the same work can never be logged twice.
         let suppressedProposal = false;
 
         for (const action of pendingActions.splice(0)) {
-          const actionKey =
-            action.kind === "navigate"
-              ? `navigate:${action.path}`
-              : action.kind;
+          if (isBlockedAction(action, settings, actor.role)) continue;
+
+          const actionKey = actionFingerprint(action);
 
           if (proposedActions.has(actionKey)) {
             suppressedProposal = true;
@@ -337,7 +422,7 @@ async function* runProvider(
           }
 
           proposedActions.add(actionKey);
-          yield { type: "action", action };
+          collectedActions.push(action);
         }
 
         yield {

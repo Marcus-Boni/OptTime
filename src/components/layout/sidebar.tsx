@@ -19,6 +19,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo } from "react";
+import { FocusModeButton } from "@/components/focus";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
@@ -179,6 +180,10 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
           <Square className="mr-1 h-3 w-3" />
           Parar
         </Button>
+      </div>
+
+      <div className="mt-1 border-t border-brand-500/15 pt-1">
+        <FocusModeButton compact className="w-full" />
       </div>
     </motion.div>
   );

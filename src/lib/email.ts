@@ -74,10 +74,16 @@ function stripHtmlToText(html: string): string {
     .trim();
 }
 
-function sanitizeFromEmail(fromEmail: string, user: string, host: string): string {
+function sanitizeFromEmail(
+  fromEmail: string,
+  user: string,
+  host: string,
+): string {
   if (host.includes("gmail.com")) {
     const displayNameMatch = fromEmail.match(/^(.*?)</);
-    const displayName = displayNameMatch ? displayNameMatch[1].trim() : "OptSolv Time";
+    const displayName = displayNameMatch
+      ? displayNameMatch[1].trim()
+      : "OptSolv Time";
     return `${displayName} <${user}>`;
   }
   return fromEmail || `OptSolv Time <${user}>`;
@@ -715,6 +721,385 @@ function buildReleaseEmailHtml(data: ReleaseEmailData): string {
               <p style="margin:0;color:#525252;font-size:11px;line-height:1.6;">
                 Você está recebendo este e-mail porque é um usuário ativo do <strong style="color:#737373;">OptSolv Time</strong>.
                 Este e-mail foi enviado para <strong style="color:#737373;">${data.to}</strong>.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+// ─── Weekly AI Digest Email ───────────────────────────────────────────────────
+
+export interface DigestEmailBar {
+  label: string;
+  /** Pre-formatted value, e.g. "12h 30m". */
+  value: string;
+  /** 0–100, drives the bar width. */
+  percentage: number;
+  color?: string;
+}
+
+export interface DigestEmailData {
+  to: string;
+  recipientName: string;
+  /** "Semana 32 · 2026" or similar. */
+  periodLabel: string;
+  headline: string;
+  narrative: string;
+  metrics: Array<{ label: string; value: string; hint?: string }>;
+  bars: DigestEmailBar[];
+  /** Optional attention line rendered as a highlight block. */
+  attention: string | null;
+  appUrl: string;
+  audience: "member" | "manager";
+}
+
+/** Sends one digest per recipient. Each body is personalised. */
+export async function sendWeeklyDigestBatch(
+  items: Array<{ to: string; subject: string; data: DigestEmailData }>,
+): Promise<{ sent: number; failed: number }> {
+  if (items.length === 0) return { sent: 0, failed: 0 };
+
+  return sendBatchEmails({
+    emails: items.map((item) => ({
+      to: item.to,
+      subject: item.subject,
+      html: buildWeeklyDigestHtml(item.data),
+    })),
+  });
+}
+
+function buildDigestBarsHtml(bars: DigestEmailBar[]): string {
+  if (bars.length === 0) return "";
+
+  const rows = bars
+    .map((bar) => {
+      const width = Math.max(2, Math.min(100, bar.percentage));
+      const color = bar.color ?? "#f97316";
+
+      return `
+        <tr>
+          <td style="padding:0 0 10px;">
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="color:#d4d4d4;font-size:12px;padding-bottom:4px;">${escapeHtml(bar.label)}</td>
+                <td align="right" style="color:#a3a3a3;font-size:12px;font-family:'Courier New',monospace;padding-bottom:4px;">${escapeHtml(bar.value)}</td>
+              </tr>
+              <tr>
+                <td colspan="2">
+                  <table width="100%" cellpadding="0" cellspacing="0" style="background:#262626;border-radius:4px;">
+                    <tr>
+                      <td style="width:${width}%;background:${color};border-radius:4px;height:6px;line-height:6px;font-size:0;">&nbsp;</td>
+                      <td style="font-size:0;line-height:6px;">&nbsp;</td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>`;
+    })
+    .join("");
+
+  return `
+    <tr>
+      <td style="padding:0 40px 20px;">
+        <table width="100%" cellpadding="0" cellspacing="0">${rows}</table>
+      </td>
+    </tr>`;
+}
+
+function renderMetricCell(
+  metric: DigestEmailData["metrics"][number] | null,
+): string {
+  if (!metric) return '<td width="50%">&nbsp;</td>';
+
+  return `
+      <td width="50%" style="padding:0 6px 12px;" valign="top">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background:#1c1c1c;border:1px solid rgba(255,255,255,0.06);border-radius:10px;">
+          <tr>
+            <td style="padding:12px 14px;">
+              <p style="margin:0;color:#737373;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;">${escapeHtml(metric.label)}</p>
+              <p style="margin:4px 0 0;color:#ffffff;font-size:20px;font-weight:700;font-family:'Courier New',monospace;">${escapeHtml(metric.value)}</p>
+              ${metric.hint ? `<p style="margin:2px 0 0;color:#737373;font-size:10px;">${escapeHtml(metric.hint)}</p>` : ""}
+            </td>
+          </tr>
+        </table>
+      </td>`;
+}
+
+function buildDigestMetricsHtml(metrics: DigestEmailData["metrics"]): string {
+  if (metrics.length === 0) return "";
+
+  // Two per row keeps the cards readable in narrow mobile clients.
+  const rows: string[] = [];
+
+  for (let index = 0; index < metrics.length; index += 2) {
+    rows.push(
+      `<tr>${renderMetricCell(metrics[index] ?? null)}${renderMetricCell(
+        metrics[index + 1] ?? null,
+      )}</tr>`,
+    );
+  }
+
+  return `
+    <tr>
+      <td style="padding:0 34px 8px;">
+        <table width="100%" cellpadding="0" cellspacing="0">${rows.join("")}</table>
+      </td>
+    </tr>`;
+}
+
+function buildWeeklyDigestHtml(data: DigestEmailData): string {
+  const paragraphs = data.narrative
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map(
+      (block) =>
+        `<p style="margin:0 0 12px;color:#a3a3a3;font-size:14px;line-height:1.7;">${escapeHtml(block).replace(/\n/g, "<br/>")}</p>`,
+    )
+    .join("");
+
+  const attentionBlock = data.attention
+    ? `
+    <tr>
+      <td style="padding:0 40px 24px;">
+        <div style="background:#1e1a14;border-left:3px solid #f59e0b;border-radius:0 8px 8px 0;padding:14px 18px;">
+          <p style="margin:0 0 4px;color:#f59e0b;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Ponto de atenção</p>
+          <p style="margin:0;color:#d4d4d4;font-size:13px;line-height:1.6;">${escapeHtml(data.attention)}</p>
+        </div>
+      </td>
+    </tr>`
+    : "";
+
+  const ctaLabel =
+    data.audience === "manager"
+      ? "Ver horas da equipe &#8594;"
+      : "Abrir meu apontamento &#8594;";
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>${escapeHtml(data.headline)} — OptSolv Time</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#141414;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;max-width:600px;width:100%;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:32px 40px 28px;background:linear-gradient(135deg,#f97316 0%,#c2410c 100%);">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 14px;">
+                    <span style="color:#ffffff;font-size:16px;font-weight:700;letter-spacing:-0.5px;">OptSolv <span style="opacity:0.8;">Time</span></span>
+                  </td>
+                </tr>
+              </table>
+              <h1 style="margin:20px 0 0;color:#ffffff;font-size:22px;font-weight:800;line-height:1.25;">${escapeHtml(data.headline)}</h1>
+              <p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">${escapeHtml(data.periodLabel)}</p>
+            </td>
+          </tr>
+
+          <!-- Narrative -->
+          <tr>
+            <td style="padding:30px 40px 18px;">
+              <p style="margin:0 0 10px;color:#a3a3a3;font-size:14px;">Olá, <strong style="color:#e5e5e5;">${escapeHtml(data.recipientName)}</strong></p>
+              ${paragraphs}
+            </td>
+          </tr>
+
+          ${buildDigestMetricsHtml(data.metrics)}
+          ${buildDigestBarsHtml(data.bars)}
+          ${attentionBlock}
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:0 40px 32px;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:10px;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);">
+                    <a href="${data.appUrl}" style="display:inline-block;padding:13px 28px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:10px;">
+                      ${ctaLabel}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px 28px;border-top:1px solid rgba(255,255,255,0.06);">
+              <p style="margin:0;color:#525252;font-size:11px;line-height:1.6;">
+                Resumo semanal gerado automaticamente pelo <strong style="color:#737373;">OptSolv Time</strong>.
+                A divisão por tipo de trabalho é estimada a partir das descrições dos lançamentos.
+                Você pode desativar este e-mail em Configurações &gt; Operador IA.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+}
+
+// ─── AI Operator Notification Email ───────────────────────────────────────────
+
+/**
+ * Subject, message and context lines are authored by a person (or drafted by
+ * the assistant from their command), so they are escaped before reaching HTML.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+export interface OperatorNotificationEmailData {
+  to: string;
+  recipientName: string;
+  subject: string;
+  message: string;
+  contextLines: string[];
+  senderName: string;
+  projectName: string | null;
+  appUrl: string;
+}
+
+/**
+ * Sends an operator-triggered notification (e.g. a budget alert) to the
+ * recipients the sender explicitly confirmed.
+ */
+export async function sendOperatorNotificationBatch(
+  recipients: Array<{ id: string; name: string; email: string }>,
+  payload: {
+    subject: string;
+    message: string;
+    contextLines: string[];
+    senderName: string;
+    projectName: string | null;
+    appUrl: string;
+  },
+): Promise<{ sent: number; failed: number }> {
+  const emails = recipients.map((recipient) => ({
+    to: recipient.email,
+    subject: payload.subject,
+    html: buildOperatorNotificationHtml({
+      to: recipient.email,
+      recipientName: recipient.name,
+      ...payload,
+    }),
+  }));
+
+  return sendBatchEmails({ emails });
+}
+
+function buildOperatorNotificationHtml(
+  data: OperatorNotificationEmailData,
+): string {
+  const safeSubject = escapeHtml(data.subject);
+  const safeSender = escapeHtml(data.senderName);
+  const safeProject = data.projectName ? escapeHtml(data.projectName) : null;
+  const messageHtml = escapeHtml(data.message).replace(/\n/g, "<br/>");
+
+  const contextBlock =
+    data.contextLines.length > 0
+      ? `
+    <tr>
+      <td style="padding:0 40px 24px;">
+        <div style="background:#1e1a14;border-left:3px solid #f97316;border-radius:0 8px 8px 0;padding:16px 20px;">
+          <p style="margin:0 0 8px;color:#f97316;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Contexto</p>
+          ${data.contextLines
+            .map(
+              (line) =>
+                `<p style="margin:0 0 4px;color:#d4d4d4;font-size:13px;line-height:1.6;">${escapeHtml(line)}</p>`,
+            )
+            .join("")}
+        </div>
+      </td>
+    </tr>`
+      : "";
+
+  return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>${safeSubject} — OptSolv Time</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0a0a0a;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#0a0a0a;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background-color:#141414;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;max-width:600px;width:100%;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:32px 40px 28px;background:linear-gradient(135deg,#f97316 0%,#c2410c 100%);">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:rgba(255,255,255,0.15);border-radius:10px;padding:8px 14px;">
+                    <span style="color:#ffffff;font-size:16px;font-weight:700;letter-spacing:-0.5px;">OptSolv <span style="opacity:0.8;">Time</span></span>
+                  </td>
+                </tr>
+              </table>
+              <h1 style="margin:20px 0 0;color:#ffffff;font-size:22px;font-weight:800;line-height:1.25;">${safeSubject}</h1>
+              ${safeProject ? `<p style="margin:6px 0 0;color:rgba(255,255,255,0.75);font-size:14px;">${safeProject}</p>` : ""}
+            </td>
+          </tr>
+
+          <!-- Message -->
+          <tr>
+            <td style="padding:32px 40px 20px;">
+              <p style="margin:0 0 8px;color:#a3a3a3;font-size:14px;">Olá, <strong style="color:#e5e5e5;">${escapeHtml(data.recipientName)}</strong> &#128075;</p>
+              <p style="margin:0;color:#a3a3a3;font-size:14px;line-height:1.7;">${messageHtml}</p>
+            </td>
+          </tr>
+
+          ${contextBlock}
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:0 40px 32px;">
+              <table cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="border-radius:10px;background:linear-gradient(135deg,#f97316 0%,#ea580c 100%);">
+                    <a href="${data.appUrl}" style="display:inline-block;padding:13px 28px;color:#ffffff;font-size:14px;font-weight:600;text-decoration:none;border-radius:10px;">
+                      Abrir o OptSolv Time &#8594;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 40px 28px;border-top:1px solid rgba(255,255,255,0.06);">
+              <p style="margin:0;color:#525252;font-size:11px;line-height:1.6;">
+                Enviado por <strong style="color:#737373;">${safeSender}</strong> via <strong style="color:#737373;">OptSolv Time</strong>.
+                Este e-mail foi enviado para <strong style="color:#737373;">${escapeHtml(data.to)}</strong>.
               </p>
             </td>
           </tr>

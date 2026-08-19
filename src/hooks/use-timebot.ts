@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppRole } from "@/lib/access-control";
+import type { OperatorInputMode } from "@/lib/ai/operator/types";
 import type {
   AgentEvent,
   AssistantAction,
@@ -39,6 +40,8 @@ export interface TimeBotMessage {
   tools: ToolActivityItem[];
   provider?: ProviderName;
   error?: string;
+  /** How the command that produced this turn arrived. Recorded in the audit log. */
+  inputMode?: OperatorInputMode;
   createdAt: number;
 }
 
@@ -113,6 +116,7 @@ function createId(): string {
 function createMessage(
   role: TimeBotMessage["role"],
   content: string,
+  inputMode: OperatorInputMode = "text",
 ): TimeBotMessage {
   return {
     id: createId(),
@@ -121,6 +125,7 @@ function createMessage(
     cards: [],
     actions: [],
     tools: [],
+    inputMode,
     createdAt: Date.now(),
   };
 }
@@ -361,7 +366,7 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   }, []);
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, inputMode: OperatorInputMode = "text") => {
       const trimmed = text.trim();
       if (!trimmed || isStreamingRef.current) return;
 
@@ -370,8 +375,8 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       lastUserMessageRef.current = trimmed;
       setSuggestions([]);
 
-      const userMessage = createMessage("user", trimmed);
-      const assistantMessage = createMessage("assistant", "");
+      const userMessage = createMessage("user", trimmed, inputMode);
+      const assistantMessage = createMessage("assistant", "", inputMode);
 
       // Snapshot before appending so the server never sees the empty reply.
       const activeThread = threadsRef.current.find(

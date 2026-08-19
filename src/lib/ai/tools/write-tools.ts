@@ -127,6 +127,7 @@ export const prepareTimeEntryTool: AgentTool<
     required: ["description"],
   },
   schema: prepareEntryArgsSchema,
+  actionKind: "create_time_entry",
   label: () => "Preparando o lançamento",
   async execute(args, ctx) {
     const projects = await listLoggableProjects(ctx);
@@ -216,6 +217,7 @@ export const prepareTimerStartTool: AgentTool<
     },
   },
   schema: prepareTimerArgsSchema,
+  actionKind: "start_timer",
   label: () => "Preparando o cronômetro",
   async execute(args, ctx) {
     const projects = await listLoggableProjects(ctx);
@@ -276,6 +278,7 @@ export const prepareTimerStopTool: AgentTool<EmptyArgs> = {
     "Prepara a parada do cronômetro em execução, exibindo um cartão de confirmação com o tempo acumulado. Use quando a pessoa disser que terminou a atividade.",
   parameters: { type: "object", properties: {} },
   schema: emptyArgsSchema,
+  actionKind: "stop_timer",
   label: () => "Preparando a parada do cronômetro",
   async execute(_args, ctx) {
     const timer = await db.query.activeTimer.findFirst({
@@ -340,6 +343,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
     },
   },
   schema: submitArgsSchema,
+  actionKind: "submit_timesheet",
   label: () => "Preparando a submissão do timesheet",
   async execute(args, ctx) {
     const range = resolvePeriod(args.period ?? "this_week", ctx.user.today);
@@ -373,7 +377,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
       return {
         label: `Timesheet já ${getTimesheetStatusLabel(status)}`,
         data: {
-          status: "already_" + status,
+          status: `already_${status}`,
           period,
           note: `O timesheet de ${period} já foi ${getTimesheetStatusLabel(status)}.`,
         },

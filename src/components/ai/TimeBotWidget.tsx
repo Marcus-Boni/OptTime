@@ -3,12 +3,16 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AssistantPanel } from "@/components/ai/AssistantPanel";
+import { VoiceCommandOverlay } from "@/components/ai/operator/VoiceCommandOverlay";
 import { TimeBotChat } from "@/components/ai/TimeBotChat";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import { useAssistantPanel } from "@/hooks/use-assistant-panel";
+import { useModifierKey } from "@/hooks/use-modifier-key";
+import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
 
 /** Ignore the shortcut while the user is typing somewhere else. */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -20,15 +24,75 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 export function TimeBotWidget() {
   const [mounted, setMounted] = useState(false);
+  const [isVoiceModeOpen, setIsVoiceModeOpen] = useState(false);
   const pathname = usePathname();
   const panel = useAssistantPanel();
+  const { settings } = useOperatorPolicy();
+  const modifier = useModifierKey();
   const titleId = useId();
 
-  const { isOpen, toggle } = panel;
+  const { isOpen, toggle, open, close } = panel;
+
+  /** True when voice mode took over an open panel and should hand it back. */
+  const shouldRestorePanelRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // Voice mode owns the whole screen, so the panel steps aside while it runs
+  // and comes back if the user leaves without speaking a command.
+  const openVoiceMode = useCallback(() => {
+    shouldRestorePanelRef.current = isOpen;
+    close();
+    setIsVoiceModeOpen(true);
+  }, [close, isOpen]);
+
+  const closeVoiceMode = useCallback(() => {
+    setIsVoiceModeOpen(false);
+
+    if (shouldRestorePanelRef.current) {
+      shouldRestorePanelRef.current = false;
+      open();
+    }
+  }, [open]);
+
+  // Ctrl/Cmd+Shift+V opens hands-free voice command mode from anywhere.
+  useEffect(() => {
+    if (!settings.voiceEnabled) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      const isVoiceShortcut =
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        (event.key === "v" || event.key === "V");
+
+      if (!isVoiceShortcut) return;
+
+      event.preventDefault();
+
+      if (isVoiceModeOpen) {
+        closeVoiceMode();
+        return;
+      }
+
+      openVoiceMode();
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [closeVoiceMode, isVoiceModeOpen, openVoiceMode, settings.voiceEnabled]);
+
+  // The spoken command is parked, then the panel takes over to show the plan.
+  const handleVoiceCommand = useCallback(
+    (text: string) => {
+      // The panel is about to open with the result, so the restore is moot.
+      shouldRestorePanelRef.current = false;
+      queueVoiceCommand(text);
+      open();
+    },
+    [open],
+  );
 
   // Ctrl/Cmd+J toggles the assistant from anywhere in the app.
   useEffect(() => {
@@ -57,7 +121,11 @@ export function TimeBotWidget() {
       {createPortal(
         <AnimatePresence>
           {!isOpen && (
-            <ActionTooltip label="TimeBot — Assistente de IA" shortcut="Ctrl+J" side="left">
+            <ActionTooltip
+              label="TimeBot — Assistente de IA"
+              shortcut={`${modifier}+J`}
+              side="left"
+            >
               <motion.button
                 type="button"
                 initial={{ opacity: 0, scale: 0.8, y: 12 }}
@@ -67,7 +135,7 @@ export function TimeBotWidget() {
                 whileHover={{ scale: 1.08 }}
                 whileTap={{ scale: 0.94 }}
                 onClick={panel.open}
-                aria-label="Abrir o TimeBot, assistente de IA (Ctrl+J)"
+                aria-label={`Abrir o TimeBot, assistente de IA (${modifier}+J)`}
                 style={{
                   position: "fixed",
                   bottom: "24px",
@@ -99,8 +167,19 @@ export function TimeBotWidget() {
           titleId={titleId}
           onToggleFullscreen={panel.toggleFullscreen}
           onClose={panel.close}
+          onOpenVoiceMode={settings.voiceEnabled ? openVoiceMode : undefined}
         />
       </AssistantPanel>
+
+      {createPortal(
+        <VoiceCommandOverlay
+          open={isVoiceModeOpen}
+          locale={settings.voiceLocale}
+          onClose={closeVoiceMode}
+          onSubmit={handleVoiceCommand}
+        />,
+        document.body,
+      )}
     </>
   );
 }

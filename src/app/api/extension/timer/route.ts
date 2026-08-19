@@ -22,6 +22,22 @@ export function OPTIONS() {
 }
 
 /**
+ * Load the active timer with its project joined in.
+ *
+ * The extension's `ActiveTimer` type declares `project` as required, so every
+ * response must carry it — `.returning()` on an insert yields only the bare
+ * `active_timer` row.
+ */
+async function findActiveTimerWithProject(userId: string) {
+  return db.query.activeTimer.findFirst({
+    where: eq(activeTimer.userId, userId),
+    with: {
+      project: { columns: { id: true, name: true, code: true, color: true } },
+    },
+  });
+}
+
+/**
  * GET /api/extension/timer
  * Returns the authenticated user's active timer (if any).
  */
@@ -32,12 +48,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const timer = await db.query.activeTimer.findFirst({
-      where: eq(activeTimer.userId, extUser.id),
-      with: {
-        project: { columns: { id: true, name: true, code: true, color: true } },
-      },
-    });
+    const timer = await findActiveTimerWithProject(extUser.id);
     return extensionJson({ timer: timer ?? null });
   } catch (error) {
     console.error("[GET /api/extension/timer]:", error);
@@ -137,20 +148,19 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const id = crypto.randomUUID();
-    const [timer] = await db
-      .insert(activeTimer)
-      .values({
-        id,
-        userId: extUser.id,
-        projectId: data.projectId,
-        description: data.description,
-        billable: data.billable,
-        azureWorkItemId: data.azureWorkItemId,
-        azureWorkItemTitle: data.azureWorkItemTitle,
-        startedAt: new Date(),
-        accumulatedMs: 0,
-      })
-      .returning();
+    await db.insert(activeTimer).values({
+      id,
+      userId: extUser.id,
+      projectId: data.projectId,
+      description: data.description,
+      billable: data.billable,
+      azureWorkItemId: data.azureWorkItemId,
+      azureWorkItemTitle: data.azureWorkItemTitle,
+      startedAt: new Date(),
+      accumulatedMs: 0,
+    });
+
+    const timer = await findActiveTimerWithProject(extUser.id);
 
     return extensionJson({ timer }, { status: 201 });
   } catch (error) {

@@ -1,8 +1,10 @@
 import type {
   AzureDevOpsAssignedWorkItem,
   AzureDevOpsCommit,
+  AzureDevOpsPullRequest,
   AzureDevOpsRepository,
   AzureDevOpsWorkItem,
+  PullRequestStatus,
   WorkItemSearchResult,
   WorkItemState,
   WorkItemType,
@@ -507,6 +509,142 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
       .slice(0, options.top ?? 40);
   }
 
+  /**
+   * Pull requests authored by the given identities, newest first.
+   *
+   * Azure DevOps only filters by `creatorId` (a GUID we do not store), so the
+   * project feed is read and matched against the same author candidates used
+   * for commits. Work-item links are resolved for the top few PRs only, since
+   * that costs one request each.
+   */
+  async function getPullRequests(
+    projectRef: string,
+    options: {
+      authorCandidates: string[];
+      status?: Exclude<PullRequestStatus, "all">;
+      /** Ignore PRs closed/created before this ISO timestamp. */
+      since?: string;
+      top?: number;
+      /** How many matched PRs get their work-item links resolved. */
+      resolveWorkItemsFor?: number;
+    },
+  ): Promise<AzureDevOpsPullRequest[]> {
+    if (options.authorCandidates.length === 0) return [];
+
+    const projectContext = await resolveProjectContext(projectRef);
+    const status = options.status ?? "completed";
+    const top = options.top ?? 30;
+
+    const query = new URLSearchParams({
+      "searchCriteria.status": status,
+      $top: String(Math.min(top * 3, 100)),
+      "api-version": "7.1",
+    });
+
+    const result = await fetchApi<{
+      value: Array<{
+        pullRequestId: number;
+        title?: string;
+        description?: string;
+        status?: string;
+        creationDate?: string;
+        closedDate?: string;
+        sourceRefName?: string;
+        targetRefName?: string;
+        createdBy?: { displayName?: string; uniqueName?: string };
+        repository?: { id?: string; name?: string };
+        _links?: { web?: { href?: string } };
+      }>;
+    }>(
+      `${orgUrl}/${encodeURIComponent(projectContext.name)}/_apis/git/pullrequests?${query.toString()}`,
+    );
+
+    const sinceTime = options.since ? new Date(options.since).getTime() : null;
+
+    const matched = result.value
+      .map((raw) => {
+        const authorName = raw.createdBy?.displayName ?? null;
+        const authorEmail = raw.createdBy?.uniqueName ?? null;
+
+        const pullRequest: AzureDevOpsPullRequest = {
+          id: raw.pullRequestId,
+          title: raw.title ?? `PR #${raw.pullRequestId}`,
+          description: raw.description ?? null,
+          status:
+            raw.status === "active" || raw.status === "abandoned"
+              ? raw.status
+              : "completed",
+          repositoryName: raw.repository?.name ?? projectContext.name,
+          projectName: projectContext.name,
+          authorEmail,
+          authorName,
+          sourceBranch: stripRefPrefix(raw.sourceRefName),
+          targetBranch: stripRefPrefix(raw.targetRefName),
+          createdAt: raw.creationDate ?? new Date().toISOString(),
+          closedAt: raw.closedDate ?? null,
+          workItemIds: [],
+          url:
+            raw._links?.web?.href ??
+            `${orgUrl}/${encodeURIComponent(projectContext.name)}/_git/${encodeURIComponent(
+              raw.repository?.name ?? "",
+            )}/pullrequest/${raw.pullRequestId}`,
+        };
+
+        return { pullRequest, repositoryId: raw.repository?.id ?? null };
+      })
+      .filter(({ pullRequest }) => {
+        if (
+          !matchesCommitAuthor(
+            {
+              authorEmail: pullRequest.authorEmail,
+              authorName: pullRequest.authorName,
+            },
+            options.authorCandidates,
+          )
+        ) {
+          return false;
+        }
+
+        if (sinceTime === null) return true;
+
+        const reference = pullRequest.closedAt ?? pullRequest.createdAt;
+        return new Date(reference).getTime() >= sinceTime;
+      })
+      .sort((a, b) => {
+        const left = a.pullRequest.closedAt ?? a.pullRequest.createdAt;
+        const right = b.pullRequest.closedAt ?? b.pullRequest.createdAt;
+        return new Date(right).getTime() - new Date(left).getTime();
+      })
+      .slice(0, top);
+
+    const resolveCount = Math.min(
+      options.resolveWorkItemsFor ?? 8,
+      matched.length,
+    );
+
+    await Promise.all(
+      matched.slice(0, resolveCount).map(async (entry) => {
+        if (!entry.repositoryId) return;
+
+        try {
+          const links = await fetchApi<{
+            value: Array<{ id?: string }>;
+          }>(
+            `${orgUrl}/${encodeURIComponent(projectContext.name)}/_apis/git/repositories/${entry.repositoryId}/pullRequests/${entry.pullRequest.id}/workitems?api-version=7.1`,
+          );
+
+          entry.pullRequest.workItemIds = links.value
+            .map((item) => Number.parseInt(item.id ?? "", 10))
+            .filter((id) => Number.isFinite(id));
+        } catch {
+          // Work-item links are a bonus; the PR itself is still a valid signal.
+        }
+      }),
+    );
+
+    return matched.map((entry) => entry.pullRequest);
+  }
+
   return {
     searchWorkItems,
     getWorkItem,
@@ -515,5 +653,12 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     getAssignedWorkItems,
     listRepositories,
     getRecentCommits,
+    getPullRequests,
   };
+}
+
+/** "refs/heads/feature/x" -> "feature/x" */
+function stripRefPrefix(ref: string | undefined): string | null {
+  if (!ref) return null;
+  return ref.replace(/^refs\/heads\//, "");
 }

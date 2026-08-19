@@ -69,6 +69,31 @@ export interface AzureDevOpsCommit {
   url?: string | null;
 }
 
+export type PullRequestStatus = "active" | "completed" | "abandoned" | "all";
+
+/**
+ * Pull request as consumed by the predictive time-logging engine. Only the
+ * fields that carry a time signal are kept.
+ */
+export interface AzureDevOpsPullRequest {
+  id: number;
+  title: string;
+  description: string | null;
+  status: Exclude<PullRequestStatus, "all">;
+  repositoryName: string;
+  projectName: string;
+  authorEmail: string | null;
+  authorName: string | null;
+  sourceBranch: string | null;
+  targetBranch: string | null;
+  createdAt: string;
+  /** Merge/abandon timestamp — null while the PR is still open. */
+  closedAt: string | null;
+  /** Work items linked to the PR, when the link lookup succeeded. */
+  workItemIds: number[];
+  url: string | null;
+}
+
 /** Search result for work item autocomplete */
 export interface WorkItemSearchResult {
   id: number;

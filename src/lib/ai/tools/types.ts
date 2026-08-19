@@ -2,9 +2,10 @@ import type { z } from "zod";
 import type { ActorContext, AppRole } from "@/lib/access-control";
 import type {
   AgentUserContext,
-  AssistantAction,
   AssistantCard,
+  ConfirmableActionKind,
   JsonSchemaObject,
+  OperatorStepAction,
   ToolSpec,
 } from "@/lib/ai/types";
 
@@ -14,8 +15,12 @@ export interface ToolContext {
   actor: ActorContext;
   /** Streams a rich UI card to the client alongside the model text. */
   emitCard: (card: AssistantCard) => void;
-  /** Streams an action (write proposal or navigation) to the client. */
-  emitAction: (action: AssistantAction) => void;
+  /**
+   * Proposes an action (write confirmation or navigation). A tool always
+   * proposes a single action — the agent groups them into a plan when a turn
+   * produces more than one.
+   */
+  emitAction: (action: OperatorStepAction) => void;
 }
 
 export interface ToolExecutionResult {
@@ -32,6 +37,11 @@ export interface AgentTool<TArgs> {
   schema: z.ZodType<TArgs>;
   /** Roles allowed to call the tool. Omit to allow every role. */
   roles?: AppRole[];
+  /**
+   * Action this tool proposes, when it proposes one. Lets the registry hide
+   * tools whose action the user switched off in the operator settings.
+   */
+  actionKind?: ConfirmableActionKind;
   /** Label shown in the UI while the tool runs. */
   label: (args: TArgs) => string;
   execute: (args: TArgs, ctx: ToolContext) => Promise<ToolExecutionResult>;

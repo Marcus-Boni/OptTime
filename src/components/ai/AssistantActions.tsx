@@ -12,15 +12,29 @@ import {
   Send,
   Square,
   X,
+  Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import {
+  DeleteTimeEntryCard,
+  ExportReportCard,
+  NotifyTeamCard,
+  TimerToggleCard,
+  TimesheetReviewCard,
+  UpdateTimeEntryCard,
+} from "@/components/ai/operator/OperatorActionCards";
+import { OperatorPlanCard } from "@/components/ai/operator/OperatorPlanCard";
 import { DurationInput } from "@/components/time/DurationInput";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useAutoRunAction } from "@/hooks/use-auto-run-action";
+import { actionKey, markExecuted } from "@/lib/ai/operator/executed-store";
+import { logOperatorAction } from "@/lib/ai/operator/executors";
+import type { OperatorInputMode } from "@/lib/ai/operator/types";
 import type {
   AssistantAction,
   CreateTimeEntryAction,
@@ -109,12 +123,30 @@ function DoneState({ label }: { label: string }) {
   );
 }
 
+/** Shown instead of the confirm button when the user delegated the action. */
+function AutoRunNotice({ isRunning }: { isRunning: boolean }) {
+  return (
+    <p className="flex items-center justify-end gap-1.5 pt-2 text-[11px] text-orange-600 dark:text-orange-400">
+      <Zap className="h-3 w-3" aria-hidden="true" />
+      {isRunning ? "Executando automaticamente…" : "Autorizada por você"}
+    </p>
+  );
+}
+
 // ─── Create time entry ───────────────────────────────────────────────
 
-function CreateTimeEntryCard({ action }: { action: CreateTimeEntryAction }) {
+function CreateTimeEntryCard({
+  action,
+  inputMode,
+}: {
+  action: CreateTimeEntryAction;
+  inputMode: OperatorInputMode;
+}) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
+  /** Distinguishes a delegated run from a clicked one in the audit trail. */
+  const wasAutoRef = useRef(false);
 
   const [description, setDescription] = useState(action.description);
   const [durationMinutes, setDurationMinutes] = useState(
@@ -186,6 +218,8 @@ function CreateTimeEntryCard({ action }: { action: CreateTimeEntryAction }) {
       return;
     }
 
+    if (isSubmitting || isCreated) return;
+
     setIsSubmitting(true);
 
     try {
@@ -210,20 +244,57 @@ function CreateTimeEntryCard({ action }: { action: CreateTimeEntryAction }) {
         throw new Error(await readError(res, "Falha ao registrar as horas."));
       }
 
+      const payload = (await res.json().catch(() => null)) as {
+        entry?: { id?: string };
+      } | null;
+
+      markExecuted(actionKey(action));
       setIsCreated(true);
       setIsEditing(false);
       dispatchTimeEntriesUpdated();
       dispatchTimesheetsUpdated();
       toast.success(`${formatDuration(durationMinutes)} registradas!`);
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "create_time_entry",
+        summary: `Registrar ${formatDuration(durationMinutes)} em ${projectName}`,
+        status: "executed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: payload?.entry?.id ?? null,
+        errorMessage: null,
+      });
     } catch (error: unknown) {
       console.error("[CreateTimeEntryCard] handleConfirm:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao registrar horas.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Erro ao registrar horas.";
+      toast.error(message);
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "create_time_entry",
+        summary: `Registrar ${formatDuration(durationMinutes)} em ${projectName}`,
+        status: "failed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: null,
+        errorMessage: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  // A delegated entry only runs once the project is resolved; without one the
+  // card still needs a human to pick it.
+  const { willAutoRun } = useAutoRunAction(action, () => {
+    if (!action.projectId) return;
+    wasAutoRef.current = true;
+    return handleConfirm();
+  });
 
   return (
     <ActionShell
@@ -365,6 +436,8 @@ function CreateTimeEntryCard({ action }: { action: CreateTimeEntryAction }) {
 
             {isCreated ? (
               <DoneState label="Registrado com sucesso!" />
+            ) : willAutoRun && !needsProject ? (
+              <AutoRunNotice isRunning={isSubmitting} />
             ) : (
               <div className="flex items-center justify-end gap-2 pt-2">
                 <Button
@@ -406,15 +479,24 @@ function CreateTimeEntryCard({ action }: { action: CreateTimeEntryAction }) {
 
 // ─── Start timer ─────────────────────────────────────────────────────
 
-function StartTimerCard({ action }: { action: StartTimerAction }) {
+function StartTimerCard({
+  action,
+  inputMode,
+}: {
+  action: StartTimerAction;
+  inputMode: OperatorInputMode;
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStarted, setIsStarted] = useState(false);
+  const wasAutoRef = useRef(false);
 
   async function handleStart() {
     if (!action.projectId) {
       toast.error("Projeto não identificado. Inicie o timer pela sidebar.");
       return;
     }
+
+    if (isSubmitting || isStarted) return;
 
     setIsSubmitting(true);
 
@@ -438,19 +520,50 @@ function StartTimerCard({ action }: { action: StartTimerAction }) {
         throw new Error(await readError(res, "Falha ao iniciar o timer."));
       }
 
+      markExecuted(actionKey(action));
       setIsStarted(true);
       dispatchTimerUpdated();
       dispatchTimeEntriesUpdated();
       toast.success("Timer iniciado!");
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "start_timer",
+        summary: `Iniciar cronômetro em ${action.projectName ?? "projeto"}`,
+        status: "executed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: null,
+        errorMessage: null,
+      });
     } catch (error: unknown) {
       console.error("[StartTimerCard] handleStart:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao iniciar o timer.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Erro ao iniciar o timer.";
+      toast.error(message);
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "start_timer",
+        summary: `Iniciar cronômetro em ${action.projectName ?? "projeto"}`,
+        status: "failed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: null,
+        errorMessage: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  const { willAutoRun } = useAutoRunAction(action, () => {
+    if (!action.projectId) return;
+    wasAutoRef.current = true;
+    return handleStart();
+  });
 
   return (
     <ActionShell title="Iniciar cronômetro" warning={action.warning}>
@@ -474,6 +587,8 @@ function StartTimerCard({ action }: { action: StartTimerAction }) {
 
         {isStarted ? (
           <DoneState label="Timer em execução!" />
+        ) : willAutoRun && action.projectId ? (
+          <AutoRunNotice isRunning={isSubmitting} />
         ) : (
           <div className="flex justify-end pt-2">
             <Button
@@ -503,11 +618,20 @@ function StartTimerCard({ action }: { action: StartTimerAction }) {
 
 // ─── Stop timer ──────────────────────────────────────────────────────
 
-function StopTimerCard({ action }: { action: StopTimerAction }) {
+function StopTimerCard({
+  action,
+  inputMode,
+}: {
+  action: StopTimerAction;
+  inputMode: OperatorInputMode;
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isStopped, setIsStopped] = useState(false);
+  const wasAutoRef = useRef(false);
 
   async function handleStop() {
+    if (isSubmitting || isStopped) return;
+
     setIsSubmitting(true);
 
     try {
@@ -520,20 +644,54 @@ function StopTimerCard({ action }: { action: StopTimerAction }) {
         throw new Error(await readError(res, "Falha ao parar o timer."));
       }
 
+      const payload = (await res.json().catch(() => null)) as {
+        entry?: { id?: string };
+      } | null;
+
+      markExecuted(actionKey(action));
       setIsStopped(true);
       dispatchTimerUpdated();
       dispatchTimeEntriesUpdated();
       dispatchTimesheetsUpdated();
       toast.success("Timer parado e horas registradas!");
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "stop_timer",
+        summary: `Parar cronômetro (${formatDuration(action.elapsedMinutes)})`,
+        status: "executed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: payload?.entry?.id ?? null,
+        errorMessage: null,
+      });
     } catch (error: unknown) {
       console.error("[StopTimerCard] handleStop:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Erro ao parar o timer.",
-      );
+      const message =
+        error instanceof Error ? error.message : "Erro ao parar o timer.";
+      toast.error(message);
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "stop_timer",
+        summary: `Parar cronômetro (${formatDuration(action.elapsedMinutes)})`,
+        status: "failed",
+        authorization: wasAutoRef.current ? "auto" : "confirmed",
+        inputMode,
+        resultId: null,
+        errorMessage: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
   }
+
+  const { willAutoRun } = useAutoRunAction(action, () => {
+    wasAutoRef.current = true;
+    return handleStop();
+  });
 
   return (
     <ActionShell
@@ -552,6 +710,8 @@ function StopTimerCard({ action }: { action: StopTimerAction }) {
 
         {isStopped ? (
           <DoneState label="Horas registradas!" />
+        ) : willAutoRun ? (
+          <AutoRunNotice isRunning={isSubmitting} />
         ) : (
           <div className="flex justify-end pt-2">
             <Button
@@ -581,11 +741,21 @@ function StopTimerCard({ action }: { action: StopTimerAction }) {
 
 // ─── Submit timesheet ────────────────────────────────────────────────
 
-function SubmitTimesheetCard({ action }: { action: SubmitTimesheetAction }) {
+function SubmitTimesheetCard({
+  action,
+  inputMode,
+}: {
+  action: SubmitTimesheetAction;
+  inputMode: OperatorInputMode;
+}) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
+  // Submitting is outward-facing (it reaches the manager and locks the week),
+  // so it always requires this click — never an auto-run.
   async function handleSubmit() {
+    if (isSubmitting || isSubmitted) return;
+
     setIsSubmitting(true);
 
     try {
@@ -623,17 +793,42 @@ function SubmitTimesheetCard({ action }: { action: SubmitTimesheetAction }) {
         );
       }
 
+      markExecuted(actionKey(action));
       setIsSubmitted(true);
       dispatchTimesheetsUpdated();
       dispatchTimeEntriesUpdated();
       toast.success("Timesheet submetido para aprovação!");
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "submit_timesheet",
+        summary: `Submeter timesheet ${action.period}`,
+        status: "executed",
+        authorization: "confirmed",
+        inputMode,
+        resultId: timesheetId,
+        errorMessage: null,
+      });
     } catch (error: unknown) {
       console.error("[SubmitTimesheetCard] handleSubmit:", error);
-      toast.error(
+      const message =
         error instanceof Error
           ? error.message
-          : "Erro ao submeter o timesheet.",
-      );
+          : "Erro ao submeter o timesheet.";
+      toast.error(message);
+
+      await logOperatorAction({
+        planId: null,
+        stepIndex: 0,
+        kind: "submit_timesheet",
+        summary: `Submeter timesheet ${action.period}`,
+        status: "failed",
+        authorization: "confirmed",
+        inputMode,
+        resultId: null,
+        errorMessage: message,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -707,18 +902,39 @@ function NavigateCard({ action }: { action: NavigateAction }) {
 
 export interface AssistantActionViewProps {
   action: AssistantAction;
+  /** How the originating command arrived, recorded in the operator audit log. */
+  inputMode?: OperatorInputMode;
 }
 
-export function AssistantActionView({ action }: AssistantActionViewProps) {
+export function AssistantActionView({
+  action,
+  inputMode = "text",
+}: AssistantActionViewProps) {
   switch (action.kind) {
     case "create_time_entry":
-      return <CreateTimeEntryCard action={action} />;
+      return <CreateTimeEntryCard action={action} inputMode={inputMode} />;
     case "start_timer":
-      return <StartTimerCard action={action} />;
+      return <StartTimerCard action={action} inputMode={inputMode} />;
     case "stop_timer":
-      return <StopTimerCard action={action} />;
+      return <StopTimerCard action={action} inputMode={inputMode} />;
     case "submit_timesheet":
-      return <SubmitTimesheetCard action={action} />;
+      return <SubmitTimesheetCard action={action} inputMode={inputMode} />;
+    case "update_time_entry":
+      return <UpdateTimeEntryCard action={action} inputMode={inputMode} />;
+    case "delete_time_entry":
+      return <DeleteTimeEntryCard action={action} inputMode={inputMode} />;
+    case "pause_timer":
+    case "resume_timer":
+      return <TimerToggleCard action={action} inputMode={inputMode} />;
+    case "approve_timesheet":
+    case "reject_timesheet":
+      return <TimesheetReviewCard action={action} inputMode={inputMode} />;
+    case "export_report":
+      return <ExportReportCard action={action} inputMode={inputMode} />;
+    case "notify_team":
+      return <NotifyTeamCard action={action} inputMode={inputMode} />;
+    case "operator_plan":
+      return <OperatorPlanCard action={action} inputMode={inputMode} />;
     case "navigate":
       return <NavigateCard action={action} />;
     default:

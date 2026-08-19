@@ -42,6 +42,24 @@ function formatDateInTimeZone(date: Date, timeZone: string): string {
 }
 
 /**
+ * Load the active timer with its project joined in.
+ *
+ * Every handler must respond with this shape: `.returning()` on an insert or
+ * update yields the bare `active_timer` row, and a response without `project`
+ * breaks the `ActiveTimer` contract the client relies on.
+ */
+async function findActiveTimerWithProject(userId: string) {
+  return db.query.activeTimer.findFirst({
+    where: eq(activeTimer.userId, userId),
+    with: {
+      project: {
+        columns: { id: true, name: true, code: true, color: true },
+      },
+    },
+  });
+}
+
+/**
  * GET - Get the current user's active timer (if any).
  */
 export async function GET(req: Request): Promise<Response> {
@@ -51,14 +69,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const timer = await db.query.activeTimer.findFirst({
-      where: eq(activeTimer.userId, session.user.id),
-      with: {
-        project: {
-          columns: { id: true, name: true, code: true, color: true },
-        },
-      },
-    });
+    const timer = await findActiveTimerWithProject(session.user.id);
 
     return Response.json({ timer: timer ?? null });
   } catch (error) {
@@ -121,19 +132,18 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const id = crypto.randomUUID();
-    const [timer] = await db
-      .insert(activeTimer)
-      .values({
-        id,
-        userId: session.user.id,
-        projectId: data.projectId,
-        description: data.description,
-        billable: data.billable,
-        azureWorkItemId: data.azureWorkItemId,
-        azureWorkItemTitle: data.azureWorkItemTitle,
-        startedAt: new Date(),
-      })
-      .returning();
+    await db.insert(activeTimer).values({
+      id,
+      userId: session.user.id,
+      projectId: data.projectId,
+      description: data.description,
+      billable: data.billable,
+      azureWorkItemId: data.azureWorkItemId,
+      azureWorkItemTitle: data.azureWorkItemTitle,
+      startedAt: new Date(),
+    });
+
+    const timer = await findActiveTimerWithProject(session.user.id);
 
     return Response.json({ timer }, { status: 201 });
   } catch (error) {
@@ -179,13 +189,14 @@ export async function PATCH(req: Request): Promise<Response> {
       const elapsed = now.getTime() - existing.startedAt.getTime();
       const accumulated = existing.accumulatedMs + elapsed;
 
-      const [updated] = await db
+      await db
         .update(activeTimer)
         .set({ pausedAt: now, accumulatedMs: accumulated })
-        .where(eq(activeTimer.id, existing.id))
-        .returning();
+        .where(eq(activeTimer.id, existing.id));
 
-      return Response.json({ timer: updated });
+      return Response.json({
+        timer: await findActiveTimerWithProject(session.user.id),
+      });
     }
 
     if (action === "resume") {
@@ -196,13 +207,14 @@ export async function PATCH(req: Request): Promise<Response> {
         );
       }
 
-      const [updated] = await db
+      await db
         .update(activeTimer)
         .set({ pausedAt: null, startedAt: new Date() })
-        .where(eq(activeTimer.id, existing.id))
-        .returning();
+        .where(eq(activeTimer.id, existing.id));
 
-      return Response.json({ timer: updated });
+      return Response.json({
+        timer: await findActiveTimerWithProject(session.user.id),
+      });
     }
 
     if (action === "update") {
@@ -215,17 +227,16 @@ export async function PATCH(req: Request): Promise<Response> {
         updates.azureWorkItemTitle = body.azureWorkItemTitle ?? null;
       }
 
-      if (Object.keys(updates).length === 0) {
-        return Response.json({ timer: existing });
+      if (Object.keys(updates).length > 0) {
+        await db
+          .update(activeTimer)
+          .set(updates)
+          .where(eq(activeTimer.id, existing.id));
       }
 
-      const [updated] = await db
-        .update(activeTimer)
-        .set(updates)
-        .where(eq(activeTimer.id, existing.id))
-        .returning();
-
-      return Response.json({ timer: updated });
+      return Response.json({
+        timer: await findActiveTimerWithProject(session.user.id),
+      });
     }
 
     return Response.json({ error: "Ação inválida." }, { status: 400 });

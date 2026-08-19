@@ -5,13 +5,13 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { GripVertical } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ActionTooltip } from "@/components/ui/tooltip";
 import {
   type AssistantPanelController,
   clampPanelWidth,
   PANEL_MAX_WIDTH,
   PANEL_MIN_WIDTH,
 } from "@/hooks/use-assistant-panel";
-import { ActionTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /** Gap between the floating panel and the viewport edges, per mode. */
