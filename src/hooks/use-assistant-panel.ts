@@ -7,7 +7,14 @@ export type AssistantPanelMode = "docked" | "fullscreen";
 
 export const PANEL_MIN_WIDTH = 380;
 export const PANEL_MAX_WIDTH = 960;
-export const PANEL_DEFAULT_WIDTH = 460;
+export const PANEL_DEFAULT_WIDTH = 560;
+/**
+ * The default the panel shipped with before. A stored width that still matches
+ * it was never chosen by anyone, so it moves up with the default instead of
+ * pinning existing users to the narrower panel forever. A width the user did
+ * drag to is left exactly where they put it.
+ */
+const SUPERSEDED_DEFAULT_WIDTH = 460;
 
 /** Viewport below which the panel always takes the whole screen. */
 export const PANEL_COMPACT_BREAKPOINT = 640;
@@ -82,7 +89,12 @@ export function useAssistantPanel(): AssistantPanelController {
           setModeState(parsed.mode);
         }
         if (typeof parsed.width === "number" && Number.isFinite(parsed.width)) {
-          setWidthState(clampPanelWidth(parsed.width));
+          const width =
+            parsed.width === SUPERSEDED_DEFAULT_WIDTH
+              ? PANEL_DEFAULT_WIDTH
+              : parsed.width;
+
+          setWidthState(clampPanelWidth(width));
         }
       }
     } catch (error: unknown) {
