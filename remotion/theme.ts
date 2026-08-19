@@ -27,4 +27,3 @@ export const fonts = {
   body: "DM Sans, system-ui, sans-serif",
   mono: "JetBrains Mono, monospace",
 } as const;
-

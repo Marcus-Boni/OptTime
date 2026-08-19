@@ -1,5 +1,6 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
+import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import {
   project,
@@ -20,7 +21,6 @@ import {
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
-import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 
 type EntryStatus = "draft" | "submitted" | "approved" | "rejected";
 

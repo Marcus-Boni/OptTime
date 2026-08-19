@@ -1,10 +1,5 @@
 import type React from "react";
-import {
-  CheckCircle2,
-  FileEdit,
-  Send,
-  XCircle,
-} from "lucide-react";
+import { CheckCircle2, FileEdit, Send, XCircle } from "lucide-react";
 import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
 import { fonts, theme } from "../theme";
@@ -14,7 +9,6 @@ const flowSteps = [
   { label: "SUBMITTED", color: theme.warning, icon: Send },
   { label: "APPROVED", color: theme.success, icon: CheckCircle2 },
 ];
-
 
 const weekDays = [
   { day: "Seg", hours: 8.0, entries: 3 },
@@ -198,7 +192,6 @@ export const TimesheetScene: React.FC = () => {
                 REJECTED → volta a DRAFT
               </span>
             </div>
-
           </div>
         </FadeIn>
 

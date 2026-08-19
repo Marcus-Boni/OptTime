@@ -1,0 +1,41 @@
+name: Weekly AI Digest
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 America/Sao_Paulo, every Monday.
+    # The endpoint re-checks the weekday in the target timezone, so a DST shift
+    # in the runner cannot send the digest on the wrong day.
+    - cron: "0 11 * * 1"
+  workflow_dispatch: # manual trigger for testing
+    inputs:
+      force:
+        description: "Ignore the Monday-only guard"
+        required: false
+        default: "false"
+      userId:
+        description: "Send to a single user id only"
+        required: false
+        default: ""
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger weekly digest
+        run: |
+          URL="${{ secrets.APP_URL }}/api/cron/weekly-digest"
+          QUERY=""
+
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            QUERY="?force=true"
+          fi
+
+          if [ -n "${{ github.event.inputs.userId }}" ]; then
+            if [ -z "$QUERY" ]; then QUERY="?"; else QUERY="$QUERY&"; fi
+            QUERY="${QUERY}userId=${{ github.event.inputs.userId }}"
+          fi
+
+          curl -f -X POST "${URL}${QUERY}" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 300

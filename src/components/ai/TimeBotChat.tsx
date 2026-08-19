@@ -6,11 +6,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
   AlertCircle,
+  ArrowUpRight,
+  AudioLines,
   Bot,
   Check,
   ChevronDown,
   Copy,
   Download,
+  History,
   Keyboard,
   Loader2,
   Maximize2,
@@ -19,10 +22,12 @@ import {
   MoreVertical,
   PanelLeft,
   RefreshCw,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { AssistantActionView } from "@/components/ai/AssistantActions";
@@ -34,23 +39,45 @@ import {
 } from "@/components/ai/ChatComposer";
 import { ConversationList } from "@/components/ai/ConversationList";
 import { MarkdownContent } from "@/components/ai/MarkdownContent";
+import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
+import { OperatorModeChip } from "@/components/ai/operator/OperatorModeChip";
 import { ShortcutsHelp } from "@/components/ai/ShortcutsHelp";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import type { AssistantPanelMode } from "@/hooks/use-assistant-panel";
+import { useModifierKey } from "@/hooks/use-modifier-key";
+import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
 import {
   type TimeBotMessage,
   type ToolActivityItem,
   useTimeBot,
 } from "@/hooks/use-timebot";
 import type { AppRole } from "@/lib/access-control";
+import { OPERATOR_MODE_META } from "@/lib/ai/operator/policy";
+import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
+import type { OperatorMode } from "@/lib/ai/operator/types";
+import {
+  consumePendingVoiceCommand,
+  VOICE_COMMAND_EVENT,
+} from "@/lib/ai/operator/voice-events";
 import {
   buildTranscriptFileName,
   buildTranscriptMarkdown,
@@ -68,7 +95,13 @@ export interface TimeBotChatProps {
   titleId: string;
   onToggleFullscreen: () => void;
   onClose: () => void;
+  /** Opens the hands-free voice overlay. Omitted when voice is disabled. */
+  onOpenVoiceMode?: () => void;
 }
+
+/** Section heading inside the overflow menu. */
+const MENU_SECTION_CLASS =
+  "px-2 py-1 font-medium text-[10px] text-muted-foreground uppercase tracking-wide";
 
 function formatDayLabel(timestamp: number): string {
   const date = new Date(timestamp);
@@ -274,7 +307,10 @@ function MessageActions({
 
   return (
     <div className="mt-1.5 flex items-center gap-1">
-      <ActionTooltip label={copied ? "Copiado!" : "Copiar mensagem"} side="bottom">
+      <ActionTooltip
+        label={copied ? "Copiado!" : "Copiar mensagem"}
+        side="bottom"
+      >
         <button
           type="button"
           onClick={handleCopy}
@@ -303,7 +339,10 @@ function MessageActions({
       )}
 
       {message.provider && (
-        <ActionTooltip label={`Provedor de IA: ${message.provider.toUpperCase()}`} side="bottom">
+        <ActionTooltip
+          label={`Provedor de IA: ${message.provider.toUpperCase()}`}
+          side="bottom"
+        >
           <span className="ml-1 cursor-default rounded px-1 py-0.5 font-mono text-[9px] text-neutral-400 uppercase dark:text-neutral-500">
             {message.provider}
           </span>
@@ -408,6 +447,7 @@ function MessageBubble({
             <AssistantActionView
               key={`${action.kind}-${index}`}
               action={action}
+              inputMode={message.inputMode}
             />
           ))}
 
@@ -466,6 +506,7 @@ export function TimeBotChat({
   titleId,
   onToggleFullscreen,
   onClose,
+  onOpenVoiceMode,
 }: TimeBotChatProps) {
   const { data: session } = useSession();
   const user = session?.user;
@@ -501,6 +542,7 @@ export function TimeBotChat({
   const [isPinnedToBottom, setIsPinnedToBottom] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showActionLog, setShowActionLog] = useState(false);
 
   const hasMessages = messages.length > 0;
 
@@ -525,6 +567,58 @@ export function TimeBotChat({
     if (!isFullscreen) setShowHistory(false);
   }, [isFullscreen]);
 
+  // A command spoken in the voice overlay is parked while this chat is still
+  // mounting, so it is drained here and on every later hand-off.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function drain() {
+      const command = consumePendingVoiceCommand();
+      if (command) send(command, "voice");
+    }
+
+    drain();
+
+    window.addEventListener(VOICE_COMMAND_EVENT, drain);
+    return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
+  }, [isOpen, send]);
+
+  const {
+    settings,
+    isSaving: isSavingPolicy,
+    save: savePolicy,
+  } = useOperatorPolicy();
+  const speech = useSpeechSynthesis(settings.voiceLocale);
+  const modifier = useModifierKey();
+  const operatorModeLabel = OPERATOR_MODE_META[settings.mode].label;
+
+  /** Guards against re-reading the same reply on unrelated re-renders. */
+  const spokenMessageIdRef = useRef<string | null>(null);
+  const speakRef = useRef(speech.speak);
+
+  useEffect(() => {
+    speakRef.current = speech.speak;
+  }, [speech.speak]);
+
+  const lastMessage = messages.at(-1);
+  const finishedReplyId =
+    !isStreaming && lastMessage?.role === "assistant" && lastMessage.content
+      ? lastMessage.id
+      : null;
+
+  // Reads a reply aloud once, and only after it has fully streamed in.
+  useEffect(() => {
+    if (!settings.speakReplies || !finishedReplyId) return;
+    if (spokenMessageIdRef.current === finishedReplyId) return;
+
+    spokenMessageIdRef.current = finishedReplyId;
+
+    const content = messages.find(
+      (item) => item.id === finishedReplyId,
+    )?.content;
+    if (content) speakRef.current(content);
+  }, [settings.speakReplies, finishedReplyId, messages]);
+
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
     if (!element) return;
@@ -538,6 +632,21 @@ export function TimeBotChat({
     clear();
     toast.info("Conversa limpa.");
   }, [clear]);
+
+  const handleModeChange = useCallback(
+    async (next: OperatorMode) => {
+      const ok = await savePolicy({ mode: next });
+
+      if (ok) {
+        toast.success(`Autonomia: ${OPERATOR_MODE_META[next].label}`, {
+          description: OPERATOR_MODE_META[next].description,
+        });
+      } else {
+        toast.error("Não foi possível alterar a autonomia do assistente.");
+      }
+    },
+    [savePolicy],
+  );
 
   const handleNewThread = useCallback(() => {
     newThread();
@@ -713,6 +822,14 @@ export function TimeBotChat({
                     />
                     {isStreaming ? "Processando..." : "Pronto"}
                   </span>
+
+                  <OperatorModeChip
+                    mode={settings.mode}
+                    isSaving={isSavingPolicy}
+                    onChange={handleModeChange}
+                    compact={!isFullscreen}
+                    onNavigateAway={onClose}
+                  />
                 </div>
 
                 <p className="truncate text-[11px] text-neutral-400">
@@ -729,7 +846,7 @@ export function TimeBotChat({
                 label={
                   showHistory ? "Ocultar histórico" : "Histórico de conversas"
                 }
-                shortcut="Ctrl+Shift+H"
+                shortcut={`${modifier}+Shift+H`}
                 onClick={() => setShowHistory((previous) => !previous)}
                 active={showHistory}
               />
@@ -737,7 +854,7 @@ export function TimeBotChat({
               <IconAction
                 icon={MessageSquarePlus}
                 label="Nova conversa"
-                shortcut="Ctrl+Shift+O"
+                shortcut={`${modifier}+Shift+O`}
                 onClick={handleNewThread}
               />
 
@@ -749,7 +866,7 @@ export function TimeBotChat({
                       ? "Sair da tela cheia"
                       : "Expandir para tela cheia"
                   }
-                  shortcut="Ctrl+Shift+F"
+                  shortcut={`${modifier}+Shift+F`}
                   onClick={onToggleFullscreen}
                 />
               )}
@@ -769,26 +886,96 @@ export function TimeBotChat({
 
                 <DropdownMenuContent
                   align="end"
-                  className="z-[10001] w-56"
+                  className="z-[10001] w-72"
                   sideOffset={8}
                 >
-                  <DropdownMenuItem onClick={handleNewThread}>
-                    <MessageSquarePlus className="h-4 w-4" aria-hidden="true" />
-                    Nova conversa
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleExport}>
-                    <Download className="h-4 w-4" aria-hidden="true" />
-                    Exportar em Markdown
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleCopyTranscript}>
-                    <Copy className="h-4 w-4" aria-hidden="true" />
-                    Copiar transcrição
-                  </DropdownMenuItem>
+                  <DropdownMenuLabel className={MENU_SECTION_CLASS}>
+                    Conversa
+                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={handleNewThread}>
+                      <MessageSquarePlus
+                        className="h-4 w-4"
+                        aria-hidden="true"
+                      />
+                      Nova conversa
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+O
+                      </DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => setShowHistory((previous) => !previous)}
+                    >
+                      <PanelLeft className="h-4 w-4" aria-hidden="true" />
+                      {showHistory ? "Ocultar histórico" : "Histórico"}
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+H
+                      </DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleExport}>
+                      <Download className="h-4 w-4" aria-hidden="true" />
+                      Exportar em Markdown
+                      <DropdownMenuShortcut>
+                        {modifier}+Shift+E
+                      </DropdownMenuShortcut>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleCopyTranscript}>
+                      <Copy className="h-4 w-4" aria-hidden="true" />
+                      Copiar transcrição
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
+                  <DropdownMenuLabel className={MENU_SECTION_CLASS}>
+                    Operador IA
+                  </DropdownMenuLabel>
+                  <DropdownMenuGroup>
+                    {onOpenVoiceMode && (
+                      <DropdownMenuItem onClick={onOpenVoiceMode}>
+                        <AudioLines className="h-4 w-4" aria-hidden="true" />
+                        Comando por voz
+                        <DropdownMenuShortcut>
+                          {modifier}+Shift+V
+                        </DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setShowActionLog(true)}>
+                      <History className="h-4 w-4" aria-hidden="true" />
+                      Ações executadas
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild className="items-start py-2">
+                      <Link href={OPERATOR_SETTINGS_PATH} onClick={onClose}>
+                        <SlidersHorizontal
+                          className="mt-0.5 h-4 w-4"
+                          aria-hidden="true"
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                          <span className="flex items-center gap-1">
+                            Configurar Operador IA
+                            <ArrowUpRight
+                              className="size-3.5 opacity-60"
+                              aria-hidden="true"
+                            />
+                          </span>
+                          <span className="truncate text-[11px] text-muted-foreground">
+                            {operatorModeLabel} · voz, permissões e digest
+                          </span>
+                        </span>
+                      </Link>
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+
+                  <DropdownMenuSeparator />
+
                   <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
                     <Keyboard className="h-4 w-4" aria-hidden="true" />
                     Atalhos do teclado
+                    <DropdownMenuShortcut>{modifier}+/</DropdownMenuShortcut>
                   </DropdownMenuItem>
+
                   <DropdownMenuSeparator />
+
                   <DropdownMenuItem
                     variant="destructive"
                     onClick={handleClear}
@@ -957,6 +1144,8 @@ export function TimeBotChat({
             onStop={stop}
             onClear={handleClear}
             variant={isFullscreen ? "fullscreen" : "docked"}
+            voiceLocale={settings.voiceLocale}
+            onOpenVoiceMode={onOpenVoiceMode}
           />
 
           {/* Docked history overlay */}
@@ -1003,7 +1192,46 @@ export function TimeBotChat({
         </div>
       </div>
 
-      <ShortcutsHelp open={showShortcuts} onOpenChange={setShowShortcuts} />
+      <ShortcutsHelp
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+        onNavigateAway={onClose}
+      />
+
+      <Dialog open={showActionLog} onOpenChange={setShowActionLog}>
+        <DialogContent className="z-[10002] max-h-[80vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-orange-500" aria-hidden="true" />
+              Ações executadas
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              O que o assistente fez no seu nome, de onde veio o comando e o que
+              ainda pode ser desfeito.
+            </DialogDescription>
+          </DialogHeader>
+
+          <OperatorHistoryPanel isActive={showActionLog} />
+
+          <Link
+            href={OPERATOR_SETTINGS_PATH}
+            onClick={onClose}
+            className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2 text-xs transition-colors hover:border-orange-500/40 hover:bg-orange-500/5 dark:border-white/10"
+          >
+            <span className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+              <SlidersHorizontal
+                className="h-4 w-4 text-orange-500"
+                aria-hidden="true"
+              />
+              Ajustar o que o TimeBot pode fazer sozinho
+            </span>
+            <ArrowUpRight
+              className="size-3.5 shrink-0 text-neutral-400"
+              aria-hidden="true"
+            />
+          </Link>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,7 +1,14 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Mic, MicOff, Send, SlashSquare, Square } from "lucide-react";
+import {
+  AudioLines,
+  Mic,
+  MicOff,
+  Send,
+  SlashSquare,
+  Square,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -13,43 +20,13 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ActionTooltip } from "@/components/ui/tooltip";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import type { AppRole } from "@/lib/access-control";
+import type { OperatorInputMode } from "@/lib/ai/operator/types";
 import { cn } from "@/lib/utils";
 
 const MAX_LENGTH = 2000;
 const MAX_TEXTAREA_HEIGHT = 168;
-
-// The Web Speech API is not part of the standard DOM typings.
-interface SpeechRecognitionResultLike {
-  0: { transcript: string };
-  isFinal: boolean;
-}
-
-interface SpeechRecognitionEventLike {
-  resultIndex: number;
-  results: {
-    length: number;
-    [index: number]: SpeechRecognitionResultLike;
-  };
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start(): void;
-  stop(): void;
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
-  onerror: (() => void) | null;
-  onend: (() => void) | null;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition?: new () => SpeechRecognitionLike;
-    webkitSpeechRecognition?: new () => SpeechRecognitionLike;
-  }
-}
 
 export interface SlashCommand {
   command: string;
@@ -59,7 +36,7 @@ export interface SlashCommand {
   prefill?: boolean;
   roles?: AppRole[];
   action?: "clear";
-  group: "Consultar" | "Registrar" | "Gestão" | "Conversa";
+  group: "Consultar" | "Registrar" | "Operar" | "Gestão" | "Conversa";
 }
 
 const SLASH_COMMANDS: SlashCommand[] = [
@@ -113,9 +90,49 @@ const SLASH_COMMANDS: SlashCommand[] = [
     group: "Registrar",
   },
   {
+    command: "/editar",
+    description: "Corrigir um lançamento existente",
+    prompt: "Altere o lançamento de ",
+    prefill: true,
+    group: "Registrar",
+  },
+  {
+    command: "/excluir",
+    description: "Remover um lançamento",
+    prompt: "Exclua o lançamento de ",
+    prefill: true,
+    group: "Registrar",
+  },
+  {
+    command: "/pausar",
+    description: "Pausar o cronômetro",
+    prompt: "Pause o cronômetro",
+    group: "Registrar",
+  },
+  {
+    command: "/relatorio",
+    description: "Gerar um relatório em PDF ou Excel",
+    prompt: "Gere um relatório PDF das minhas horas deste mês",
+    group: "Operar",
+  },
+  {
     command: "/aprovacoes",
     description: "Timesheets aguardando aprovação",
     prompt: "O que preciso aprovar?",
+    roles: ["manager", "admin"],
+    group: "Gestão",
+  },
+  {
+    command: "/budget",
+    description: "Consumo de budget dos projetos",
+    prompt: "Como está o consumo de budget dos meus projetos?",
+    group: "Operar",
+  },
+  {
+    command: "/notificar",
+    description: "Avisar o time por e-mail",
+    prompt: "Notifique o time do projeto ",
+    prefill: true,
     roles: ["manager", "admin"],
     group: "Gestão",
   },
@@ -144,11 +161,15 @@ export interface ChatComposerHandle {
 export interface ChatComposerProps {
   role: AppRole;
   isStreaming: boolean;
-  onSend: (text: string) => void;
+  onSend: (text: string, inputMode?: OperatorInputMode) => void;
   onStop: () => void;
   onClear: () => void;
   /** Fullscreen gets a roomier composer. */
   variant?: "docked" | "fullscreen";
+  /** Locale used for dictation, from the operator settings. */
+  voiceLocale?: string;
+  /** Opens the hands-free voice command overlay. */
+  onOpenVoiceMode?: () => void;
   ref?: React.Ref<ChatComposerHandle>;
 }
 
@@ -159,15 +180,19 @@ export function ChatComposer({
   onStop,
   onClear,
   variant = "docked",
+  voiceLocale = "pt-BR",
+  onOpenVoiceMode,
   ref,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
-  const [isListening, setIsListening] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
   const [isPaletteForced, setIsPaletteForced] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  /** Text already in the box when dictation started, so it appends. */
+  const dictationBaseRef = useRef("");
+  /** Marks the next submit as voice-originated for the audit log. */
+  const cameFromVoiceRef = useRef(false);
 
   const isFullscreen = variant === "fullscreen";
 
@@ -245,21 +270,38 @@ export function ChatComposer({
     [updateValue],
   );
 
-  const speechSupported =
-    typeof window !== "undefined" &&
-    Boolean(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const speech = useSpeechRecognition({
+    locale: voiceLocale,
+    continuous: true,
+  });
+
+  // Live transcript flows straight into the draft, appended to whatever the
+  // user had already typed.
+  useEffect(() => {
+    if (!speech.isListening) return;
+
+    const spoken = `${speech.transcript} ${speech.interim}`.trim();
+    if (!spoken) return;
+
+    const base = dictationBaseRef.current;
+    updateValue(base ? `${base} ${spoken}` : spoken);
+  }, [speech.isListening, speech.transcript, speech.interim, updateValue]);
 
   useEffect(() => {
-    return () => {
-      recognitionRef.current?.stop();
-    };
-  }, []);
+    if (speech.errorMessage) {
+      toast.error(speech.errorMessage);
+    }
+  }, [speech.errorMessage]);
 
   function submit(text: string) {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
 
-    onSend(trimmed);
+    if (speech.isListening) speech.stop();
+
+    onSend(trimmed, cameFromVoiceRef.current ? "voice" : "text");
+    cameFromVoiceRef.current = false;
+    dictationBaseRef.current = "";
     setIsPaletteForced(false);
     updateValue("");
   }
@@ -323,62 +365,21 @@ export function ChatComposer({
   }
 
   function toggleVoice() {
-    if (isListening) {
-      recognitionRef.current?.stop();
+    if (speech.isListening) {
+      speech.stop();
+      textareaRef.current?.focus();
       return;
     }
 
-    const SpeechRecognitionCtor =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if (!SpeechRecognitionCtor) {
+    if (!speech.isSupported) {
       toast.error("Seu navegador não suporta ditado por voz.");
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognitionCtor();
-      recognition.lang = "pt-BR";
-      recognition.continuous = false;
-      recognition.interimResults = true;
-
-      let finalTranscript = "";
-
-      recognition.onresult = (event) => {
-        let interim = "";
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i];
-          if (!result) continue;
-
-          if (result.isFinal) {
-            finalTranscript += result[0].transcript;
-          } else {
-            interim += result[0].transcript;
-          }
-        }
-
-        updateValue((finalTranscript + interim).trimStart());
-      };
-
-      recognition.onerror = () => {
-        setIsListening(false);
-        toast.error("Não consegui capturar o áudio.");
-      };
-
-      recognition.onend = () => {
-        setIsListening(false);
-        textareaRef.current?.focus();
-      };
-
-      recognitionRef.current = recognition;
-      recognition.start();
-      setIsListening(true);
-    } catch (error: unknown) {
-      console.error("[ChatComposer] toggleVoice:", error);
-      setIsListening(false);
-      toast.error("Não foi possível iniciar o ditado por voz.");
-    }
+    dictationBaseRef.current = value.trim();
+    cameFromVoiceRef.current = true;
+    speech.reset();
+    speech.start();
   }
 
   const usageRatio = value.length / MAX_LENGTH;
@@ -459,9 +460,9 @@ export function ChatComposer({
           onChange={(event) => updateValue(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isListening
+            speech.isListening
               ? "Ouvindo..."
-              : "Pergunte algo ou digite / para comandos"
+              : "Pergunte algo, mande uma tarefa ou digite / para comandos"
           }
           rows={1}
           maxLength={MAX_LENGTH}
@@ -495,9 +496,30 @@ export function ChatComposer({
           </Button>
         </ActionTooltip>
 
-        {speechSupported && (
+        {speech.isSupported && onOpenVoiceMode && (
           <ActionTooltip
-            label={isListening ? "Parar ditado por voz" : "Ditar por voz"}
+            label="Modo de comando por voz"
+            shortcut="Ctrl+Shift+V"
+            side="top"
+          >
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={onOpenVoiceMode}
+              aria-label="Abrir o modo de comando por voz"
+              className="h-8 w-8 shrink-0 cursor-pointer rounded-lg text-neutral-500 transition-all hover:text-orange-500 dark:text-neutral-400"
+            >
+              <AudioLines className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          </ActionTooltip>
+        )}
+
+        {speech.isSupported && (
+          <ActionTooltip
+            label={
+              speech.isListening ? "Parar ditado por voz" : "Ditar por voz"
+            }
             side="top"
           >
             <Button
@@ -505,19 +527,19 @@ export function ChatComposer({
               size="icon"
               variant="ghost"
               onClick={toggleVoice}
-              aria-label={isListening ? "Parar ditado" : "Ditar por voz"}
-              aria-pressed={isListening}
+              aria-label={speech.isListening ? "Parar ditado" : "Ditar por voz"}
+              aria-pressed={speech.isListening}
               className={cn(
                 "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
-                isListening
+                speech.isListening
                   ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 hover:bg-red-500/25"
                   : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
               )}
             >
-              {isListening && (
+              {speech.isListening && (
                 <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20 motion-reduce:animate-none" />
               )}
-              {isListening ? (
+              {speech.isListening ? (
                 <MicOff
                   className="relative z-10 h-4 w-4 animate-pulse motion-reduce:animate-none"
                   aria-hidden="true"

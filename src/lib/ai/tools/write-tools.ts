@@ -1,9 +1,23 @@
+import { randomUUID } from "node:crypto";
 import { addDays, subDays } from "date-fns";
 import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import { z } from "zod";
-import type { AppRole } from "@/lib/access-control";
-import { resolveDurationMinutes } from "@/lib/ai/duration";
+import { SETTINGS_TABS } from "@/app/(dashboard)/dashboard/settings/tabs";
+import { parseDurationText, resolveDurationMinutes } from "@/lib/ai/duration";
+import {
+  buildProjectPath,
+  buildSettingsPath,
+  getNavigationTargetsForRole,
+  NAVIGATION_TARGETS,
+  resolveNavigationTarget,
+} from "@/lib/ai/operator/navigation";
+import {
+  isUiCommandId,
+  UI_COMMAND_LIST,
+  UI_COMMANDS,
+} from "@/lib/ai/operator/ui-commands";
 import { formatDayLabel, resolvePeriod } from "@/lib/ai/periods";
+import type { NavigateAction, UiCommandPayload } from "@/lib/ai/types";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry, timesheet } from "@/lib/db/schema";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
@@ -127,6 +141,7 @@ export const prepareTimeEntryTool: AgentTool<
     required: ["description"],
   },
   schema: prepareEntryArgsSchema,
+  actionKind: "create_time_entry",
   label: () => "Preparando o lançamento",
   async execute(args, ctx) {
     const projects = await listLoggableProjects(ctx);
@@ -216,6 +231,7 @@ export const prepareTimerStartTool: AgentTool<
     },
   },
   schema: prepareTimerArgsSchema,
+  actionKind: "start_timer",
   label: () => "Preparando o cronômetro",
   async execute(args, ctx) {
     const projects = await listLoggableProjects(ctx);
@@ -276,6 +292,7 @@ export const prepareTimerStopTool: AgentTool<EmptyArgs> = {
     "Prepara a parada do cronômetro em execução, exibindo um cartão de confirmação com o tempo acumulado. Use quando a pessoa disser que terminou a atividade.",
   parameters: { type: "object", properties: {} },
   schema: emptyArgsSchema,
+  actionKind: "stop_timer",
   label: () => "Preparando a parada do cronômetro",
   async execute(_args, ctx) {
     const timer = await db.query.activeTimer.findFirst({
@@ -340,6 +357,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
     },
   },
   schema: submitArgsSchema,
+  actionKind: "submit_timesheet",
   label: () => "Preparando a submissão do timesheet",
   async execute(args, ctx) {
     const range = resolvePeriod(args.period ?? "this_week", ctx.user.today);
@@ -373,7 +391,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
       return {
         label: `Timesheet já ${getTimesheetStatusLabel(status)}`,
         data: {
-          status: "already_" + status,
+          status: `already_${status}`,
           period,
           note: `O timesheet de ${period} já foi ${getTimesheetStatusLabel(status)}.`,
         },
@@ -434,89 +452,271 @@ export const prepareTimesheetSubmitTool: AgentTool<
 
 // ─── Tool: navigate_to ───────────────────────────────────────────────
 
-/** Only routes that actually exist in the app — a wrong path would 404. */
-const NAVIGATION_TARGETS: Record<
-  string,
-  { path: string; label: string; roles?: AppRole[] }
-> = {
-  dashboard: { path: "/dashboard", label: "Abrir o Dashboard" },
-  time: { path: "/dashboard/time", label: "Abrir o Registro de Horas" },
-  timesheets: { path: "/dashboard/timesheets", label: "Abrir Timesheets" },
-  approvals: {
-    path: "/dashboard/timesheets/approvals",
-    label: "Abrir Aprovações",
-    roles: ["manager", "admin"],
-  },
-  projects: { path: "/dashboard/projects", label: "Abrir Projetos" },
-  team_hours: {
-    path: "/dashboard/team-hours",
-    label: "Abrir Horas da Equipe",
-    roles: ["manager", "admin"],
-  },
-  people: {
-    path: "/dashboard/people",
-    label: "Abrir Pessoas",
-    roles: ["manager", "admin"],
-  },
-  suggestions: { path: "/dashboard/suggestions", label: "Abrir Sugestões" },
-  releases: { path: "/dashboard/releases", label: "Abrir Novidades" },
-  integrations: {
-    path: "/dashboard/settings/integrations",
-    label: "Abrir Integrações",
-  },
-  azure_devops: {
-    path: "/dashboard/settings/integrations/azure-devops",
-    label: "Configurar Azure DevOps",
-  },
-  settings: { path: "/dashboard/settings", label: "Abrir Configurações" },
-  profile: { path: "/dashboard/profile", label: "Abrir meu Perfil" },
-};
-
 const navigateArgsSchema = z.object({
-  target: z.string(),
+  target: z.string().optional(),
+  project: z.string().optional(),
+  settingsTab: z.string().optional(),
+  reason: z.string().max(160).optional(),
 });
 
 export const navigateToTool: AgentTool<z.infer<typeof navigateArgsSchema>> = {
   name: "navigate_to",
   description:
-    "Oferece ao usuário um botão para abrir uma tela do sistema. Use quando a resposta ficar mais útil com um atalho direto para a página relevante.",
+    "Abre uma tela do sistema para o usuário. Use SEMPRE que a pessoa pedir para ir/abrir/mostrar uma tela ('abre os projetos', 'me leva para as aprovações') e também quando a resposta ficar mais útil com um atalho direto. Dependendo do nível de autonomia configurado, a navegação acontece na hora; caso contrário vira um botão de 1 clique.",
   parameters: {
     type: "object",
     properties: {
       target: {
         type: "string",
         enum: Object.keys(NAVIGATION_TARGETS),
-        description: "Tela de destino.",
+        description:
+          "Tela de destino. Omita apenas quando usar 'project' para abrir um projeto específico.",
+      },
+      project: {
+        type: "string",
+        description:
+          "Nome, código ou id de um projeto, para abrir a tela dele. Tem prioridade sobre 'target'.",
+      },
+      settingsTab: {
+        type: "string",
+        enum: [...SETTINGS_TABS],
+        description:
+          "Aba específica das Configurações, quando o destino for 'settings'.",
+      },
+      reason: {
+        type: "string",
+        description:
+          "Frase curta em pt-BR explicando o que o usuário encontra lá (ex.: 'aprovações pendentes da equipe').",
       },
     },
-    required: ["target"],
+    required: [],
   },
   schema: navigateArgsSchema,
-  label: () => "Preparando atalho de navegação",
+  actionKind: "navigate",
+  label: () => "Abrindo a tela",
   async execute(args, ctx) {
-    const target = NAVIGATION_TARGETS[args.target.trim().toLowerCase()];
+    const detail = args.reason?.trim() || null;
 
-    if (!target || (target.roles && !target.roles.includes(ctx.actor.role))) {
+    // A named project wins: it is the most specific destination available.
+    if (args.project) {
+      const projects = await listLoggableProjects(ctx);
+      const matched = matchProject(args.project, projects);
+
+      if (!matched) {
+        return {
+          label: "Projeto não encontrado",
+          data: {
+            error: "ambiguous",
+            message: `Nenhum projeto corresponde a "${args.project}".`,
+            options: projects.slice(0, 8).map((item) => item.name),
+          },
+        };
+      }
+
+      const action: NavigateAction = {
+        kind: "navigate",
+        id: randomUUID(),
+        path: buildProjectPath(matched.id),
+        label: `Abrir o projeto ${matched.name}`,
+        detail,
+      };
+
+      ctx.emitAction(action);
+
+      return {
+        label: action.label,
+        data: {
+          status: "navigation_ready",
+          path: action.path,
+          project: matched.name,
+          note: "A navegação foi entregue ao usuário. Não descreva a tela em detalhes.",
+        },
+      };
+    }
+
+    if (args.settingsTab) {
+      const path = buildSettingsPath(args.settingsTab);
+
+      ctx.emitAction({
+        kind: "navigate",
+        id: randomUUID(),
+        path,
+        label: "Abrir Configurações",
+        detail,
+      });
+
+      return {
+        label: "Abrir Configurações",
+        data: { status: "navigation_ready", path },
+      };
+    }
+
+    const target = args.target
+      ? resolveNavigationTarget(args.target, ctx.actor.role)
+      : null;
+
+    if (!target) {
       return {
         label: "Destino indisponível",
         data: {
-          error: `Destino inválido ou sem permissão. Opções: ${Object.keys(NAVIGATION_TARGETS).join(", ")}`,
+          error: "invalid_target",
+          message: "Destino inválido ou sem permissão para este usuário.",
+          options: getNavigationTargetsForRole(ctx.actor.role).map(
+            (item) => item.id,
+          ),
         },
       };
     }
 
     ctx.emitAction({
       kind: "navigate",
+      id: randomUUID(),
       path: target.path,
       label: target.label,
+      detail,
     });
 
     return {
       label: target.label,
-      data: { status: "shortcut_shown", path: target.path },
+      data: {
+        status: "navigation_ready",
+        path: target.path,
+        note: "A navegação foi entregue ao usuário. Não descreva a tela em detalhes.",
+      },
     };
   },
 };
+
+// ─── Tool: run_ui_command ────────────────────────────────────────────
+
+const uiCommandArgsSchema = z.object({
+  command: z.string(),
+  reason: z.string().max(160).optional(),
+  project: z.string().optional(),
+  description: z.string().max(300).optional(),
+  date: z.string().optional(),
+  durationMinutes: z.number().int().positive().max(1440).optional(),
+  durationText: z.string().optional(),
+});
+
+/** Catalogue rendered into the tool description so the model can pick one. */
+const UI_COMMAND_CATALOGUE = UI_COMMAND_LIST.map(
+  (item) => `"${item.id}": ${item.description}`,
+).join(" ");
+
+export const runUiCommandTool: AgentTool<z.infer<typeof uiCommandArgsSchema>> =
+  {
+    name: "run_ui_command",
+    description: `Controla a própria interface do app. Comandos disponíveis — ${UI_COMMAND_CATALOGUE} Use quando a pessoa pedir algo visual ou de ambiente de trabalho ("quero focar", "abre o formulário de horas", "modo claro"). Para "quick_entry" você pode pré-preencher projeto, data, duração e descrição.`,
+    parameters: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          enum: UI_COMMAND_LIST.map((item) => item.id),
+          description: "Comando de interface a executar.",
+        },
+        reason: {
+          type: "string",
+          description: "Frase curta em pt-BR explicando o porquê.",
+        },
+        project: {
+          type: "string",
+          description:
+            "Projeto usado para pré-preencher o lançamento rápido (quick_entry).",
+        },
+        description: {
+          type: "string",
+          description: "Descrição pré-preenchida da atividade (quick_entry).",
+        },
+        date: {
+          type: "string",
+          description: "Data YYYY-MM-DD ou 'hoje'/'ontem' (quick_entry).",
+        },
+        durationMinutes: {
+          type: "integer",
+          description: "Duração em minutos para pré-preencher (quick_entry).",
+        },
+        durationText: {
+          type: "string",
+          description: "Duração como o usuário escreveu, ex.: '2h30'.",
+        },
+      },
+      required: ["command"],
+    },
+    schema: uiCommandArgsSchema,
+    actionKind: "ui_command",
+    label: () => "Preparando comando da interface",
+    async execute(args, ctx) {
+      const commandId = args.command.trim().toLowerCase();
+
+      if (!isUiCommandId(commandId)) {
+        return {
+          label: "Comando indisponível",
+          data: {
+            error: "invalid_command",
+            message: "Comando de interface desconhecido.",
+            options: UI_COMMAND_LIST.map((item) => item.id),
+          },
+        };
+      }
+
+      const meta = UI_COMMANDS[commandId];
+
+      if (meta.roles && !meta.roles.includes(ctx.actor.role)) {
+        return {
+          label: "Comando indisponível",
+          data: {
+            error: "forbidden",
+            message: "Sem permissão para este comando.",
+          },
+        };
+      }
+
+      let payload: UiCommandPayload | null = null;
+
+      // Only the quick-entry dialog takes a prefill; the rest are pure toggles.
+      if (commandId === "quick_entry") {
+        const projects = await listLoggableProjects(ctx);
+        const matched = matchProject(args.project, projects);
+        // No fallback here: an absent duration must stay absent in a prefill.
+        const durationMinutes =
+          args.durationMinutes ??
+          (args.durationText ? parseDurationText(args.durationText) : null);
+
+        const candidate: UiCommandPayload = {
+          ...(matched
+            ? { projectId: matched.id, projectName: matched.name }
+            : {}),
+          ...(args.description ? { description: args.description.trim() } : {}),
+          ...(args.date
+            ? { date: resolveDate(args.date, ctx.user.today) }
+            : {}),
+          ...(durationMinutes ? { durationMinutes } : {}),
+        };
+
+        payload = Object.keys(candidate).length > 0 ? candidate : null;
+      }
+
+      ctx.emitAction({
+        kind: "ui_command",
+        id: randomUUID(),
+        command: meta.id,
+        label: meta.label,
+        detail: args.reason?.trim() || null,
+        payload,
+      });
+
+      return {
+        label: meta.label,
+        data: {
+          status: "ui_command_ready",
+          command: meta.id,
+          note: "O comando foi entregue ao usuário. Responda em 1 frase, sem repetir o que a tela mostra.",
+        },
+      };
+    },
+  };
 
 // ─── Registry export ─────────────────────────────────────────────────
 
@@ -526,4 +726,5 @@ export const WRITE_TOOLS = [
   prepareTimerStopTool,
   prepareTimesheetSubmitTool,
   navigateToTool,
+  runUiCommandTool,
 ];

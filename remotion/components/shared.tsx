@@ -63,7 +63,6 @@ export const AzureDevOpsLogo: React.FC<{
   />
 );
 
-
 /* ── Fade wrapper ── */
 export const FadeIn: React.FC<{
   children: React.ReactNode;
@@ -284,4 +283,3 @@ export const Counter: React.FC<{
     </span>
   );
 };
-

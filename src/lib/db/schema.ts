@@ -47,6 +47,20 @@ export const user = pgTable("user", {
     .default(false)
     .notNull(),
   timeShowWeekends: boolean("time_show_weekends").default(true).notNull(),
+  /** AI Operator autonomy level: always_ask | smart | autopilot */
+  operatorMode: text("operator_mode").default("always_ask").notNull(),
+  /** JSON map of action kind -> "ask" | "auto" | "never" (per-action override) */
+  operatorPolicies: text("operator_policies"),
+  operatorVoiceEnabled: boolean("operator_voice_enabled")
+    .default(true)
+    .notNull(),
+  operatorVoiceLocale: text("operator_voice_locale").default("pt-BR").notNull(),
+  /** Read assistant replies aloud via speech synthesis */
+  operatorSpeakReplies: boolean("operator_speak_replies")
+    .default(false)
+    .notNull(),
+  /** Receive the Monday-morning AI weekly digest by e-mail */
+  digestEnabled: boolean("digest_enabled").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   /** Token for the Azure DevOps browser extension (Bearer auth) */
   extensionToken: text("extension_token").unique(),
@@ -674,6 +688,101 @@ export const reminderLogRelations = relations(reminderLog, ({ one }) => ({
   }),
 }));
 
+// ─── AI Operator action log ───────────────────────────────────────────────────
+// Audit trail for every action the AI assistant proposed or executed on behalf
+// of a user. Written by the client right after each step settles, so the user
+// always has a reviewable (and where possible reversible) history.
+export const operatorActionLog = pgTable(
+  "operator_action_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Groups the steps that were confirmed together as one plan */
+    planId: text("plan_id"),
+    /** Zero-based position of this step inside its plan */
+    stepIndex: integer("step_index").notNull().default(0),
+    /** Action kind, e.g. "create_time_entry" | "notify_team" */
+    kind: text("kind").notNull(),
+    /** Short human-readable summary shown in the history list */
+    summary: text("summary").notNull(),
+    /** "executed" | "failed" | "skipped" | "undone" */
+    status: text("status").notNull(),
+    /** How it was authorized: "confirmed" | "auto" */
+    authorization: text("authorization").notNull().default("confirmed"),
+    /** Whether the command arrived by voice or typed text */
+    inputMode: text("input_mode").notNull().default("text"),
+    /** JSON snapshot of the executed action parameters */
+    params: text("params"),
+    /** Id of the row this action created, enabling undo */
+    resultId: text("result_id"),
+    errorMessage: text("error_message"),
+    undoneAt: timestamp("undone_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("operator_log_user_idx").on(table.userId),
+    index("operator_log_plan_idx").on(table.planId),
+    index("operator_log_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const operatorActionLogRelations = relations(
+  operatorActionLog,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [operatorActionLog.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+// ─── Weekly AI digest ─────────────────────────────────────────────────────────
+// One row per user/period/audience. The unique index is what makes the cron
+// idempotent: re-running it in the same ISO week cannot send a second e-mail.
+// The rendered narrative and stats snapshot are kept so the in-app view shows
+// exactly what was mailed.
+export const digestLog = pgTable(
+  "digest_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** ISO week the digest covers, e.g. "2026-W32" */
+    period: text("period").notNull(),
+    /** "member" | "manager" */
+    audience: text("audience").notNull(),
+    /** "sent" | "skipped" | "failed" */
+    status: text("status").notNull(),
+    /** Natural-language summary as delivered */
+    narrative: text("narrative"),
+    /** JSON snapshot of the computed statistics */
+    stats: text("stats"),
+    totalMinutes: integer("total_minutes").notNull().default(0),
+    /** AI provider that wrote the narrative, or "deterministic" */
+    provider: text("provider"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("digest_log_user_period_audience_unique").on(
+      table.userId,
+      table.period,
+      table.audience,
+    ),
+    index("digest_log_created_at_idx").on(table.createdAt),
+  ],
+);
+
+export const digestLogRelations = relations(digestLog, ({ one }) => ({
+  user: one(user, {
+    fields: [digestLog.userId],
+    references: [user.id],
+  }),
+}));
+
 // ─── Webhook Subscriptions ────────────────────────────────────────────────────
 // Stores outgoing webhook subscriptions for the public integration API (v1).
 // The 'secret' column holds an AES-256-GCM encrypted value (see lib/encryption.ts).
@@ -784,3 +893,131 @@ export const systemSettingRelations = relations(systemSetting, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── Gamification, Culture & Wellbeing ────────────────────────────────
+/** Rarity ladder shared by every tiered achievement. */
+export type AchievementTier = "bronze" | "silver" | "gold" | "platinum";
+
+/** Every entry written to the gamification ledger. */
+export type GamificationEventKind =
+  | "week_submitted"
+  | "week_approved"
+  | "achievement_unlocked"
+  | "streak_extended"
+  | "streak_reset";
+
+/**
+ * Per-user gamification state.
+ *
+ * Counters are denormalized on purpose: achievement progress is read on every
+ * page load, and recomputing it from `time_entry` each time would mean a
+ * multi-week scan per request.
+ */
+export const userGamification = pgTable("user_gamification", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  xp: integer("xp").notNull().default(0),
+  /** Consecutive ISO weeks closed without skipping one. */
+  currentStreak: integer("current_streak").notNull().default(0),
+  bestStreak: integer("best_streak").notNull().default(0),
+  /** Last ISO week credited, e.g. "2026-W33". Guards double awarding. */
+  lastSubmittedPeriod: text("last_submitted_period"),
+  lastSubmittedAt: timestamp("last_submitted_at"),
+  submittedWeeks: integer("submitted_weeks").notNull().default(0),
+  onTimeWeeks: integer("on_time_weeks").notNull().default(0),
+  consistentWeeks: integer("consistent_weeks").notNull().default(0),
+  balancedWeeks: integer("balanced_weeks").notNull().default(0),
+  detailedWeeks: integer("detailed_weeks").notNull().default(0),
+  approvedWeeks: integer("approved_weeks").notNull().default(0),
+  /** Show this person on the team mural and on the opt-in ranking. */
+  publicProfile: boolean("public_profile").notNull().default(true),
+  /** Confetti and the celebration overlay after closing a week. */
+  celebrationsEnabled: boolean("celebrations_enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const userGamificationRelations = relations(
+  userGamification,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userGamification.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+export const userAchievement = pgTable(
+  "user_achievement",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Key from the achievement catalogue, e.g. "streak". */
+    achievementKey: text("achievement_key").notNull(),
+    /** bronze | silver | gold | platinum */
+    tier: text("tier").notNull(),
+    /** ISO week the tier was unlocked in, when applicable. */
+    period: text("period"),
+    unlockedAt: timestamp("unlocked_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_achievement_unique_idx").on(
+      table.userId,
+      table.achievementKey,
+      table.tier,
+    ),
+    index("user_achievement_user_idx").on(table.userId, table.unlockedAt),
+  ],
+);
+
+export const userAchievementRelations = relations(
+  userAchievement,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userAchievement.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+/** Append-only ledger. Every XP change is traceable back to one event. */
+export const gamificationEvent = pgTable(
+  "gamification_event",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    xpDelta: integer("xp_delta").notNull().default(0),
+    period: text("period"),
+    /** Human-readable summary rendered in the activity timeline. */
+    label: text("label").notNull(),
+    /** JSON payload with the reason breakdown. */
+    metadata: text("metadata"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("gamification_event_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("gamification_event_period_idx").on(table.period),
+  ],
+);
+
+export const gamificationEventRelations = relations(
+  gamificationEvent,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [gamificationEvent.userId],
+      references: [user.id],
+    }),
+  }),
+);

@@ -6,11 +6,13 @@ import {
   ChevronUp,
   Pause,
   Play,
+  Sparkles,
   Square,
   TimerReset,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { FocusModeButton } from "@/components/focus";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +23,7 @@ import { useTimer } from "@/hooks/use-timer";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { cn } from "@/lib/utils";
+import { useFocusStore } from "@/stores/focus.store";
 
 interface Project {
   id: string;
@@ -94,42 +97,51 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
       ? "Este projeto não está vinculado ao Azure DevOps"
       : undefined;
 
-  const handleStart = useCallback(async () => {
-    if (todayLocked) {
-      toast.error(todayLockMessage);
-      return;
-    }
+  const handleStart = useCallback(
+    async (withFocus = false) => {
+      if (todayLocked) {
+        toast.error(todayLockMessage);
+        return;
+      }
 
-    if (!projectId) {
-      toast.error("Selecione um projeto para iniciar o timer.");
-      return;
-    }
+      if (!projectId) {
+        toast.error("Selecione um projeto para iniciar o timer.");
+        return;
+      }
 
-    try {
-      await startTimer({
-        projectId,
-        description,
-        billable,
-        azureWorkItemId: workItem?.id,
-        azureWorkItemTitle: workItem?.title,
-      });
-      toast.success("Timer iniciado com sucesso.");
-    } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível iniciar o timer.",
-      );
-    }
-  }, [
-    billable,
-    description,
-    projectId,
-    startTimer,
-    todayLockMessage,
-    todayLocked,
-    workItem,
-  ]);
+      try {
+        await startTimer({
+          projectId,
+          description,
+          billable,
+          azureWorkItemId: workItem?.id,
+          azureWorkItemTitle: workItem?.title,
+        });
+
+        if (withFocus) {
+          useFocusStore.getState().startSession();
+          toast.success("Timer e Modo Foco iniciados com sucesso.");
+        } else {
+          toast.success("Timer iniciado com sucesso.");
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível iniciar o timer.",
+        );
+      }
+    },
+    [
+      billable,
+      description,
+      projectId,
+      startTimer,
+      todayLockMessage,
+      todayLocked,
+      workItem,
+    ],
+  );
 
   const handleStop = useCallback(async () => {
     setStopping(true);
@@ -268,6 +280,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
           <div className="flex items-center gap-2 self-start">
             {hasTimer ? (
               <>
+                <FocusModeButton compact />
                 {isRunning ? (
                   <Button
                     size="icon"
@@ -366,16 +379,31 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                   retroativo em lote.
                 </p>
               </div>
-              <Button
-                size="sm"
-                className="bg-brand-500 text-white hover:bg-brand-600"
-                onClick={handleStart}
-                disabled={!projectId || todayLocked}
-                title={todayLocked ? todayLockMessage : undefined}
-              >
-                <Play className="mr-1.5 h-3.5 w-3.5" />
-                Iniciar
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="text-brand-500 hover:bg-brand-500/10 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300"
+                  onClick={() => void handleStart(true)}
+                  disabled={!projectId || todayLocked}
+                  title={todayLocked ? todayLockMessage : undefined}
+                >
+                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  Iniciar no Foco
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="bg-brand-500 text-white hover:bg-brand-600"
+                  onClick={() => void handleStart(false)}
+                  disabled={!projectId || todayLocked}
+                  title={todayLocked ? todayLockMessage : undefined}
+                >
+                  <Play className="mr-1.5 h-3.5 w-3.5" />
+                  Iniciar
+                </Button>
+              </div>
             </div>
           </div>
         ) : null}
