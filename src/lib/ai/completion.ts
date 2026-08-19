@@ -23,6 +23,13 @@ export interface CompletionResult {
 
 const DEFAULT_TIMEOUT_MS = 25_000;
 
+function cleanCompletionText(text: string): string {
+  let cleaned = text;
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  cleaned = cleaned.replace(/<think>[\s\S]*/gi, "");
+  return cleaned.trim();
+}
+
 /**
  * Returns the first provider that produces non-empty text, or null when every
  * provider fails or none is configured. Callers are expected to have a
@@ -55,7 +62,7 @@ export async function completeText(
           if (chunk.type === "text") text += chunk.text;
         }
 
-        const trimmed = text.trim();
+        const trimmed = cleanCompletionText(text);
         if (trimmed) {
           return { text: trimmed, provider: provider.name };
         }

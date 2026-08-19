@@ -4,7 +4,6 @@ import { AbsoluteFill, interpolate, useCurrentFrame } from "remotion";
 import { Badge, FadeIn, GlowDot, GradientText } from "../components/shared";
 import { fonts, theme } from "../theme";
 
-
 /** Mock chart data — bar chart for weekly hours by project */
 const chartData = [
   {
@@ -114,7 +113,11 @@ export const ReportsScene: React.FC = () => {
           <FadeIn delay={35}>
             <div style={{ display: "flex", gap: 16 }}>
               {[
-                { label: "Export Excel", color: "#22c55e", icon: FileSpreadsheet },
+                {
+                  label: "Export Excel",
+                  color: "#22c55e",
+                  icon: FileSpreadsheet,
+                },
                 { label: "Export PDF", color: "#ef4444", icon: FileText },
               ].map((btn) => {
                 const BtnIcon = btn.icon;
@@ -141,7 +144,6 @@ export const ReportsScene: React.FC = () => {
               })}
             </div>
           </FadeIn>
-
         </div>
 
         {/* Right: chart mock */}

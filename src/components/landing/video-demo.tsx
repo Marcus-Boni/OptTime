@@ -153,7 +153,6 @@ export function VideoDemo({
               {item}
             </span>
           ))}
-
         </motion.div>
       </div>
     </section>

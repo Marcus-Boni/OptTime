@@ -110,9 +110,24 @@ export function TimeBotWidget() {
       toggle();
     }
 
+    function handleOpenEvent() {
+      open();
+    }
+
+    function handleVoiceEvent() {
+      openVoiceMode();
+    }
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, toggle]);
+    window.addEventListener("timebot:open", handleOpenEvent);
+    window.addEventListener("timebot:voice", handleVoiceEvent);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("timebot:open", handleOpenEvent);
+      window.removeEventListener("timebot:voice", handleVoiceEvent);
+    };
+  }, [isOpen, open, openVoiceMode, toggle]);
 
   if (!mounted) return null;
 

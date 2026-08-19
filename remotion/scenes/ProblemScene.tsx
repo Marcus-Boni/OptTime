@@ -1,10 +1,5 @@
 import type React from "react";
-import {
-  BarChart3,
-  Clock,
-  FileSpreadsheet,
-  Unplug,
-} from "lucide-react";
+import { BarChart3, Clock, FileSpreadsheet, Unplug } from "lucide-react";
 import {
   AbsoluteFill,
   interpolate,
@@ -160,4 +155,3 @@ export const ProblemScene: React.FC = () => {
     </AbsoluteFill>
   );
 };
-

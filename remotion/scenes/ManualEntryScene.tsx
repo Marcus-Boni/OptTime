@@ -24,7 +24,11 @@ import { fonts, theme } from "../theme";
 
 const formFields = [
   { label: "Projeto", value: "OptSolv Time Tracker", icon: Folder },
-  { label: "Work Item", value: "#4521 — Implementar dashboard", icon: GitPullRequest },
+  {
+    label: "Work Item",
+    value: "#4521 — Implementar dashboard",
+    icon: GitPullRequest,
+  },
   { label: "Data", value: "06/03/2026", icon: Calendar },
   { label: "Duração", value: "2h30m", icon: Clock },
   {
@@ -33,7 +37,6 @@ const formFields = [
     icon: FileText,
   },
 ];
-
 
 /** Scene 4 — Manual entry form showcase (frames 0–300 = 10s) */
 export const ManualEntryScene: React.FC = () => {

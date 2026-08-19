@@ -142,12 +142,11 @@ export const IntroScene: React.FC = () => {
               lineHeight: 1.4,
             }}
           >
-            Gestão inteligente de tempo, aprovação de timesheets e analytics
-            em tempo real.
+            Gestão inteligente de tempo, aprovação de timesheets e analytics em
+            tempo real.
           </p>
         </FadeIn>
       </div>
     </AbsoluteFill>
   );
 };
-

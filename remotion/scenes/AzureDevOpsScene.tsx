@@ -1,10 +1,5 @@
 import type React from "react";
-import {
-  BarChart3,
-  Lock,
-  RefreshCw,
-  Search,
-} from "lucide-react";
+import { BarChart3, Lock, RefreshCw, Search } from "lucide-react";
 import {
   AbsoluteFill,
   interpolate,
@@ -44,7 +39,6 @@ const features = [
     desc: "Atualização automática de horas concluídas no Azure",
   },
 ];
-
 
 /** Scene 6 — Azure DevOps integration (frames 0–300 = 10s) */
 export const AzureDevOpsScene: React.FC = () => {
@@ -236,47 +230,47 @@ export const AzureDevOpsScene: React.FC = () => {
 
         {/* Feature cards */}
         <div style={{ display: "flex", gap: 24, width: "100%" }}>
-            {features.map((feat, i) => {
-              const cardDelay = 30 + i * 15;
-              const s = spring({
-                frame: frame - cardDelay,
-                fps,
-                config: { damping: 14, stiffness: 120 },
-              });
-              const FeatIcon = feat.icon;
+          {features.map((feat, i) => {
+            const cardDelay = 30 + i * 15;
+            const s = spring({
+              frame: frame - cardDelay,
+              fps,
+              config: { damping: 14, stiffness: 120 },
+            });
+            const FeatIcon = feat.icon;
 
-              return (
+            return (
+              <div
+                key={feat.title}
+                style={{
+                  flex: 1,
+                  padding: "26px 20px",
+                  borderRadius: 18,
+                  background: theme.bgCard,
+                  border: `1px solid ${theme.border}`,
+                  transform: `scale(${s})`,
+                  opacity: s,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                  alignItems: "center",
+                  textAlign: "center",
+                }}
+              >
                 <div
-                  key={feat.title}
                   style={{
-                    flex: 1,
-                    padding: "26px 20px",
-                    borderRadius: 18,
-                    background: theme.bgCard,
-                    border: `1px solid ${theme.border}`,
-                    transform: `scale(${s})`,
-                    opacity: s,
+                    width: 52,
+                    height: 52,
+                    borderRadius: 14,
+                    background: `${theme.azure}18`,
+                    border: `1px solid ${theme.azure}35`,
                     display: "flex",
-                    flexDirection: "column",
-                    gap: 12,
                     alignItems: "center",
-                    textAlign: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <div
-                    style={{
-                      width: 52,
-                      height: 52,
-                      borderRadius: 14,
-                      background: `${theme.azure}18`,
-                      border: `1px solid ${theme.azure}35`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <FeatIcon size={26} color={theme.azureLight} />
-                  </div>
+                  <FeatIcon size={26} color={theme.azureLight} />
+                </div>
 
                 <span
                   style={{
@@ -305,4 +299,3 @@ export const AzureDevOpsScene: React.FC = () => {
     </AbsoluteFill>
   );
 };
-

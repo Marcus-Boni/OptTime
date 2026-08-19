@@ -1,9 +1,12 @@
 "use client";
 
 import {
+  CalendarDays,
   Hourglass,
+  Keyboard,
   LogOut,
   Menu,
+  Mic,
   Moon,
   Plus,
   Rss,
@@ -16,14 +19,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { WeeklyDigestDialog } from "@/components/ai/digest/WeeklyDigestDialog";
 import { Breadcrumb } from "@/components/layout/breadcrumb";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
 import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
-import { UserAvatar } from "@/components/shared/user-avatar";
+import { ShortcutsCheatsheetModal } from "@/components/layout/ShortcutsCheatsheetModal";
 import { VersionBadge } from "@/components/layout/version-badge";
+import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
-import { ActionTooltip } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -32,8 +36,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ActionTooltip } from "@/components/ui/tooltip";
+import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
+import { useModifierKey } from "@/hooks/use-modifier-key";
+import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { signOut, useSession } from "@/lib/auth-client";
-
+import { playEarcon } from "@/lib/sound/sound-effects";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
 
@@ -48,6 +56,8 @@ export function Header() {
     openQuickEntry,
     openQuickTimer,
     openCommandPalette,
+    openShortcutsModal,
+    openWeeklyDigestModal,
   } = useUIStore();
   const { data: session, isPending } = useSession();
   const user = isPending
@@ -56,6 +66,10 @@ export function Header() {
   const currentUser = user;
   const router = useRouter();
   const pathname = usePathname();
+  const modifier = useModifierKey();
+  const { settings: operatorSettings } = useOperatorPolicy();
+
+  useGlobalShortcuts();
 
   const [mounted, setMounted] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -196,15 +210,67 @@ export function Header() {
         </Button>
 
         {/* Search */}
-        <ActionTooltip label="Buscar no sistema" shortcut="Ctrl+K" side="bottom">
+        <ActionTooltip
+          label="Buscar no sistema"
+          shortcut={`${modifier}+K`}
+          side="bottom"
+        >
           <Button
             variant="ghost"
             size="icon"
             className="hidden md:flex"
-            aria-label="Buscar (Ctrl+K)"
+            aria-label={`Buscar (${modifier}+K)`}
             onClick={openCommandPalette}
           >
             <Search className="h-4.5 w-4.5" />
+          </Button>
+        </ActionTooltip>
+
+        {/* Hands-free Voice Trigger */}
+        {operatorSettings.voiceEnabled && (
+          <ActionTooltip
+            label="Comando de voz hands-free"
+            shortcut={`⇧+${modifier}+V`}
+            side="bottom"
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden md:flex text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-500/20"
+              aria-label={`Comando de voz hands-free (Shift+${modifier}+V)`}
+              onClick={() => {
+                playEarcon("voice_start");
+                window.dispatchEvent(new CustomEvent("timebot:voice"));
+              }}
+            >
+              <Mic className="h-4.5 w-4.5" />
+            </Button>
+          </ActionTooltip>
+        )}
+
+        {/* Weekly AI Digest */}
+        <ActionTooltip label="Resumo semanal por IA" side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex"
+            aria-label="Ver resumo semanal por IA"
+            onClick={openWeeklyDigestModal}
+          >
+            <CalendarDays className="h-4.5 w-4.5" />
+          </Button>
+        </ActionTooltip>
+
+        {/* Keyboard Shortcuts */}
+        <ActionTooltip label="Atalhos de teclado" shortcut="?" side="bottom">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex"
+            aria-label="Ver atalhos de teclado (?)"
+            onClick={openShortcutsModal}
+          >
+            <Keyboard className="h-4.5 w-4.5" />
           </Button>
         </ActionTooltip>
 
@@ -306,6 +372,13 @@ export function Header() {
                   Configurações
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem
+                className="flex cursor-pointer items-center gap-2"
+                onClick={openShortcutsModal}
+              >
+                <Keyboard className="h-4 w-4" />
+                Atalhos de Teclado
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="px-1 py-1">
                 <VersionBadge variant="header-dropdown" />
@@ -330,6 +403,8 @@ export function Header() {
           <QuickEntryDialog />
           <QuickTimerDialog />
           <CommandPalette />
+          <ShortcutsCheatsheetModal />
+          <WeeklyDigestDialog />
         </>
       )}
     </header>

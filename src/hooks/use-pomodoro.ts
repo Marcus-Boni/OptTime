@@ -12,6 +12,7 @@ import {
   PHASE_META,
 } from "@/lib/focus/constants";
 import type { ChimeKind, FocusPhase } from "@/lib/focus/types";
+import { playEarcon } from "@/lib/sound/sound-effects";
 import { formatDuration } from "@/lib/utils";
 import {
   getPhaseProgress,
@@ -190,6 +191,8 @@ export function usePomodoro(): PomodoroController {
 
         if (settings.chimeEnabled && !options?.skipped) {
           ambient.playChime(getChimeKind(transition.to));
+        } else {
+          playEarcon("phase_complete");
         }
 
         const message = transition.wasAway
@@ -307,12 +310,18 @@ export function usePomodoro(): PomodoroController {
   // ─── Controls ──────────────────────────────────────────────────────
   const toggleRun = useCallback(() => {
     if (!session) {
+      playEarcon("timer_start");
       startSession();
       return;
     }
 
-    if (isPhaseRunning(session)) pausePhase();
-    else resumePhase();
+    if (isPhaseRunning(session)) {
+      playEarcon("timer_stop");
+      pausePhase();
+    } else {
+      playEarcon("timer_start");
+      resumePhase();
+    }
   }, [session, startSession, pausePhase, resumePhase]);
 
   const skipPhase = useCallback(() => {
@@ -339,6 +348,7 @@ export function usePomodoro(): PomodoroController {
     const completed = session?.completedBlocks ?? 0;
     const focusMs = session?.focusMsCompleted ?? 0;
 
+    playEarcon("action_success");
     endSession();
     ambient.stop();
     void releaseTimerHold();
@@ -359,6 +369,7 @@ export function usePomodoro(): PomodoroController {
         await stopTimer();
       }
 
+      playEarcon("action_success");
       pausedByFocusRef.current = false;
       endSession();
       ambient.stop();

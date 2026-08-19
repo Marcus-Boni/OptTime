@@ -9,6 +9,7 @@ import {
   Clock,
   Folder,
   Home,
+  Layers,
   Lightbulb,
   Pause,
   Settings,
@@ -50,6 +51,7 @@ interface NavigationItem {
 const baseNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
+  { name: "Timesheets", href: "/dashboard/timesheets", icon: Layers },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   {
     name: "Sugestões",
@@ -57,7 +59,7 @@ const baseNavigation: NavigationItem[] = [
     icon: Lightbulb,
   },
   {
-    name: "ConfiguraÃ§Ãµes",
+    name: "Configurações",
     href: "/dashboard/settings",
     icon: Settings,
   },
