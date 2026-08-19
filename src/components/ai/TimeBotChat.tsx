@@ -574,14 +574,17 @@ export function TimeBotChat({
 
     function drain() {
       const command = consumePendingVoiceCommand();
-      if (command) send(command, "voice");
+      if (command) {
+        stop();
+        send(command, "voice");
+      }
     }
 
     drain();
 
     window.addEventListener(VOICE_COMMAND_EVENT, drain);
     return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
-  }, [isOpen, send]);
+  }, [isOpen, send, stop]);
 
   const {
     settings,

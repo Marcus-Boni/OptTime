@@ -360,18 +360,26 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   }, [enabled, loadBriefing]);
 
   const stop = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+    isStreamingRef.current = false;
     setIsStreaming(false);
   }, []);
 
   const send = useCallback(
     async (text: string, inputMode: OperatorInputMode = "text") => {
       const trimmed = text.trim();
-      if (!trimmed || isStreamingRef.current) return;
+      if (!trimmed) return;
 
-      // Guard against a double submit landing in the same tick.
+      if (abortRef.current) {
+        abortRef.current.abort();
+        abortRef.current = null;
+      }
+
       isStreamingRef.current = true;
+      setIsStreaming(true);
       lastUserMessageRef.current = trimmed;
       setSuggestions([]);
 
@@ -397,8 +405,6 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
         updatedAt: Date.now(),
         messages: [...thread.messages, userMessage, assistantMessage],
       }));
-
-      setIsStreaming(true);
 
       const controller = new AbortController();
       abortRef.current = controller;

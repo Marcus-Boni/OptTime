@@ -296,7 +296,7 @@ export function ChatComposer({
 
   function submit(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || isStreaming) return;
+    if (!trimmed) return;
 
     if (speech.isListening) speech.stop();
 
