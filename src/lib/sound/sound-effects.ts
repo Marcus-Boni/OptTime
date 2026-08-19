@@ -8,6 +8,24 @@
  */
 
 let sharedAudioContext: AudioContext | null = null;
+let isUnlockListenerInstalled = false;
+
+/**
+ * A context built outside a user gesture is handed over *suspended*, and a
+ * suspended context's clock is frozen. Waking it on the first real interaction
+ * means the clock is already running by the time an earcon is scheduled.
+ */
+function installUnlockListener(ctx: AudioContext): void {
+  if (isUnlockListenerInstalled || typeof window === "undefined") return;
+  isUnlockListenerInstalled = true;
+
+  function unlock(): void {
+    void ctx.resume().catch(() => undefined);
+  }
+
+  window.addEventListener("pointerdown", unlock, { passive: true, once: true });
+  window.addEventListener("keydown", unlock, { once: true });
+}
 
 function getAudioContext(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -20,10 +38,7 @@ function getAudioContext(): AudioContext | null {
           .webkitAudioContext;
       if (!AudioCtx) return null;
       sharedAudioContext = new AudioCtx();
-    }
-
-    if (sharedAudioContext.state === "suspended") {
-      void sharedAudioContext.resume().catch(() => undefined);
+      installUnlockListener(sharedAudioContext);
     }
 
     return sharedAudioContext;
@@ -31,6 +46,31 @@ function getAudioContext(): AudioContext | null {
     console.error("[sound-effects] Failed to initialize AudioContext:", error);
     return null;
   }
+}
+
+/**
+ * Runs `render` against a clock that is guaranteed to be ticking.
+ *
+ * Scheduling on a suspended context silently swallows the cue: its
+ * `currentTime` never advances, so by the time playback starts the whole gain
+ * envelope sits in the past and the parameter jumps straight to its final —
+ * inaudible — value. Resuming first and only then reading the clock is what
+ * keeps a cue fired from an effect (the voice overlay opening) or from a
+ * backgrounded tab audible.
+ */
+function scheduleOnLiveClock(
+  ctx: AudioContext,
+  render: (startTime: number) => void,
+): void {
+  if (ctx.state === "running") {
+    render(ctx.currentTime + 0.01);
+    return;
+  }
+
+  void ctx
+    .resume()
+    .then(() => render(ctx.currentTime + 0.02))
+    .catch(() => undefined);
 }
 
 /** Check if global sound effects are enabled in user preferences */
@@ -68,66 +108,66 @@ export function playEarcon(type: EarconType): void {
   const ctx = getAudioContext();
   if (!ctx) return;
 
-  try {
-    const now = ctx.currentTime + 0.01;
-
-    switch (type) {
-      case "timer_start": {
-        // Ascending bright double-ping (520Hz -> 780Hz)
-        playPing(ctx, 523.25, now, 0.12, 0.14); // C5
-        playPing(ctx, 783.99, now + 0.09, 0.16, 0.18); // G5
-        break;
+  scheduleOnLiveClock(ctx, (now) => {
+    try {
+      switch (type) {
+        case "timer_start": {
+          // Ascending bright double-ping (520Hz -> 780Hz)
+          playPing(ctx, 523.25, now, 0.12, 0.14); // C5
+          playPing(ctx, 783.99, now + 0.09, 0.16, 0.18); // G5
+          break;
+        }
+        case "timer_stop": {
+          // Soft descending tone (659Hz -> 440Hz)
+          playPing(ctx, 659.25, now, 0.12, 0.14); // E5
+          playPing(ctx, 440.0, now + 0.09, 0.18, 0.16); // A4
+          break;
+        }
+        case "action_success": {
+          // Crisp, satisfying subtle confirmation chime (880Hz -> 1320Hz)
+          playPing(ctx, 880.0, now, 0.08, 0.12);
+          playPing(ctx, 1318.51, now + 0.06, 0.14, 0.15);
+          break;
+        }
+        case "voice_start": {
+          // Warm radar wake tone (440Hz -> 660Hz -> 880Hz arpeggio)
+          playPing(ctx, 440.0, now, 0.08, 0.12);
+          playPing(ctx, 659.25, now + 0.06, 0.08, 0.14);
+          playPing(ctx, 880.0, now + 0.12, 0.14, 0.16);
+          break;
+        }
+        case "voice_end": {
+          // Soft acknowledgement blip (660Hz)
+          playPing(ctx, 659.25, now, 0.1, 0.14);
+          break;
+        }
+        case "undo": {
+          // Subtle descending reverse swoosh (600Hz -> 350Hz)
+          playSweep(ctx, 600, 350, now, 0.18, 0.12);
+          break;
+        }
+        case "phase_complete": {
+          // Gentle peaceful chord (F5 + A5 + C6)
+          playPing(ctx, 698.46, now, 0.35, 0.12);
+          playPing(ctx, 880.0, now + 0.04, 0.4, 0.14);
+          playPing(ctx, 1046.5, now + 0.08, 0.5, 0.16);
+          break;
+        }
+        case "celebration": {
+          // Rising major arpeggio into a held triad — the week-closed fanfare.
+          playPing(ctx, 523.25, now, 0.14, 0.13); // C5
+          playPing(ctx, 659.25, now + 0.09, 0.14, 0.14); // E5
+          playPing(ctx, 783.99, now + 0.18, 0.16, 0.15); // G5
+          playPing(ctx, 1046.5, now + 0.27, 0.5, 0.17); // C6
+          playPing(ctx, 1318.51, now + 0.31, 0.55, 0.12); // E6
+          playPing(ctx, 1567.98, now + 0.35, 0.6, 0.1); // G6
+          break;
+        }
       }
-      case "timer_stop": {
-        // Soft descending tone (659Hz -> 440Hz)
-        playPing(ctx, 659.25, now, 0.12, 0.14); // E5
-        playPing(ctx, 440.0, now + 0.09, 0.18, 0.16); // A4
-        break;
-      }
-      case "action_success": {
-        // Crisp, satisfying subtle confirmation chime (880Hz -> 1320Hz)
-        playPing(ctx, 880.0, now, 0.08, 0.12);
-        playPing(ctx, 1318.51, now + 0.06, 0.14, 0.15);
-        break;
-      }
-      case "voice_start": {
-        // Warm radar wake tone (440Hz -> 660Hz -> 880Hz arpeggio)
-        playPing(ctx, 440.0, now, 0.08, 0.12);
-        playPing(ctx, 659.25, now + 0.06, 0.08, 0.14);
-        playPing(ctx, 880.0, now + 0.12, 0.14, 0.16);
-        break;
-      }
-      case "voice_end": {
-        // Soft acknowledgement blip (660Hz)
-        playPing(ctx, 659.25, now, 0.1, 0.14);
-        break;
-      }
-      case "undo": {
-        // Subtle descending reverse swoosh (600Hz -> 350Hz)
-        playSweep(ctx, 600, 350, now, 0.18, 0.12);
-        break;
-      }
-      case "phase_complete": {
-        // Gentle peaceful chord (F5 + A5 + C6)
-        playPing(ctx, 698.46, now, 0.35, 0.12);
-        playPing(ctx, 880.0, now + 0.04, 0.4, 0.14);
-        playPing(ctx, 1046.5, now + 0.08, 0.5, 0.16);
-        break;
-      }
-      case "celebration": {
-        // Rising major arpeggio into a held triad — the week-closed fanfare.
-        playPing(ctx, 523.25, now, 0.14, 0.13); // C5
-        playPing(ctx, 659.25, now + 0.09, 0.14, 0.14); // E5
-        playPing(ctx, 783.99, now + 0.18, 0.16, 0.15); // G5
-        playPing(ctx, 1046.5, now + 0.27, 0.5, 0.17); // C6
-        playPing(ctx, 1318.51, now + 0.31, 0.55, 0.12); // E6
-        playPing(ctx, 1567.98, now + 0.35, 0.6, 0.1); // G6
-        break;
-      }
+    } catch (error: unknown) {
+      console.error("[sound-effects] Error playing earcon:", error);
     }
-  } catch (error: unknown) {
-    console.error("[sound-effects] Error playing earcon:", error);
-  }
+  });
 }
 
 function playPing(

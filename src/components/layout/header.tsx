@@ -41,7 +41,6 @@ import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { useModifierKey } from "@/hooks/use-modifier-key";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { signOut, useSession } from "@/lib/auth-client";
-import { playEarcon } from "@/lib/sound/sound-effects";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
 
@@ -239,7 +238,6 @@ export function Header() {
               className="hidden md:flex text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-500/20"
               aria-label={`Comando de voz hands-free (Shift+${modifier}+V)`}
               onClick={() => {
-                playEarcon("voice_start");
                 window.dispatchEvent(new CustomEvent("timebot:voice"));
               }}
             >

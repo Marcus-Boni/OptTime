@@ -509,10 +509,7 @@ export function ChatComposer({
               type="button"
               size="icon"
               variant="ghost"
-              onClick={() => {
-                playEarcon("voice_start");
-                onOpenVoiceMode();
-              }}
+              onClick={onOpenVoiceMode}
               aria-label="Abrir o modo de comando por voz"
               className="h-8 w-8 shrink-0 cursor-pointer rounded-lg text-neutral-500 transition-all hover:text-orange-500 dark:text-neutral-400"
             >

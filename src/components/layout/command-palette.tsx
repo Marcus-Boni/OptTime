@@ -234,7 +234,6 @@ export function CommandPalette() {
           <CommandItem
             onSelect={() => {
               closeCommandPalette();
-              playEarcon("voice_start");
               // Trigger hands-free voice overlay shortcut simulation or event
               window.dispatchEvent(
                 new KeyboardEvent("keydown", {
