@@ -2,123 +2,80 @@
 
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { fetchPublishedReleases } from "@/lib/changelog/releases-cache";
+import {
+  normalizeVersionTag,
+  readSeenReleaseTag,
+  subscribeToChangelogSync,
+  writeSeenReleaseTag,
+} from "@/lib/changelog/storage";
 import { DEFAULT_APP_VERSION_TAG } from "@/lib/version";
-
-const CHANGELOG_SEEN_KEY = "optsolv_seen_release_tag";
-const CHANGELOG_SEEN_EVENT = "optsolv:changelog-seen";
 
 export function useChangelogNotification() {
   const pathname = usePathname();
   const [latestVersion, setLatestVersion] = useState<string>(
     DEFAULT_APP_VERSION_TAG,
   );
-  const [hasUnseen, setHasUnseen] = useState(false);
+  const [seenTag, setSeenTag] = useState<string | null>(null);
+  const [hasPublishedRelease, setHasPublishedRelease] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
-  const checkUnseen = useCallback((latestTag: string) => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const seenTag = localStorage.getItem(CHANGELOG_SEEN_KEY);
-      if (!seenTag) {
-        // First visit or clean cache — if there's a published tag, show highlight
-        setHasUnseen(true);
-        return;
-      }
-
-      const normalizedLatest = latestTag.startsWith("v")
-        ? latestTag
-        : `v${latestTag}`;
-      const normalizedSeen = seenTag.startsWith("v") ? seenTag : `v${seenTag}`;
-
-      setHasUnseen(normalizedLatest !== normalizedSeen);
-    } catch {
-      setHasUnseen(false);
-    }
-  }, []);
-
   const markAsSeen = useCallback(() => {
-    if (typeof window === "undefined" || !latestVersion) return;
+    if (!latestVersion) return;
 
-    try {
-      localStorage.setItem(CHANGELOG_SEEN_KEY, latestVersion);
-      setHasUnseen(false);
-      window.dispatchEvent(
-        new CustomEvent(CHANGELOG_SEEN_EVENT, { detail: latestVersion }),
-      );
-    } catch (err) {
-      console.error("[useChangelogNotification] markAsSeen:", err);
-    }
+    writeSeenReleaseTag(latestVersion);
+    setSeenTag(normalizeVersionTag(latestVersion));
   }, [latestVersion]);
 
-  // Fetch latest release
+  // Read the acknowledged tag after hydration and stay in sync across tabs.
+  useEffect(() => {
+    setSeenTag(readSeenReleaseTag());
+
+    return subscribeToChangelogSync(() => {
+      setSeenTag(readSeenReleaseTag());
+    });
+  }, []);
+
+  // Fetch latest release (shared cache — deduped with the announcement modal)
   useEffect(() => {
     let isMounted = true;
 
-    async function fetchLatest() {
-      try {
-        const res = await fetch("/api/releases");
-        if (!res.ok) return;
+    fetchPublishedReleases()
+      .then((releases) => {
+        if (!isMounted) return;
 
-        const data = (await res.json()) as {
-          releases?: Array<{ status: string; versionTag: string }>;
-        };
-
-        if (data.releases && Array.isArray(data.releases)) {
-          const published = data.releases.filter(
-            (r) => r.status === "published",
-          );
-          const topRelease = published[0];
-
-          if (topRelease?.versionTag && isMounted) {
-            const rawTag = topRelease.versionTag.trim();
-            const formatted = rawTag.startsWith("v") ? rawTag : `v${rawTag}`;
-            setLatestVersion(formatted);
-            checkUnseen(formatted);
-          }
+        const topRelease = releases[0];
+        if (topRelease?.versionTag) {
+          setLatestVersion(normalizeVersionTag(topRelease.versionTag));
+          setHasPublishedRelease(true);
         }
-      } catch (err) {
-        console.error("[useChangelogNotification] fetchLatest:", err);
-      } finally {
+      })
+      .catch((error: unknown) => {
+        console.error(
+          "[useChangelogNotification] fetchPublishedReleases:",
+          error,
+        );
+      })
+      .finally(() => {
         if (isMounted) setIsLoaded(true);
-      }
-    }
-
-    void fetchLatest();
+      });
 
     return () => {
       isMounted = false;
     };
-  }, [checkUnseen]);
+  }, []);
 
-  // If user is currently on the releases page, automatically mark as seen
+  // Reading the changelog page counts as catching up.
   useEffect(() => {
-    if (pathname === "/dashboard/releases" && latestVersion) {
+    if (pathname === "/dashboard/releases" && hasPublishedRelease) {
       markAsSeen();
     }
-  }, [pathname, latestVersion, markAsSeen]);
+  }, [pathname, hasPublishedRelease, markAsSeen]);
 
-  // Listen for storage / cross-tab / local event updates
-  useEffect(() => {
-    function handleSync(event: Event) {
-      if (event instanceof CustomEvent && typeof event.detail === "string") {
-        checkUnseen(latestVersion);
-      } else if (
-        event instanceof StorageEvent &&
-        event.key === CHANGELOG_SEEN_KEY
-      ) {
-        checkUnseen(latestVersion);
-      }
-    }
-
-    window.addEventListener(CHANGELOG_SEEN_EVENT, handleSync);
-    window.addEventListener("storage", handleSync);
-
-    return () => {
-      window.removeEventListener(CHANGELOG_SEEN_EVENT, handleSync);
-      window.removeEventListener("storage", handleSync);
-    };
-  }, [checkUnseen, latestVersion]);
+  const hasUnseen =
+    isLoaded &&
+    hasPublishedRelease &&
+    seenTag !== normalizeVersionTag(latestVersion);
 
   return {
     latestVersion,

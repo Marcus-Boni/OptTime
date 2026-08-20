@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { invalidatePublishedReleasesCache } from "@/lib/changelog/releases-cache";
 import type { AppReleaseStatus } from "@/lib/db/schema";
 import type {
   CreateReleaseInput,
@@ -82,6 +83,7 @@ export function useReleases(): UseReleasesReturn {
         );
       }
       const json = (await res.json()) as { release: Release };
+      invalidatePublishedReleasesCache();
       await fetchReleases();
       return json.release;
     },
@@ -104,6 +106,7 @@ export function useReleases(): UseReleasesReturn {
         );
       }
       const json = (await res.json()) as { release: Release };
+      invalidatePublishedReleasesCache();
       await fetchReleases();
       return json.release;
     },
@@ -121,6 +124,7 @@ export function useReleases(): UseReleasesReturn {
             : "Erro ao excluir release",
         );
       }
+      invalidatePublishedReleasesCache();
       await fetchReleases();
     },
     [fetchReleases],
@@ -151,6 +155,7 @@ export function useReleases(): UseReleasesReturn {
         release: Release;
         email: { sent: number; failed: number } | null;
       };
+      invalidatePublishedReleasesCache();
       await fetchReleases();
       return json;
     },

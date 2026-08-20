@@ -7,6 +7,9 @@ import { FocusModeRoot } from "@/components/focus";
 import { CelebrationHost } from "@/components/gamification/CelebrationHost";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
+// Imported by path (not the barrel) so the Remotion-backed release components
+// stay out of the dashboard shell bundle.
+import { ReleaseAnnouncementHost } from "@/components/releases/ReleaseAnnouncementHost";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 
@@ -50,6 +53,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
       <TimeBotWidget />
       <FocusModeRoot />
       <CelebrationHost />
+      <ReleaseAnnouncementHost />
     </div>
   );
 }

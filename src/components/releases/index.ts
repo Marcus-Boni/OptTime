@@ -1,8 +1,11 @@
 export type { PublishReleaseDialogProps } from "./PublishReleaseDialog";
 export { default as PublishReleaseDialog } from "./PublishReleaseDialog";
+export { ReleaseAnnouncementHost } from "./ReleaseAnnouncementHost";
+export type { ReleaseAnnouncementModalProps } from "./ReleaseAnnouncementModal";
+export { ReleaseAnnouncementModal } from "./ReleaseAnnouncementModal";
 export type { ReleaseCardProps } from "./ReleaseCard";
 export { default as ReleaseCard } from "./ReleaseCard";
-export { ReleaseDescription } from "./ReleaseDescription";
+export { InlineMarkdown, ReleaseDescription } from "./ReleaseDescription";
 export type { ReleaseFormDialogProps } from "./ReleaseFormDialog";
 export { default as ReleaseFormDialog } from "./ReleaseFormDialog";
 export type { ReleaseVideoPlayerProps } from "./ReleaseVideoPlayer";

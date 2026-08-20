@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { BookMarked, Rss } from "lucide-react";
+import { BookMarked, Rss, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
@@ -9,9 +9,11 @@ import {
   ReleaseCard,
   ReleaseFormDialog,
 } from "@/components/releases";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { type Release, useReleases } from "@/hooks/use-releases";
 import { useSession } from "@/lib/auth-client";
+import { requestReleaseAnnouncement } from "@/lib/changelog/storage";
 
 const containerVariants = {
   hidden: {},
@@ -115,13 +117,28 @@ export default function ReleasesPage() {
           </p>
         </div>
 
-        {/* Admin: create button */}
-        {isAdmin && (
-          <ReleaseFormDialog
-            onSubmit={createRelease}
-            onSuccess={() => void refetch()}
-          />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Re-open the "what's new" summary of the current version */}
+          {!isLoading && latestPublishedRelease ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={requestReleaseAnnouncement}
+              aria-label={`Ver destaques da versão ${currentVersionLabel}`}
+            >
+              <Sparkles className="h-4 w-4 text-brand-400" aria-hidden="true" />
+              Ver destaques
+            </Button>
+          ) : null}
+
+          {/* Admin: create button */}
+          {isAdmin && (
+            <ReleaseFormDialog
+              onSubmit={createRelease}
+              onSuccess={() => void refetch()}
+            />
+          )}
+        </div>
       </motion.div>
 
       {/* Error state */}
