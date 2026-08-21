@@ -40,36 +40,11 @@ export interface AssistantSnapshot {
   incompleteDays: Array<{ date: string; weekday: string; minutes: number }>;
 }
 
-/** Resolves the user's local date without trusting the server timezone. */
-export function resolveTodayInTimeZone(timeZone: string): string {
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-
-    return parts;
-  } catch {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-  }
-}
-
-export function normalizeTimeZone(raw: string | null | undefined): string {
-  if (!raw) return "America/Sao_Paulo";
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone: raw });
-    return raw;
-  } catch {
-    return "America/Sao_Paulo";
-  }
-}
+/**
+ * Re-exported so the assistant routes keep their existing import path while a
+ * single implementation of "what day is it" serves the whole server.
+ */
+export { normalizeTimeZone, resolveTodayInTimeZone } from "@/lib/timezone";
 
 /**
  * Collects everything the assistant should know before the first token —

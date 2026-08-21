@@ -6,7 +6,7 @@ import {
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
-import { formatLocalDate } from "@/lib/utils";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
 import { humanizeMinutes } from "../format";
@@ -138,7 +138,7 @@ export async function startTimer(
   }
 
   const targetProject = await resolveProject(principal, input.project);
-  const today = formatLocalDate();
+  const today = todayInAppTimeZone();
 
   await assertUnlocked(principal.userId, today);
 
@@ -238,7 +238,7 @@ export async function stopTimer(
       entryId: null,
       durationMinutes: 0,
       durationLabel: humanizeMinutes(0),
-      date: formatLocalDate(),
+      date: todayInAppTimeZone(),
     };
   }
 
@@ -314,7 +314,7 @@ async function stopAndPersist(
     1,
     Math.round(elapsedMs(timer, now.getTime()) / 60_000),
   );
-  const date = formatLocalDate(now);
+  const date = todayInAppTimeZone();
 
   await assertUnlocked(userId, date);
 

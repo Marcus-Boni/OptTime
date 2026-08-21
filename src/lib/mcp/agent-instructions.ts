@@ -52,7 +52,7 @@ function heading(options: AgentInstructionsOptions): string[] {
           "- Autenticação: header `Authorization: Bearer <token>`",
         ]
       : [
-          "- Pacote: `@optsolv/mcp-opt-time` (npm)",
+          "- Pacote: `opt-time-mcp` (npm)",
           `- Variáveis de ambiente: \`OPT_TIME_BASE_URL=${baseUrl}\` e \`OPT_TIME_API_KEY=<token>\``,
         ]),
     `- Token: \`${token}\``,

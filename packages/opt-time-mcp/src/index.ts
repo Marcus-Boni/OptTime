@@ -13,7 +13,7 @@ import {
 import { createServer } from "./server.js";
 
 /**
- * Entry point for `npx @optsolv/mcp-opt-time`.
+ * Entry point for `npx opt-time-mcp`.
  *
  * Defaults to stdio, the transport every MCP client can spawn. `--http` starts
  * a stateless Streamable HTTP server for self-hosted setups; note that the
@@ -93,7 +93,7 @@ async function runDoctor(config: OptSolvConfig): Promise<number> {
       log(
         `⚠️  O servidor expõe ferramentas que este pacote não conhece: ${missing.join(", ")}`,
       );
-      log("   Atualize com: npm i -g @optsolv/mcp-opt-time@latest");
+      log("   Atualize com: npm i -g opt-time-mcp@latest");
     }
     if (extra.length > 0) {
       log(

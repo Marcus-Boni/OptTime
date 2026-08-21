@@ -80,7 +80,7 @@ A separação é clara e modularizada, agrupando código por **Features** visuai
 ├── stores/ # Estado global via Zustand (timer, modal state)
 ├── hooks/ # Custom React Hooks reutilizáveis
 └── packages/
-  └── opt-time-mcp/ # Pacote npm @optsolv/mcp-opt-time (stdio, fora do build do Next)
+  └── opt-time-mcp/ # Pacote npm opt-time-mcp (stdio, fora do build do Next)
 ```
 
 ---
@@ -131,6 +131,12 @@ BETTER_AUTH_URL="http://localhost:3000"
 
 MICROSOFT_CLIENT_ID="..."
 MICROSOFT_CLIENT_SECRET="..."
+
+# Fuso horario da organizacao (opcional)
+# Define em qual fuso o servidor resolve "hoje". O processo em producao roda em
+# UTC, entao sem isso as datas viram no fim da tarde. Padrao: America/Sao_Paulo.
+
+APP_TIMEZONE="America/Sao_Paulo"
 ```
 
 ### Passo 3: Inicie o Banco de Dados e Migrations (Drizzle)

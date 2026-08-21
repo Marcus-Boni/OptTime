@@ -1,4 +1,4 @@
-# @optsolv/mcp-opt-time
+# opt-time-mcp
 
 Servidor [MCP](https://modelcontextprotocol.io) do **OptSolv Time Tracker**.
 Registre horas, controle o timer e feche a semana conversando com o agente de IA
@@ -45,7 +45,7 @@ permissão que resolva o seu caso:
   "mcpServers": {
     "opt-time": {
       "command": "npx",
-      "args": ["-y", "@optsolv/mcp-opt-time"],
+      "args": ["opt-time-mcp"],
       "env": {
         "OPT_TIME_BASE_URL": "https://opt-time.optsolv.com.br",
         "OPT_TIME_API_KEY": "opt_tok_xxxxxxxxxxxxxxxx"
@@ -65,7 +65,7 @@ mesma configuração acima. Reinicie o app depois de salvar.
 claude mcp add opt-time \
   --env OPT_TIME_BASE_URL=https://opt-time.optsolv.com.br \
   --env OPT_TIME_API_KEY=opt_tok_xxxxxxxxxxxxxxxx \
-  -- npx -y @optsolv/mcp-opt-time
+  -- npx opt-time-mcp
 ```
 
 **VS Code (Copilot)** — `.vscode/mcp.json`, trocando `mcpServers` por `servers`.
@@ -75,7 +75,7 @@ claude mcp add opt-time \
 ### 3. Confirme que funcionou
 
 ```bash
-OPT_TIME_API_KEY=opt_tok_… npx -y @optsolv/mcp-opt-time doctor
+OPT_TIME_API_KEY=opt_tok_… npx opt-time-mcp doctor
 ```
 
 O comando valida o token, mostra quem você é e compara o catálogo local com o do

@@ -55,7 +55,7 @@ function httpServerBlock({ baseUrl, token }: SnippetOptions) {
 function stdioServerBlock({ baseUrl, token }: SnippetOptions) {
   return {
     command: "npx",
-    args: ["-y", "@optsolv/mcp-opt-time"],
+    args: ["opt-time-mcp"],
     env: {
       OPT_TIME_BASE_URL: baseUrl,
       OPT_TIME_API_KEY: token,
@@ -108,7 +108,7 @@ export const MCP_CLIENTS: McpClientTarget[] = [
     cli: ({ baseUrl, token, transport }) =>
       transport === "http"
         ? `claude mcp add --transport http opt-time ${baseUrl}/api/mcp --header "Authorization: Bearer ${token}"`
-        : `claude mcp add opt-time --env OPT_TIME_BASE_URL=${baseUrl} --env OPT_TIME_API_KEY=${token} -- npx -y @optsolv/mcp-opt-time`,
+        : `claude mcp add opt-time --env OPT_TIME_BASE_URL=${baseUrl} --env OPT_TIME_API_KEY=${token} -- npx opt-time-mcp`,
   },
   {
     id: "claude-desktop",

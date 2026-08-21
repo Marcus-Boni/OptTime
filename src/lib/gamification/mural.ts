@@ -8,6 +8,7 @@ import {
   userAchievement,
   userGamification,
 } from "@/lib/db/schema";
+import { todayInAppTimeZoneAsDate } from "@/lib/timezone";
 import { getWeekPeriod } from "@/lib/utils";
 import { getAchievement, getTierLabel } from "./achievements";
 import { COLLECTIVE_GOAL, MURAL_HISTORY_WEEKS } from "./constants";
@@ -80,7 +81,7 @@ function emptyMural(
   rankingEnabled: boolean,
   viewerOptedOut: boolean,
 ): TeamMural {
-  const period = getWeekPeriod(new Date());
+  const period = getWeekPeriod(todayInAppTimeZoneAsDate());
   return {
     teamSize: 0,
     currentWeek: {

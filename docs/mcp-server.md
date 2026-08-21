@@ -21,7 +21,7 @@ Item do Azure DevOps — sem que ninguém precise abrir o navegador.
                 │ stdio (JSON-RPC)         │ HTTP (JSON-RPC)
                 ▼                          │
 ┌──────────────────────────────────┐       │
-│  @optsolv/mcp-opt-time (npm)       │       │
+│  opt-time-mcp (npm)       │       │
 │  packages/opt-time-mcp            │       │
 │  • @modelcontextprotocol/sdk     │       │
 │  • cliente HTTP tipado           │       │
@@ -49,7 +49,7 @@ Item do Azure DevOps — sem que ninguém precise abrir o navegador.
 | Caminho                    | Quando usar                                              | Autenticação             |
 | -------------------------- | -------------------------------------------------------- | ------------------------ |
 | **`/api/mcp`** (hospedado) | Cliente suporta servidores MCP remotos. Zero instalação.  | `Authorization: Bearer`  |
-| **`@optsolv/mcp-opt-time`**  | Cliente só fala stdio, ou você quer o processo local.     | `OPT_TIME_API_KEY`        |
+| **`opt-time-mcp`**  | Cliente só fala stdio, ou você quer o processo local.     | `OPT_TIME_API_KEY`        |
 
 Ambos terminam no mesmo `src/lib/mcp/service/*`. O endpoint hospedado chama o
 serviço direto (sem salto de rede); o pacote npm passa pela REST `/api/v1/me/*`,
@@ -309,9 +309,14 @@ Exige um servidor rodando. Suba-o em outro terminal primeiro:
 pnpm dev                   # terminal 1
 pnpm verify:mcp            # terminal 2 — 86 verificações
 pnpm verify:mcp:package    # pacote npm ponta a ponta (stdio → HTTP → banco)
+```
 
-# apontando para outro ambiente
-VERIFY_BASE_URL=https://opt-time.optsolv.com.br pnpm verify:mcp
+**Contra produção, use apenas o smoke test.** `verify:mcp` cria usuários e
+projetos efêmeros — isso não se faz num banco de produção. O smoke é
+somente-leitura, não toca no banco direto e confirma ao final que nada mudou:
+
+```bash
+OPT_TIME_API_KEY=opt_tok_… pnpm verify:mcp:smoke
 ```
 
 Sem `VERIFY_BASE_URL`, a suíte sonda `localhost:3100` e `3000–3003` e usa a
@@ -340,8 +345,8 @@ Duas garantias sustentam a suíte:
 | `OPT_TIME_API_KEY não definido`                     | O bloco `env` não chegou ao processo. Confira o JSON do cliente e reinicie o app.          |
 | `Token não reconhecido`                            | Token revogado ou de outro ambiente. Gere um novo na instância correta.                     |
 | `Formato de token inválido`                        | Provavelmente copiou o texto mascarado (`opt_tok_a1b2…9f3c`) em vez do valor completo.      |
-| Servidor não aparece no cliente                    | Rode `npx -y @optsolv/mcp-opt-time doctor` no terminal para ver o erro real.                   |
+| Servidor não aparece no cliente                    | Rode `npx opt-time-mcp doctor` no terminal para ver o erro real.                   |
 | `INTEGRATION_NOT_CONFIGURED` em work items          | O usuário não configurou o PAT do Azure DevOps em Configurações → Integrações.               |
 | `PERIOD_LOCKED` ao registrar                        | A semana já foi submetida/aprovada. O gestor precisa rejeitar o timesheet antes.             |
-| Ferramentas somem depois de atualizar o servidor    | Pacote npm desatualizado. `doctor` avisa; atualize com `@optsolv/mcp-opt-time@latest`.        |
+| Ferramentas somem depois de atualizar o servidor    | Pacote npm desatualizado. `doctor` avisa; atualize com `opt-time-mcp@latest`.        |
 | `405` ao abrir `/api/mcp` no navegador              | Esperado: o endpoint só responde a `POST` de JSON-RPC.                                      |

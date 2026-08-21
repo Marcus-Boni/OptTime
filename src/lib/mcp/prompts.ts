@@ -1,4 +1,5 @@
-import { formatLocalDate, getWeekPeriod } from "@/lib/utils";
+import { todayInAppTimeZone, todayInAppTimeZoneAsDate } from "@/lib/timezone";
+import { getWeekPeriod } from "@/lib/utils";
 import { AgentError } from "./errors";
 
 /**
@@ -43,7 +44,7 @@ export const PROMPTS: PromptDefinition[] = [
       "Analisa o trabalho desta sessão e das branches do dia, monta os lançamentos agrupados por projeto e registra no OptSolv após confirmação.",
     arguments: [DATE_ARGUMENT],
     build: (args) => {
-      const date = args.date?.trim() || formatLocalDate();
+      const date = args.date?.trim() || todayInAppTimeZone();
 
       return [
         `Preciso lançar minhas horas de ${date} no OptSolv Time Tracker.`,
@@ -69,7 +70,8 @@ export const PROMPTS: PromptDefinition[] = [
       "Verifica se todos os dias da semana somam ao menos 8 horas, identifica os dias incompletos e sugere como preenchê-los antes de submeter.",
     arguments: [PERIOD_ARGUMENT],
     build: (args) => {
-      const period = args.period?.trim() || getWeekPeriod(new Date());
+      const period =
+        args.period?.trim() || getWeekPeriod(todayInAppTimeZoneAsDate());
 
       return [
         `Audite meu timesheet da semana ${period} no OptSolv Time Tracker antes de eu submeter.`,

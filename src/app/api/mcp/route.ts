@@ -24,7 +24,7 @@ import {
  *
  * Stateless means no `Mcp-Session-Id` is issued and `GET` (server-initiated SSE)
  * is answered with 405, which the specification allows. Clients that need stdio
- * use the `@optsolv/mcp-opt-time` package, which bridges to this same API.
+ * use the `opt-time-mcp` package, which bridges to this same API.
  */
 
 export const dynamic = "force-dynamic";

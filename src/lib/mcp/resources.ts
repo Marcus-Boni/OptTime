@@ -1,4 +1,5 @@
-import { formatLocalDate, getWeekPeriod } from "@/lib/utils";
+import { todayInAppTimeZone, todayInAppTimeZoneAsDate } from "@/lib/timezone";
+import { getWeekPeriod } from "@/lib/utils";
 import type { AgentPrincipal } from "./auth";
 import { requireAgentScope } from "./auth";
 import { AgentError } from "./errors";
@@ -101,7 +102,7 @@ export const RESOURCES: ResourceDefinition[] = [
       "Resumo estruturado do dia atual: todas as entradas de tempo, o total por projeto, o timer ativo e quanto falta para a capacidade diária.",
     mimeType: "application/json",
     read: async (principal) => {
-      const summary = await getDaySummary(principal, formatLocalDate());
+      const summary = await getDaySummary(principal, todayInAppTimeZone());
 
       return json("opt-time://user/today", {
         generatedAt: new Date().toISOString(),
@@ -125,7 +126,7 @@ export const RESOURCES: ResourceDefinition[] = [
     read: async (principal) => {
       const status = await getTimesheetStatus(
         principal,
-        getWeekPeriod(new Date()),
+        getWeekPeriod(todayInAppTimeZoneAsDate()),
       );
 
       return json("opt-time://timesheets/current", {

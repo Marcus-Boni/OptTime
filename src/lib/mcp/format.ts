@@ -1,5 +1,10 @@
-import { addDays, isValid, parse } from "date-fns";
-import { formatLocalDate, getWeekPeriod, parseLocalDate } from "@/lib/utils";
+import { isValid, parse } from "date-fns";
+import {
+  shiftDay,
+  todayInAppTimeZone,
+  todayInAppTimeZoneAsDate,
+} from "@/lib/timezone";
+import { getWeekPeriod, parseLocalDate } from "@/lib/utils";
 import { AgentError } from "./errors";
 
 /**
@@ -107,7 +112,7 @@ export function resolveEntryDate(
   input: unknown,
   options?: { allowFuture?: boolean; maxPastDays?: number },
 ): string {
-  const today = formatLocalDate();
+  const today = todayInAppTimeZone();
   if (input == null || input === "") return today;
 
   if (typeof input !== "string") {
@@ -119,10 +124,7 @@ export function resolveEntryDate(
 
   const raw = input.trim().toLowerCase();
   const relative = RELATIVE_DATES[raw];
-  const resolved =
-    relative !== undefined
-      ? formatLocalDate(addDays(new Date(), relative))
-      : raw;
+  const resolved = relative !== undefined ? shiftDay(today, relative) : raw;
 
   if (!ISO_DATE.test(resolved)) {
     throw new AgentError(
@@ -147,7 +149,7 @@ export function resolveEntryDate(
   }
 
   const maxPastDays = options?.maxPastDays ?? 30;
-  const floor = formatLocalDate(addDays(new Date(), -maxPastDays));
+  const floor = shiftDay(today, -maxPastDays);
   if (resolved < floor) {
     throw new AgentError(
       "VALIDATION_ERROR",
@@ -160,7 +162,7 @@ export function resolveEntryDate(
 
 /** Resolves a date used only for reading — no past/future guard rails. */
 export function resolveLookupDate(input: unknown): string {
-  if (input == null || input === "") return formatLocalDate();
+  if (input == null || input === "") return todayInAppTimeZone();
   return resolveEntryDate(input, { allowFuture: true, maxPastDays: 3650 });
 }
 
@@ -184,7 +186,8 @@ const RELATIVE_PERIODS: Record<string, number> = {
  * which means the current week.
  */
 export function resolveWeekPeriod(input: unknown): string {
-  if (input == null || input === "") return getWeekPeriod(new Date());
+  if (input == null || input === "")
+    return getWeekPeriod(todayInAppTimeZoneAsDate());
 
   if (typeof input !== "string") {
     throw new AgentError(
@@ -196,7 +199,9 @@ export function resolveWeekPeriod(input: unknown): string {
   const raw = input.trim();
   const relative = RELATIVE_PERIODS[raw.toLowerCase()];
   if (relative !== undefined) {
-    return getWeekPeriod(addDays(new Date(), relative * 7));
+    return getWeekPeriod(
+      parseLocalDate(shiftDay(todayInAppTimeZone(), relative * 7)),
+    );
   }
 
   const week = raw.match(ISO_WEEK);

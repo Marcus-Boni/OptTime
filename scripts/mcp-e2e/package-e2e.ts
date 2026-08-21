@@ -20,7 +20,7 @@ import {
 /**
  * Full-stack check for the published npm package.
  *
- * Spawns `@optsolv/mcp-opt-time` exactly as an MCP client would — as a child
+ * Spawns `opt-time-mcp` exactly as an MCP client would — as a child
  * process speaking JSON-RPC over stdio — and drives a real session through it.
  * Every call therefore crosses stdio → HTTPS → `/api/v1/me` → service → Postgres
  * and back, which is the one path the in-process suite cannot exercise.

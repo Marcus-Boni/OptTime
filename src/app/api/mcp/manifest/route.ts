@@ -13,7 +13,7 @@ import { APP_NAME, DEFAULT_APP_VERSION } from "@/lib/version";
  *
  * Unauthenticated on purpose — it carries no user data, only the catalog. Two
  * consumers rely on it: the settings screen renders the tool reference from it,
- * and `npx @optsolv/mcp-opt-time doctor` diffs its local catalog against it to
+ * and `npx opt-time-mcp doctor` diffs its local catalog against it to
  * warn when a client is running an outdated package.
  */
 
@@ -41,9 +41,9 @@ export function GET(): Response {
             "Streamable HTTP (stateless). Autentique com 'Authorization: Bearer opt_tok_…'.",
         },
         stdio: {
-          package: "@optsolv/mcp-opt-time",
+          package: "opt-time-mcp",
           command: "npx",
-          args: ["-y", "@optsolv/mcp-opt-time"],
+          args: ["opt-time-mcp"],
           env: {
             OPT_TIME_BASE_URL: baseUrl,
             OPT_TIME_API_KEY: "opt_tok_…",

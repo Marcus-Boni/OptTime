@@ -7,6 +7,7 @@ import {
   getTimesheetStatusLabel,
   isTimesheetSubmittableStatus,
 } from "@/lib/timesheet-status";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { formatLocalDate, getPeriodRange } from "@/lib/utils";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
@@ -105,7 +106,7 @@ export async function getTimesheetStatus(
   const days: TimesheetDay[] = [];
   const cursor = new Date(`${start}T12:00:00`);
   const endDate = new Date(`${end}T12:00:00`);
-  const today = formatLocalDate();
+  const today = todayInAppTimeZone();
 
   while (cursor <= endDate) {
     const date = formatLocalDate(cursor);

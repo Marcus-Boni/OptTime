@@ -1,6 +1,6 @@
 import { agentOptions, withAgentAuth } from "@/lib/mcp/http";
 import { getDaySummary } from "@/lib/mcp/service";
-import { formatLocalDate } from "@/lib/utils";
+import { todayInAppTimeZone } from "@/lib/timezone";
 
 /**
  * GET /api/v1/me
@@ -10,7 +10,7 @@ import { formatLocalDate } from "@/lib/utils";
 export const OPTIONS = agentOptions;
 
 export const GET = withAgentAuth("GET /api/v1/me", async (principal) => {
-  const today = await getDaySummary(principal, formatLocalDate());
+  const today = await getDaySummary(principal, todayInAppTimeZone());
 
   return {
     user: {

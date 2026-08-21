@@ -1,5 +1,5 @@
 import type { ApiTokenScope } from "@/lib/api-tokens.shared";
-import { formatLocalDate } from "@/lib/utils";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "./auth";
 import { requireAgentScope } from "./auth";
 import { AgentError } from "./errors";
@@ -178,7 +178,7 @@ export const TOOLS: ToolDefinition[] = [
       additionalProperties: false,
     },
     handler: async (principal) => {
-      const summary = await getDaySummary(principal, formatLocalDate());
+      const summary = await getDaySummary(principal, todayInAppTimeZone());
 
       return {
         text:
