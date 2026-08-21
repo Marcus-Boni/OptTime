@@ -64,6 +64,16 @@ export const user = pgTable("user", {
   isActive: boolean("is_active").default(true).notNull(),
   /** Token for the Azure DevOps browser extension (Bearer auth) */
   extensionToken: text("extension_token").unique(),
+  /** Mirror the running timer into the Teams status message (needs Presence.ReadWrite) */
+  teamsStatusSyncEnabled: boolean("teams_status_sync_enabled")
+    .default(false)
+    .notNull(),
+  /** Personal Teams incoming-webhook URL (AES-256-GCM encrypted) for direct notifications */
+  teamsWebhookUrl: text("teams_webhook_url"),
+  /** Receive the interactive end-of-day digest (Teams webhook or e-mail fallback) */
+  eveningDigestEnabled: boolean("evening_digest_enabled")
+    .default(true)
+    .notNull(),
 });
 
 export const session = pgTable(
@@ -1075,3 +1085,157 @@ export const apiTokenRelations = relations(apiToken, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── HQ: Capacity Allocations (FTE forecasting) ───────────────────────
+/**
+ * Planned minutes of one person on one project for one future ISO week.
+ *
+ * This is the write model behind the Workload Matrix drag-and-drop planner:
+ * past weeks come from `time_entry` aggregation, future weeks come from here.
+ */
+export const allocation = pgTable(
+  "allocation",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    /** ISO week the allocation targets, e.g. "2026-W35" */
+    week: text("week").notNull(),
+    /** Planned minutes for the week (raw capacity share, not logged time) */
+    plannedMinutes: integer("planned_minutes").notNull(),
+    /** Optional planning note shown in the matrix cell tooltip */
+    note: text("note"),
+    createdById: text("created_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("allocation_user_project_week_unique").on(
+      table.userId,
+      table.projectId,
+      table.week,
+    ),
+    index("allocation_week_idx").on(table.week),
+    index("allocation_user_week_idx").on(table.userId, table.week),
+    index("allocation_project_idx").on(table.projectId),
+  ],
+);
+
+export const allocationRelations = relations(allocation, ({ one }) => ({
+  user: one(user, {
+    fields: [allocation.userId],
+    references: [user.id],
+  }),
+  project: one(project, {
+    fields: [allocation.projectId],
+    references: [project.id],
+  }),
+  createdBy: one(user, {
+    fields: [allocation.createdById],
+    references: [user.id],
+    relationName: "allocationAuthor",
+  }),
+}));
+
+// ─── Client Portal Links ──────────────────────────────────────────────
+/**
+ * Shareable, read-only project portals for clients ("Live Client Portal").
+ *
+ * The URL token is the capability; an optional password (scrypt hash, format
+ * "salt:hash" in hex) and expiry narrow it further. Visibility toggles control
+ * how much the client sees — the API only ever serves the sanitized snapshot.
+ */
+export const portalLink = pgTable(
+  "portal_link",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id, { onDelete: "cascade" }),
+    /** URL-safe capability token (never reissued; revoke and create a new one) */
+    token: text("token").notNull().unique(),
+    /** Human label, e.g. "Diretoria ACME — acompanhamento mensal" */
+    label: text("label").notNull(),
+    /** scrypt hash as "saltHex:hashHex"; null means no password required */
+    passwordHash: text("password_hash"),
+    expiresAt: timestamp("expires_at"),
+    revokedAt: timestamp("revoked_at"),
+    /** Show budget consumption (hours consumed vs. contracted) */
+    showBudget: boolean("show_budget").notNull().default(true),
+    /** Show team member names (false renders anonymized initials) */
+    showTeam: boolean("show_team").notNull().default(true),
+    /** Show time-entry descriptions in the activity feed */
+    showDescriptions: boolean("show_descriptions").notNull().default(false),
+    createdById: text("created_by_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    viewCount: integer("view_count").notNull().default(0),
+    lastViewedAt: timestamp("last_viewed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("portal_link_token_idx").on(table.token),
+    index("portal_link_project_idx").on(table.projectId),
+    index("portal_link_created_by_idx").on(table.createdById),
+  ],
+);
+
+export const portalLinkRelations = relations(portalLink, ({ one }) => ({
+  project: one(project, {
+    fields: [portalLink.projectId],
+    references: [project.id],
+  }),
+  createdBy: one(user, {
+    fields: [portalLink.createdById],
+    references: [user.id],
+  }),
+}));
+
+// ─── Teams Notification Log ───────────────────────────────────────────
+/** Delivery kinds for Microsoft Teams automations. */
+export type TeamsNotificationKind = "standup" | "evening";
+export type TeamsNotificationStatus = "sent" | "skipped" | "failed";
+
+/**
+ * Idempotency ledger for Teams digests: the unique (kind, targetKey, dateKey)
+ * index guarantees a cron re-run on the same day cannot double-post.
+ */
+export const teamsNotificationLog = pgTable(
+  "teams_notification_log",
+  {
+    id: text("id").primaryKey(),
+    /** "standup" (channel digest) | "evening" (personal end-of-day nudge) */
+    kind: text("kind").notNull(),
+    /** "channel" for the squad digest, or the target user id */
+    targetKey: text("target_key").notNull(),
+    /** Local calendar day the notification covers, YYYY-MM-DD */
+    dateKey: text("date_key").notNull(),
+    /** "sent" | "skipped" | "failed" */
+    status: text("status").notNull(),
+    /** Delivery channel used: "teams" | "email" | "none" */
+    channel: text("channel"),
+    detail: text("detail"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("teams_notification_unique_idx").on(
+      table.kind,
+      table.targetKey,
+      table.dateKey,
+    ),
+    index("teams_notification_created_idx").on(table.createdAt),
+  ],
+);
