@@ -26,6 +26,8 @@ const segmentLabels: Record<string, string> = {
   suggestions: "Sugestões",
   releases: "Novidades",
   scopes: "Escopos",
+  hq: "Central de Gestão",
+  teams: "Microsoft Teams",
 };
 
 function isDynamicSegment(segment: string): boolean {

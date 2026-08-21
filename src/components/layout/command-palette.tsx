@@ -15,6 +15,7 @@ import {
   Mic,
   Moon,
   Plus,
+  Radar,
   Send,
   Settings,
   Sparkles,
@@ -337,6 +338,11 @@ export function CommandPalette() {
         <CommandSeparator />
 
         <CommandGroup heading="Gestão & Configuração">
+          <CommandItem onSelect={() => navigate("/dashboard/hq")}>
+            <Radar className="mr-2 h-4 w-4 text-neutral-400" />
+            <span className="flex-1">Central de Gestão</span>
+          </CommandItem>
+
           <CommandItem
             onSelect={() => navigate("/dashboard/timesheets/approvals")}
           >

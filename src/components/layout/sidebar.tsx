@@ -11,6 +11,7 @@ import {
   Home,
   Lightbulb,
   Pause,
+  Radar,
   Settings,
   Square,
   Trophy,
@@ -69,6 +70,7 @@ const baseNavigation: NavigationItem[] = [
 ];
 
 const managementNav = [
+  { name: "Central de Gestão", href: "/dashboard/hq", icon: Radar },
   {
     name: "Aprovações",
     href: "/dashboard/timesheets/approvals",

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const MANAGER_ROUTES = ["/dashboard/people"];
+const MANAGER_ROUTES = ["/dashboard/people", "/dashboard/hq"];
 const PUBLIC_AUTH_ROUTES = ["/login", "/accept-invite"];
 
 function isManagerRoute(pathname: string): boolean {
