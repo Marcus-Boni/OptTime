@@ -107,8 +107,8 @@ Este projeto segue rigorosas regras para garantir Escalabilidade e Segurança em
 ### Passo 1: Clone o Repositório e instale dependências
 
 ```bash
-git clone https://github.com/optsolv/optsolv-time-tracker.git
-cd optsolv-time-tracker
+git clone https://github.com/Marcus-Boni/OptTime.git
+cd OptTime
 pnpm install
 ```
 

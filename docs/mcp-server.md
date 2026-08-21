@@ -309,6 +309,9 @@ Exige um servidor rodando. Suba-o em outro terminal primeiro:
 pnpm dev                   # terminal 1
 pnpm verify:mcp            # terminal 2 — 86 verificações
 pnpm verify:mcp:package    # pacote npm ponta a ponta (stdio → HTTP → banco)
+
+# valida o artefato baixado do npm em vez do build local
+VERIFY_PUBLISHED=1 pnpm verify:mcp:package
 ```
 
 **Contra produção, use apenas o smoke test.** `verify:mcp` cria usuários e

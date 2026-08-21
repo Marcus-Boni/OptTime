@@ -1,8 +1,8 @@
 {
   "name": "opt-time-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Servidor MCP do OptSolv Time Tracker \u2014 registre horas, controle o timer e feche a semana direto do seu agente de IA.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": false,
   "type": "module",
   "engines": {
@@ -50,11 +50,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/optsolv/optsolv-time-tracker.git",
+    "url": "git+https://github.com/Marcus-Boni/OptTime.git",
     "directory": "packages/opt-time-mcp"
   },
   "homepage": "https://opt-time.optsolv.com.br/dashboard/settings/integrations/mcp",
   "bugs": {
-    "url": "https://github.com/optsolv/optsolv-time-tracker/issues"
+    "url": "https://github.com/Marcus-Boni/OptTime/issues"
   }
 }

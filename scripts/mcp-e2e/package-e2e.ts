@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { eq, inArray } from "drizzle-orm";
-import { createApiToken, revokeApiToken } from "@/lib/api-tokens";
+import { createApiToken } from "@/lib/api-tokens";
 import { db } from "@/lib/db";
 import {
   activeTimer,
@@ -29,6 +29,10 @@ import {
  */
 
 const PREFIX = "e2e-pkg-";
+
+/** Kept in sync with the package manifest so the published check pins a version. */
+const PACKAGE_NAME = "opt-time-mcp";
+const PACKAGE_VERSION = "1.0.1";
 let failures = 0;
 
 function check(label: string, ok: boolean, detail = ""): void {
@@ -122,47 +126,73 @@ async function main(): Promise<void> {
 
   const userId = `${PREFIX}${crypto.randomUUID().slice(0, 8)}`;
   const projectId = crypto.randomUUID();
-
-  await db.insert(user).values({
-    id: userId,
-    name: "E2E pacote",
-    email: `${userId}@e2e.optsolv.invalid`,
-    role: "member",
-    isActive: true,
-  });
-  await db.insert(project).values({
-    id: projectId,
-    name: "E2E Pacote NPM",
-    code: "E2E-PKG-NPM",
-    color: "#f97316",
-    status: "active",
-  });
-  await db.insert(projectMember).values({
-    id: crypto.randomUUID(),
-    projectId,
-    userId,
-  });
-
-  const { plaintext, token } = await createApiToken({
-    userId,
-    name: "e2e pacote",
-    scopes: ["time:read", "time:write"],
-    client: "cli",
-    expiresInDays: 1,
-  });
-
-  const child = spawn(process.execPath, ["packages/opt-time-mcp/bin/cli.js"], {
-    env: {
-      ...process.env,
-      OPT_TIME_BASE_URL: getBaseUrl(),
-      OPT_TIME_API_KEY: plaintext,
-    },
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  const client = new StdioClient(child);
+  let client: StdioClient | null = null;
 
   try {
+    await db.insert(user).values({
+      id: userId,
+      name: "E2E pacote",
+      email: `${userId}@e2e.optsolv.invalid`,
+      role: "member",
+      isActive: true,
+    });
+    await db.insert(project).values({
+      id: projectId,
+      name: "E2E Pacote NPM",
+      code: "E2E-PKG-NPM",
+      color: "#f97316",
+      status: "active",
+    });
+    await db.insert(projectMember).values({
+      id: crypto.randomUUID(),
+      projectId,
+      userId,
+    });
+
+    const { plaintext } = await createApiToken({
+      userId,
+      name: "e2e pacote",
+      scopes: ["time:read", "time:write"],
+      client: "cli",
+      expiresInDays: 1,
+    });
+
+    // `VERIFY_PUBLISHED=1` drives the artifact downloaded from npm instead of the
+    // working tree — the only way to prove that what was published actually runs,
+    // rather than what happens to be on disk.
+    const published = process.env.VERIFY_PUBLISHED === "1";
+    const child = published
+      ? // npx is a .cmd shim on Windows, and Node refuses to spawn those
+        // without a shell (EINVAL, since the CVE-2024-27980 fix). The command
+        // is passed as one string rather than an args array because the array
+        // form under `shell: true` is deprecated for unescaped concatenation —
+        // and it is safe here since both parts are hardcoded constants.
+        spawn(`npx -y ${PACKAGE_NAME}@${PACKAGE_VERSION}`, {
+          env: {
+            ...process.env,
+            OPT_TIME_BASE_URL: getBaseUrl(),
+            OPT_TIME_API_KEY: plaintext,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+          shell: true,
+        })
+      : spawn(process.execPath, ["packages/opt-time-mcp/bin/cli.js"], {
+          env: {
+            ...process.env,
+            OPT_TIME_BASE_URL: getBaseUrl(),
+            OPT_TIME_API_KEY: plaintext,
+          },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+
+    console.log(
+      published
+        ? `Artefato: ${PACKAGE_NAME}@${PACKAGE_VERSION} baixado do npm\n`
+        : "Artefato: build local (packages/opt-time-mcp)\n",
+    );
+
+    client = new StdioClient(child);
+
     const init = await client.send("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
@@ -323,9 +353,10 @@ async function main(): Promise<void> {
       client.stderr.some((l) => l.includes("pronto (stdio)")),
     );
   } finally {
-    client.close();
+    client?.close();
 
-    await revokeApiToken(userId, token.id).catch(() => undefined);
+    // The token row is hard-deleted below with the rest of the user's data, so
+    // there is nothing left to soft-revoke.
     await db.delete(timeEntry).where(eq(timeEntry.userId, userId));
     await db.delete(activeTimer).where(eq(activeTimer.userId, userId));
     await db

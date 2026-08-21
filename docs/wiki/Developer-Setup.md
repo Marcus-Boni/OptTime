@@ -18,8 +18,8 @@ Antes de iniciar, certifique-se de ter instalado em sua máquina:
 ### Passo 1: Clone o Repositório e Instale as Dependências
 Clone o repositório do projeto no Azure DevOps e instale as dependências usando o PNPM:
 ```bash
-git clone https://github.com/optsolv/optsolv-time-tracker.git
-cd optsolv-time-tracker
+git clone https://github.com/Marcus-Boni/OptTime.git
+cd OptTime
 pnpm install
 ```
 

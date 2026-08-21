@@ -201,4 +201,4 @@ sozinho e não deve interferir no lockfile nem no build do Next.
 
 ## Licença
 
-Uso interno OptSolv.
+[MIT](./LICENSE) © OptSolv
