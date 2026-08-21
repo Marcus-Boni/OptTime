@@ -187,9 +187,11 @@ export function buildProjectForecast(
       projectedExhaustionDate = formatLocalDate(projected);
 
       if (endDate) {
+        // projected − endDate: negative = the budget runs out BEFORE the
+        // planned delivery (the bad case the radar exists to catch).
         scheduleDeltaDays = differenceInCalendarDays(
-          parseLocalDate(endDate),
           projected,
+          parseLocalDate(endDate),
         );
       }
     } else {
@@ -197,10 +199,9 @@ export function buildProjectForecast(
       projectedExhaustionDate = today;
       if (endDate) {
         scheduleDeltaDays = differenceInCalendarDays(
-          parseLocalDate(endDate),
           parseLocalDate(today),
+          parseLocalDate(endDate),
         );
-        scheduleDeltaDays = -Math.abs(scheduleDeltaDays);
       }
     }
   }

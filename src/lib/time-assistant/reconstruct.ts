@@ -162,7 +162,13 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
 
     const description = `Reunião: ${event.subject.trim()}`.slice(0, 180);
-    if (alreadyLogged.has(normalize(description))) continue;
+    // An entry may exist either as the bare subject or already prefixed.
+    if (
+      alreadyLogged.has(normalize(description)) ||
+      alreadyLogged.has(normalize(event.subject))
+    ) {
+      continue;
+    }
 
     const minutes = Math.min(
       roundToQuarter((end - start) / 60_000),
