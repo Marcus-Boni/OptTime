@@ -73,3 +73,20 @@ export function todayInAppTimeZoneAsDate(): Date {
 export function shiftDay(date: string, days: number): string {
   return formatLocalDate(addDays(parseLocalDate(date), days));
 }
+
+/**
+ * Calendar date (`YYYY-MM-DD`) of an instant in the organisation's timezone.
+ *
+ * Used to bucket UTC timestamps (Graph events, commits) into the local
+ * workday they actually belong to.
+ */
+export function dateOfInstantInAppTimeZone(instant: Date | string): string {
+  const value = typeof instant === "string" ? new Date(instant) : instant;
+
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: getAppTimeZone(),
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
+}
