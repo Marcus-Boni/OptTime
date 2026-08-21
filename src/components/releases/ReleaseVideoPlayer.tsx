@@ -15,6 +15,39 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProductDemo } from "@/remotion/ProductDemo";
 import { ReleaseShowcaseV16 } from "@/remotion/ReleaseShowcaseV16";
+import { ReleaseShowcaseV17 } from "@/remotion/ReleaseShowcaseV17";
+
+/**
+ * Remotion compositions a release can point at, newest first.
+ *
+ * Adding a release video means adding one entry here — the player, the label
+ * and the duration all follow from it.
+ */
+const REMOTION_COMPOSITIONS = [
+  {
+    id: "ReleaseShowcaseV17",
+    component: ReleaseShowcaseV17,
+    durationInFrames: 2100,
+    aliases: ["v1.7", "v17"],
+    label: (versionTag: string) =>
+      `Demonstração Oficial ${versionTag} (Remotion)`,
+  },
+  {
+    id: "ReleaseShowcaseV16",
+    component: ReleaseShowcaseV16,
+    durationInFrames: 2250,
+    aliases: ["v1.6", "v16", "showcase"],
+    label: (versionTag: string) =>
+      `Demonstração Oficial ${versionTag} (Remotion)`,
+  },
+  {
+    id: "ProductDemo",
+    component: ProductDemo,
+    durationInFrames: 2700,
+    aliases: ["demo"],
+    label: () => "Demonstração da Plataforma (Remotion)",
+  },
+] as const;
 
 export interface ReleaseVideoPlayerProps {
   videoUrl: string;
@@ -34,34 +67,25 @@ export function ReleaseVideoPlayer({
   // Identify video type
   const videoConfig = useMemo(() => {
     const trimmed = videoUrl.trim();
+    const lowered = trimmed.toLowerCase();
 
-    if (
-      trimmed === "remotion:ReleaseShowcaseV16" ||
-      trimmed === "ReleaseShowcaseV16" ||
-      trimmed.toLowerCase().includes("showcase") ||
-      trimmed.toLowerCase().includes("v1.6") ||
-      trimmed.toLowerCase().includes("v16")
-    ) {
+    // Exact composition ids win before any fuzzy matching. The loose aliases
+    // below exist for hand-typed values, and "showcase"/"demo" would otherwise
+    // swallow every future release — v1.8 must not resolve to the v1.7 video.
+    const composition = REMOTION_COMPOSITIONS.find(
+      (entry) =>
+        trimmed === `remotion:${entry.id}` ||
+        trimmed === entry.id ||
+        entry.aliases.some((alias) => lowered.includes(alias)),
+    );
+
+    if (composition) {
       return {
         type: "remotion" as const,
-        component: ReleaseShowcaseV16,
-        durationInFrames: 2250,
+        component: composition.component,
+        durationInFrames: composition.durationInFrames,
         fps: 30,
-        label: `Demonstração Oficial ${versionTag} (Remotion)`,
-      };
-    }
-
-    if (
-      trimmed === "remotion:ProductDemo" ||
-      trimmed === "ProductDemo" ||
-      trimmed.toLowerCase().includes("demo")
-    ) {
-      return {
-        type: "remotion" as const,
-        component: ProductDemo,
-        durationInFrames: 2700,
-        fps: 30,
-        label: "Demonstração da Plataforma (Remotion)",
+        label: composition.label(versionTag),
       };
     }
 
