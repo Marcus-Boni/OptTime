@@ -104,6 +104,12 @@ export const auth = betterAuth({
         "User.Read",
         "Calendars.Read",
         "offline_access",
+        // Opt-in: mirrors the running timer into the Teams status message.
+        // Requesting it changes the consent screen, so it stays behind a flag
+        // until the tenant admin grants Presence.ReadWrite to the app.
+        ...(process.env.TEAMS_PRESENCE_SCOPE === "true"
+          ? ["Presence.ReadWrite"]
+          : []),
       ],
       refreshAccessToken: refreshMicrosoftAccessToken,
     },

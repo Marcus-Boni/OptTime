@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { after } from "next/server";
 import {
   canAccessProject,
   getActiveSession,
@@ -7,6 +8,7 @@ import {
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { activeTimer, project, timeEntry } from "@/lib/db/schema";
+import { syncTimerPresence } from "@/lib/teams/presence";
 import {
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
@@ -145,6 +147,16 @@ export async function POST(req: Request): Promise<Response> {
 
     const timer = await findActiveTimerWithProject(session.user.id);
 
+    // Best-effort Teams status mirror — never blocks or fails the response.
+    after(() =>
+      syncTimerPresence(req.headers, session.user.id, {
+        action: "start",
+        projectCode: timer?.project?.code ?? null,
+        projectName: timer?.project?.name ?? null,
+        description: timer?.description ?? null,
+      }),
+    );
+
     return Response.json({ timer }, { status: 201 });
   } catch (error) {
     if (error instanceof LockedTimesheetPeriodError) {
@@ -194,6 +206,10 @@ export async function PATCH(req: Request): Promise<Response> {
         .set({ pausedAt: now, accumulatedMs: accumulated })
         .where(eq(activeTimer.id, existing.id));
 
+      after(() =>
+        syncTimerPresence(req.headers, session.user.id, { action: "pause" }),
+      );
+
       return Response.json({
         timer: await findActiveTimerWithProject(session.user.id),
       });
@@ -212,9 +228,18 @@ export async function PATCH(req: Request): Promise<Response> {
         .set({ pausedAt: null, startedAt: new Date() })
         .where(eq(activeTimer.id, existing.id));
 
-      return Response.json({
-        timer: await findActiveTimerWithProject(session.user.id),
-      });
+      const resumedTimer = await findActiveTimerWithProject(session.user.id);
+
+      after(() =>
+        syncTimerPresence(req.headers, session.user.id, {
+          action: "resume",
+          projectCode: resumedTimer?.project?.code ?? null,
+          projectName: resumedTimer?.project?.name ?? null,
+          description: resumedTimer?.description ?? null,
+        }),
+      );
+
+      return Response.json({ timer: resumedTimer });
     }
 
     if (action === "update") {
@@ -266,6 +291,10 @@ export async function DELETE(req: Request): Promise<Response> {
     }
 
     const entry = await stopTimerAndSave(session.user.id, existing, timezone);
+
+    after(() =>
+      syncTimerPresence(req.headers, session.user.id, { action: "stop" }),
+    );
 
     return Response.json({ entry });
   } catch (error) {
