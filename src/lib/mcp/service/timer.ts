@@ -304,6 +304,144 @@ export async function resumeTimer(
   return toView(updated);
 }
 
+export interface UpdateTimerInput {
+  description?: string | null;
+  billable?: boolean | null;
+  azureWorkItemId?: number | null;
+  azureWorkItemTitle?: string | null;
+}
+
+/**
+ * Edits the running timer in place.
+ *
+ * The editor extension uses this to attach the Work Item it read off the Git
+ * branch to a timer that was already running — retyping the description just to
+ * add a link would be the alternative. Fields left undefined are untouched;
+ * passing `azureWorkItemId: null` clears the link deliberately.
+ */
+export async function updateTimer(
+  principal: AgentPrincipal,
+  input: UpdateTimerInput,
+): Promise<ActiveTimerView> {
+  const existing = await findTimerWithProject(principal.userId);
+  if (!existing) {
+    throw new AgentError("NOT_FOUND", "Nenhum timer ativo no momento.", {
+      hint: "Inicie um timer antes de editá-lo.",
+    });
+  }
+
+  const updates: Partial<typeof activeTimer.$inferInsert> = {};
+
+  if (input.description !== undefined && input.description !== null) {
+    const description = input.description.trim();
+    if (!description) {
+      throw new AgentError(
+        "VALIDATION_ERROR",
+        "A descrição não pode ficar vazia.",
+      );
+    }
+    updates.description = description;
+  }
+
+  if (typeof input.billable === "boolean") {
+    updates.billable = input.billable;
+  }
+
+  if (input.azureWorkItemId !== undefined) {
+    updates.azureWorkItemId = input.azureWorkItemId;
+    updates.azureWorkItemTitle = input.azureWorkItemId
+      ? (input.azureWorkItemTitle ?? null)
+      : null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return toView(existing);
+  }
+
+  await db
+    .update(activeTimer)
+    .set(updates)
+    .where(eq(activeTimer.userId, principal.userId));
+
+  const updated = await findTimerWithProject(principal.userId);
+  if (!updated) {
+    throw new AgentError("INTERNAL_ERROR", "Falha ao atualizar o timer.");
+  }
+  return toView(updated);
+}
+
+export interface DiscardTimerTimeResult {
+  timer: ActiveTimerView;
+  /** Minutes actually removed — capped at the time the timer had accumulated. */
+  discardedMinutes: number;
+  discardedLabel: string;
+  /** True when the request asked for more time than the timer had run. */
+  clamped: boolean;
+}
+
+/**
+ * Removes a stretch of time from the running timer without stopping it.
+ *
+ * This exists for idle detection: an editor extension notices the developer
+ * walked away for 30 minutes and offers to drop that gap. Doing it as a single
+ * server-side operation matters — the alternative (stop, then patch the saved
+ * entry) leaves a window where the wrong duration is already persisted and
+ * already syncing to Azure DevOps.
+ *
+ * The discount is clamped to the elapsed time, so a clock skew or a duplicated
+ * prompt can never drive the timer negative.
+ */
+export async function discardTimerTime(
+  principal: AgentPrincipal,
+  minutes: number,
+): Promise<DiscardTimerTimeResult> {
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    throw new AgentError(
+      "VALIDATION_ERROR",
+      "Informe 'minutes' como um número positivo de minutos a descartar.",
+    );
+  }
+
+  const existing = await findTimerWithProject(principal.userId);
+  if (!existing) {
+    throw new AgentError("NOT_FOUND", "Nenhum timer ativo no momento.", {
+      hint: "Nada a descartar — o timer já foi parado.",
+    });
+  }
+
+  const now = new Date();
+  const elapsed = elapsedMs(existing, now.getTime());
+  const requestedMs = Math.round(minutes * 60_000);
+  const appliedMs = Math.min(requestedMs, elapsed);
+
+  await db
+    .update(activeTimer)
+    .set({
+      accumulatedMs: elapsed - appliedMs,
+      // While paused, `startedAt` is dormant and gets reset on resume. While
+      // running it is the clock's origin, so it has to move with the discount.
+      ...(existing.pausedAt ? {} : { startedAt: now }),
+    })
+    .where(eq(activeTimer.userId, principal.userId));
+
+  const updated = await findTimerWithProject(principal.userId);
+  if (!updated) {
+    throw new AgentError(
+      "INTERNAL_ERROR",
+      "Falha ao descartar o tempo ocioso.",
+    );
+  }
+
+  const discardedMinutes = Math.round(appliedMs / 60_000);
+
+  return {
+    timer: toView(updated),
+    discardedMinutes,
+    discardedLabel: humanizeMinutes(discardedMinutes),
+    clamped: appliedMs < requestedMs,
+  };
+}
+
 /** Converts a running timer into a saved time entry, inside one transaction. */
 async function stopAndPersist(
   userId: string,

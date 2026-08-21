@@ -2,18 +2,20 @@ import { requireAgentScope } from "@/lib/mcp/auth";
 import { AgentError } from "@/lib/mcp/errors";
 import { agentOptions, readJsonBody, withAgentAuth } from "@/lib/mcp/http";
 import {
+  discardTimerTime,
   getActiveTimer,
   pauseTimer,
   resumeTimer,
   startTimer,
   stopTimer,
+  updateTimer,
 } from "@/lib/mcp/service";
 
 /**
  * Timer control.
  *
  *   GET  /api/v1/me/timer          → the running timer, or null
- *   POST /api/v1/me/timer          → { action: "start" | "stop" | "pause" | "resume" }
+ *   POST /api/v1/me/timer          → { action: "start" | "stop" | "pause" | "resume" | "discard" | "update" }
  */
 export const OPTIONS = agentOptions;
 
@@ -39,6 +41,38 @@ export const POST = withAgentAuth(
 
       case "resume":
         return { timer: await resumeTimer(principal) };
+
+      // Drops a stretch of time from the running timer — how the editor
+      // extension applies "descartar os 30 min de inatividade".
+      case "discard":
+        return discardTimerTime(
+          principal,
+          typeof body.minutes === "number" ? body.minutes : Number.NaN,
+        );
+
+      // Edits the running timer without restarting it — used to attach a Work
+      // Item detected from the Git branch.
+      case "update":
+        return {
+          timer: await updateTimer(principal, {
+            description:
+              typeof body.description === "string"
+                ? body.description
+                : undefined,
+            billable:
+              typeof body.billable === "boolean" ? body.billable : undefined,
+            azureWorkItemId:
+              typeof body.azureWorkItemId === "number"
+                ? body.azureWorkItemId
+                : body.azureWorkItemId === null
+                  ? null
+                  : undefined,
+            azureWorkItemTitle:
+              typeof body.azureWorkItemTitle === "string"
+                ? body.azureWorkItemTitle
+                : undefined,
+          }),
+        };
 
       case "start": {
         const project =
@@ -74,7 +108,7 @@ export const POST = withAgentAuth(
       default:
         throw new AgentError(
           "VALIDATION_ERROR",
-          `Ação "${action}" inválida. Use start, stop, pause ou resume.`,
+          `Ação "${action}" inválida. Use start, stop, pause, resume, discard ou update.`,
         );
     }
   },

@@ -1,0 +1,492 @@
+{
+  "name": "opt-time-vscode",
+  "displayName": "OptSolv Time Tracker",
+  "description": "Cronômetro no rodapé, detecção de branch/Work Item e lançamento de horas sem sair do editor.",
+  "version": "1.0.0",
+  "publisher": "optsolv",
+  "license": "MIT",
+  "private": false,
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0a0a0a",
+    "theme": "dark"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other",
+    "SCM Providers",
+    "Visualization"
+  ],
+  "keywords": [
+    "time tracking",
+    "timesheet",
+    "timer",
+    "azure devops",
+    "optsolv",
+    "produtividade"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "A extensão apenas lê o nome da branch e a última mensagem de commit; nunca executa código do workspace."
+    },
+    "virtualWorkspaces": {
+      "supported": "limited",
+      "description": "A detecção de branch depende de um repositório Git local."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "optTime.startTimer",
+        "title": "Iniciar Timer",
+        "category": "Opt-Time",
+        "icon": "$(play)"
+      },
+      {
+        "command": "optTime.stopTimer",
+        "title": "Parar Timer",
+        "category": "Opt-Time",
+        "icon": "$(primitive-square)"
+      },
+      {
+        "command": "optTime.toggleTimer",
+        "title": "Pausar / Retomar Timer",
+        "category": "Opt-Time",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "optTime.switchProject",
+        "title": "Trocar de Projeto",
+        "category": "Opt-Time",
+        "icon": "$(arrow-swap)"
+      },
+      {
+        "command": "optTime.logQuick",
+        "title": "Lançar Horas Rápidas",
+        "category": "Opt-Time",
+        "icon": "$(add)"
+      },
+      {
+        "command": "optTime.dayStatus",
+        "title": "Ver Status do Dia",
+        "category": "Opt-Time",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "optTime.weekStatus",
+        "title": "Ver Status da Semana",
+        "category": "Opt-Time",
+        "icon": "$(calendar)"
+      },
+      {
+        "command": "optTime.submitTimesheet",
+        "title": "Submeter Semana para Aprovação",
+        "category": "Opt-Time",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "optTime.linkBranchWorkItem",
+        "title": "Vincular Work Item da Branch",
+        "category": "Opt-Time",
+        "icon": "$(link)"
+      },
+      {
+        "command": "optTime.menu",
+        "title": "Abrir Menu do Timer",
+        "category": "Opt-Time",
+        "icon": "$(watch)"
+      },
+      {
+        "command": "optTime.signIn",
+        "title": "Conectar Conta",
+        "category": "Opt-Time",
+        "icon": "$(sign-in)"
+      },
+      {
+        "command": "optTime.signOut",
+        "title": "Desconectar Conta",
+        "category": "Opt-Time",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "optTime.openDashboard",
+        "title": "Abrir Dashboard no Navegador",
+        "category": "Opt-Time",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "optTime.refresh",
+        "title": "Atualizar",
+        "category": "Opt-Time",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "optTime.diagnose",
+        "title": "Diagnosticar Conexão",
+        "category": "Opt-Time",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "optTime.showLogs",
+        "title": "Ver Logs",
+        "category": "Opt-Time",
+        "icon": "$(output)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "optTime.toggleTimer",
+        "key": "ctrl+alt+shift+t",
+        "mac": "cmd+alt+shift+t"
+      },
+      {
+        "command": "optTime.logQuick",
+        "key": "ctrl+alt+shift+l",
+        "mac": "cmd+alt+shift+l"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "optTime",
+          "title": "Opt-Time",
+          "icon": "media/activity-bar.svg"
+        }
+      ]
+    },
+    "views": {
+      "optTime": [
+        {
+          "id": "optTime.today",
+          "name": "Hoje",
+          "icon": "media/activity-bar.svg"
+        },
+        {
+          "id": "optTime.projects",
+          "name": "Projetos",
+          "icon": "media/activity-bar.svg"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "optTime.today",
+        "contents": "Conecte sua conta OptSolv para acompanhar suas horas aqui.\n\n[Conectar conta](command:optTime.signIn)\n\nO token pessoal é gerado no dashboard, em Configurações → Integrações.",
+        "when": "!optTime.signedIn"
+      },
+      {
+        "view": "optTime.projects",
+        "contents": "[Conectar conta](command:optTime.signIn)",
+        "when": "!optTime.signedIn"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "optTime.startTimer",
+          "when": "view == optTime.today && optTime.signedIn && !optTime.timerRunning",
+          "group": "navigation@1"
+        },
+        {
+          "command": "optTime.toggleTimer",
+          "when": "view == optTime.today && optTime.timerRunning",
+          "group": "navigation@1"
+        },
+        {
+          "command": "optTime.stopTimer",
+          "when": "view == optTime.today && optTime.timerRunning",
+          "group": "navigation@2"
+        },
+        {
+          "command": "optTime.logQuick",
+          "when": "view == optTime.today && optTime.signedIn",
+          "group": "navigation@3"
+        },
+        {
+          "command": "optTime.refresh",
+          "when": "view == optTime.today || view == optTime.projects",
+          "group": "navigation@9"
+        },
+        {
+          "command": "optTime.openDashboard",
+          "when": "view == optTime.today",
+          "group": "1_open@1"
+        },
+        {
+          "command": "optTime.diagnose",
+          "when": "view == optTime.today",
+          "group": "1_open@2"
+        },
+        {
+          "command": "optTime.signOut",
+          "when": "view == optTime.today && optTime.signedIn",
+          "group": "9_account@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "optTime.startTimer",
+          "when": "view == optTime.projects && viewItem == optTime.project",
+          "group": "inline@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "optTime.menu",
+          "when": "false"
+        },
+        {
+          "command": "optTime.refresh",
+          "when": "false"
+        },
+        {
+          "command": "optTime.stopTimer",
+          "when": "optTime.timerRunning"
+        },
+        {
+          "command": "optTime.toggleTimer",
+          "when": "optTime.timerRunning"
+        },
+        {
+          "command": "optTime.switchProject",
+          "when": "optTime.signedIn"
+        },
+        {
+          "command": "optTime.signIn",
+          "when": "!optTime.signedIn"
+        },
+        {
+          "command": "optTime.signOut",
+          "when": "optTime.signedIn"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "OptSolv Time Tracker",
+      "properties": {
+        "optTime.baseUrl": {
+          "type": "string",
+          "default": "https://opt-time.optsolv.com.br",
+          "markdownDescription": "URL base da instância do OptSolv Time Tracker. Altere apenas para apontar a um ambiente de homologação.",
+          "order": 1
+        },
+        "optTime.statusBar.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Exibe o cronômetro na barra de status.",
+          "order": 10
+        },
+        "optTime.statusBar.alignment": {
+          "type": "string",
+          "enum": [
+            "left",
+            "right"
+          ],
+          "default": "left",
+          "description": "Lado da barra de status em que o cronômetro aparece.",
+          "order": 11
+        },
+        "optTime.statusBar.priority": {
+          "type": "number",
+          "default": 100,
+          "description": "Prioridade do item na barra de status. Valores maiores ficam mais à esquerda.",
+          "order": 12
+        },
+        "optTime.statusBar.useProjectColor": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Pinta o cronômetro com a cor do projeto ativo. Desative para seguir a cor padrão do tema.",
+          "order": 13
+        },
+        "optTime.statusBar.showDayProgress": {
+          "type": "boolean",
+          "default": true,
+          "description": "Exibe um segundo item com o total de horas do dia e a meta.",
+          "order": 14
+        },
+        "optTime.statusBar.clickAction": {
+          "type": "string",
+          "enum": [
+            "menu",
+            "toggle"
+          ],
+          "enumDescriptions": [
+            "Abre o menu de ações do timer",
+            "Pausa ou retoma o timer diretamente"
+          ],
+          "default": "menu",
+          "description": "O que acontece ao clicar no cronômetro.",
+          "order": 15
+        },
+        "optTime.refreshIntervalSeconds": {
+          "type": "number",
+          "default": 45,
+          "minimum": 10,
+          "maximum": 600,
+          "markdownDescription": "Intervalo de sincronização com o servidor, em segundos. O cronômetro na tela continua contando localmente a cada segundo.",
+          "order": 20
+        },
+        "optTime.idle.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Detecta inatividade prolongada enquanto o timer está rodando.",
+          "order": 30
+        },
+        "optTime.idle.thresholdMinutes": {
+          "type": "number",
+          "default": 15,
+          "minimum": 1,
+          "maximum": 240,
+          "description": "Minutos sem atividade no editor antes de perguntar o que fazer com o tempo ocioso.",
+          "order": 31
+        },
+        "optTime.idle.action": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "discard",
+            "pause"
+          ],
+          "enumDescriptions": [
+            "Pergunta o que fazer com o tempo ocioso",
+            "Descarta o tempo ocioso automaticamente e continua contando",
+            "Descarta o tempo ocioso e pausa o timer automaticamente"
+          ],
+          "default": "prompt",
+          "description": "O que fazer quando a inatividade é detectada.",
+          "order": 32
+        },
+        "optTime.branch.detectionEnabled": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Lê a branch atual do Git para inferir o Work Item e o projeto — por exemplo `feat/OPT-452-auth-flow` vira Work Item #452.",
+          "order": 40
+        },
+        "optTime.branch.promptOnSwitch": {
+          "type": "string",
+          "enum": [
+            "whenIdle",
+            "always",
+            "never"
+          ],
+          "enumDescriptions": [
+            "Sugere iniciar o timer apenas quando nenhum timer está rodando",
+            "Sugere sempre, inclusive para trocar o timer em andamento",
+            "Nunca sugere ao trocar de branch"
+          ],
+          "default": "whenIdle",
+          "description": "Quando sugerir iniciar o timer ao trocar de branch.",
+          "order": 41
+        },
+        "optTime.branch.useLastCommitAsDescription": {
+          "type": "boolean",
+          "default": true,
+          "description": "Usa a última mensagem de commit da branch como descrição sugerida.",
+          "order": 42
+        },
+        "optTime.branch.extraPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Expressões regulares adicionais para extrair o Work Item do nome da branch. Use um grupo de captura nomeado `id` — por exemplo `^ticket/(?<id>\\\\d+)`.",
+          "order": 43
+        },
+        "optTime.notifications.timesheetReminder": {
+          "type": "boolean",
+          "default": true,
+          "description": "Avisa uma vez por dia quando a semana anterior ainda não foi submetida.",
+          "order": 50
+        }
+      }
+    },
+    "walkthroughs": [
+      {
+        "id": "optTime.setup",
+        "title": "Registre horas sem sair do editor",
+        "description": "Conecte sua conta, entenda o cronômetro e deixe a branch fazer o trabalho por você.",
+        "steps": [
+          {
+            "id": "optTime.setup.signIn",
+            "title": "Conecte sua conta OptSolv",
+            "description": "Gere um token pessoal no dashboard e cole aqui. Ele fica no cofre de credenciais do editor, nunca em arquivos de configuração.\n[Conectar conta](command:optTime.signIn)",
+            "media": {
+              "markdown": "media/walkthrough-sign-in.md"
+            },
+            "completionEvents": [
+              "onContext:optTime.signedIn"
+            ]
+          },
+          {
+            "id": "optTime.setup.timer",
+            "title": "Inicie seu primeiro timer",
+            "description": "O cronômetro aparece no rodapé com a cor do projeto ativo. Clique nele a qualquer momento para pausar, parar ou trocar de projeto.\n[Iniciar timer](command:optTime.startTimer)",
+            "media": {
+              "markdown": "media/walkthrough-timer.md"
+            },
+            "completionEvents": [
+              "onCommand:optTime.startTimer"
+            ]
+          },
+          {
+            "id": "optTime.setup.branch",
+            "title": "Deixe a branch preencher tudo",
+            "description": "Em uma branch como `feat/OPT-452-auth-flow`, a extensão identifica o Work Item #452 e sugere a descrição a partir do último commit.\n[Vincular Work Item da branch](command:optTime.linkBranchWorkItem)",
+            "media": {
+              "markdown": "media/walkthrough-branch.md"
+            },
+            "completionEvents": [
+              "onCommand:optTime.linkBranchWorkItem"
+            ]
+          },
+          {
+            "id": "optTime.setup.palette",
+            "title": "Tudo pela paleta de comandos",
+            "description": "Pressione `Ctrl+Shift+P` e digite **Opt-Time** para ver todos os comandos disponíveis.\n[Ver status do dia](command:optTime.dayStatus)",
+            "media": {
+              "markdown": "media/walkthrough-palette.md"
+            },
+            "completionEvents": [
+              "onCommand:optTime.dayStatus"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs --production",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "node esbuild.mjs --test && node dist/test.js",
+    "vscode:prepublish": "npm run build",
+    "package": "npm run typecheck && vsce package --out dist/opt-time-vscode.vsix",
+    "publish:vsce": "vsce publish",
+    "publish:ovsx": "ovsx publish dist/opt-time-vscode.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.9",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.2.0",
+    "esbuild": "^0.24.0",
+    "ovsx": "^0.10.1",
+    "typescript": "^5.9.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Marcus-Boni/OptTime.git",
+    "directory": "packages/opt-time-vscode"
+  },
+  "homepage": "https://opt-time.optsolv.com.br/dashboard/settings/integrations/mcp",
+  "bugs": {
+    "url": "https://github.com/Marcus-Boni/OptTime/issues"
+  }
+}
