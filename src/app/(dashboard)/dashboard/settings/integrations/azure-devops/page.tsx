@@ -24,6 +24,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import AzureProjectSyncButton from "@/components/integrations/AzureProjectSyncButton";
+import { IntegrationBackLink } from "@/components/integrations/IntegrationBackLink";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -277,8 +278,12 @@ export default function AzureDevOpsPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="max-w-2xl space-y-6"
+      className="mx-auto max-w-2xl space-y-6 pb-12"
     >
+      <motion.div variants={itemVariants}>
+        <IntegrationBackLink />
+      </motion.div>
+
       {/* Header */}
       <motion.div variants={itemVariants}>
         <h1 className="font-display text-2xl font-bold text-foreground">
@@ -675,7 +680,11 @@ export default function AzureDevOpsPage() {
 
       {/* Admin: Project Name Sync */}
       {isAdmin && (
-        <motion.div variants={itemVariants}>
+        // Mounts only after the session resolves, which can land after the
+        // container already finished staggering its children — inheriting that
+        // orchestration would leave this card stuck on the hidden variant,
+        // invisible but still holding its space. It animates on its own.
+        <motion.div variants={itemVariants} initial="hidden" animate="visible">
           <Card className="border-border/50 bg-card/80 backdrop-blur">
             <CardHeader>
               <div className="flex items-center gap-2">

@@ -376,7 +376,7 @@ export function QuickTimerDialog() {
           </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter>
           <Button type="button" variant="outline" onClick={closeQuickTimer}>
             Cancelar
           </Button>

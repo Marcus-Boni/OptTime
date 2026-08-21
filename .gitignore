@@ -45,3 +45,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 /.omx
+# MCP package build output and local deps
+/packages/*/node_modules
+/packages/*/dist

@@ -13,7 +13,8 @@
       "!.next",
       "!dist",
       "!build",
-      "!azure-devops-extension"
+      "!azure-devops-extension",
+      "!packages"
     ]
   },
   "formatter": {

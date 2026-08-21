@@ -144,6 +144,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   approvalsGiven: many(timesheet, { relationName: "approver" }),
   timeSuggestionFeedback: many(timeSuggestionFeedback),
   suggestions: many(suggestion),
+  apiTokens: many(apiToken),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -1023,3 +1024,54 @@ export const gamificationEventRelations = relations(
     }),
   }),
 );
+
+// ─── Personal Access Tokens (MCP / API) ───────────────────────────────
+/** Where a token was minted from — drives the icon and copy in the UI. */
+export type ApiTokenClient = "mcp" | "cli" | "extension" | "ci" | "other";
+
+/**
+ * Long-lived, user-scoped bearer tokens used by the MCP server, the CLI and
+ * any other agent that acts on the user's behalf.
+ *
+ * Only the SHA-256 hash is persisted — the plaintext is shown exactly once,
+ * right after creation. `prefix` and `last4` exist purely so the UI can render
+ * a recognisable stub (`opt_tok_a1b2…9f3c`) without ever storing the secret.
+ */
+export const apiToken = pgTable(
+  "api_token",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Human label chosen by the user, e.g. "Cursor — notebook" */
+    name: text("name").notNull(),
+    /** SHA-256 hex digest of the plaintext token */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** Non-secret leading segment, e.g. "opt_tok_a1b2c3d4" */
+    prefix: text("prefix").notNull(),
+    /** Last 4 characters, for visual confirmation only */
+    last4: text("last4").notNull(),
+    /** JSON array of ApiTokenScope */
+    scopes: text("scopes").notNull().default('["time:read"]'),
+    /** mcp | cli | extension | ci | other */
+    client: text("client").notNull().default("mcp"),
+    lastUsedAt: timestamp("last_used_at"),
+    /** Short description of the most recent caller (user agent), for auditing */
+    lastUsedFrom: text("last_used_from"),
+    expiresAt: timestamp("expires_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("api_token_user_idx").on(table.userId),
+    index("api_token_hash_idx").on(table.tokenHash),
+  ],
+);
+
+export const apiTokenRelations = relations(apiToken, ({ one }) => ({
+  user: one(user, {
+    fields: [apiToken.userId],
+    references: [user.id],
+  }),
+}));

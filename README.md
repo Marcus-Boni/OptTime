@@ -36,6 +36,7 @@ Com uma experiência de usuário (UX) focada em desenvolvedores, o tracker garan
 - ✅ **Fluxo de Aprovações**: Sistema de DRAFT, SUBMITTED, APPROVED e REJECTED, operado pelos Managers.
 - 📥 **Exportação Premium**: Geração de relatórios robustos em **Excel (.xlsx)** e relatórios estéticamente formatados em **PDF**.
 - 🔐 **Autenticação Segura**: Suporte completo a OAuth Azure AD (Microsoft Entra ID) via Better Auth, e login tradicional; autorização granular por Roles (Member, Manager, Admin).
+- 🤖 **Servidor MCP para Agentes de IA**: Registre horas conversando com o Cursor, Claude Code, Claude Desktop, VS Code ou Windsurf — 16 ferramentas, 4 recursos e 3 prompts sobre [Model Context Protocol](https://modelcontextprotocol.io), autenticados por token pessoal. Veja [`docs/mcp-server.md`](docs/mcp-server.md).
 
 ---
 
@@ -74,9 +75,12 @@ A separação é clara e modularizada, agrupando código por **Features** visuai
 │ ├── db/ # Conexão Azure PostgreSQL, Schema Drizzle e Queries
 │ ├── auth/ # Configuração do banco para o Better Auth
 │ ├── azure-devops/ # Instância e Controllers do Client REST AzDO
+│ ├── mcp/ # Servidor MCP: catálogo de tools, recursos, prompts e JSON-RPC
 │ └── validations/ # Regras de validação (Zod)
 ├── stores/ # Estado global via Zustand (timer, modal state)
-└── hooks/ # Custom React Hooks reutilizáveis
+├── hooks/ # Custom React Hooks reutilizáveis
+└── packages/
+  └── opt-time-mcp/ # Pacote npm @optsolv/mcp-opt-time (stdio, fora do build do Next)
 ```
 
 ---
