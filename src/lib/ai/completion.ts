@@ -14,6 +14,15 @@ export interface CompleteTextOptions {
   prompt: string;
   /** Hard ceiling for the whole attempt chain. */
   timeoutMs?: number;
+  /** Caps the response length, cutting off a rambling model early. */
+  maxTokens?: number;
+  /** Lower values keep short factual prose on the rails. */
+  temperature?: number;
+  /**
+   * Rejects a candidate answer. Returning false moves on to the next provider,
+   * so one derailed model does not force the caller's fallback.
+   */
+  validate?: (text: string) => boolean;
 }
 
 export interface CompletionResult {
@@ -38,7 +47,14 @@ function cleanCompletionText(text: string): string {
 export async function completeText(
   options: CompleteTextOptions,
 ): Promise<CompletionResult | null> {
-  const { system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS } = options;
+  const {
+    system,
+    prompt,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    maxTokens,
+    temperature,
+    validate,
+  } = options;
   const providers = resolveProviderChain();
 
   if (providers.length === 0) return null;
@@ -57,15 +73,24 @@ export async function completeText(
           system,
           turns: [{ role: "user", content: prompt }],
           tools: [],
+          temperature,
+          maxTokens,
           signal: controller.signal,
         })) {
           if (chunk.type === "text") text += chunk.text;
         }
 
         const trimmed = cleanCompletionText(text);
-        if (trimmed) {
-          return { text: trimmed, provider: provider.name };
+        if (!trimmed) continue;
+
+        if (validate && !validate(trimmed)) {
+          console.warn(
+            `[completeText] ${provider.name} returned unusable output; trying next provider`,
+          );
+          continue;
         }
+
+        return { text: trimmed, provider: provider.name };
       } catch (error: unknown) {
         console.error(
           `[completeText] provider ${provider.name} failed:`,

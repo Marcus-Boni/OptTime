@@ -109,7 +109,7 @@ export function createOpenAiCompatibleProvider(
         model: options.model,
         messages: toMessages(request),
         temperature: request.temperature ?? 0.4,
-        max_tokens: 2048,
+        max_tokens: request.maxTokens ?? 2048,
         stream: true,
       };
 
