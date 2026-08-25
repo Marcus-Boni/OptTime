@@ -6,6 +6,14 @@ export default defineConfig({
   root: "src",
   base: "./",
   plugins: [react()],
+  css: {
+    // Config inline vazia. Sem isto o Vite sobe diretórios procurando um PostCSS
+    // config e encontra o do app Next.js na raiz do repositório, que exige
+    // `@tailwindcss/postcss` — fazendo o build da extensão depender das
+    // dependências do app estarem instaladas, o que quebra em clone limpo, em
+    // worktree e em CI. A extensão tem só um <style> de CSS puro no HTML.
+    postcss: {},
+  },
   build: {
     outDir: "../dist",
     emptyOutDir: true,

@@ -8,6 +8,7 @@ import {
   resolveCanonicalApiUrl,
   saveCredentials,
 } from "../../shared/auth";
+import { describeApiError, logApiError } from "../../shared/errors";
 
 interface Props {
   onConfigured: () => void;
@@ -47,6 +48,8 @@ export function SetupScreen({ onConfigured }: Props) {
         clearCredentials();
       }
 
+      logApiError("SetupScreen.handleSave", error);
+
       if (error instanceof Error && error.message === "INVALID_API_URL") {
         setError(
           "Informe uma URL válida, como https://opt-time.optsolv.com.br.",
@@ -54,9 +57,11 @@ export function SetupScreen({ onConfigured }: Props) {
         return;
       }
 
-      setError(
-        "Token inválido ou URL incorreta. Verifique se a URL aponta para a raiz da aplicação e tente novamente.",
-      );
+      // Só um 401 prova que o token está errado. Bloqueio de CORS, servidor
+      // fora do ar ou URL apontando para o lugar errado nunca chegam a validar
+      // credencial nenhuma — dizer "token inválido" aí manda quem está
+      // investigando para o lado oposto do problema.
+      setError(describeApiError(error, "conectar"));
     } finally {
       setLoading(false);
     }

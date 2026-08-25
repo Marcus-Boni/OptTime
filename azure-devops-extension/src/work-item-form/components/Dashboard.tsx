@@ -20,6 +20,7 @@ import type {
 import { QuickLogForm } from "./QuickLogForm";
 import { TimeEntriesList } from "./TimeEntriesList";
 import { TimerControl } from "./TimerControl";
+import { describeApiError, logApiError } from "../../shared/errors";
 
 interface DashboardProps {
   workItemId: number | null;
@@ -80,8 +81,8 @@ export function Dashboard({
       setData(workItemData);
       setError(null);
     } catch (err) {
-      console.error("[OptSolv] refresh error:", err);
-      setError("Não foi possível carregar os dados.");
+      logApiError("Dashboard.refresh", err);
+      setError(describeApiError(err, "carregar os dados"));
     } finally {
       setLoading(false);
     }

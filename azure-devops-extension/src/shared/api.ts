@@ -1,4 +1,5 @@
 import { getStoredApiUrl, getStoredToken } from "./auth";
+import { ApiError, diagnoseNetworkFailure, kindForStatus } from "./errors";
 import { resolveSchedulingHours, toNumericHours } from "./scheduling";
 import type {
   ActiveTimer,
@@ -21,23 +22,72 @@ function authHeaders(): HeadersInit {
   };
 }
 
+/**
+ * Chamada autenticada à API, com a causa da falha preservada.
+ *
+ * Toda saída de erro daqui é um `ApiError` classificado. Quando o `fetch` é
+ * rejeitado — offline, host fora do ar, CORS — o motivo é apurado aqui, antes
+ * de propagar: no `catch` de quem chamou já não há como distinguir.
+ */
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? "GET").toUpperCase();
   const isGet = method === "GET";
+  const base = getStoredApiUrl() ?? "";
+  const url = apiUrl(path);
 
-  const res = await fetch(apiUrl(path), {
-    ...init,
-    method,
-    cache: isGet ? "no-store" : init?.cache,
-    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      ...init,
+      method,
+      cache: isGet ? "no-store" : init?.cache,
+      headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+    });
+  } catch (cause: unknown) {
+    const kind = await diagnoseNetworkFailure(base);
+    throw new ApiError(kind, `Falha ao chamar ${base || url}.`, {
+      target: base || url,
+      detail: cause instanceof Error ? cause.message : String(cause),
+    });
+  }
 
   if (!res.ok) {
-    const text = await res.text().catch(() => "Unknown error");
-    throw new Error(`API ${res.status}: ${text}`);
+    const text = await res.text().catch(() => "");
+    throw new ApiError(kindForStatus(res.status), messageFor(res, text, base), {
+      status: res.status,
+      target: base || url,
+      detail: text || null,
+    });
   }
 
   return res.json() as Promise<T>;
+}
+
+/**
+ * A mensagem do servidor tem prioridade: ela vem em português e sabe coisas que
+ * a extensão não sabe, como o motivo de um período de timesheet estar bloqueado.
+ */
+function messageFor(res: Response, body: string, base: string): string {
+  return (
+    extractServerMessage(body) ?? `${base || "O servidor"} respondeu ${res.status}.`
+  );
+}
+
+function extractServerMessage(body: string): string | null {
+  if (!body) return null;
+
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === "object") {
+      const record = parsed as Record<string, unknown>;
+      if (typeof record.error === "string") return record.error;
+      if (typeof record.message === "string") return record.message;
+    }
+  } catch {
+    // Corpo não-JSON (HTML de proxy, texto puro) não vira mensagem de tela.
+  }
+
+  return null;
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

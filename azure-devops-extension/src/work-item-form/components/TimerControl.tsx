@@ -7,6 +7,7 @@ import {
 } from "../../shared/project-filtering";
 import { matchProjectFromDevOpsContext } from "../../shared/project-matching";
 import type { ActiveTimer, Project } from "../../shared/types";
+import { describeApiError, logApiError } from "../../shared/errors";
 
 interface TimerControlProps {
   timer: ActiveTimer | null;
@@ -101,8 +102,8 @@ export function TimerControl({
         azureWorkItemTitle: workItemTitle || undefined,
       });
     } catch (err) {
-      setError("Erro ao iniciar o timer.");
-      console.error("[TimerControl] handleStart:", err);
+      logApiError("TimerControl.handleStart", err);
+      setError(describeApiError(err, "iniciar o timer"));
     } finally {
       setLoading(false);
     }
@@ -114,8 +115,8 @@ export function TimerControl({
     try {
       await onStop();
     } catch (err) {
-      setError("Erro ao parar o timer.");
-      console.error("[TimerControl] handleStop:", err);
+      logApiError("TimerControl.handleStop", err);
+      setError(describeApiError(err, "parar o timer"));
     } finally {
       setLoading(false);
     }

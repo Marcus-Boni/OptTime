@@ -11,6 +11,7 @@ import {
 } from "../../shared/project-filtering";
 import { matchProjectFromDevOpsContext } from "../../shared/project-matching";
 import type { Project } from "../../shared/types";
+import { describeApiError, logApiError } from "../../shared/errors";
 
 export interface QuickLogFormProps {
   projects: Project[];
@@ -184,8 +185,8 @@ export function QuickLogForm({
         onCreated();
       }, 1800);
     } catch (err) {
-      console.error("[QuickLogForm] handleSubmit:", err);
-      setError("Erro ao registrar. Verifique os dados e tente novamente.");
+      logApiError("QuickLogForm.handleSubmit", err);
+      setError(describeApiError(err, "registrar as horas"));
     } finally {
       setLoading(false);
     }
