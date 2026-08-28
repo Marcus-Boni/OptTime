@@ -143,21 +143,75 @@ anterior, exatamente como na interface.
 
 ## 7. Recurso 4 — Status sincronizado (requer consentimento do tenant)
 
-Este é o único que exige mudança de ambiente, porque pede um escopo novo no
-login Microsoft (`Presence.ReadWrite`).
+Este é o único que exige mudança de ambiente, porque pede um **escopo novo** no
+login Microsoft (`Presence.ReadWrite`). São três camadas, nesta ordem.
 
-1. **Admin do Entra:** conceda `Presence.ReadWrite` (delegado) ao App
-   Registration do OptSolv Time
-2. **Ambiente:** defina `TEAMS_PRESENCE_SCOPE=true` e faça deploy
-3. **Cada pessoa:** saia e entre novamente (para aceitar o novo escopo) e ligue
-   **"Sincronizar status do Teams com o timer"**
+### O que acontece na prática
 
-Depois disso, ao iniciar o timer seu status vira `⏱️ Focado: OPT-101 (Refactor
-Auth)`; ao pausar ou parar, volta ao normal. O status expira sozinho em 10 horas,
-para que um timer esquecido não fique preso.
+| Ação no OptSolv | Status no Teams |
+|-----------------|-----------------|
+| Iniciar timer | `⏱️ Focado: OPT-101 (Refactor Auth) — via OptSolv Time` |
+| Retomar timer pausado | volta a exibir o foco |
+| Pausar timer | limpa a mensagem |
+| Parar timer | limpa a mensagem |
 
-> Enquanto a variável estiver desligada, a opção aparece na tela com um aviso
-> explicando o que falta — nada quebra.
+A mensagem expira sozinha em **10 horas**, para que um timer esquecido na
+sexta-feira não deixe o status preso no fim de semana.
+
+> A chamada ao Graph é *fire-and-forget*: se o Teams estiver fora do ar ou o
+> token expirado, o timer funciona normalmente — só o status não muda.
+
+### Passo 1 — Entra ID (admin do tenant, uma vez)
+
+1. [portal.azure.com](https://portal.azure.com) → **Microsoft Entra ID** →
+   **App registrations** → abra o registro do OptSolv Time
+   (o mesmo `MICROSOFT_CLIENT_ID` usado no login)
+2. **API permissions** → **Add a permission** → **Microsoft Graph** →
+   **Delegated permissions**
+3. Busque por `Presence` → marque **`Presence.ReadWrite`** → **Add permissions**
+4. Clique em **Grant admin consent for \<tenant\>** e confirme
+
+O passo 4 é o que evita que cada pessoa veja uma tela de consentimento no
+próximo login. Exige perfil *Global Administrator* ou
+*Privileged Role Administrator*.
+
+### Passo 2 — Variável de ambiente
+
+**Produção (Azure Web App):** Configuration → Application settings →
+**New application setting** → nome `TEAMS_PRESENCE_SCOPE`, valor `true` → Save.
+O app reinicia sozinho.
+
+**Local (opcional):** adicione `TEAMS_PRESENCE_SCOPE=true` ao `.env.local` e
+reinicie o `pnpm dev`.
+
+Enquanto essa variável estiver desligada, o app **nem pede** o escopo no login —
+é o que impede um re-consentimento acidental de todo o tenant.
+
+### Passo 3 — Cada pessoa (uma vez)
+
+1. **Saia e entre novamente** no OptSolv Time usando o login Microsoft
+2. Vá em Configurações → Integrações → Microsoft Teams
+3. Ligue **"Sincronizar status do Teams com o timer"**
+
+> **Por que o logout é obrigatório?** O token guardado hoje foi emitido para os
+> escopos antigos (`User.Read`, `Calendars.Read`…). Um *refresh* renova o token
+> mas **não adiciona escopos novos** — só um novo login completo faz isso. Sem
+> ele, o Graph responde 403 e o status nunca muda.
+
+### Verificando
+
+Inicie um timer e olhe seu cartão de contato no Teams (ou peça a um colega).
+A mensagem de status deve aparecer em poucos segundos.
+
+Se não aparecer, confira nesta ordem:
+
+| Verificação | Onde |
+|-------------|------|
+| A variável está ativa? | O aviso amarelo sumiu da tela de configuração |
+| O escopo foi consentido? | Entra → App registrations → API permissions (deve estar "Granted") |
+| Você relogou depois disso? | Logout + login novamente |
+| O toggle está ligado? | Configurações → Integrações → Microsoft Teams |
+| Logs | Procure por `[teams-presence]` nos logs do servidor |
 
 ---
 
