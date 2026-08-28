@@ -9,11 +9,14 @@ import {
   startOfMonth,
 } from "date-fns";
 import { motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { OnboardingHint } from "@/components/onboarding/OnboardingHint";
 import { DayView } from "@/components/time/DayView";
 import { MonthView } from "@/components/time/MonthView";
+import { ReconstructDayDialog } from "@/components/time/ReconstructDayDialog";
 import {
   TimeEntryForm,
   type TimeEntryFormInitialValues,
@@ -25,6 +28,7 @@ import {
   TimeViewTabs,
 } from "@/components/time/TimeViewTabs";
 import { WeekView } from "@/components/time/WeekView";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   getEventDurationMinutes,
@@ -203,6 +207,12 @@ export function TimeClient() {
     requestedView ?? preferences.defaultView,
   );
   const deepLinkedViewRef = useRef(requestedView !== null);
+
+  // /dashboard/time?reconstruct=1 (evening digest deep link) opens the AI
+  // day-reconstruction dialog straight away.
+  const [reconstructOpen, setReconstructOpen] = useState(
+    () => searchParams.get("reconstruct") === "1",
+  );
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [createTarget, setCreateTarget] = useState<
     TimeEntryFormInitialValues | undefined
@@ -905,9 +915,27 @@ export function TimeClient() {
           <h1 className="font-display text-3xl font-semibold text-foreground">
             Registro de Tempo
           </h1>
+          <Button
+            variant="outline"
+            onClick={() => setReconstructOpen(true)}
+            disabled={selectedDateLocked}
+            className="w-fit border-brand-500/40 text-brand-500 hover:bg-brand-500/10 hover:text-brand-500"
+            data-tour="time-fill-day"
+          >
+            <Sparkles className="size-4" aria-hidden="true" />
+            Preencher meu dia
+          </Button>
         </div>
 
-        <div className="mt-3">
+        <OnboardingHint
+          hintId="time-first-entry"
+          title="Primeira vez por aqui?"
+          description="Use Preencher meu dia para a IA montar o dia a partir das suas reuniões e work items, ou lance manualmente em Novo Registro."
+          when={(overview) => !overview.signals.hasTimeEntry}
+          className="mt-4"
+        />
+
+        <div className="mt-3" data-tour="time-view-tabs">
           <TimeViewTabs
             activeView={activeView}
             onViewChange={handleViewChange}
@@ -916,7 +944,11 @@ export function TimeClient() {
         </div>
       </motion.section>
 
-      <motion.div variants={itemVariants} className="min-w-0">
+      <motion.div
+        variants={itemVariants}
+        className="min-w-0"
+        data-tour="time-workspace"
+      >
         {loading ? (
           <div className="space-y-4">
             {viewSkeletonKeys.map((key) => (
@@ -1012,6 +1044,12 @@ export function TimeClient() {
         onSubmit={handleUpdate}
         initialValues={editTarget}
         mode="edit"
+      />
+
+      <ReconstructDayDialog
+        open={reconstructOpen}
+        onOpenChange={setReconstructOpen}
+        date={selectedDateStr}
       />
     </motion.div>
   );

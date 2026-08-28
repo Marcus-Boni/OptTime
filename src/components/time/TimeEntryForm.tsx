@@ -29,7 +29,10 @@ import { parseLocalDate } from "@/lib/utils";
 
 const schema = z.object({
   projectId: z.string().min(1, "Selecione um projeto"),
-  description: z.string().min(1, "Adicione uma descrição"),
+  description: z
+    .string()
+    .min(1, "Adicione uma descrição")
+    .max(2000, "A descrição deve ter no máximo 2000 caracteres"),
   date: z.date(),
   duration: z.number().min(1, "Duração deve ser ao menos 1 minuto"),
   billable: z.boolean(),

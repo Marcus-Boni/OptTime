@@ -11,6 +11,12 @@ export interface ProviderRequest {
   turns: AgentTurn[];
   tools: ToolSpec[];
   temperature?: number;
+  /**
+   * Caps the response length. Short-form callers (e.g. the weekly digest
+   * narrative) set a tight budget so a model that starts rambling is cut off
+   * early instead of burning the full window.
+   */
+  maxTokens?: number;
   signal: AbortSignal;
 }
 

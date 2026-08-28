@@ -1,0 +1,20 @@
+name: Teams Standup Digest
+
+on:
+  schedule:
+    # 11:15 UTC = 08:15 America/Sao_Paulo, Monday to Friday.
+    # The endpoint is idempotent per calendar day (teams_notification_log),
+    # so a duplicated or retried run cannot double-post in the channel.
+    - cron: "15 11 * * 1-5"
+  workflow_dispatch: # manual trigger for testing
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Teams standup digest
+        run: |
+          curl -f -X POST "${{ secrets.APP_URL }}/api/cron/teams-standup" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 120

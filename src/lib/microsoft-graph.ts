@@ -136,6 +136,36 @@ export function needsMicrosoftReconnect(
   return false;
 }
 
+/**
+ * The signed-in user's Entra object id (`oid`).
+ *
+ * This is the tenant-stable identifier Teams sends as `from.aadObjectId` on
+ * outgoing-webhook payloads — not the same value Better Auth stores in
+ * `account.accountId`, which is the pairwise `sub` claim and differs per
+ * application. Linking Teams commands to an app user requires this one.
+ */
+export async function fetchMicrosoftObjectId(
+  accessToken: string,
+): Promise<string | null> {
+  try {
+    const response = await fetch(`${GRAPH_BASE}/me?$select=id`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) return null;
+
+    const data = (await response.json()) as { id?: string };
+    return data.id ?? null;
+  } catch (error: unknown) {
+    console.error("[microsoft-graph] fetchMicrosoftObjectId:", error);
+    return null;
+  }
+}
+
 export async function fetchOutlookEvents(
   accessToken: string,
   startDateTime: string,

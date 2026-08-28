@@ -29,6 +29,8 @@ import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { GamificationPreferencesCard } from "@/components/gamification/GamificationPreferencesCard";
+import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
+import { OnboardingSettingsCard } from "@/components/onboarding/OnboardingSettingsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -413,7 +415,7 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
           onValueChange={handleTabChange}
           className="space-y-6"
         >
-          <TabsList>
+          <TabsList data-tour="settings-tabs">
             <TabsTrigger value="experience">Experiência</TabsTrigger>
             <TabsTrigger value="productivity">Produtividade</TabsTrigger>
             <TabsTrigger value="operator">Operador IA</TabsTrigger>
@@ -519,6 +521,8 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
             </Card>
 
             <GamificationPreferencesCard />
+
+            <OnboardingSettingsCard />
           </TabsContent>
 
           <TabsContent value="productivity" className="space-y-6">
@@ -707,7 +711,11 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
             </Card>
           </TabsContent>
 
-          <TabsContent value="integrations" className="space-y-6">
+          <TabsContent
+            value="integrations"
+            className="space-y-6"
+            data-tour="settings-integrations"
+          >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Link href="/dashboard/settings/integrations/azure-devops">
                 <Card className="group h-full cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5">
@@ -792,6 +800,36 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                     <p className="mb-4 text-xs text-muted-foreground">
                       Registre horas conversando com o Cursor, o Claude Code ou
                       qualquer agente compatível com MCP — sem sair do editor.
+                    </p>
+                    <div className="mt-auto flex items-center text-xs font-medium text-brand-500 group-hover:text-brand-600">
+                      <Settings2 className="mr-1.5 h-3.5 w-3.5" />
+                      Configurar
+                      <ArrowRight className="ml-1 h-3.5 w-3.5 opacity-0 transition-all group-hover:translate-x-1 group-hover:opacity-100" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link href="/dashboard/settings/integrations/teams">
+                <Card className="group h-full cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="flex items-center gap-2 font-display text-base">
+                        <TeamsLogo className="h-5 w-5" />
+                        Microsoft Teams
+                      </CardTitle>
+                      <Badge
+                        variant="secondary"
+                        className="bg-brand-500/10 text-[10px] text-brand-500"
+                      >
+                        Novo
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="mb-4 text-xs text-muted-foreground">
+                      Standup diário no canal, lembrete vespertino interativo,
+                      comandos de timer no chat e status sincronizado.
                     </p>
                     <div className="mt-auto flex items-center text-xs font-medium text-brand-500 group-hover:text-brand-600">
                       <Settings2 className="mr-1.5 h-3.5 w-3.5" />

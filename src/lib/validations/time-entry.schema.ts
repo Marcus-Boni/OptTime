@@ -8,7 +8,7 @@ export const timeEntrySchema = z.object({
   description: z
     .string()
     .min(1, "Descrição é obrigatória")
-    .max(500, "Máximo de 500 caracteres"),
+    .max(2000, "Máximo de 2000 caracteres"),
   date: z.string().min(1, "Data é obrigatória"),
   duration: z
     .number()
@@ -25,7 +25,7 @@ export type TimeEntryFormData = z.infer<typeof timeEntrySchema>;
 export const createTimeEntrySchema = z.object({
   projectId: z.string().min(1),
   // Description is optional when coming from the DevOps extension
-  description: z.string().max(500).default(""),
+  description: z.string().max(2000, "Máximo de 2000 caracteres").default(""),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD"),
   duration: z.number().int().min(1).max(1440),
   billable: z.boolean().default(true),
@@ -40,7 +40,11 @@ export type CreateTimeEntryData = z.infer<typeof createTimeEntrySchema>;
 /** Server-side schema for updating a time entry via API */
 export const updateTimeEntrySchema = z.object({
   projectId: z.string().min(1).optional(),
-  description: z.string().min(1).max(500).optional(),
+  description: z
+    .string()
+    .min(1)
+    .max(2000, "Máximo de 2000 caracteres")
+    .optional(),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -56,7 +60,7 @@ export type UpdateTimeEntryData = z.infer<typeof updateTimeEntrySchema>;
 /** Schema for starting a timer */
 export const startTimerSchema = z.object({
   projectId: z.string().min(1),
-  description: z.string().max(500).default(""),
+  description: z.string().max(2000, "Máximo de 2000 caracteres").default(""),
   billable: z.boolean().default(true),
   azureWorkItemId: z.number().int().positive().optional(),
   azureWorkItemTitle: z.string().max(500).optional(),
@@ -71,7 +75,10 @@ export const quickEntrySchema = z.object({
     .number()
     .min(0.25, "Mínimo de 15 minutos")
     .max(24, "Máximo de 24 horas"),
-  description: z.string().min(1, "Descrição é obrigatória"),
+  description: z
+    .string()
+    .min(1, "Descrição é obrigatória")
+    .max(2000, "Máximo de 2000 caracteres"),
 });
 
 export type QuickEntryFormData = z.infer<typeof quickEntrySchema>;

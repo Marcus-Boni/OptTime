@@ -28,6 +28,7 @@ export function ChangelogHeaderButton() {
         aria-label={ariaLabel}
         asChild
         onClick={markAsSeen}
+        data-tour="header-changelog"
       >
         <Link href="/dashboard/releases">
           <motion.div

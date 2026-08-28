@@ -22,12 +22,25 @@ const SYSTEM_PROMPT = `Você escreve o resumo semanal executivo do **OptSolv Tim
 Regras absolutas:
 - NUNCA inclua raciocínio, pensamento, scratchpad, notas de análise, metadados ou frases como "Here's a thinking process:". Comece a resposta IMEDIATAMENTE com o primeiro parágrafo do resumo.
 - Use **somente** os números da ficha de dados recebida. Nunca invente, arredonde de forma diferente, projete ou estime nada.
-- Escreva em português do Brasil, 2 a 3 parágrafos curtos (máximo 90 palavras no total).
+- Escreva em português do Brasil: no máximo 2 parágrafos, de 2 a 3 frases curtas cada.
+- NUNCA numere palavras, frases ou parágrafos. Não escreva contadores como "(1)", "(2)" nem marcadores como "1)" no meio do texto. Se precisar se controlar no tamanho, apenas escreva menos frases.
 - Tom profissional e direto, como um colega competente — sem "Olá!", sem "Espero que esteja bem", sem emojis.
 - Destaque o que importa: onde o tempo foi, o que mudou em relação à semana anterior e o único ponto de atenção mais relevante (se houver).
 - Não repita a ficha inteira em formato de lista. Escreva prosa fluida.
 - Não use Markdown, títulos nem bullets.
 - Se a semana não teve horas registradas, diga isso em uma frase e não invente motivos.`;
+
+/**
+ * A bare parenthesised integer, e.g. "(41)". Values carrying a unit or sign
+ * ("(29h)", "(31%)", "(+12%)") deliberately do not match.
+ */
+const INLINE_COUNTER_PATTERN = /\s*\((\d{1,3})\)\s*/g;
+
+/** Shorter than this is not a summary; longer is the model ignoring the brief. */
+const MIN_NARRATIVE_LENGTH = 60;
+const MAX_NARRATIVE_LENGTH = 1500;
+/** Enough for two short paragraphs, tight enough to cut a rambling model off. */
+const NARRATIVE_MAX_TOKENS = 450;
 
 function formatDelta(digest: MemberDigest): string {
   if (digest.previousTotalMinutes === 0) {
@@ -198,12 +211,49 @@ export function sanitizeNarrativeText(raw: string): string {
   }
 
   // 3. Strip any residual markdown titles or meta headers
+  cleaned = cleaned.replace(/^#+\s+.*$/gm, "");
+
+  // 4. Some small models "count" words inline when given a length budget,
+  //    emitting "(40) Painel (41) Estratégico (42) que". Three or more of those
+  //    is never prose, so the counters are removed instead of being shown.
+  const inlineCounters = cleaned.match(INLINE_COUNTER_PATTERN);
+  if (inlineCounters && inlineCounters.length >= 3) {
+    cleaned = cleaned.replace(INLINE_COUNTER_PATTERN, " ");
+  }
+
+  // 5. Leftover list numbering from a numbered draft, e.g. "9) - texto".
   cleaned = cleaned
-    .replace(/^#+\s+.*$/gm, "")
+    .replace(/^[ \t]*\d{1,3}\)[ \t]*[-\u2013\u2014]?[ \t]*/gm, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ +([.,;:!?])/g, "$1")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 
   return cleaned;
+}
+
+/**
+ * Rejects prose that is not safe to mail out.
+ *
+ * The narrative goes straight into an e-mail with no chance to review it, and
+ * the provider chain includes free models that occasionally derail. Anything
+ * failing here falls back to the deterministic writer, which is always sane.
+ */
+export function isNarrativeUsable(text: string): boolean {
+  if (text.length < MIN_NARRATIVE_LENGTH) return false;
+  if (text.length > MAX_NARRATIVE_LENGTH) return false;
+
+  // A finished summary closes its last sentence; anything else was cut
+  // mid-thought by the token limit.
+  if (!/[.!?]["'\u2019\u201d)\]]?$/.test(text)) return false;
+
+  // Counters the sanitizer could not fully rescue.
+  if ((text.match(INLINE_COUNTER_PATTERN) ?? []).length >= 2) return false;
+
+  // We asked for prose, not a bullet list.
+  if (/^[ \t]*[-*\u2022]\s/m.test(text)) return false;
+
+  return true;
 }
 
 // ─── Deterministic fallback ──────────────────────────────────────────
@@ -327,13 +377,25 @@ export async function buildDigestNarrative(
   const result = await completeText({
     system: SYSTEM_PROMPT,
     prompt: `${audienceHint}\n\nFicha de dados (use apenas estes números):\n${facts}`,
+    maxTokens: NARRATIVE_MAX_TOKENS,
+    // Factual phrasing, not creative writing.
+    temperature: 0.2,
+    // Checked inside the provider loop so a derailed model is skipped and the
+    // next one gets a turn, instead of dropping straight to the fallback.
+    validate: (candidate) =>
+      isNarrativeUsable(sanitizeNarrativeText(candidate)),
   });
 
   if (result) {
     const cleanedText = sanitizeNarrativeText(result.text);
-    if (cleanedText && cleanedText.length >= 25) {
+
+    if (isNarrativeUsable(cleanedText)) {
       return { text: cleanedText, provider: result.provider };
     }
+
+    console.warn(
+      `[digest] narrative from ${result.provider} rejected; using deterministic text`,
+    );
   }
 
   return {

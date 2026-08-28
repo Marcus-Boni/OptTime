@@ -86,7 +86,7 @@ export function JourneyClient() {
           </p>
         </motion.div>
 
-        <motion.div variants={itemVariants}>
+        <motion.div variants={itemVariants} data-tour="journey-level">
           {profileLoading ? (
             <Skeleton className="h-72 w-full rounded-xl" />
           ) : profileError ? (
@@ -97,7 +97,11 @@ export function JourneyClient() {
         </motion.div>
 
         <div className="grid gap-6 xl:grid-cols-3">
-          <motion.div variants={itemVariants} className="xl:col-span-2">
+          <motion.div
+            variants={itemVariants}
+            className="xl:col-span-2"
+            data-tour="journey-insights"
+          >
             {insightsLoading ? (
               <Skeleton className="h-[28rem] w-full rounded-xl" />
             ) : insightsError ? (
@@ -111,7 +115,7 @@ export function JourneyClient() {
             ) : null}
           </motion.div>
 
-          <motion.div variants={itemVariants}>
+          <motion.div variants={itemVariants} data-tour="journey-balance">
             {insightsLoading ? (
               <Skeleton className="h-[28rem] w-full rounded-xl" />
             ) : report ? (
@@ -120,7 +124,7 @@ export function JourneyClient() {
           </motion.div>
         </div>
 
-        <motion.div variants={itemVariants}>
+        <motion.div variants={itemVariants} data-tour="journey-achievements">
           {profileLoading ? (
             <Skeleton className="h-96 w-full rounded-xl" />
           ) : profile ? (
@@ -129,7 +133,11 @@ export function JourneyClient() {
         </motion.div>
 
         <div className="grid gap-6 xl:grid-cols-3">
-          <motion.div variants={itemVariants} className="xl:col-span-2">
+          <motion.div
+            variants={itemVariants}
+            className="xl:col-span-2"
+            data-tour="journey-mural"
+          >
             {muralLoading ? (
               <Skeleton className="h-96 w-full rounded-xl" />
             ) : muralError ? (

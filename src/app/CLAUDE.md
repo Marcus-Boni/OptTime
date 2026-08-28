@@ -76,6 +76,20 @@ If a task explicitly requires Pages Router:
 3. Do not mix duplicate routes between App Router and Pages Router.
 4. Define migration intent clearly in the task output.
 
+## Guided onboarding (required for every new screen)
+
+Every new route, tab or major widget must be reachable through the guided
+onboarding, otherwise new users never discover it.
+
+1. Add `data-tour="<name-by-function>"` to the screen's key anchors.
+2. Cover the screen in `src/lib/onboarding/tours.ts` — a new step in an existing
+   tour, or a new tour when it is a whole module.
+3. Declare `roles` on steps restricted to manager/admin.
+4. If the screen is an adoption milestone, add the task to
+   `src/lib/onboarding/checklist.ts`, preferring `kind: "signal"`.
+
+Full contract: `docs/onboarding.md`.
+
 ## Done criteria for page changes
 
 Before finishing a page task:
@@ -84,4 +98,5 @@ Before finishing a page task:
 2. Authentication behavior matches role and session rules.
 3. Loading/error/empty states are present where applicable.
 4. No API logic is embedded in page rendering code.
-5. `pnpm run build` passes.
+5. The screen is covered by the guided onboarding (see section above).
+6. `pnpm run build` passes.

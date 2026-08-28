@@ -187,8 +187,10 @@ export function TimeEntryFormFields({
           <div className="mt-1.5 flex min-h-[22px] flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="mr-2 text-xs text-muted-foreground">
               {hasDescriptionVariants
-                ? `${descriptionVariants?.sourceLabel ?? "Sugestão inteligente"} pronta para edição. ${description.length} caracteres no campo.`
-                : "A agenda do Outlook pode preencher esse campo automaticamente."}
+                ? `${descriptionVariants?.sourceLabel ?? "Sugestão inteligente"} pronta para edição (${description.length}/2000 caracteres).`
+                : description.length > 0
+                  ? `${description.length}/2000 caracteres.`
+                  : "A agenda do Outlook pode preencher esse campo automaticamente."}
             </p>
             {onOpenAgenda ? (
               <button

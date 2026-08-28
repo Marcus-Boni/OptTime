@@ -112,6 +112,9 @@
   --sidebar-accent-foreground: #9a3412;
   --sidebar-border: #e5e5e5;
   --sidebar-ring: #f97316;
+
+  /* Guided onboarding: scrim behind the tour spotlight */
+  --tour-scrim: rgba(24, 24, 27, 0.55);
 }
 
 /* === Dark Theme (Default) === */
@@ -147,6 +150,9 @@
   --sidebar-accent-foreground: #fb923c;
   --sidebar-border: rgba(255, 255, 255, 0.1);
   --sidebar-ring: #f97316;
+
+  /* Guided onboarding: scrim behind the tour spotlight */
+  --tour-scrim: rgba(0, 0, 0, 0.74);
 }
 
 /* === Base Styles === */

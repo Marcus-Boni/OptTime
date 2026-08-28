@@ -1,0 +1,20 @@
+name: Teams Evening Digest
+
+on:
+  schedule:
+    # 20:30 UTC = 17:30 America/Sao_Paulo, Monday to Friday.
+    # The endpoint skips weekends in the app timezone and logs one row per
+    # user per day, so retries never double-notify anyone.
+    - cron: "30 20 * * 1-5"
+  workflow_dispatch: # manual trigger for testing
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Teams evening digest
+        run: |
+          curl -f -X POST "${{ secrets.APP_URL }}/api/cron/teams-evening" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 300

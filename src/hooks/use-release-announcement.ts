@@ -15,6 +15,7 @@ import {
   writeSeenReleaseTag,
 } from "@/lib/changelog/storage";
 import { useFocusStore } from "@/stores/focus.store";
+import { useOnboardingTourStore } from "@/stores/onboarding.store";
 import { useUIStore } from "@/stores/ui.store";
 
 /**
@@ -71,6 +72,11 @@ export function useReleaseAnnouncement(): ReleaseAnnouncementState {
       state.activeModal !== null,
   );
   const isFocusModeOpen = useFocusStore((state) => state.isOpen);
+  // Onboarding always wins: a new hire meeting the product for the first time
+  // must not be interrupted by a changelog they have no context for.
+  const isOnboardingBusy = useOnboardingTourStore(
+    (state) => state.isActive || state.welcomeOpen,
+  );
 
   const scheduledRef = useRef(false);
   const timeoutRef = useRef<number | null>(null);
@@ -125,9 +131,9 @@ export function useReleaseAnnouncement(): ReleaseAnnouncementState {
   useEffect(() => {
     contextRef.current = {
       pathname,
-      blocked: isSurfaceBusy || isFocusModeOpen,
+      blocked: isSurfaceBusy || isFocusModeOpen || isOnboardingBusy,
     };
-  }, [pathname, isSurfaceBusy, isFocusModeOpen]);
+  }, [pathname, isSurfaceBusy, isFocusModeOpen, isOnboardingBusy]);
 
   useEffect(() => {
     return () => {
@@ -162,7 +168,7 @@ export function useReleaseAnnouncement(): ReleaseAnnouncementState {
     if (!isStorageReady || !releases || isSessionPending) return;
     if (!latest || !latestTag || unseenCount === 0) return;
     if (!AUTO_OPEN_ROUTES.has(pathname)) return;
-    if (isSurfaceBusy || isFocusModeOpen) return;
+    if (isSurfaceBusy || isFocusModeOpen || isOnboardingBusy) return;
 
     // Accounts created after the release went out have nothing to catch up on:
     // acknowledge silently so they get the modal from the *next* version only.
@@ -209,6 +215,7 @@ export function useReleaseAnnouncement(): ReleaseAnnouncementState {
     pathname,
     isSurfaceBusy,
     isFocusModeOpen,
+    isOnboardingBusy,
   ]);
 
   return {

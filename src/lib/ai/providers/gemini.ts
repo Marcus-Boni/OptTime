@@ -153,7 +153,7 @@ export function createGeminiProvider(
         contents: toContents(request),
         generationConfig: {
           temperature: request.temperature ?? 0.4,
-          maxOutputTokens: 2048,
+          maxOutputTokens: request.maxTokens ?? 2048,
         },
       };
 

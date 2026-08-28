@@ -269,6 +269,50 @@ hooks/use[Feature].ts
 
 ---
 
+## Onboarding — Obrigatório em Toda Tela Nova
+
+Toda tela, aba, widget ou funcionalidade nova **precisa entrar no onboarding
+guiado**. Uma funcionalidade fora dos tours é uma funcionalidade que o usuário
+novo nunca descobre.
+
+Contrato completo e exemplos: **`docs/onboarding.md`**.
+
+### O fluxo mínimo
+
+```
+1. Marque as âncoras no JSX
+   <TabsList data-tour="relatorios-tabs">      ← nomeie por FUNÇÃO
+   <Button   data-tour="relatorios-export">    ← nunca por classe ou posição
+
+2. Descreva os passos em src/lib/onboarding/tours.ts
+   { id, title, description, target: '[data-tour="relatorios-tabs"]',
+     placement: "bottom", roles: ["manager","admin"] }
+   → passo novo em tour existente, ou tour novo se for um módulo inteiro
+
+3. Se for marco de adoção, adicione a tarefa em
+   src/lib/onboarding/checklist.ts
+   → prefira kind: "signal", derivado de dados reais em signals.ts
+
+4. Avalie ONBOARDING_CONTENT_VERSION em src/lib/onboarding/types.ts
+   → incremente APENAS quando muda como o produto deve ser usado
+```
+
+### Regras absolutas
+
+```
+❌ NUNCA ancore um passo em classe CSS ou posição no DOM → use data-tour
+❌ NUNCA remova um data-tour citado em tours.ts sem atualizar o passo
+❌ NUNCA crie tarefa de onboarding que premie registrar MAIS horas
+✅ SEMPRE declare roles em passos restritos a manager/admin
+✅ SEMPRE rode o tour de ponta a ponta em cada perfil afetado
+```
+
+O motor (`TourOverlay`) já resolve navegação entre rotas, espera de elemento,
+scroll, reposicionamento, flip do card, viewport móvel, `prefers-reduced-motion`
+e navegação por teclado. Não reimplemente nada disso.
+
+---
+
 ## Checklist Pré-Entrega
 
 ```
@@ -282,6 +326,8 @@ hooks/use[Feature].ts
 □ Nenhum segredo em NEXT_PUBLIC_ · useEffect com cleanup
 □ next/image com width+height · dynamic() em componentes pesados
 □ Sem TODO/FIXME · console.error com contexto · toast.error para usuário
+□ Onboarding: data-tour nas âncoras · tours.ts atualizado · checklist.ts avaliado
+□ pnpm verify:onboarding passa (âncoras dos tours existem de verdade no JSX)
 □ Commit: feat(scope): / fix(scope): / refactor(scope):
 ```
 

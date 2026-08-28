@@ -141,6 +141,34 @@
       "when": 1787230800000,
       "tag": "0019_mcp_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787270400000,
+      "tag": "0020_hq_teams_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787356800000,
+      "tag": "0021_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787443200000,
+      "tag": "0022_onboarding_drop_checklist_dismissed",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787529600000,
+      "tag": "0023_team_hours_active_date_idx",
+      "breakpoints": true
     }
   ]
 }

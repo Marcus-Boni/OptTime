@@ -15,7 +15,8 @@
     "video:render": "remotion render remotion/index.ts ProductDemo public/product-demo.mp4",
     "verify:mcp": "tsx --env-file=.env.local scripts/mcp-e2e/run.ts",
     "verify:mcp:package": "tsx --env-file=.env.local scripts/mcp-e2e/package-e2e.ts",
-    "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts"
+    "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts",
+    "verify:onboarding": "tsx scripts/verify-onboarding.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
