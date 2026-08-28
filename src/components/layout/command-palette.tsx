@@ -1,10 +1,12 @@
 "use client";
 
 import {
+  BookOpen,
   Bot,
   CalendarDays,
   CheckSquare,
   Clock,
+  Compass,
   FileText,
   Folder,
   Home,
@@ -37,8 +39,10 @@ import {
 import { useModifierKey } from "@/hooks/use-modifier-key";
 import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
 import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
+import { ONBOARDING_HUB_PATH } from "@/lib/onboarding/routes";
 import { playEarcon } from "@/lib/sound/sound-effects";
 import { useFocusStore } from "@/stores/focus.store";
+import { startTour } from "@/stores/onboarding.store";
 import { useUIStore } from "@/stores/ui.store";
 
 export function CommandPalette() {
@@ -114,6 +118,11 @@ export function CommandPalette() {
   const handleOpenShortcuts = () => {
     closeCommandPalette();
     openShortcutsModal();
+  };
+
+  const handleStartWelcomeTour = () => {
+    closeCommandPalette();
+    startTour("welcome");
   };
 
   const handleAskTimeBot = () => {
@@ -269,6 +278,22 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate(OPERATOR_SETTINGS_PATH)}>
             <Settings className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Configurações de IA, Voz & Autonomia</span>
+          </CommandItem>
+        </CommandGroup>
+
+        <CommandSeparator />
+
+        <CommandGroup heading="Ajuda & Onboarding">
+          <CommandItem onSelect={handleStartWelcomeTour}>
+            <Compass className="mr-2 h-4 w-4 text-orange-400" />
+            <span className="flex-1">Iniciar Tour Guiado de Boas-Vindas</span>
+          </CommandItem>
+
+          <CommandItem onSelect={() => navigate(ONBOARDING_HUB_PATH)}>
+            <BookOpen className="mr-2 h-4 w-4 text-neutral-400" />
+            <span className="flex-1">
+              Central de Ajuda · Tours & Primeiros Passos
+            </span>
           </CommandItem>
         </CommandGroup>
 

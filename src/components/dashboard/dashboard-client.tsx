@@ -669,7 +669,7 @@ export function DashboardClient() {
           is nothing pending. */}
       <AutofillRadar />
 
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} data-tour="dashboard-hero">
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardContent className="flex flex-col gap-6 p-6">
             <motion.div

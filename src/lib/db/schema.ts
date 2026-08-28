@@ -1239,3 +1239,54 @@ export const teamsNotificationLog = pgTable(
     index("teams_notification_created_idx").on(table.createdAt),
   ],
 );
+
+// ─── Onboarding ───────────────────────────────────────────────────────
+export type OnboardingStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "skipped";
+
+/**
+ * Per-user onboarding progress: guided tours already watched, first-steps
+ * checklist items ticked off manually and the state of the welcome modal.
+ *
+ * Progress is stored server-side (not in localStorage) so the experience
+ * follows the person across devices — someone who finished the tour on the
+ * desktop should not get it again on a phone.
+ *
+ * `contentVersion` snapshots the onboarding content revision the user went
+ * through. Bumping `ONBOARDING_CONTENT_VERSION` re-offers the welcome flow to
+ * everyone after a major product change, without wiping their history.
+ */
+export const userOnboarding = pgTable("user_onboarding", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** pending | in_progress | completed | skipped */
+  status: text("status").notNull().default("pending"),
+  /** JSON array of tour ids the user played to the end. */
+  completedTours: text("completed_tours").notNull().default("[]"),
+  /** JSON array of checklist task ids the user ticked off by hand. */
+  completedTasks: text("completed_tasks").notNull().default("[]"),
+  /** JSON array of dismissed inline hints, so a closed hint stays closed. */
+  dismissedHints: text("dismissed_hints").notNull().default("[]"),
+  /** Whether the first-run welcome modal was already answered. */
+  welcomeSeen: boolean("welcome_seen").notNull().default(false),
+  /** Content revision the user was onboarded against. */
+  contentVersion: integer("content_version").notNull().default(0),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const userOnboardingRelations = relations(userOnboarding, ({ one }) => ({
+  user: one(user, {
+    fields: [userOnboarding.userId],
+    references: [user.id],
+  }),
+}));

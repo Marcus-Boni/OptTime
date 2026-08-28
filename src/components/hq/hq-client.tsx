@@ -59,16 +59,31 @@ export function HqClient({ initialTab }: HqClientProps) {
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange} className="gap-6">
-        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 sm:w-fit">
-          <TabsTrigger value="radar" className="gap-1.5 px-3 py-1.5">
+        <TabsList
+          className="h-auto w-full flex-wrap justify-start gap-1 sm:w-fit"
+          data-tour="hq-tabs"
+        >
+          <TabsTrigger
+            value="radar"
+            className="gap-1.5 px-3 py-1.5"
+            data-tour="hq-tab-radar"
+          >
             <Activity className="size-4" aria-hidden="true" />
             <span>Radar de Projetos</span>
           </TabsTrigger>
-          <TabsTrigger value="capacity" className="gap-1.5 px-3 py-1.5">
+          <TabsTrigger
+            value="capacity"
+            className="gap-1.5 px-3 py-1.5"
+            data-tour="hq-tab-capacity"
+          >
             <Users className="size-4" aria-hidden="true" />
             <span>Capacidade</span>
           </TabsTrigger>
-          <TabsTrigger value="approvals" className="gap-1.5 px-3 py-1.5">
+          <TabsTrigger
+            value="approvals"
+            className="gap-1.5 px-3 py-1.5"
+            data-tour="hq-tab-approvals"
+          >
             <CheckSquare className="size-4" aria-hidden="true" />
             <span>Aprovações</span>
             {pendingCount > 0 ? (
@@ -80,7 +95,11 @@ export function HqClient({ initialTab }: HqClientProps) {
               </Badge>
             ) : null}
           </TabsTrigger>
-          <TabsTrigger value="portal" className="gap-1.5 px-3 py-1.5">
+          <TabsTrigger
+            value="portal"
+            className="gap-1.5 px-3 py-1.5"
+            data-tour="hq-tab-portal"
+          >
             <Globe className="size-4" aria-hidden="true" />
             <span>Portal do Cliente</span>
           </TabsTrigger>

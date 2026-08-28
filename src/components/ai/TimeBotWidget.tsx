@@ -178,6 +178,7 @@ export function TimeBotWidget() {
                 whileTap={{ scale: 0.94 }}
                 onClick={panel.open}
                 aria-label={`Abrir o TimeBot, assistente de IA (${modifier}+J)`}
+                data-tour="timebot-launcher"
                 style={{
                   position: "fixed",
                   bottom: "24px",

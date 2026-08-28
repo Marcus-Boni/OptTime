@@ -50,6 +50,15 @@ interface NavigationItem {
   badge?: number;
 }
 
+/**
+ * Anchor id used by the guided tours (`data-tour="nav-time"`).
+ * Derived from the route so a renamed label never breaks a tour step.
+ */
+function getNavTourId(href: string): string {
+  const slug = href.replace("/dashboard", "").replace(/^\//, "");
+  return slug ? `nav-${slug.split("/")[0]}` : "nav-dashboard";
+}
+
 const JOURNEY_HREF = "/dashboard/journey";
 
 const baseNavigation: NavigationItem[] = [
@@ -151,6 +160,7 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
       animate={{ opacity: 1, height: "auto" }}
       exit={{ opacity: 0, height: 0 }}
       className="mx-3 mb-2 overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/5 p-3"
+      data-tour="sidebar-timer"
     >
       <div className="flex items-center gap-2 text-brand-500">
         <div className="flex h-5 w-5 items-center justify-center rounded-md bg-brand-500">
@@ -398,7 +408,11 @@ export function Sidebar() {
           <ScrollArea className="h-full py-3">
             <TimerWidget collapsed={sidebarCollapsed} />
 
-            <nav className="px-2" aria-label="Navegação principal">
+            <nav
+              className="px-2"
+              aria-label="Navegação principal"
+              data-tour="sidebar-nav"
+            >
               <ul className="space-y-1">
                 {appNavigation.map((item) => {
                   const isActive = pathname === item.href;
@@ -413,6 +427,7 @@ export function Sidebar() {
                         sidebarCollapsed && "justify-center px-2",
                       )}
                       aria-current={isActive ? "page" : undefined}
+                      data-tour={getNavTourId(item.href)}
                     >
                       <item.icon
                         className={cn(
@@ -465,7 +480,11 @@ export function Sidebar() {
                     Gestão
                   </p>
                 ) : null}
-                <nav className="mt-1 px-2" aria-label="Navegação de gestão">
+                <nav
+                  className="mt-1 px-2"
+                  aria-label="Navegação de gestão"
+                  data-tour="sidebar-management"
+                >
                   <ul className="space-y-1">
                     {managementNav
                       .filter((item) => item.href !== "/dashboard/settings")
@@ -484,6 +503,7 @@ export function Sidebar() {
                               sidebarCollapsed && "justify-center px-2",
                             )}
                             aria-current={isActive ? "page" : undefined}
+                            data-tour={getNavTourId(item.href)}
                           >
                             <item.icon
                               className={cn(

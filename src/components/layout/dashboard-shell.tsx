@@ -7,6 +7,7 @@ import { FocusModeRoot } from "@/components/focus";
 import { CelebrationHost } from "@/components/gamification/CelebrationHost";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
+import { OnboardingHost } from "@/components/onboarding/OnboardingHost";
 // Imported by path (not the barrel) so the Remotion-backed release components
 // stay out of the dashboard shell bundle.
 import { ReleaseAnnouncementHost } from "@/components/releases/ReleaseAnnouncementHost";
@@ -54,6 +55,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
       <FocusModeRoot />
       <CelebrationHost />
       <ReleaseAnnouncementHost />
+      <OnboardingHost />
     </div>
   );
 }

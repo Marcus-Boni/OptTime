@@ -30,6 +30,7 @@ import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { GamificationPreferencesCard } from "@/components/gamification/GamificationPreferencesCard";
+import { OnboardingSettingsCard } from "@/components/onboarding/OnboardingSettingsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -414,7 +415,7 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
           onValueChange={handleTabChange}
           className="space-y-6"
         >
-          <TabsList>
+          <TabsList data-tour="settings-tabs">
             <TabsTrigger value="experience">Experiência</TabsTrigger>
             <TabsTrigger value="productivity">Produtividade</TabsTrigger>
             <TabsTrigger value="operator">Operador IA</TabsTrigger>
@@ -520,6 +521,8 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
             </Card>
 
             <GamificationPreferencesCard />
+
+            <OnboardingSettingsCard />
           </TabsContent>
 
           <TabsContent value="productivity" className="space-y-6">
@@ -708,7 +711,11 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
             </Card>
           </TabsContent>
 
-          <TabsContent value="integrations" className="space-y-6">
+          <TabsContent
+            value="integrations"
+            className="space-y-6"
+            data-tour="settings-integrations"
+          >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Link href="/dashboard/settings/integrations/azure-devops">
                 <Card className="group h-full cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5">

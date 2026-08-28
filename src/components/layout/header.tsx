@@ -26,6 +26,7 @@ import { QuickEntryDialog } from "@/components/layout/quick-entry-dialog";
 import { QuickTimerDialog } from "@/components/layout/quick-timer-dialog";
 import { ShortcutsCheatsheetModal } from "@/components/layout/ShortcutsCheatsheetModal";
 import { VersionBadge } from "@/components/layout/version-badge";
+import { HelpMenu } from "@/components/onboarding/HelpMenu";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +40,7 @@ import {
 import { ActionTooltip } from "@/components/ui/tooltip";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { useModifierKey } from "@/hooks/use-modifier-key";
+import { resetOnboardingCache } from "@/hooks/use-onboarding";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useUIStore } from "@/stores/ui.store";
@@ -113,6 +115,9 @@ export function Header() {
       return;
     }
 
+    // Drop the cached onboarding overview so the next account to sign in on
+    // this tab does not briefly see the previous person's progress.
+    resetOnboardingCache();
     router.replace("/login?reason=signed-out");
   };
 
@@ -172,6 +177,7 @@ export function Header() {
           className="hidden gap-1.5 bg-brand-500 text-white hover:bg-brand-600 md:flex"
           aria-label="Novo registro de tempo"
           onClick={openRichQuickEntry}
+          data-tour="header-quick-entry"
         >
           <Plus className="h-4 w-4" />
           Novo Registro
@@ -183,6 +189,7 @@ export function Header() {
           className="hidden gap-1.5 md:flex"
           aria-label="Novo registro com timer"
           onClick={openTimerQuickStart}
+          data-tour="header-quick-timer"
         >
           <Hourglass className="h-4 w-4" />
           Com Timer
@@ -220,6 +227,7 @@ export function Header() {
             className="hidden md:flex"
             aria-label={`Buscar (${modifier}+K)`}
             onClick={openCommandPalette}
+            data-tour="header-search"
           >
             <Search className="h-4.5 w-4.5" />
           </Button>
@@ -240,6 +248,7 @@ export function Header() {
               onClick={() => {
                 window.dispatchEvent(new CustomEvent("timebot:voice"));
               }}
+              data-tour="header-voice"
             >
               <Mic className="h-4.5 w-4.5" />
             </Button>
@@ -254,6 +263,7 @@ export function Header() {
             className="hidden md:flex"
             aria-label="Ver resumo semanal por IA"
             onClick={openWeeklyDigestModal}
+            data-tour="header-digest"
           >
             <CalendarDays className="h-4.5 w-4.5" />
           </Button>
@@ -267,6 +277,7 @@ export function Header() {
             className="hidden md:flex"
             aria-label="Ver atalhos de teclado (?)"
             onClick={openShortcutsModal}
+            data-tour="header-shortcuts"
           >
             <Keyboard className="h-4.5 w-4.5" />
           </Button>
@@ -274,6 +285,9 @@ export function Header() {
 
         {/* Changelog / Novidades */}
         <ChangelogHeaderButton />
+
+        {/* Ajuda, tours guiados e atalhos */}
+        <HelpMenu role={currentUser.role} />
 
         {/* Theme toggle */}
         <ActionTooltip

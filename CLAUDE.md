@@ -216,6 +216,21 @@ DRAFT → SUBMITTED → APPROVED
 - Stats com animação de count-up, testimonial e CTA final com efeito shimmer
 - Meta: LCP < 2.5s, CLS = 0
 
+### Módulo 12 — Onboarding Guiado e Central de Ajuda
+
+- Modal de boas-vindas no primeiro acesso, com conteúdo variando por role
+- Tours guiados com spotlight, navegação por teclado e posicionamento adaptativo
+- Catálogo de tours filtrado por perfil: `welcome`, `time-tracking`, `timesheets`,
+  `journey`, `ai-assistant`, `management` (manager/admin) e `admin-setup` (admin)
+- Central de Ajuda em `/dashboard/onboarding` com todos os tours refazíveis e a
+  checklist "Primeiros Passos", que marca sozinha a partir do uso real do produto
+  (primeiro lançamento, uso do timer, primeira semana submetida, primeira aprovação)
+- Botão de ajuda no header, comandos na paleta e controles em Configurações
+- Progresso persistido em `user_onboarding` (PostgreSQL), não em localStorage
+
+> **Regra:** toda tela ou funcionalidade nova precisa entrar no onboarding.
+> O contrato completo está em [`docs/onboarding.md`](docs/onboarding.md).
+
 ---
 
 ## 3. Arquitetura Técnica
@@ -1116,6 +1131,28 @@ jobs:
 - [ ] Erro tratado com `toast.error()` + `console.error()` — sem `alert()` ou `console.log()`
 - [ ] Sem comentários `TODO` ou `FIXME` no código entregue
 - [ ] Commit message em conventional commits (`feat:`, `fix:`, `refactor:`)
+
+### 10.7 Onboarding (obrigatório para toda tela ou funcionalidade nova)
+
+> Uma funcionalidade que não aparece em nenhum tour é uma funcionalidade que o
+> usuário novo nunca vai descobrir. Contrato completo: [`docs/onboarding.md`](docs/onboarding.md).
+
+- [ ] Pontos-chave da tela marcados com `data-tour="<nome-por-função>"` — nunca
+      ancore um tour em classe CSS ou posição no DOM
+- [ ] `src/lib/onboarding/tours.ts` atualizado: passo novo em um tour existente
+      ou tour novo quando é um módulo inteiro
+- [ ] Passos restritos a um perfil declaram `roles: ["manager", "admin"]`
+- [ ] Marco de adoção (algo que todo usuário novo faz uma vez) virou tarefa em
+      `src/lib/onboarding/checklist.ts` — preferindo `kind: "signal"`, derivado
+      de dados reais em `signals.ts`
+- [ ] Nenhuma tarefa de onboarding premia registrar **mais horas** — vale a
+      mesma regra anti-excesso da gamificação
+- [ ] Nenhum `data-tour` citado em `tours.ts` foi removido do JSX
+- [ ] `ONBOARDING_CONTENT_VERSION` avaliado: incrementar apenas quando a
+      mudança altera *como o produto deve ser usado*
+- [ ] `pnpm verify:onboarding` passa — o script falha quando um passo aponta
+      para um `data-tour` que não existe mais no JSX
+- [ ] Tour executado de ponta a ponta em cada perfil afetado
 
 ---
 

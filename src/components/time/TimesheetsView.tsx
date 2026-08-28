@@ -111,6 +111,7 @@ function SubmitButton({
       className="gap-1 bg-brand-500 text-white hover:bg-brand-600"
       disabled={isSubmitting}
       onClick={() => onSubmit(ts.id)}
+      data-tour="timesheets-submit"
     >
       <Send className="h-3.5 w-3.5" />
       {isSubmitting
@@ -354,6 +355,7 @@ export function TimesheetsView() {
         initial="hidden"
         animate="visible"
         className="space-y-6"
+        data-tour="timesheets-list"
       >
         <motion.div
           variants={itemVariants}

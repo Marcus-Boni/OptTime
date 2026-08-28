@@ -13,6 +13,7 @@ import { Sparkles } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { OnboardingHint } from "@/components/onboarding/OnboardingHint";
 import { DayView } from "@/components/time/DayView";
 import { MonthView } from "@/components/time/MonthView";
 import { ReconstructDayDialog } from "@/components/time/ReconstructDayDialog";
@@ -919,13 +920,22 @@ export function TimeClient() {
             onClick={() => setReconstructOpen(true)}
             disabled={selectedDateLocked}
             className="w-fit border-brand-500/40 text-brand-500 hover:bg-brand-500/10 hover:text-brand-500"
+            data-tour="time-fill-day"
           >
             <Sparkles className="size-4" aria-hidden="true" />
             Preencher meu dia
           </Button>
         </div>
 
-        <div className="mt-3">
+        <OnboardingHint
+          hintId="time-first-entry"
+          title="Primeira vez por aqui?"
+          description="Use Preencher meu dia para a IA montar o dia a partir das suas reuniões e work items, ou lance manualmente em Novo Registro."
+          when={(overview) => !overview.signals.hasTimeEntry}
+          className="mt-4"
+        />
+
+        <div className="mt-3" data-tour="time-view-tabs">
           <TimeViewTabs
             activeView={activeView}
             onViewChange={handleViewChange}
@@ -934,7 +944,11 @@ export function TimeClient() {
         </div>
       </motion.section>
 
-      <motion.div variants={itemVariants} className="min-w-0">
+      <motion.div
+        variants={itemVariants}
+        className="min-w-0"
+        data-tour="time-workspace"
+      >
         {loading ? (
           <div className="space-y-4">
             {viewSkeletonKeys.map((key) => (
