@@ -46,6 +46,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useHqWorkload } from "@/hooks/use-hq";
@@ -568,17 +569,19 @@ export function WorkloadMatrixTab() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onDragCancel={() => setActiveProject(null)}
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-            {(["over", "full", "ok", "low", "empty"] as UtilizationLevel[]).map(
-              (level) => (
+    <TooltipProvider delayDuration={150}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveProject(null)}
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              {(
+                ["over", "full", "ok", "low", "empty"] as UtilizationLevel[]
+              ).map((level) => (
                 <span key={level} className="flex items-center gap-1.5">
                   <span
                     className={cn(
@@ -589,126 +592,126 @@ export function WorkloadMatrixTab() {
                   />
                   {LEVEL_LABELS[level]}
                 </span>
-              ),
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            {data.totals.overloadedThisWeek > 0 ? (
-              <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-500 dark:text-red-400">
-                {data.totals.overloadedThisWeek} em sobrecarga
-              </span>
-            ) : null}
-            {data.totals.idleThisWeek > 0 ? (
-              <span className="rounded-full bg-sky-500/10 px-2.5 py-1 font-medium text-sky-600 dark:text-sky-400">
-                {data.totals.idleThisWeek} com capacidade livre
-              </span>
-            ) : null}
-          </div>
-        </div>
-
-        {data.projects.length > 0 ? (
-          <Card className="gap-0 py-3">
-            <CardContent className="flex flex-wrap items-center gap-2 px-4">
-              <p className="mr-1 text-xs font-medium text-muted-foreground">
-                Arraste um projeto para uma semana futura:
-              </p>
-              {data.projects.map((project) => (
-                <DraggableProjectChip key={project.id} project={project} />
               ))}
-            </CardContent>
-          </Card>
-        ) : null}
-
-        <Card className="gap-0 overflow-hidden py-0">
-          <div className="overflow-x-auto">
-            <div className="min-w-[900px] p-4">
-              <div
-                className="grid gap-1.5"
-                style={{
-                  gridTemplateColumns: `220px repeat(${data.weeks.length}, minmax(84px, 1fr))`,
-                }}
-              >
-                <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                  Pessoa
-                </div>
-                {data.weeks.map((week) => (
-                  <div
-                    key={week.week}
-                    className={cn(
-                      "px-1 py-1 text-center text-[11px] font-medium",
-                      week.isCurrent
-                        ? "text-brand-500"
-                        : week.isFuture
-                          ? "text-muted-foreground"
-                          : "text-muted-foreground/70",
-                    )}
-                  >
-                    {week.isCurrent
-                      ? "Atual · "
-                      : week.isFuture
-                        ? "Plano · "
-                        : ""}
-                    {week.label}
-                  </div>
-                ))}
-
-                {data.rows.map((row) => {
-                  return (
-                    <div key={row.userId} className="contents">
-                      <div className="flex items-center gap-2.5 rounded-lg bg-muted/30 px-2 py-1.5">
-                        <UserAvatar
-                          name={row.name}
-                          image={row.image}
-                          size="sm"
-                        />
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-medium">
-                            {row.name}
-                          </p>
-                          <p className="font-mono text-[10px] text-muted-foreground">
-                            {formatDuration(row.capacityMinutes)}/sem
-                          </p>
-                        </div>
-                      </div>
-
-                      {data.weeks.map((week) => {
-                        const cell = row.cells.find(
-                          (item) => item.week === week.week,
-                        );
-                        if (!cell) return <div key={week.week} />;
-
-                        return (
-                          <MatrixCell
-                            key={week.week}
-                            row={row}
-                            cell={cell}
-                            week={week}
-                            onPlan={setDialogState}
-                            onRemoveAllocation={handleRemoveAllocation}
-                          />
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              {data.totals.overloadedThisWeek > 0 ? (
+                <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-500 dark:text-red-400">
+                  {data.totals.overloadedThisWeek} em sobrecarga
+                </span>
+              ) : null}
+              {data.totals.idleThisWeek > 0 ? (
+                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 font-medium text-sky-600 dark:text-sky-400">
+                  {data.totals.idleThisWeek} com capacidade livre
+                </span>
+              ) : null}
             </div>
           </div>
-        </Card>
-      </div>
 
-      <DragOverlay>
-        {activeProject ? (
-          <ProjectChip project={activeProject} dragging />
-        ) : null}
-      </DragOverlay>
+          {data.projects.length > 0 ? (
+            <Card className="gap-0 py-3">
+              <CardContent className="flex flex-wrap items-center gap-2 px-4">
+                <p className="mr-1 text-xs font-medium text-muted-foreground">
+                  Arraste um projeto para uma semana futura:
+                </p>
+                {data.projects.map((project) => (
+                  <DraggableProjectChip key={project.id} project={project} />
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
 
-      <AllocationDialog
-        state={dialogState}
-        projects={data.projects}
-        onClose={() => setDialogState(null)}
-        onSave={workload.upsertAllocation}
-      />
-    </DndContext>
+          <Card className="gap-0 overflow-hidden py-0">
+            <div className="overflow-x-auto">
+              <div className="min-w-[900px] p-4">
+                <div
+                  className="grid gap-1.5"
+                  style={{
+                    gridTemplateColumns: `220px repeat(${data.weeks.length}, minmax(84px, 1fr))`,
+                  }}
+                >
+                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                    Pessoa
+                  </div>
+                  {data.weeks.map((week) => (
+                    <div
+                      key={week.week}
+                      className={cn(
+                        "px-1 py-1 text-center text-[11px] font-medium",
+                        week.isCurrent
+                          ? "text-brand-500"
+                          : week.isFuture
+                            ? "text-muted-foreground"
+                            : "text-muted-foreground/70",
+                      )}
+                    >
+                      {week.isCurrent
+                        ? "Atual · "
+                        : week.isFuture
+                          ? "Plano · "
+                          : ""}
+                      {week.label}
+                    </div>
+                  ))}
+
+                  {data.rows.map((row) => {
+                    return (
+                      <div key={row.userId} className="contents">
+                        <div className="flex items-center gap-2.5 rounded-lg bg-muted/30 px-2 py-1.5">
+                          <UserAvatar
+                            name={row.name}
+                            image={row.image}
+                            size="sm"
+                          />
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-medium">
+                              {row.name}
+                            </p>
+                            <p className="font-mono text-[10px] text-muted-foreground">
+                              {formatDuration(row.capacityMinutes)}/sem
+                            </p>
+                          </div>
+                        </div>
+
+                        {data.weeks.map((week) => {
+                          const cell = row.cells.find(
+                            (item) => item.week === week.week,
+                          );
+                          if (!cell) return <div key={week.week} />;
+
+                          return (
+                            <MatrixCell
+                              key={week.week}
+                              row={row}
+                              cell={cell}
+                              week={week}
+                              onPlan={setDialogState}
+                              onRemoveAllocation={handleRemoveAllocation}
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        <DragOverlay>
+          {activeProject ? (
+            <ProjectChip project={activeProject} dragging />
+          ) : null}
+        </DragOverlay>
+
+        <AllocationDialog
+          state={dialogState}
+          projects={data.projects}
+          onClose={() => setDialogState(null)}
+          onSave={workload.upsertAllocation}
+        />
+      </DndContext>
+    </TooltipProvider>
   );
 }

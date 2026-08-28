@@ -6,14 +6,26 @@ import {
   Clock,
   FolderKanban,
   RefreshCw,
+  Search,
   Target,
+  X,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 import { ProjectHealthCard } from "@/components/hq/ProjectHealthCard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHqHealth } from "@/hooks/use-hq";
 import { formatDuration } from "@/lib/utils";
+import type { ProjectRiskLevel } from "@/types/hq";
 
 const containerVariants = {
   hidden: {},
@@ -64,6 +76,16 @@ function StatCard({ icon: Icon, label, value, hint, tone }: StatCardProps) {
   );
 }
 
+type RiskFilter = "all" | ProjectRiskLevel;
+
+const RISK_FILTER_OPTIONS: Array<{ value: RiskFilter; label: string }> = [
+  { value: "all", label: "Todos os riscos" },
+  { value: "critical", label: "Crítico" },
+  { value: "warning", label: "Atenção" },
+  { value: "healthy", label: "Saudável" },
+  { value: "no_budget", label: "Sem budget" },
+];
+
 function RadarSkeleton() {
   return (
     <output
@@ -86,6 +108,28 @@ function RadarSkeleton() {
 
 export function HealthRadarTab() {
   const { data, isLoading, error, refresh } = useHqHealth();
+  const [search, setSearch] = useState("");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+
+  const filteredProjects = useMemo(() => {
+    if (!data) return [];
+
+    const term = search.trim().toLowerCase();
+
+    return data.projects.filter((project) => {
+      const matchesSearch =
+        term === "" ||
+        project.name.toLowerCase().includes(term) ||
+        project.code.toLowerCase().includes(term) ||
+        (project.clientName?.toLowerCase().includes(term) ?? false);
+      const matchesRisk =
+        riskFilter === "all" || project.forecast.risk === riskFilter;
+
+      return matchesSearch && matchesRisk;
+    });
+  }, [data, search, riskFilter]);
+
+  const hasActiveFilters = search.trim() !== "" || riskFilter !== "all";
 
   if (isLoading) return <RadarSkeleton />;
 
@@ -171,16 +215,97 @@ export function HealthRadarTab() {
         />
       </motion.div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {data.projects.map((project) => (
-          <motion.div key={project.projectId} variants={itemVariants}>
-            <ProjectHealthCard
-              project={project}
-              currentWeek={data.currentWeek}
-            />
-          </motion.div>
-        ))}
-      </div>
+      <motion.div
+        variants={itemVariants}
+        className="flex flex-wrap items-center gap-2"
+      >
+        <div className="relative w-full max-w-[240px]">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+            aria-hidden="true"
+          />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar projeto ou cliente…"
+            aria-label="Buscar projeto por nome, código ou cliente"
+            className="h-8 pl-8 text-xs"
+          />
+        </div>
+
+        <Select
+          value={riskFilter}
+          onValueChange={(value) => setRiskFilter(value as RiskFilter)}
+        >
+          <SelectTrigger
+            className="h-8 w-auto min-w-[130px] text-xs"
+            aria-label="Filtrar por nível de risco"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RISK_FILTER_OPTIONS.map((option) => (
+              <SelectItem
+                key={option.value}
+                value={option.value}
+                className="text-xs"
+              >
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {hasActiveFilters ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => {
+              setSearch("");
+              setRiskFilter("all");
+            }}
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            Limpar
+          </Button>
+        ) : null}
+
+        {hasActiveFilters ? (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filteredProjects.length} de {data.projects.length} projeto
+            {data.projects.length === 1 ? "" : "s"}
+          </span>
+        ) : null}
+      </motion.div>
+
+      {filteredProjects.length === 0 ? (
+        <motion.div variants={itemVariants}>
+          <Card>
+            <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
+              <Search
+                className="size-6 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p className="font-medium">Nenhum projeto encontrado</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                Ajuste a busca ou o filtro de risco para ver outros projetos.
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {filteredProjects.map((project) => (
+            <motion.div key={project.projectId} variants={itemVariants}>
+              <ProjectHealthCard
+                project={project}
+                currentWeek={data.currentWeek}
+              />
+            </motion.div>
+          ))}
+        </div>
+      )}
     </motion.div>
   );
 }

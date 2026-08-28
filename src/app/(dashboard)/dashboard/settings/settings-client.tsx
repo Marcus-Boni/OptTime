@@ -13,7 +13,6 @@ import {
   Layers3,
   LayoutTemplate,
   Loader2,
-  MessagesSquare,
   Moon,
   Settings2,
   Sparkles,
@@ -30,6 +29,7 @@ import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { GamificationPreferencesCard } from "@/components/gamification/GamificationPreferencesCard";
+import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
 import { OnboardingSettingsCard } from "@/components/onboarding/OnboardingSettingsCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -815,10 +815,7 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2 font-display text-base">
-                        <MessagesSquare
-                          className="h-5 w-5 text-[#6264A7]"
-                          aria-hidden="true"
-                        />
+                        <TeamsLogo className="h-5 w-5" />
                         Microsoft Teams
                       </CardTitle>
                       <Badge

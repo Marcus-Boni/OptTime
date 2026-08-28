@@ -49,6 +49,12 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { type CreatedPortalLink, usePortalLinks } from "@/hooks/use-hq";
 import { getRelativeTime } from "@/lib/utils";
 import type { PortalLinkSummary } from "@/types/hq";
@@ -219,41 +225,56 @@ function PortalLinkCard({
             )}
             {copied ? "Copiado" : "Copiar link"}
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            asChild
-            disabled={link.status !== "active"}
-          >
-            <a
-              href={link.url}
-              target="_blank"
-              rel="noreferrer"
-              aria-label={`Abrir portal ${link.label} em nova aba`}
-            >
-              <ExternalLink className="size-4" aria-hidden="true" />
-            </a>
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                asChild
+                disabled={link.status !== "active"}
+              >
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Abrir portal ${link.label} em nova aba`}
+                >
+                  <ExternalLink className="size-4" aria-hidden="true" />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Abrir em nova aba</TooltipContent>
+          </Tooltip>
           {link.status === "active" ? (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onRevoke(link)}
-              aria-label={`Revogar portal ${link.label}`}
-              className="text-amber-500 hover:text-amber-500"
-            >
-              <Ban className="size-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onRevoke(link)}
+                  aria-label={`Revogar portal ${link.label}`}
+                  className="text-amber-500 hover:text-amber-500"
+                >
+                  <Ban className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Revogar acesso</TooltipContent>
+            </Tooltip>
           ) : (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={() => onDelete(link)}
-              aria-label={`Excluir portal ${link.label}`}
-              className="text-red-400 hover:text-red-400"
-            >
-              <Trash2 className="size-4" aria-hidden="true" />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => onDelete(link)}
+                  aria-label={`Excluir portal ${link.label}`}
+                  className="text-red-400 hover:text-red-400"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Excluir portal</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </CardContent>
@@ -408,326 +429,335 @@ export function PortalLinksTab() {
   const projects = data?.manageableProjects ?? [];
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="space-y-4"
-    >
+    <TooltipProvider delayDuration={150}>
       <motion.div
-        variants={itemVariants}
-        className="flex flex-wrap items-center justify-between gap-3"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-4"
       >
-        <p className="max-w-xl text-sm text-muted-foreground">
-          Links somente-leitura para o cliente acompanhar horas e progresso em
-          tempo real — com senha, expiração e controle do que é exibido.
-        </p>
-        <Button
-          onClick={() => {
-            resetForm();
-            setCreateOpen(true);
-          }}
-          className="bg-brand-500 text-white hover:bg-brand-600"
-          disabled={projects.length === 0}
+        <motion.div
+          variants={itemVariants}
+          className="flex flex-wrap items-center justify-between gap-3"
         >
-          <Plus className="size-4" aria-hidden="true" />
-          Novo portal
-        </Button>
-      </motion.div>
-
-      {links.length === 0 ? (
-        <motion.div variants={itemVariants}>
-          <Card>
-            <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-              <Globe
-                className="size-8 text-muted-foreground"
-                aria-hidden="true"
-              />
-              <p className="font-medium">Nenhum portal criado ainda</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Crie um link com senha e expiração para o cliente acompanhar o
-                avanço do projeto sem precisar de conta.
-              </p>
-            </CardContent>
-          </Card>
+          <p className="max-w-xl text-sm text-muted-foreground">
+            Links somente-leitura para o cliente acompanhar horas e progresso em
+            tempo real — com senha, expiração e controle do que é exibido.
+          </p>
+          <Button
+            onClick={() => {
+              resetForm();
+              setCreateOpen(true);
+            }}
+            className="bg-brand-500 text-white hover:bg-brand-600"
+            disabled={projects.length === 0}
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            Novo portal
+          </Button>
         </motion.div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {links.map((link) => (
-            <motion.div key={link.id} variants={itemVariants}>
-              <PortalLinkCard
-                link={link}
-                onRevoke={setRevokeTarget}
-                onDelete={setDeleteTarget}
-              />
-            </motion.div>
-          ))}
-        </div>
-      )}
 
-      {/* Create dialog */}
-      <Dialog
-        open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open) resetForm();
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          {created ? (
-            <>
-              <DialogHeader>
-                <DialogTitle>Portal pronto ✨</DialogTitle>
-                <DialogDescription>
-                  Compartilhe o link com o cliente
-                  {createdPassword
-                    ? " e envie a senha por um canal separado."
-                    : "."}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="created-url">Link do portal</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="created-url"
-                      readOnly
-                      value={created.url}
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      aria-label="Copiar link do portal"
-                      onClick={async () => {
-                        const ok = await copyToClipboard(created.url);
-                        if (ok) toast.success("Link copiado.");
-                      }}
-                    >
-                      <Copy className="size-4" aria-hidden="true" />
-                    </Button>
-                  </div>
-                </div>
-                {createdPassword ? (
+        {links.length === 0 ? (
+          <motion.div variants={itemVariants}>
+            <Card>
+              <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
+                <Globe
+                  className="size-8 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <p className="font-medium">Nenhum portal criado ainda</p>
+                <p className="max-w-sm text-sm text-muted-foreground">
+                  Crie um link com senha e expiração para o cliente acompanhar o
+                  avanço do projeto sem precisar de conta.
+                </p>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {links.map((link) => (
+              <motion.div key={link.id} variants={itemVariants}>
+                <PortalLinkCard
+                  link={link}
+                  onRevoke={setRevokeTarget}
+                  onDelete={setDeleteTarget}
+                />
+              </motion.div>
+            ))}
+          </div>
+        )}
+
+        {/* Create dialog */}
+        <Dialog
+          open={createOpen}
+          onOpenChange={(open) => {
+            setCreateOpen(open);
+            if (!open) resetForm();
+          }}
+        >
+          <DialogContent className="sm:max-w-lg">
+            {created ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Portal pronto ✨</DialogTitle>
+                  <DialogDescription>
+                    Compartilhe o link com o cliente
+                    {createdPassword
+                      ? " e envie a senha por um canal separado."
+                      : "."}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="created-password">
-                      Senha de acesso (exibida só agora)
-                    </Label>
+                    <Label htmlFor="created-url">Link do portal</Label>
                     <div className="flex items-center gap-2">
                       <Input
-                        id="created-password"
+                        id="created-url"
                         readOnly
-                        value={createdPassword}
-                        className="font-mono"
+                        value={created.url}
+                        className="font-mono text-xs"
                       />
                       <Button
                         variant="outline"
                         size="icon"
-                        aria-label="Copiar senha do portal"
+                        aria-label="Copiar link do portal"
                         onClick={async () => {
-                          const ok = await copyToClipboard(createdPassword);
-                          if (ok) toast.success("Senha copiada.");
+                          const ok = await copyToClipboard(created.url);
+                          if (ok) toast.success("Link copiado.");
                         }}
                       >
                         <Copy className="size-4" aria-hidden="true" />
                       </Button>
                     </div>
                   </div>
-                ) : null}
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={() => {
-                    setCreateOpen(false);
-                    resetForm();
-                  }}
-                  className="bg-brand-500 text-white hover:bg-brand-600"
-                >
-                  Concluir
-                </Button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Novo portal do cliente</DialogTitle>
-                <DialogDescription>
-                  O cliente verá apenas o que você liberar — nada de valores ou
-                  dados internos.
-                </DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="portal-project">Projeto</Label>
-                  <Select value={projectId} onValueChange={setProjectId}>
-                    <SelectTrigger id="portal-project" className="w-full">
-                      <SelectValue placeholder="Selecione o projeto" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {projects.map((project) => (
-                        <SelectItem key={project.id} value={project.id}>
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="size-2 rounded-full"
-                              style={{ backgroundColor: project.color }}
-                              aria-hidden="true"
-                            />
-                            {project.name}
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="portal-label">Nome do link</Label>
-                  <Input
-                    id="portal-label"
-                    value={label}
-                    maxLength={120}
-                    onChange={(event) => setLabel(event.target.value)}
-                    placeholder="Ex.: Diretoria ACME — acompanhamento mensal"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="portal-password">Senha (opcional)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="portal-password"
-                        value={password}
-                        maxLength={72}
-                        onChange={(event) => setPassword(event.target.value)}
-                        placeholder="Sem senha"
-                        className="font-mono"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        aria-label="Gerar senha aleatória"
-                        onClick={() => setPassword(generatePassword())}
-                      >
-                        <KeyRound className="size-4" aria-hidden="true" />
-                      </Button>
+                  {createdPassword ? (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="created-password">
+                        Senha de acesso (exibida só agora)
+                      </Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="created-password"
+                          readOnly
+                          value={createdPassword}
+                          className="font-mono"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          aria-label="Copiar senha do portal"
+                          onClick={async () => {
+                            const ok = await copyToClipboard(createdPassword);
+                            if (ok) toast.success("Senha copiada.");
+                          }}
+                        >
+                          <Copy className="size-4" aria-hidden="true" />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  ) : null}
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={() => {
+                      setCreateOpen(false);
+                      resetForm();
+                    }}
+                    className="bg-brand-500 text-white hover:bg-brand-600"
+                  >
+                    Concluir
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Novo portal do cliente</DialogTitle>
+                  <DialogDescription>
+                    O cliente verá apenas o que você liberar — nada de valores
+                    ou dados internos.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="portal-expiry">Expiração</Label>
-                    <Select value={expiry} onValueChange={setExpiry}>
-                      <SelectTrigger id="portal-expiry" className="w-full">
-                        <SelectValue />
+                    <Label htmlFor="portal-project">Projeto</Label>
+                    <Select value={projectId} onValueChange={setProjectId}>
+                      <SelectTrigger id="portal-project" className="w-full">
+                        <SelectValue placeholder="Selecione o projeto" />
                       </SelectTrigger>
                       <SelectContent>
-                        {EXPIRY_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className="size-2 rounded-full"
+                                style={{ backgroundColor: project.color }}
+                                aria-hidden="true"
+                              />
+                              {project.name}
+                            </span>
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="portal-label">Nome do link</Label>
+                    <Input
+                      id="portal-label"
+                      value={label}
+                      maxLength={120}
+                      onChange={(event) => setLabel(event.target.value)}
+                      placeholder="Ex.: Diretoria ACME — acompanhamento mensal"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="portal-password">Senha (opcional)</Label>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="portal-password"
+                          value={password}
+                          maxLength={72}
+                          onChange={(event) => setPassword(event.target.value)}
+                          placeholder="Sem senha"
+                          className="font-mono"
+                        />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              aria-label="Gerar senha aleatória"
+                              onClick={() => setPassword(generatePassword())}
+                            >
+                              <KeyRound className="size-4" aria-hidden="true" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            Gerar senha aleatória
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="portal-expiry">Expiração</Label>
+                      <Select value={expiry} onValueChange={setExpiry}>
+                        <SelectTrigger id="portal-expiry" className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EXPIRY_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <ToggleRow
+                      id="portal-show-budget"
+                      label="Mostrar consumo do budget"
+                      description="Horas consumidas vs. contratadas, com percentual."
+                      checked={showBudget}
+                      onCheckedChange={setShowBudget}
+                    />
+                    <ToggleRow
+                      id="portal-show-team"
+                      label="Mostrar nomes da equipe"
+                      description="Desligado, os nomes viram “Membro 1, Membro 2…”."
+                      checked={showTeam}
+                      onCheckedChange={setShowTeam}
+                    />
+                    <ToggleRow
+                      id="portal-show-descriptions"
+                      label="Mostrar descrições das atividades"
+                      description="Textos dos lançamentos na linha do tempo."
+                      checked={showDescriptions}
+                      onCheckedChange={setShowDescriptions}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <ToggleRow
-                    id="portal-show-budget"
-                    label="Mostrar consumo do budget"
-                    description="Horas consumidas vs. contratadas, com percentual."
-                    checked={showBudget}
-                    onCheckedChange={setShowBudget}
-                  />
-                  <ToggleRow
-                    id="portal-show-team"
-                    label="Mostrar nomes da equipe"
-                    description="Desligado, os nomes viram “Membro 1, Membro 2…”."
-                    checked={showTeam}
-                    onCheckedChange={setShowTeam}
-                  />
-                  <ToggleRow
-                    id="portal-show-descriptions"
-                    label="Mostrar descrições das atividades"
-                    description="Textos dos lançamentos na linha do tempo."
-                    checked={showDescriptions}
-                    onCheckedChange={setShowDescriptions}
-                  />
-                </div>
-              </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setCreateOpen(false)}
+                    disabled={saving}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleCreate}
+                    disabled={saving}
+                    className="bg-brand-500 text-white hover:bg-brand-600"
+                  >
+                    {saving ? "Criando…" : "Criar portal"}
+                  </Button>
+                </DialogFooter>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setCreateOpen(false)}
-                  disabled={saving}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  onClick={handleCreate}
-                  disabled={saving}
-                  className="bg-brand-500 text-white hover:bg-brand-600"
-                >
-                  {saving ? "Criando…" : "Criar portal"}
-                </Button>
-              </DialogFooter>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+        {/* Revoke confirmation */}
+        <AlertDialog
+          open={revokeTarget !== null}
+          onOpenChange={(open) => !open && setRevokeTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Revogar portal?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O link “{revokeTarget?.label}” deixa de funcionar imediatamente
+                para o cliente. Essa ação não pode ser desfeita — para dar
+                acesso novamente, crie um novo portal.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleRevoke}
+                className="bg-red-500 text-white hover:bg-red-600"
+              >
+                Revogar acesso
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
-      {/* Revoke confirmation */}
-      <AlertDialog
-        open={revokeTarget !== null}
-        onOpenChange={(open) => !open && setRevokeTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Revogar portal?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O link “{revokeTarget?.label}” deixa de funcionar imediatamente
-              para o cliente. Essa ação não pode ser desfeita — para dar acesso
-              novamente, crie um novo portal.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleRevoke}
-              className="bg-red-500 text-white hover:bg-red-600"
-            >
-              Revogar acesso
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Delete confirmation */}
-      <AlertDialog
-        open={deleteTarget !== null}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Excluir portal?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Remove definitivamente o registro “{deleteTarget?.label}”,
-              incluindo o histórico de visualizações.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDelete}
-              className="bg-red-500 text-white hover:bg-red-600"
-            >
-              Excluir
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </motion.div>
+        {/* Delete confirmation */}
+        <AlertDialog
+          open={deleteTarget !== null}
+          onOpenChange={(open) => !open && setDeleteTarget(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir portal?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Remove definitivamente o registro “{deleteTarget?.label}”,
+                incluindo o histórico de visualizações.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                className="bg-red-500 text-white hover:bg-red-600"
+              >
+                Excluir
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </motion.div>
+    </TooltipProvider>
   );
 }

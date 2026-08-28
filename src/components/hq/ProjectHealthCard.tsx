@@ -286,6 +286,7 @@ export function ProjectHealthCard({
                   color: chartColors.tooltipColor,
                   fontSize: 12,
                 }}
+                itemStyle={{ color: chartColors.tooltipColor }}
                 cursor={{ fill: chartColors.cursorFill }}
                 formatter={(value) => [`${value ?? 0}h`, "Horas"]}
                 labelStyle={{ color: chartColors.tooltipLabelColor }}

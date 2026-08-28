@@ -14,7 +14,7 @@ export const applyDayPlanSchema = z.object({
     .array(
       z.object({
         projectId: z.string().min(1),
-        description: z.string().min(3).max(500),
+        description: z.string().min(3).max(2000),
         minutes: z.number().int().min(5).max(1440),
         billable: z.boolean(),
         azureWorkItemId: z.number().int().positive().nullable().optional(),

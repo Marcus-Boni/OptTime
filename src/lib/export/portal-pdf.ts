@@ -17,6 +17,68 @@ const BORDER = [229, 231, 235] as const;
 const WHITE = [255, 255, 255] as const;
 const MARGIN = 16;
 
+/**
+ * Rasterizes the official OptSolv mark (public/logo-white.svg) onto a brand
+ * square, matching the icon used across the app (sidebar, portal header).
+ * jsPDF cannot render SVG directly, so the mark is drawn to an offscreen
+ * canvas and embedded as a PNG. Runs client-side only; returns null on any
+ * failure so the PDF still generates without the icon.
+ */
+async function loadBrandLogoDataUrl(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const response = await fetch("/logo-white.svg");
+    if (!response.ok) return null;
+
+    const svgText = await response.text();
+    const svgBlob = new Blob([svgText], { type: "image/svg+xml" });
+    const objectUrl = URL.createObjectURL(svgBlob);
+
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new window.Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("failed to load logo svg"));
+      img.src = objectUrl;
+    });
+
+    const size = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    URL.revokeObjectURL(objectUrl);
+    if (!ctx) return null;
+
+    const radius = size * 0.22;
+    ctx.fillStyle = `rgb(${BRAND.join(",")})`;
+    ctx.beginPath();
+    ctx.moveTo(radius, 0);
+    ctx.arcTo(size, 0, size, size, radius);
+    ctx.arcTo(size, size, 0, size, radius);
+    ctx.arcTo(0, size, 0, 0, radius);
+    ctx.arcTo(0, 0, size, 0, radius);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mark viewBox is 22×33 — fit height, then center both axes.
+    const markHeight = size * 0.62;
+    const markWidth = markHeight * (22 / 33);
+    ctx.drawImage(
+      image,
+      (size - markWidth) / 2,
+      (size - markHeight) / 2,
+      markWidth,
+      markHeight,
+    );
+
+    return canvas.toDataURL("image/png");
+  } catch (error) {
+    console.error("[portal-pdf] failed to render brand logo:", error);
+    return null;
+  }
+}
+
 function hoursLabel(minutes: number): string {
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
@@ -47,7 +109,9 @@ function drawKpiCard(
   doc.text(value, x + 5, y + 17);
 }
 
-export function exportPortalSnapshotToPDF(snapshot: PortalSnapshot): void {
+export async function exportPortalSnapshotToPDF(
+  snapshot: PortalSnapshot,
+): Promise<void> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const contentWidth = pageWidth - MARGIN * 2;
@@ -56,14 +120,21 @@ export function exportPortalSnapshotToPDF(snapshot: PortalSnapshot): void {
   doc.setFillColor(...BRAND);
   doc.rect(0, 0, pageWidth, 26, "F");
 
+  const logoDataUrl = await loadBrandLogoDataUrl();
+  const textStartX = logoDataUrl ? MARGIN + 11 : MARGIN;
+
+  if (logoDataUrl) {
+    doc.addImage(logoDataUrl, "PNG", MARGIN, 6, 8, 8, undefined, "FAST");
+  }
+
   doc.setTextColor(...WHITE);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text("OptSolv Time", MARGIN, 11);
+  doc.text("OptSolv Time", textStartX, 11);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
-  doc.text("Relatório executivo de acompanhamento", MARGIN, 18);
+  doc.text("Relatório executivo de acompanhamento", textStartX, 18);
 
   const generated = new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "long",

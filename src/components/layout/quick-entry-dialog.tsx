@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 import { TimeEntryForm } from "@/components/time/TimeEntryForm";
+import { extractApiErrorMessage } from "@/lib/api-errors";
 import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
 import { useUIStore } from "@/stores/ui.store";
 
@@ -27,8 +28,8 @@ export function QuickEntryDialog() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Falha ao criar registro");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(extractApiErrorMessage(err, "Falha ao criar registro"));
       }
 
       toast.success("Registro de tempo criado com sucesso!");

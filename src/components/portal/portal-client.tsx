@@ -15,6 +15,7 @@ import {
   TimerOff,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -64,12 +65,14 @@ function PortalShell({ children }: { children: React.ReactNode }) {
 function PortalBrand() {
   return (
     <div className="flex items-center gap-2">
-      <span
-        className="flex size-8 items-center justify-center rounded-lg bg-brand-500 font-display text-sm font-bold text-white"
-        aria-hidden="true"
-      >
-        O
-      </span>
+      <div className="flex size-8 items-center justify-center rounded-lg bg-brand-500 shadow-lg shadow-brand-500/20">
+        <Image
+          src="/logo-white.svg"
+          alt="OptSolv Logo"
+          width={14}
+          height={21}
+        />
+      </div>
       <span className="font-display text-sm font-semibold tracking-tight">
         OptSolv <span className="text-brand-500">Time</span>
       </span>
@@ -324,9 +327,9 @@ function LiveSnapshot({
     [snapshot.weeklySeries],
   );
 
-  const handleExportPdf = useCallback(() => {
+  const handleExportPdf = useCallback(async () => {
     try {
-      exportPortalSnapshotToPDF(snapshot);
+      await exportPortalSnapshotToPDF(snapshot);
     } catch (error: unknown) {
       console.error("[PortalClient] handleExportPdf:", error);
     }
@@ -525,6 +528,7 @@ function LiveSnapshot({
                         color: chartColors.tooltipColor,
                         fontSize: 12,
                       }}
+                      itemStyle={{ color: chartColors.tooltipColor }}
                       cursor={{ fill: chartColors.cursorFill }}
                       formatter={(value) => [`${value ?? 0}h`, "Horas"]}
                       labelStyle={{ color: chartColors.tooltipLabelColor }}
@@ -557,18 +561,19 @@ function LiveSnapshot({
                     Sem horas registradas ainda.
                   </p>
                 ) : (
-                  <ul className="space-y-3">
-                    {snapshot.team.map((member) => (
-                      <li key={member.name} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="truncate font-medium">
-                            {member.name}
-                          </span>
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {formatDuration(member.minutes)}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                  <ul className="space-y-2">
+                    {snapshot.team.map((member, index) => (
+                      <li
+                        key={member.name}
+                        className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2"
+                      >
+                        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand-500/10 font-mono text-[10px] font-semibold text-brand-500">
+                          {index + 1}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {member.name}
+                        </span>
+                        <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-muted sm:w-24">
                           <div
                             className="h-full rounded-full bg-brand-500/70"
                             style={{
@@ -576,6 +581,9 @@ function LiveSnapshot({
                             }}
                           />
                         </div>
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                          {formatDuration(member.minutes)}
+                        </span>
                       </li>
                     ))}
                   </ul>

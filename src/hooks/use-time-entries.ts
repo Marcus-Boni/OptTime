@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { extractApiErrorMessage } from "@/lib/api-errors";
 import {
   dispatchTimeEntriesUpdated,
   TIME_ENTRIES_UPDATED_EVENT,
@@ -88,8 +89,8 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Falha ao criar entrada");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(extractApiErrorMessage(err, "Falha ao criar entrada"));
       }
       const result = await res.json();
       await fetchEntries();
@@ -118,8 +119,10 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
         body: JSON.stringify(data),
       });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Falha ao atualizar entrada");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          extractApiErrorMessage(err, "Falha ao atualizar entrada"),
+        );
       }
       await fetchEntries();
       dispatchTimeEntriesUpdated();
@@ -131,8 +134,10 @@ export function useTimeEntries(options: UseTimeEntriesOptions = {}) {
     async (id: string) => {
       const res = await fetch(`/api/time-entries/${id}`, { method: "DELETE" });
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error ?? "Falha ao excluir entrada");
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          extractApiErrorMessage(err, "Falha ao excluir entrada"),
+        );
       }
       await fetchEntries();
       dispatchTimeEntriesUpdated();

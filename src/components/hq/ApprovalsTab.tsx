@@ -43,6 +43,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ApprovalsController } from "@/hooks/use-hq";
@@ -359,221 +360,250 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
 
   const conformant = data.pending.filter((item) => item.conformant);
   const withAnomalies = data.pending.filter((item) => !item.conformant);
+  const conformantMinutes = conformant.reduce(
+    (sum, item) => sum + item.totalMinutes,
+    0,
+  );
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="space-y-6"
-    >
-      <motion.div variants={itemVariants}>
-        <Card className="gap-0 py-4">
-          <CardContent className="flex flex-wrap items-center justify-between gap-4 px-4">
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <span className="flex items-center gap-2">
-                <Clock className="size-4 text-brand-500" aria-hidden="true" />
-                <span className="font-mono font-semibold">
-                  {data.totals.pending}
+    <TooltipProvider delayDuration={150}>
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-6"
+      >
+        <motion.div variants={itemVariants}>
+          <Card className="gap-0 py-4">
+            <CardContent className="flex flex-wrap items-center justify-between gap-4 px-4">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+                <span className="flex items-center gap-2">
+                  <Clock className="size-4 text-brand-500" aria-hidden="true" />
+                  <span className="font-mono font-semibold">
+                    {data.totals.pending}
+                  </span>
+                  pendente{data.totals.pending === 1 ? "" : "s"}
                 </span>
-                pendente{data.totals.pending === 1 ? "" : "s"}
-              </span>
-              <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-                <ShieldCheck className="size-4" aria-hidden="true" />
-                <span className="font-mono font-semibold">
-                  {data.totals.conformant}
+                <span className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="size-4" aria-hidden="true" />
+                  <span className="font-mono font-semibold">
+                    {data.totals.conformant}
+                  </span>
+                  conforme{data.totals.conformant === 1 ? "" : "s"}
                 </span>
-                conforme{data.totals.conformant === 1 ? "" : "s"}
-              </span>
-              <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                <ShieldAlert className="size-4" aria-hidden="true" />
-                <span className="font-mono font-semibold">
-                  {data.totals.withAnomalies}
+                <span className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                  <ShieldAlert className="size-4" aria-hidden="true" />
+                  <span className="font-mono font-semibold">
+                    {data.totals.withAnomalies}
+                  </span>
+                  com alertas
                 </span>
-                com alertas
-              </span>
-              <span className="text-muted-foreground">
-                Total:{" "}
-                <span className="font-mono font-semibold text-foreground">
-                  {formatDuration(data.totals.totalMinutes)}
+                <span className="text-muted-foreground">
+                  Total:{" "}
+                  <span className="font-mono font-semibold text-foreground">
+                    {formatDuration(data.totals.totalMinutes)}
+                  </span>
                 </span>
-              </span>
-            </div>
+              </div>
 
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  disabled={conformant.length === 0 || batchRunning}
-                  className="bg-brand-500 text-white hover:bg-brand-600"
-                >
-                  <CheckCheck className="size-4" aria-hidden="true" />
-                  {batchRunning
-                    ? "Aprovando…"
-                    : `Aprovar ${conformant.length} conforme${conformant.length === 1 ? "" : "s"} em 1 clique`}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Aprovar em lote</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {conformant.length} timesheet
-                    {conformant.length === 1 ? "" : "s"} sem nenhuma anomalia
-                    detectada ser{conformant.length === 1 ? "á" : "ão"} aprovado
-                    {conformant.length === 1 ? "" : "s"}:{" "}
-                    {conformant.map((item) => item.userName).join(", ")}. As
-                    horas ficam travadas e sincronizam com o Azure DevOps.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleBatchApprove}
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    disabled={conformant.length === 0 || batchRunning}
                     className="bg-brand-500 text-white hover:bg-brand-600"
                   >
-                    Confirmar aprovação
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardContent>
-        </Card>
+                    <CheckCheck className="size-4" aria-hidden="true" />
+                    {batchRunning
+                      ? "Aprovando…"
+                      : `Aprovar ${conformant.length} conforme${conformant.length === 1 ? "" : "s"} em 1 clique`}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-md">
+                  <AlertDialogHeader className="shrink-0">
+                    <AlertDialogTitle>Aprovar em lote</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      {conformant.length} timesheet
+                      {conformant.length === 1 ? "" : "s"} sem nenhuma anomalia
+                      detectada ser{conformant.length === 1 ? "á" : "ão"}{" "}
+                      aprovado{conformant.length === 1 ? "" : "s"}, totalizando{" "}
+                      <span className="font-mono font-semibold text-foreground">
+                        {formatDuration(conformantMinutes)}
+                      </span>
+                      . As horas ficam travadas e sincronizam com o Azure
+                      DevOps.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+
+                  <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border/60 bg-muted/20 p-2.5">
+                    <div className="flex flex-wrap gap-1.5">
+                      {conformant.map((item) => (
+                        <span
+                          key={item.timesheetId}
+                          className="inline-flex items-center gap-1 rounded-full bg-background px-2 py-0.5 text-xs"
+                        >
+                          {item.userName}
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            {formatDuration(item.totalMinutes)}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <AlertDialogFooter className="shrink-0">
+                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleBatchApprove}
+                      className="bg-brand-500 text-white hover:bg-brand-600"
+                    >
+                      Confirmar aprovação
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        {withAnomalies.length > 0 ? (
+          <motion.section variants={itemVariants} className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldAlert
+                className="size-4 text-amber-500"
+                aria-hidden="true"
+              />
+              Exceções para revisar ({withAnomalies.length})
+            </h2>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {withAnomalies.map((insight) => (
+                <InsightCard
+                  key={insight.timesheetId}
+                  insight={insight}
+                  busy={busyIds.has(insight.timesheetId) || batchRunning}
+                  onApprove={handleRequestApprove}
+                  onReject={(item) =>
+                    setRejectState({
+                      timesheetId: item.timesheetId,
+                      userName: item.userName,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </motion.section>
+        ) : null}
+
+        {conformant.length > 0 ? (
+          <motion.section variants={itemVariants} className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold">
+              <ShieldCheck
+                className="size-4 text-emerald-500"
+                aria-hidden="true"
+              />
+              Conformes — prontos para o lote ({conformant.length})
+            </h2>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              {conformant.map((insight) => (
+                <InsightCard
+                  key={insight.timesheetId}
+                  insight={insight}
+                  busy={busyIds.has(insight.timesheetId) || batchRunning}
+                  onApprove={handleRequestApprove}
+                  onReject={(item) =>
+                    setRejectState({
+                      timesheetId: item.timesheetId,
+                      userName: item.userName,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </motion.section>
+        ) : null}
+
+        {/* Approve-despite-anomalies confirmation */}
+        <AlertDialog
+          open={confirmApprove !== null}
+          onOpenChange={(open) => !open && setConfirmApprove(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Aprovar com anomalias?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O timesheet de {confirmApprove?.userName} tem{" "}
+                {confirmApprove?.anomalies.length} alerta
+                {confirmApprove?.anomalies.length === 1 ? "" : "s"} detectado
+                {confirmApprove?.anomalies.length === 1 ? "" : "s"}. Você pode
+                aprovar mesmo assim — a decisão fica registrada no histórico.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Voltar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (confirmApprove) void handleApprove(confirmApprove);
+                  setConfirmApprove(null);
+                }}
+                className="bg-brand-500 text-white hover:bg-brand-600"
+              >
+                Aprovar mesmo assim
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Reject dialog */}
+        <Dialog
+          open={rejectState !== null}
+          onOpenChange={(open) => {
+            if (!open) {
+              setRejectState(null);
+              setRejectReason("");
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Rejeitar timesheet</DialogTitle>
+              <DialogDescription>
+                Explique o que precisa ser ajustado — {rejectState?.userName}{" "}
+                verá exatamente este motivo e poderá corrigir e reenviar.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Textarea
+                value={rejectReason}
+                onChange={(event) => setRejectReason(event.target.value)}
+                placeholder="Ex.: as 14h de sábado precisam de justificativa ou remoção…"
+                rows={4}
+                aria-label="Motivo da rejeição"
+              />
+              <p className="text-xs text-muted-foreground">
+                Mínimo de 10 caracteres.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setRejectState(null);
+                  setRejectReason("");
+                }}
+                disabled={rejectSubmitting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRejectSubmit}
+                disabled={rejectSubmitting}
+              >
+                {rejectSubmitting ? "Rejeitando…" : "Rejeitar timesheet"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </motion.div>
-
-      {withAnomalies.length > 0 ? (
-        <motion.section variants={itemVariants} className="space-y-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldAlert className="size-4 text-amber-500" aria-hidden="true" />
-            Exceções para revisar ({withAnomalies.length})
-          </h2>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            {withAnomalies.map((insight) => (
-              <InsightCard
-                key={insight.timesheetId}
-                insight={insight}
-                busy={busyIds.has(insight.timesheetId) || batchRunning}
-                onApprove={handleRequestApprove}
-                onReject={(item) =>
-                  setRejectState({
-                    timesheetId: item.timesheetId,
-                    userName: item.userName,
-                  })
-                }
-              />
-            ))}
-          </div>
-        </motion.section>
-      ) : null}
-
-      {conformant.length > 0 ? (
-        <motion.section variants={itemVariants} className="space-y-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold">
-            <ShieldCheck
-              className="size-4 text-emerald-500"
-              aria-hidden="true"
-            />
-            Conformes — prontos para o lote ({conformant.length})
-          </h2>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-            {conformant.map((insight) => (
-              <InsightCard
-                key={insight.timesheetId}
-                insight={insight}
-                busy={busyIds.has(insight.timesheetId) || batchRunning}
-                onApprove={handleRequestApprove}
-                onReject={(item) =>
-                  setRejectState({
-                    timesheetId: item.timesheetId,
-                    userName: item.userName,
-                  })
-                }
-              />
-            ))}
-          </div>
-        </motion.section>
-      ) : null}
-
-      {/* Approve-despite-anomalies confirmation */}
-      <AlertDialog
-        open={confirmApprove !== null}
-        onOpenChange={(open) => !open && setConfirmApprove(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Aprovar com anomalias?</AlertDialogTitle>
-            <AlertDialogDescription>
-              O timesheet de {confirmApprove?.userName} tem{" "}
-              {confirmApprove?.anomalies.length} alerta
-              {confirmApprove?.anomalies.length === 1 ? "" : "s"} detectado
-              {confirmApprove?.anomalies.length === 1 ? "" : "s"}. Você pode
-              aprovar mesmo assim — a decisão fica registrada no histórico.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Voltar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                if (confirmApprove) void handleApprove(confirmApprove);
-                setConfirmApprove(null);
-              }}
-              className="bg-brand-500 text-white hover:bg-brand-600"
-            >
-              Aprovar mesmo assim
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Reject dialog */}
-      <Dialog
-        open={rejectState !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRejectState(null);
-            setRejectReason("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Rejeitar timesheet</DialogTitle>
-            <DialogDescription>
-              Explique o que precisa ser ajustado — {rejectState?.userName} verá
-              exatamente este motivo e poderá corrigir e reenviar.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Textarea
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              placeholder="Ex.: as 14h de sábado precisam de justificativa ou remoção…"
-              rows={4}
-              aria-label="Motivo da rejeição"
-            />
-            <p className="text-xs text-muted-foreground">
-              Mínimo de 10 caracteres.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setRejectState(null);
-                setRejectReason("");
-              }}
-              disabled={rejectSubmitting}
-            >
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRejectSubmit}
-              disabled={rejectSubmitting}
-            >
-              {rejectSubmitting ? "Rejeitando…" : "Rejeitar timesheet"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </motion.div>
+    </TooltipProvider>
   );
 }

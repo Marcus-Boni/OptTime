@@ -6,7 +6,6 @@ import {
   BellRing,
   Copy,
   Loader2,
-  MessagesSquare,
   Radio,
   Send,
   ShieldCheck,
@@ -17,6 +16,7 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,7 @@ interface TeamsPreferences {
   hasPersonalWebhook: boolean;
   personalWebhookPreview: string | null;
   presenceScopeEnabled: boolean;
+  identityLinked: boolean;
 }
 
 interface MaskedTeamsSettings {
@@ -259,11 +260,8 @@ export function TeamsSettingsClient() {
           </Link>
         </Button>
         <div className="flex items-center gap-3">
-          <div className="rounded-xl bg-[#6264A7]/15 p-2.5">
-            <MessagesSquare
-              className="size-6 text-[#6264A7]"
-              aria-hidden="true"
-            />
+          <div className="rounded-xl bg-[#6264A7]/10 p-2.5">
+            <TeamsLogo className="size-6" />
           </div>
           <div>
             <h1 className="font-display text-2xl font-bold tracking-tight">
@@ -417,6 +415,22 @@ export function TeamsSettingsClient() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {preferences?.identityLinked ? (
+                <p className="flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck
+                    className="size-3.5 shrink-0"
+                    aria-hidden="true"
+                  />
+                  Sua conta do Teams está vinculada — os comandos já reconhecem
+                  você.
+                </p>
+              ) : (
+                <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                  <Radio className="size-3.5 shrink-0" aria-hidden="true" />
+                  Conta ainda não vinculada. Saia e entre novamente com o login
+                  Microsoft para que os comandos reconheçam você no chat.
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Em um canal com o webhook de saída configurado, mencione{" "}
                 <span className="font-mono text-foreground">@OptSolv</span>{" "}
