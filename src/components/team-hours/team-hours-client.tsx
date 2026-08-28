@@ -1,49 +1,38 @@
 "use client";
 
+import { format } from "date-fns";
+import { motion } from "framer-motion";
 import {
-  eachDayOfInterval,
-  endOfISOWeek,
-  format,
-  isWeekend,
-  startOfISOWeek,
-  subDays,
-} from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  BriefcaseBusiness,
-  CalendarIcon,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Clock,
   Download,
-  FileDown,
   FilterX,
   Loader2,
   Search,
   Users,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { CollaboratorBoard } from "@/components/team-hours/collaborator-board";
+import { CollaboratorList } from "@/components/team-hours/collaborator-list";
+import { EntryDetailSheet } from "@/components/team-hours/entry-detail-sheet";
+import {
+  PeriodControl,
+  type TeamHoursPeriod,
+} from "@/components/team-hours/period-control";
+import { TeamHoursKpis } from "@/components/team-hours/team-hours-kpis";
+import { TeamHoursTable } from "@/components/team-hours/team-hours-table";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { UserCombobox } from "@/components/time/UserCombobox";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -51,42 +40,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import type {
-  TeamHourEntry,
-  TeamHourProject,
-  TeamHourUser,
+  fetchAllTeamHoursEntries,
+  hydrateAvatars,
+  type TeamHoursFilters,
+  useTeamHoursCollaborator,
+  useTeamHoursEntries,
+  useTeamHoursSummary,
 } from "@/hooks/use-team-hours";
-import { useTeamHours } from "@/hooks/use-team-hours";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import {
   exportCollaboratorHoursToPDF,
   exportTeamHoursGroupedToPDF,
 } from "@/lib/export/pdf";
-import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import type { TeamHourEntry, TeamHoursSortOption } from "@/types/team-hours";
+
+const PAGE_SIZE = 20;
+const SEARCH_DEBOUNCE_MS = 300;
+
+const SORT_OPTIONS: Array<{ value: TeamHoursSortOption; label: string }> = [
+  { value: "newest", label: "Mais recentes" },
+  { value: "oldest", label: "Mais antigos" },
+  { value: "longest", label: "Maior duração" },
+];
 
 const containerVariants = {
   hidden: {},
@@ -94,716 +74,237 @@ const containerVariants = {
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 16 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const },
+  },
 };
-
-const ITEMS_PER_PAGE = 15;
-const TEAM_HOURS_DAY_LIST_MAX_HEIGHT = 360;
-const QUICK_RANGES = [
-  { label: "Todo período", days: null },
-  { label: "7 dias", days: 7 },
-  { label: "30 dias", days: 30 },
-  { label: "90 dias", days: 90 },
-] as const;
-
-type SortOption = "newest" | "oldest" | "longest";
-
-interface UserInsight {
-  user: TeamHourUser;
-  totalMinutes: number;
-  billableMinutes: number;
-  entryCount: number;
-  projectsCount: number;
-  latestDate: string | null;
-  latestProjectName: string | null;
-}
-
-function SummaryCard({
-  icon,
-  title,
-  value,
-  detail,
-  iconColor,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  value: string;
-  detail: string;
-  iconColor: string;
-}) {
-  return (
-    <Card className="border-border/50 bg-card/50 shadow-sm transition-colors hover:bg-card/80">
-      <CardContent className="p-6">
-        <div className="flex items-center gap-4">
-          <div
-            className={cn(
-              "flex h-12 w-12 items-center justify-center rounded-xl",
-              iconColor,
-            )}
-          >
-            {icon}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-              {title}
-            </p>
-            <p className="font-display text-2xl font-bold text-foreground">
-              {value}
-            </p>
-            <p className="truncate text-xs text-muted-foreground">{detail}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function UserCard({
-  insight,
-  isActive,
-  onSelect,
-}: {
-  insight: UserInsight;
-  isActive: boolean;
-  onSelect: () => void;
-}) {
-  const billableRate =
-    insight.totalMinutes > 0
-      ? Math.round((insight.billableMinutes / insight.totalMinutes) * 100)
-      : 0;
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={isActive}
-      className={cn(
-        "w-full rounded-2xl border px-4 py-3 text-left transition-all",
-        isActive
-          ? "border-brand-500/40 bg-brand-500/5 shadow-sm ring-1 ring-brand-500/20"
-          : "border-border/60 bg-background/70 hover:border-brand-500/25 hover:bg-muted/30",
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <UserAvatar
-          name={insight.user.name}
-          image={insight.user.image}
-          size="sm"
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {insight.user.name}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {insight.user.email}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-              <Badge
-                variant="outline"
-                className="rounded-full border-border/60 bg-background/70 text-[10px]"
-              >
-                {insight.entryCount} registros
-              </Badge>
-              <Badge
-                variant="outline"
-                className="rounded-full border-border/60 bg-background/70 text-[10px]"
-              >
-                {insight.projectsCount} projetos
-              </Badge>
-            </div>
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Badge className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-500">
-              {formatDuration(insight.totalMinutes)}
-            </Badge>
-            <Badge
-              variant="outline"
-              className="rounded-full border-border/60 px-2.5 py-1 text-[10px]"
-            >
-              {billableRate}% faturável
-            </Badge>
-            {insight.latestDate ? (
-              <span className="text-[11px] text-muted-foreground">
-                Último registro em{" "}
-                <span className="font-medium text-foreground">
-                  {format(parseLocalDate(insight.latestDate), "dd/MM/yyyy")}
-                </span>
-              </span>
-            ) : null}
-          </div>
-
-          {insight.latestProjectName ? (
-            <p className="mt-2 truncate text-[11px] text-muted-foreground">
-              Projeto recente: {insight.latestProjectName}
-            </p>
-          ) : null}
-        </div>
-      </div>
-    </button>
-  );
-}
-
-function WeekEntryCard({
-  entry,
-  onSelect,
-}: {
-  entry: TeamHourEntry;
-  onSelect: (entry: TeamHourEntry) => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(entry)}
-      className="w-full rounded-xl border border-border/50 bg-background/85 p-3 text-left transition-all hover:border-brand-500/30 hover:bg-muted/20 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span
-              className="h-2 w-2 shrink-0 rounded-full"
-              style={{ backgroundColor: entry.project.color }}
-            />
-            <p className="truncate text-[11px] font-semibold text-foreground">
-              {entry.project.name}
-            </p>
-          </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {entry.project.clientName || "Interno"}
-          </p>
-        </div>
-
-        <Badge
-          variant="outline"
-          className={cn(
-            "rounded-full border-border/60 bg-background/70 text-[10px]",
-            entry.billable && "border-emerald-500/30 text-emerald-600",
-          )}
-        >
-          {formatDuration(entry.duration)}
-        </Badge>
-      </div>
-
-      <p className="mt-3 line-clamp-3 text-sm leading-5 text-muted-foreground">
-        {entry.description || "Sem descrição"}
-      </p>
-    </button>
-  );
-}
-
-function DescriptionCell({ description }: { description: string }) {
-  const content = description.trim() || "Sem descrição";
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="w-full rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        >
-          <p className="line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {content}
-          </p>
-        </button>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-sm whitespace-pre-wrap break-words text-sm leading-5">
-        {content}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function getQuickRangeDates(days: number) {
-  const end = new Date();
-  const start = subDays(end, days - 1);
-  return { start, end };
-}
-
-const filterStyles =
-  "h-12 w-full rounded-2xl border border-border/50 bg-background/50 px-4 text-sm font-sans flex items-center justify-between whitespace-nowrap shadow-xs transition-all duration-200 cursor-pointer text-left text-foreground hover:border-orange-500/30 hover:bg-background/80 focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 focus:outline-none focus-visible:border-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500/20 focus-visible:outline-none outline-none data-[state=open]:border-orange-500 data-[state=open]:ring-2 data-[state=open]:ring-orange-500/20 dark:border-border/50 dark:bg-background/50 dark:text-foreground dark:hover:border-orange-500/30 dark:hover:bg-background/80 dark:focus:border-orange-500 dark:focus:ring-2 dark:focus:ring-orange-500/20 dark:focus-visible:border-orange-500 dark:focus-visible:ring-2 dark:focus-visible:ring-orange-500/20 dark:data-[state=open]:border-orange-500 dark:data-[state=open]:ring-2 dark:data-[state=open]:ring-orange-500/20 flex-1 min-w-0";
 
 export function TeamHoursClient() {
   const { preferences, updatePreferences } = useUserTimePreferences();
-  const [fromDate, setFromDate] = useState<Date | undefined>(undefined);
-  const [toDate, setToDate] = useState<Date | undefined>(undefined);
+
+  const [period, setPeriod] = useState<TeamHoursPeriod>({
+    from: undefined,
+    to: undefined,
+  });
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
-  const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const [sort, setSort] = useState<TeamHoursSortOption>("newest");
   const [page, setPage] = useState(0);
+  const [tab, setTab] = useState("people");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedWeekStart, setSelectedWeekStart] = useState<string | null>(
-    null,
-  );
   const [selectedEntry, setSelectedEntry] = useState<TeamHourEntry | null>(
     null,
   );
   const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
-  const [colaboratorViewMode, setColaboratorViewMode] = useState<
-    "weekly" | "projects"
-  >("weekly");
-  const [expandedProjects, setExpandedProjects] = useState<
-    Record<string, boolean>
-  >({});
-  const [exportIsLoading, setExportIsLoading] = useState(false);
-  const resetPagination = () => setPage(0);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     setShowWeekends(preferences.showWeekends);
   }, [preferences.showWeekends]);
 
-  const deferredSearch = useDeferredValue(search);
-  const fromStr = fromDate ? format(fromDate, "yyyy-MM-dd") : undefined;
-  const toStr = toDate ? format(toDate, "yyyy-MM-dd") : undefined;
+  // The debounce is what keeps typing from firing a query per keystroke now
+  // that search runs in Postgres instead of over an in-memory array.
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
 
-  const { entries, loading, error } = useTeamHours({
-    from: fromStr,
-    to: toStr,
-    userId: userFilter,
-    projectId: projectFilter,
-  });
-
-  const uniqueUsers = useMemo<TeamHourUser[]>(() => {
-    const usersMap = new Map<string, TeamHourUser>();
-    for (const entry of entries) {
-      if (!usersMap.has(entry.user.id)) {
-        usersMap.set(entry.user.id, entry.user);
-      }
-    }
-    return Array.from(usersMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [entries]);
-
-  const uniqueProjects = useMemo<TeamHourProject[]>(() => {
-    const projectsMap = new Map<string, TeamHourProject>();
-    for (const entry of entries) {
-      if (!projectsMap.has(entry.project.id)) {
-        projectsMap.set(entry.project.id, entry.project);
-      }
-    }
-    return Array.from(projectsMap.values()).sort((a, b) =>
-      a.name.localeCompare(b.name),
-    );
-  }, [entries]);
-
-  const filteredEntries = useMemo(() => {
-    const normalizedSearch = deferredSearch.trim().toLowerCase();
-
-    let result = entries.filter((entry) => {
-      if (!normalizedSearch) {
-        return true;
-      }
-
-      const searchText = [
-        entry.description,
-        entry.user.name,
-        entry.user.email,
-        entry.project.name,
-        entry.project.clientName,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return searchText.includes(normalizedSearch);
-    });
-
-    result = [...result].sort((a, b) => {
-      const dateA = parseLocalDate(a.date).getTime();
-      const dateB = parseLocalDate(b.date).getTime();
-
-      if (sortBy === "oldest") return dateA - dateB;
-      if (sortBy === "longest" && b.duration !== a.duration) {
-        return b.duration - a.duration;
-      }
-      if (dateB !== dateA) return dateB - dateA;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-
-    return result;
-  }, [deferredSearch, entries, sortBy]);
-
-  const { userInsights, userEntriesMap } = useMemo(() => {
-    const aggregates = new Map<
-      string,
-      {
-        user: TeamHourUser;
-        totalMinutes: number;
-        billableMinutes: number;
-        entryCount: number;
-        latestDate: string | null;
-        latestProjectName: string | null;
-        projects: Set<string>;
-      }
-    >();
-    const entriesMap = new Map<string, TeamHourEntry[]>();
-
-    for (const entry of filteredEntries) {
-      const current = aggregates.get(entry.user.id) ?? {
-        user: entry.user,
-        totalMinutes: 0,
-        billableMinutes: 0,
-        entryCount: 0,
-        latestDate: null,
-        latestProjectName: null,
-        projects: new Set<string>(),
-      };
-
-      current.totalMinutes += entry.duration;
-      current.entryCount += 1;
-      current.projects.add(entry.project.id);
-      if (entry.billable) {
-        current.billableMinutes += entry.duration;
-      }
-      if (
-        !current.latestDate ||
-        parseLocalDate(entry.date).getTime() >
-          parseLocalDate(current.latestDate).getTime()
-      ) {
-        current.latestDate = entry.date;
-        current.latestProjectName = entry.project.name;
-      }
-
-      aggregates.set(entry.user.id, current);
-
-      const bucket = entriesMap.get(entry.user.id) ?? [];
-      bucket.push(entry);
-      entriesMap.set(entry.user.id, bucket);
-    }
-
-    const insights = Array.from(aggregates.values())
-      .map<UserInsight>((item) => ({
-        user: item.user,
-        totalMinutes: item.totalMinutes,
-        billableMinutes: item.billableMinutes,
-        entryCount: item.entryCount,
-        projectsCount: item.projects.size,
-        latestDate: item.latestDate,
-        latestProjectName: item.latestProjectName,
-      }))
-      .sort((a, b) => {
-        if (b.totalMinutes !== a.totalMinutes) {
-          return b.totalMinutes - a.totalMinutes;
-        }
-
-        const latestA = a.latestDate
-          ? parseLocalDate(a.latestDate).getTime()
-          : 0;
-        const latestB = b.latestDate
-          ? parseLocalDate(b.latestDate).getTime()
-          : 0;
-
-        if (latestB !== latestA) {
-          return latestB - latestA;
-        }
-
-        return a.user.name.localeCompare(b.user.name);
-      });
-
-    return { userInsights: insights, userEntriesMap: entriesMap };
-  }, [filteredEntries]);
-
-  useEffect(() => {
-    if (userInsights.length === 0) {
-      setSelectedUserId(null);
-      return;
-    }
-
-    if (userFilter !== "all") {
-      setSelectedUserId(userFilter);
-      return;
-    }
-
-    if (
-      !selectedUserId ||
-      !userInsights.some((insight) => insight.user.id === selectedUserId)
-    ) {
-      setSelectedUserId(userInsights[0]?.user.id ?? null);
-    }
-  }, [selectedUserId, userFilter, userInsights]);
-
-  const selectedUserEntries = useMemo(
-    () => (selectedUserId ? (userEntriesMap.get(selectedUserId) ?? []) : []),
-    [selectedUserId, userEntriesMap],
+  const filters = useMemo<TeamHoursFilters>(
+    () => ({
+      from: period.from ? format(period.from, "yyyy-MM-dd") : undefined,
+      to: period.to ? format(period.to, "yyyy-MM-dd") : undefined,
+      userId: userFilter,
+      projectId: projectFilter,
+      search: debouncedSearch,
+    }),
+    [debouncedSearch, period.from, period.to, projectFilter, userFilter],
   );
 
-  const selectedUserProjectGroups = useMemo(() => {
-    if (!selectedUserId) return [];
+  const summary = useTeamHoursSummary(filters);
 
-    const groups = new Map<
-      string,
-      {
-        project: TeamHourProject;
-        entries: TeamHourEntry[];
-        totalMinutes: number;
-        billableMinutes: number;
-      }
-    >();
-
-    for (const entry of selectedUserEntries) {
-      const pid = entry.project.id;
-      const current = groups.get(pid) ?? {
-        project: entry.project,
-        entries: [],
-        totalMinutes: 0,
-        billableMinutes: 0,
-      };
-
-      current.entries.push(entry);
-      current.totalMinutes += entry.duration;
-      if (entry.billable) {
-        current.billableMinutes += entry.duration;
-      }
-      groups.set(pid, current);
+  // Avatars are stored inline (tens of kilobytes each), so the API sends every
+  // one exactly once — here — instead of repeating them per row. Everything
+  // downstream joins back to this map by user id.
+  const avatars = useMemo(() => {
+    const map = new Map<string, string | null>();
+    for (const person of summary.data?.filterOptions.users ?? []) {
+      map.set(person.id, person.image);
     }
+    return map;
+  }, [summary.data?.filterOptions.users]);
 
-    return Array.from(groups.values()).sort(
-      (a, b) => b.totalMinutes - a.totalMinutes,
-    );
-  }, [selectedUserId, selectedUserEntries]);
-
-  const selectedUserInsight = useMemo(
+  const collaborators = useMemo(
     () =>
-      userInsights.find((insight) => insight.user.id === selectedUserId) ??
-      null,
-    [selectedUserId, userInsights],
+      (summary.data?.collaborators ?? []).map((item) => ({
+        ...item,
+        user: { ...item.user, image: avatars.get(item.user.id) ?? null },
+      })),
+    [avatars, summary.data?.collaborators],
   );
 
-  const handleExportCollaboratorPDF = async () => {
-    if (!selectedUserInsight) {
-      toast.error("Nenhum colaborador selecionado para exportar.");
-      return;
-    }
-    setExportIsLoading(true);
-    try {
-      const filename = `relatorio-horas-${selectedUserInsight.user.name.toLowerCase().replace(/\s+/g, "-")}`;
-      await exportCollaboratorHoursToPDF({
-        userName: selectedUserInsight.user.name,
-        userEmail: selectedUserInsight.user.email,
-        entries: selectedUserEntries,
-        period: periodLabel,
-        filename,
-      });
-      toast.success("PDF do colaborador gerado com sucesso!");
-    } catch (err) {
-      console.error("[TeamHoursPage] exportCollaboratorPDF:", err);
-      toast.error("Erro ao gerar PDF do colaborador.");
-    } finally {
-      setExportIsLoading(false);
-    }
-  };
+  // Only the records tab pays for the paginated query.
+  const entries = useTeamHoursEntries(
+    filters,
+    { page, pageSize: PAGE_SIZE, sort },
+    tab === "records",
+  );
 
-  const handleExportTeamPDF = async () => {
-    if (filteredEntries.length === 0) {
-      toast.error("Nenhum registro no período para exportar.");
-      return;
+  // Keep the selection valid as filters narrow the visible team.
+  const activeUserId = useMemo(() => {
+    if (userFilter !== "all") return userFilter;
+    if (
+      selectedUserId &&
+      collaborators.some((item) => item.user.id === selectedUserId)
+    ) {
+      return selectedUserId;
     }
-    setExportIsLoading(true);
+    return collaborators[0]?.user.id ?? null;
+  }, [collaborators, selectedUserId, userFilter]);
+
+  const collaboratorDetail = useTeamHoursCollaborator(
+    filters,
+    tab === "people" ? activeUserId : null,
+  );
+
+  const selectedCollaborator =
+    collaborators.find((item) => item.user.id === activeUserId) ?? null;
+
+  const collaboratorEntries = useMemo(
+    () => hydrateAvatars(collaboratorDetail.data?.entries ?? [], avatars),
+    [avatars, collaboratorDetail.data?.entries],
+  );
+
+  const tableEntries = useMemo(
+    () => hydrateAvatars(entries.data?.entries ?? [], avatars),
+    [avatars, entries.data?.entries],
+  );
+
+  /** A refresh over data already on screen, as opposed to the first load. */
+  const isRefreshing = summary.loading && summary.data !== null;
+
+  const hasActiveFilters =
+    search !== "" ||
+    userFilter !== "all" ||
+    projectFilter !== "all" ||
+    period.from !== undefined ||
+    period.to !== undefined;
+
+  const periodLabel =
+    period.from && period.to
+      ? `${format(period.from, "dd/MM/yyyy")} - ${format(period.to, "dd/MM/yyyy")}`
+      : "Todo o período";
+
+  function handleFilterChange(apply: () => void) {
+    setPage(0);
+    apply();
+  }
+
+  function handleClearFilters() {
+    setPage(0);
+    setSearch("");
+    setUserFilter("all");
+    setProjectFilter("all");
+    setPeriod({ from: undefined, to: undefined });
+  }
+
+  async function handleWeekendsChange(show: boolean) {
+    const previous = showWeekends;
+    setShowWeekends(show);
+
+    const success = await updatePreferences(
+      { timeShowWeekends: show },
+      { errorMessage: "Não foi possível salvar a exibição de fins de semana." },
+    );
+
+    if (!success) {
+      setShowWeekends(previous);
+    }
+  }
+
+  async function handleExportTeamPDF() {
+    setExporting(true);
     try {
+      const allEntries = hydrateAvatars(
+        await fetchAllTeamHoursEntries(filters, sort),
+        avatars,
+      );
+
+      if (allEntries.length === 0) {
+        toast.error("Nenhum registro no período para exportar.");
+        return;
+      }
+
       await exportTeamHoursGroupedToPDF({
-        entries: filteredEntries,
+        entries: allEntries,
         period: periodLabel,
         filename: "relatorio-horas-equipe",
       });
-      toast.success("PDF consolidado da equipe gerado com sucesso!");
-    } catch (err) {
-      console.error("[TeamHoursPage] exportTeamPDF:", err);
+      toast.success("PDF consolidado da equipe gerado com sucesso.");
+    } catch (error: unknown) {
+      console.error("[TeamHoursClient] handleExportTeamPDF:", error);
       toast.error("Erro ao gerar PDF da equipe.");
     } finally {
-      setExportIsLoading(false);
+      setExporting(false);
     }
-  };
+  }
 
-  const availableWeeks = useMemo(() => {
-    const weeks = new Set<string>();
-
-    for (const entry of selectedUserEntries) {
-      weeks.add(
-        format(startOfISOWeek(parseLocalDate(entry.date)), "yyyy-MM-dd"),
-      );
-    }
-
-    return Array.from(weeks).sort((a, b) => b.localeCompare(a));
-  }, [selectedUserEntries]);
-
-  useEffect(() => {
-    if (availableWeeks.length === 0) {
-      setSelectedWeekStart(null);
+  async function handleExportCollaboratorPDF() {
+    if (!selectedCollaborator) {
+      toast.error("Nenhum colaborador selecionado para exportar.");
       return;
     }
 
-    if (!selectedWeekStart || !availableWeeks.includes(selectedWeekStart)) {
-      setSelectedWeekStart(availableWeeks[0]);
-    }
-  }, [availableWeeks, selectedWeekStart]);
-
-  useEffect(() => {
-    if (!selectedEntry) {
-      return;
-    }
-
-    const entryStillVisible = filteredEntries.some(
-      (entry) => entry.id === selectedEntry.id,
-    );
-
-    if (!entryStillVisible) {
-      setSelectedEntry(null);
-    }
-  }, [filteredEntries, selectedEntry]);
-
-  const selectedWeekStartDate = selectedWeekStart
-    ? parseLocalDate(selectedWeekStart)
-    : null;
-  const selectedWeekEndDate = selectedWeekStartDate
-    ? endOfISOWeek(selectedWeekStartDate)
-    : null;
-
-  const weekDays = useMemo(
-    () =>
-      selectedWeekStartDate && selectedWeekEndDate
-        ? eachDayOfInterval({
-            start: selectedWeekStartDate,
-            end: selectedWeekEndDate,
-          }).filter((d) => showWeekends || !isWeekend(d))
-        : [],
-    [selectedWeekEndDate, selectedWeekStartDate, showWeekends],
-  );
-
-  const weekEntriesMap = useMemo(() => {
-    const map = new Map<string, TeamHourEntry[]>();
-
-    if (!selectedWeekStartDate) {
-      return map;
-    }
-
-    for (const entry of selectedUserEntries) {
-      const weekKey = format(
-        startOfISOWeek(parseLocalDate(entry.date)),
-        "yyyy-MM-dd",
+    setExporting(true);
+    try {
+      const allEntries = hydrateAvatars(
+        await fetchAllTeamHoursEntries({
+          ...filters,
+          userId: selectedCollaborator.user.id,
+        }),
+        avatars,
       );
 
-      if (weekKey !== selectedWeekStart) {
-        continue;
+      if (allEntries.length === 0) {
+        toast.error("Nenhum registro no período para exportar.");
+        return;
       }
 
-      const bucket = map.get(entry.date) ?? [];
-      bucket.push(entry);
-      map.set(entry.date, bucket);
+      const slug = selectedCollaborator.user.name
+        .toLowerCase()
+        .replace(/\s+/g, "-");
+
+      await exportCollaboratorHoursToPDF({
+        userName: selectedCollaborator.user.name,
+        userEmail: selectedCollaborator.user.email,
+        entries: allEntries,
+        period: periodLabel,
+        filename: `relatorio-horas-${slug}`,
+      });
+      toast.success("PDF do colaborador gerado com sucesso.");
+    } catch (error: unknown) {
+      console.error("[TeamHoursClient] handleExportCollaboratorPDF:", error);
+      toast.error("Erro ao gerar PDF do colaborador.");
+    } finally {
+      setExporting(false);
     }
+  }
 
-    return map;
-  }, [selectedUserEntries, selectedWeekStart, selectedWeekStartDate]);
-
-  const selectedWeekSummary = useMemo(() => {
-    let totalMinutes = 0;
-    let billableMinutes = 0;
-    let entryCount = 0;
-    const projects = new Set<string>();
-
-    for (const dayEntries of weekEntriesMap.values()) {
-      for (const entry of dayEntries) {
-        totalMinutes += entry.duration;
-        entryCount += 1;
-        projects.add(entry.project.id);
-        if (entry.billable) {
-          billableMinutes += entry.duration;
-        }
-      }
-    }
-
-    return {
-      totalMinutes,
-      billableMinutes,
-      entryCount,
-      projectsCount: projects.size,
-    };
-  }, [weekEntriesMap]);
-
-  const summary = useMemo(() => {
-    const people = new Set<string>();
-    const projects = new Set<string>();
-    const byUser = new Map<string, { name: string; minutes: number }>();
-    let totalMinutes = 0;
-    let billableMinutes = 0;
-
-    for (const entry of filteredEntries) {
-      totalMinutes += entry.duration;
-      if (entry.billable) billableMinutes += entry.duration;
-      people.add(entry.user.id);
-      projects.add(entry.project.id);
-
-      const current = byUser.get(entry.user.id);
-      if (current) {
-        current.minutes += entry.duration;
-      } else {
-        byUser.set(entry.user.id, {
-          name: entry.user.name,
-          minutes: entry.duration,
-        });
-      }
-    }
-
-    const topContributor = Array.from(byUser.values()).sort(
-      (a, b) => b.minutes - a.minutes,
-    )[0];
-
-    return {
-      totalMinutes,
-      billableMinutes,
-      activePeople: people.size,
-      activeProjects: projects.size,
-      billableRate:
-        totalMinutes > 0
-          ? Math.round((billableMinutes / totalMinutes) * 100)
-          : 0,
-      topContributor,
-    };
-  }, [filteredEntries]);
-
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredEntries.length / ITEMS_PER_PAGE),
-  );
-  const safePage = Math.min(page, totalPages - 1);
-  const paginatedEntries = useMemo(() => {
-    const start = safePage * ITEMS_PER_PAGE;
-    return filteredEntries.slice(start, start + ITEMS_PER_PAGE);
-  }, [filteredEntries, safePage]);
-
-  const activeQuickRange = useMemo(() => {
-    if (!fromDate && !toDate) return "all";
-    if (!fromDate || !toDate) return null;
-
+  if (summary.error) {
     return (
-      QUICK_RANGES.find(({ days }) => {
-        if (days === null) return false;
-        const range = getQuickRangeDates(days);
-        return (
-          format(range.start, "yyyy-MM-dd") ===
-            format(fromDate, "yyyy-MM-dd") &&
-          format(range.end, "yyyy-MM-dd") === format(toDate, "yyyy-MM-dd")
-        );
-      })?.days ?? null
+      <Card className="border-destructive/40 bg-destructive/5 p-8 text-center">
+        <p className="text-sm font-medium text-destructive">{summary.error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mx-auto mt-4 w-fit"
+          onClick={summary.refetch}
+        >
+          Tentar novamente
+        </Button>
+      </Card>
     );
-  }, [fromDate, toDate]);
-
-  const periodLabel =
-    fromDate && toDate
-      ? `${format(fromDate, "dd/MM/yyyy")} - ${format(toDate, "dd/MM/yyyy")}`
-      : "Todo o período";
-
-  const selectedWeekIndex = selectedWeekStart
-    ? availableWeeks.indexOf(selectedWeekStart)
-    : -1;
-  const weekLabel =
-    selectedWeekStartDate && selectedWeekEndDate
-      ? `${format(selectedWeekStartDate, "d MMM", { locale: ptBR })} - ${format(selectedWeekEndDate, "d MMM yyyy", { locale: ptBR })}`
-      : "Nenhuma semana disponível";
+  }
 
   return (
     <TooltipProvider>
@@ -811,1150 +312,329 @@ export function TeamHoursClient() {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="space-y-8 pb-12"
+        className="space-y-5 pb-10"
       >
-        <motion.div
+        {/* ─── Header + período + export ─────────────────────────────── */}
+        <motion.header
           variants={itemVariants}
-          className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"
         >
           <div>
-            <h1 className="font-display text-2xl font-bold text-foreground">
+            <h1 className="font-display text-xl font-bold text-foreground">
               Horas da Equipe
             </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Explore a carga de trabalho da equipe com foco por colaborador e
-              semana completa.
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Carga de trabalho por colaborador, projeto e semana.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            {QUICK_RANGES.map(({ label, days }) => (
-              <Button
-                key={label}
-                variant={
-                  (days === null && activeQuickRange === "all") ||
-                  activeQuickRange === days
-                    ? "default"
-                    : "outline"
-                }
-                size="sm"
-                className="h-8 rounded-full"
-                onClick={() => {
-                  resetPagination();
-                  if (days === null) {
-                    setFromDate(undefined);
-                    setToDate(undefined);
-                  } else {
-                    const range = getQuickRangeDates(days);
-                    setFromDate(range.start);
-                    setToDate(range.end);
-                  }
-                }}
-              >
-                {label}
-              </Button>
-            ))}
+            <PeriodControl
+              value={period}
+              onChange={(next) => handleFilterChange(() => setPeriod(next))}
+            />
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 rounded-full border-brand-500/20 text-brand-500 hover:bg-brand-500/5 hover:text-brand-600 gap-1.5 focus:ring-2 focus:ring-brand-500/20 cursor-pointer"
-                  disabled={exportIsLoading}
+                  disabled={exporting}
+                  className="h-9 gap-1.5 border-brand-500/25 text-brand-500 hover:bg-brand-500/8 hover:text-brand-600"
+                  data-tour="team-hours-export"
                 >
-                  {exportIsLoading ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {exporting ? (
+                    <Loader2
+                      className="size-4 animate-spin"
+                      aria-hidden="true"
+                    />
                   ) : (
-                    <Download className="h-3.5 w-3.5" />
+                    <Download className="size-4" aria-hidden="true" />
                   )}
                   Exportar PDF
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+                  <ChevronDown
+                    className="size-3.5 opacity-60"
+                    aria-hidden="true"
+                  />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-56 rounded-xl border-border/50 bg-background/95"
-              >
+              <DropdownMenuContent align="end" className="w-60">
                 <DropdownMenuItem
                   onClick={handleExportTeamPDF}
-                  className="rounded-lg gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
+                  className="gap-2 focus:bg-brand-500/10 focus:text-brand-500"
                 >
-                  <Users className="h-4 w-4 text-brand-500" />
-                  PDF da Equipe (Consolidado)
+                  <Users className="size-4 text-brand-500" aria-hidden="true" />
+                  PDF da equipe (consolidado)
                 </DropdownMenuItem>
-                {selectedUserInsight && (
+                {selectedCollaborator ? (
                   <DropdownMenuItem
                     onClick={handleExportCollaboratorPDF}
-                    className="rounded-lg gap-2 cursor-pointer focus:bg-brand-500/10 focus:text-brand-500"
+                    className="gap-2 focus:bg-brand-500/10 focus:text-brand-500"
                   >
                     <UserAvatar
-                      name={selectedUserInsight.user.name}
-                      image={selectedUserInsight.user.image}
+                      name={selectedCollaborator.user.name}
+                      image={selectedCollaborator.user.image}
                       size="sm"
                     />
-                    PDF de {selectedUserInsight.user.name.split(" ")[0]}
+                    PDF de {selectedCollaborator.user.name.split(" ")[0]}
                   </DropdownMenuItem>
-                )}
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </motion.div>
+        </motion.header>
 
-        <motion.div variants={itemVariants}>
-          <Card className="border-border/50 bg-card/50">
-            <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-              <div className="flex flex-1 flex-col gap-4 sm:flex-row sm:items-center">
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
-                    De
-                  </span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "h-10 justify-start border-border/50 bg-background/50 font-normal",
-                          !fromDate && "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 text-brand-500" />
-                        {fromDate ? format(fromDate, "dd/MM/yyyy") : "Início"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={fromDate}
-                        onSelect={setFromDate}
-                        initialFocus
-                        locale={ptBR}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <span className="ml-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
-                    Até
-                  </span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn(
-                          "h-10 justify-start border-border/50 bg-background/50 font-normal",
-                          !toDate && "text-muted-foreground",
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4 text-brand-500" />
-                        {toDate ? format(toDate, "dd/MM/yyyy") : "Fim"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={toDate}
-                        onSelect={setToDate}
-                        initialFocus
-                        locale={ptBR}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-
-              <div className="flex min-w-[150px] items-end justify-between gap-4 sm:justify-end">
-                <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/80">
-                    Período
-                  </p>
-                  <p className="text-sm font-medium text-foreground">
-                    {periodLabel}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-10 w-10 text-muted-foreground hover:text-foreground"
-                  onClick={() => {
-                    resetPagination();
-                    setFromDate(undefined);
-                    setToDate(undefined);
-                  }}
-                >
-                  <FilterX className="h-4 w-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
+        {/* ─── KPIs ───────────────────────────────────────────────────── */}
         <motion.section
           variants={itemVariants}
-          className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4"
+          aria-label="Indicadores do período"
+          aria-busy={summary.loading}
+          className={cn(
+            "transition-opacity duration-200",
+            // Stale numbers stay readable while the next ones load, just dimmed.
+            isRefreshing && "opacity-60",
+          )}
         >
-          <SummaryCard
-            title="Tempo Total"
-            value={formatDuration(summary.totalMinutes)}
-            detail={`${summary.activePeople} pessoas ativas`}
-            icon={<Clock className="h-5 w-5" />}
-            iconColor="bg-orange-500/10 text-orange-500"
-          />
-          <SummaryCard
-            title="Faturável"
-            value={formatDuration(summary.billableMinutes)}
-            detail={`${summary.billableRate}% do total`}
-            icon={<BriefcaseBusiness className="h-5 w-5" />}
-            iconColor="bg-sky-500/10 text-sky-500"
-          />
-          <SummaryCard
-            title="Pessoas"
-            value={String(summary.activePeople)}
-            detail={
-              summary.topContributor
-                ? `Top: ${summary.topContributor.name}`
-                : "Nenhum no filtro"
-            }
-            icon={<Users className="h-5 w-5" />}
-            iconColor="bg-indigo-500/10 text-indigo-500"
-          />
-          <SummaryCard
-            title="Projetos"
-            value={String(summary.activeProjects)}
-            detail="Distribuídos no período"
-            icon={<BriefcaseBusiness className="h-5 w-5" />}
-            iconColor="bg-amber-500/10 text-amber-500"
+          <TeamHoursKpis
+            totals={summary.data?.totals ?? null}
+            loading={summary.loading && !summary.data}
           />
         </motion.section>
 
+        {/* ─── Filtros ────────────────────────────────────────────────── */}
+        <motion.section variants={itemVariants} aria-label="Filtros">
+          <Card
+            className="gap-0 rounded-xl border-border/60 p-2 shadow-none"
+            data-tour="team-hours-filters"
+          >
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="relative flex-1 lg:min-w-[240px]">
+                <Search
+                  aria-hidden="true"
+                  className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+                />
+                <label htmlFor="team-hours-search" className="sr-only">
+                  Buscar registros
+                </label>
+                <Input
+                  id="team-hours-search"
+                  value={search}
+                  onChange={(event) =>
+                    handleFilterChange(() => setSearch(event.target.value))
+                  }
+                  placeholder="Buscar colaborador, projeto ou descrição..."
+                  className="h-9 border-transparent bg-transparent pl-9 shadow-none dark:bg-transparent"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:w-auto lg:grid-cols-none lg:flex lg:items-center">
+                <ProjectCombobox
+                  projects={summary.data?.filterOptions.projects ?? []}
+                  value={projectFilter}
+                  onChange={(value) =>
+                    handleFilterChange(() => setProjectFilter(value))
+                  }
+                  placeholder="Todos os projetos"
+                  emptyOption={{ label: "Todos os projetos", value: "all" }}
+                  byPassMemberFilter
+                  className="h-9 w-full lg:w-[190px]"
+                />
+
+                <UserCombobox
+                  users={summary.data?.filterOptions.users ?? []}
+                  value={userFilter}
+                  onChange={(value) =>
+                    handleFilterChange(() => setUserFilter(value))
+                  }
+                  placeholder="Toda a equipe"
+                  emptyOption={{ label: "Toda a equipe", value: "all" }}
+                  className="h-9 w-full lg:w-[190px]"
+                />
+
+                <Select
+                  value={sort}
+                  onValueChange={(value) =>
+                    handleFilterChange(() =>
+                      setSort(value as TeamHoursSortOption),
+                    )
+                  }
+                >
+                  <SelectTrigger
+                    aria-label="Ordenar registros"
+                    className="h-9 w-full data-[size=default]:h-9 lg:w-[170px]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {hasActiveFilters ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  className="h-9 shrink-0 gap-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  <FilterX className="size-4" aria-hidden="true" />
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
+          </Card>
+        </motion.section>
+
+        {/* ─── Conteúdo ───────────────────────────────────────────────── */}
         <motion.section variants={itemVariants}>
-          <Card className="border-border/50 bg-card/50">
-            <CardHeader className="p-6">
-              <div className="space-y-5">
-                <div>
-                  <CardTitle className="text-xl font-bold">
-                    Explorar Registros
-                  </CardTitle>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Priorize a leitura por colaborador e use a tabela apenas
-                    quando precisar do detalhe linha a linha.
-                  </p>
-                </div>
+          <Tabs
+            value={tab}
+            onValueChange={(value) => {
+              setTab(value);
+              setPage(0);
+            }}
+          >
+            <TabsList className="mb-3" data-tour="team-hours-views">
+              <TabsTrigger value="people">Por colaborador</TabsTrigger>
+              <TabsTrigger value="records">Registros detalhados</TabsTrigger>
+            </TabsList>
 
-                <div className="space-y-4">
-                  <div className="group flex h-14 w-full items-center gap-3 rounded-2xl border border-input bg-transparent px-4 shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 dark:bg-input/30">
-                    <Search className="h-5 w-5 shrink-0 text-muted-foreground/60" />
-                    <input
-                      placeholder="Buscar colaborador, projeto ou descrição..."
-                      value={search}
-                      onChange={(event) => {
-                        resetPagination();
-                        setSearch(event.target.value);
-                      }}
-                      className="h-full w-full border-none bg-transparent p-0 font-sans text-base outline-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground focus:outline-none focus:ring-0"
+            <TabsContent value="people" className="mt-0">
+              {/*
+                A container query, not a viewport one: the side-by-side layout
+                depends on the width this page actually has, which changes when
+                the app sidebar is collapsed. A notebook that would be too
+                narrow with the sidebar open gets the rail back once it is
+                collapsed — and below the threshold the board takes the full
+                width instead of being squeezed next to the list.
+              */}
+              <div className="@container/people">
+                <div className="grid gap-4 @[1450px]/people:grid-cols-[300px_minmax(0,1fr)]">
+                  {/*
+                    In the rail layout `h-0 min-h-full` takes the list out of
+                    the grid's row sizing — 22 people would otherwise make the
+                    row 1400px tall — and then stretches it to exactly the
+                    height the board settled on. That is what keeps both scroll
+                    areas ending on the same line instead of the list stopping
+                    short of its own card.
+                  */}
+                  <Card
+                    aria-busy={summary.loading}
+                    data-tour="team-hours-collaborators"
+                    className={cn(
+                      "gap-0 overflow-hidden rounded-xl border-border/60 py-0 shadow-none transition-opacity duration-200",
+                      "@[1450px]/people:h-0 @[1450px]/people:min-h-full",
+                      isRefreshing && "opacity-60",
+                    )}
+                  >
+                    <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-4 py-2.5">
+                      <h2 className="text-sm font-semibold text-foreground">
+                        Colaboradores
+                      </h2>
+                      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                        {collaborators.length}
+                      </span>
+                    </div>
+
+                    {/* Horizontal strip when space is tight, tall rail when not.
+                        Both are rendered and toggled in CSS so switching costs
+                        no layout shift and no hydration guesswork. */}
+                    <div className="@[1450px]/people:hidden">
+                      <CollaboratorList
+                        layout="strip"
+                        collaborators={collaborators}
+                        selectedUserId={activeUserId}
+                        onSelect={setSelectedUserId}
+                        loading={summary.loading && !summary.data}
+                      />
+                    </div>
+                    {/* Fills the rest of the card, so the list scrolls to the
+                        card's own bottom edge — no cap of its own. `pb-3` makes
+                        the last row stop on the same line as the bottom of the
+                        kanban columns next to it. */}
+                    <div className="hidden overflow-y-auto @[1450px]/people:block @[1450px]/people:min-h-0 @[1450px]/people:flex-1 @[1450px]/people:pb-3">
+                      <CollaboratorList
+                        layout="rail"
+                        collaborators={collaborators}
+                        selectedUserId={activeUserId}
+                        onSelect={setSelectedUserId}
+                        loading={summary.loading && !summary.data}
+                      />
+                    </div>
+                  </Card>
+
+                  <Card className="gap-0 overflow-hidden rounded-xl border-border/60 py-0 shadow-none">
+                    <CollaboratorBoard
+                      collaborator={selectedCollaborator}
+                      entries={collaboratorEntries}
+                      weeks={collaboratorDetail.data?.weeks ?? []}
+                      loading={collaboratorDetail.loading}
+                      truncated={collaboratorDetail.data?.truncated ?? false}
+                      showWeekends={showWeekends}
+                      onShowWeekendsChange={handleWeekendsChange}
+                      onSelectEntry={setSelectedEntry}
                     />
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <ProjectCombobox
-                      projects={uniqueProjects}
-                      value={projectFilter}
-                      onChange={(value) => {
-                        resetPagination();
-                        setProjectFilter(value);
-                      }}
-                      placeholder="Todos os projetos"
-                      emptyOption={{ label: "Todos os projetos", value: "all" }}
-                      byPassMemberFilter={true}
-                      variant="none"
-                      className={filterStyles}
-                    />
-
-                    <UserCombobox
-                      users={uniqueUsers}
-                      value={userFilter}
-                      onChange={(value) => {
-                        resetPagination();
-                        setUserFilter(value);
-                      }}
-                      placeholder="Toda Equipe"
-                      emptyOption={{ label: "Toda Equipe", value: "all" }}
-                      variant="none"
-                      className={filterStyles}
-                    />
-
-                    <Select
-                      value={sortBy}
-                      onValueChange={(value) => {
-                        resetPagination();
-                        setSortBy(value as SortOption);
-                      }}
-                    >
-                      <SelectTrigger
-                        className={cn(filterStyles, "data-[size=default]:h-12")}
-                      >
-                        <SelectValue placeholder="Ordenar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="newest">Mais Recentes</SelectItem>
-                        <SelectItem value="oldest">Mais Antigos</SelectItem>
-                        <SelectItem value="longest">Maior Duração</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  </Card>
                 </div>
               </div>
-            </CardHeader>
+            </TabsContent>
 
-            <CardContent className="p-0">
-              {error ? (
-                <div className="p-12 text-center text-sm text-destructive">
-                  {error}
-                </div>
-              ) : loading ? (
-                <div className="space-y-6 p-6">
-                  <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
-                    <div className="space-y-3">
-                      {[
-                        "user-skeleton-1",
-                        "user-skeleton-2",
-                        "user-skeleton-3",
-                      ].map((key) => (
-                        <Skeleton
-                          key={key}
-                          className="h-36 w-full rounded-2xl"
-                        />
-                      ))}
-                    </div>
-                    <Skeleton className="h-[420px] w-full rounded-3xl" />
+            <TabsContent value="records" className="mt-0">
+              {entries.error ? (
+                <Card className="border-destructive/40 bg-destructive/5 p-8 text-center">
+                  <p className="text-sm text-destructive">{entries.error}</p>
+                </Card>
+              ) : !entries.loading && (entries.data?.total ?? 0) === 0 ? (
+                <Card className="rounded-xl border-border/60 p-12 text-center shadow-none">
+                  <div className="mx-auto flex size-10 items-center justify-center rounded-full bg-muted">
+                    <Search
+                      className="size-4 text-muted-foreground"
+                      aria-hidden="true"
+                    />
                   </div>
-                  <Skeleton className="h-72 w-full rounded-2xl" />
-                </div>
-              ) : filteredEntries.length === 0 ? (
-                <div className="p-20 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-                    <Search className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <p className="mt-4 text-sm font-medium">
+                  <p className="mt-3 text-sm font-medium text-foreground">
                     Nenhum registro encontrado
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Tente ajustar seus filtros para ver mais resultados.
+                    Ajuste os filtros para ver mais resultados.
                   </p>
-                  <Button
-                    variant="link"
-                    className="mt-2 h-auto p-0 text-orange-500"
-                    onClick={() => {
-                      resetPagination();
-                      setSearch("");
-                      setUserFilter("all");
-                      setProjectFilter("all");
-                    }}
-                  >
-                    Limpar todos os filtros
-                  </Button>
-                </div>
+                  {hasActiveFilters ? (
+                    <Button
+                      variant="link"
+                      className="mx-auto mt-2 h-auto p-0 text-brand-500"
+                      onClick={handleClearFilters}
+                    >
+                      Limpar todos os filtros
+                    </Button>
+                  ) : null}
+                </Card>
               ) : (
-                <Tabs defaultValue="people" className="w-full">
-                  <div className="border-t border-border/50 px-6 pt-5">
-                    <TabsList className="inline-flex h-auto w-full flex-wrap gap-1 overflow-hidden rounded-2xl border border-border/60 bg-muted/30 p-1 sm:w-auto">
-                      <TabsTrigger
-                        value="people"
-                        className="h-full min-w-[180px] flex-none rounded-xl border-0 px-4 py-2.5 shadow-none after:hidden data-[state=active]:border-0 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      >
-                        Visão por colaborador
-                      </TabsTrigger>
-                      <TabsTrigger
-                        value="records"
-                        className="h-full min-w-[180px] flex-none rounded-xl border-0 px-4 py-2.5 shadow-none after:hidden data-[state=active]:border-0 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                      >
-                        Registros detalhados
-                      </TabsTrigger>
-                    </TabsList>
-                  </div>
-
-                  <TabsContent
-                    value="people"
-                    className="mt-0 space-y-6 p-6 pt-5"
-                  >
-                    <Card className="border-border/50 bg-background/50">
-                      <CardHeader className="pb-4">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                          <div>
-                            <CardTitle className="text-base font-semibold">
-                              Colaboradores visíveis
-                            </CardTitle>
-                            <p className="text-sm text-muted-foreground">
-                              Selecione um colaborador para atualizar a semana
-                              abaixo.
-                            </p>
-                          </div>
-                          <Badge
-                            variant="outline"
-                            className="w-fit rounded-full border-border/60 px-3 py-1.5"
-                          >
-                            {userInsights.length} colaboradores no filtro
-                          </Badge>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="max-h-[320px] overflow-y-auto pr-1">
-                          <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
-                            {userInsights.map((insight) => (
-                              <UserCard
-                                key={insight.user.id}
-                                insight={insight}
-                                isActive={insight.user.id === selectedUserId}
-                                onSelect={() =>
-                                  setSelectedUserId(insight.user.id)
-                                }
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card className="border-border/50 bg-background/50">
-                      <CardHeader className="gap-5">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex rounded-lg border border-border/50 bg-muted/40 p-0.5 w-fit">
-                              <button
-                                type="button"
-                                onClick={() => setColaboratorViewMode("weekly")}
-                                className={cn(
-                                  "rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer",
-                                  colaboratorViewMode === "weekly"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground",
-                                )}
-                              >
-                                Calendário Semanal
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setColaboratorViewMode("projects")
-                                }
-                                className={cn(
-                                  "rounded-md px-3 py-1 text-xs font-medium transition-all cursor-pointer",
-                                  colaboratorViewMode === "projects"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground",
-                                )}
-                              >
-                                Ações por Projeto
-                              </button>
-                            </div>
-                            {selectedUserInsight ? (
-                              <div className="mt-4 flex items-center gap-3">
-                                <UserAvatar
-                                  name={selectedUserInsight.user.name}
-                                  image={selectedUserInsight.user.image}
-                                  size="sm"
-                                />
-                                <div className="min-w-0">
-                                  <CardTitle className="truncate text-xl">
-                                    {selectedUserInsight.user.name}
-                                  </CardTitle>
-                                  <p className="truncate text-sm text-muted-foreground">
-                                    {selectedUserInsight.user.email}
-                                  </p>
-                                </div>
-                              </div>
-                            ) : (
-                              <CardTitle className="mt-3 text-xl">
-                                Nenhum colaborador selecionado
-                              </CardTitle>
-                            )}
-                          </div>
-
-                          {colaboratorViewMode === "weekly" && (
-                            <div className="flex items-center gap-2 self-start">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-9 w-9 rounded-full"
-                                disabled={
-                                  selectedWeekIndex === -1 ||
-                                  selectedWeekIndex >= availableWeeks.length - 1
-                                }
-                                onClick={() => {
-                                  if (
-                                    selectedWeekIndex >= 0 &&
-                                    selectedWeekIndex <
-                                      availableWeeks.length - 1
-                                  ) {
-                                    setSelectedWeekStart(
-                                      availableWeeks[selectedWeekIndex + 1] ??
-                                        null,
-                                    );
-                                  }
-                                }}
-                              >
-                                <ChevronLeft className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-9 w-9 rounded-full"
-                                disabled={selectedWeekIndex <= 0}
-                                onClick={() => {
-                                  if (selectedWeekIndex > 0) {
-                                    setSelectedWeekStart(
-                                      availableWeeks[selectedWeekIndex - 1] ??
-                                        null,
-                                    );
-                                  }
-                                }}
-                              >
-                                <ChevronRight className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-
-                        {colaboratorViewMode === "weekly" ? (
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              {weekLabel}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-3">
-                              <div className="flex items-center gap-2">
-                                <span
-                                  id="team-hours-weekend-toggle-label"
-                                  className="text-xs text-muted-foreground"
-                                >
-                                  Exibir fins de semana
-                                </span>
-                                <Switch
-                                  checked={showWeekends}
-                                  onCheckedChange={(show) => {
-                                    setShowWeekends(show);
-                                    void (async () => {
-                                      const previousValue = showWeekends;
-                                      const success = await updatePreferences(
-                                        { timeShowWeekends: show },
-                                        {
-                                          errorMessage:
-                                            "Nao foi possivel salvar a exibicao de fins de semana.",
-                                        },
-                                      );
-
-                                      if (!success) {
-                                        setShowWeekends(previousValue);
-                                      }
-                                    })();
-                                  }}
-                                  aria-label="Exibir fins de semana na visão de semana"
-                                  aria-labelledby="team-hours-weekend-toggle-label"
-                                />
-                              </div>
-                              <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
-                                {formatDuration(
-                                  selectedWeekSummary.totalMinutes,
-                                )}
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className="rounded-full border-border/60 px-3 py-1.5"
-                              >
-                                {selectedWeekSummary.entryCount} registros
-                              </Badge>
-                              <Badge
-                                variant="outline"
-                                className="rounded-full border-border/60 px-3 py-1.5"
-                              >
-                                {selectedWeekSummary.projectsCount} projetos
-                              </Badge>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <p className="text-sm text-muted-foreground">
-                              Período:{" "}
-                              <span className="font-semibold text-foreground">
-                                {periodLabel}
-                              </span>
-                            </p>
-                            {selectedUserInsight && (
-                              <div className="flex flex-wrap items-center gap-3">
-                                <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
-                                  {formatDuration(
-                                    selectedUserInsight.totalMinutes,
-                                  )}
-                                </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className="rounded-full border-border/60 px-3 py-1.5"
-                                >
-                                  {selectedUserInsight.entryCount} registros
-                                </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className="rounded-full border-border/60 px-3 py-1.5"
-                                >
-                                  {selectedUserInsight.projectsCount} projetos
-                                </Badge>
-                                <Badge
-                                  variant="outline"
-                                  className="rounded-full border-border/60 px-3 py-1.5"
-                                >
-                                  {selectedUserInsight.totalMinutes > 0
-                                    ? Math.round(
-                                        (selectedUserInsight.billableMinutes /
-                                          selectedUserInsight.totalMinutes) *
-                                          100,
-                                      )
-                                    : 0}
-                                  % faturável
-                                </Badge>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </CardHeader>
-
-                      <CardContent>
-                        {colaboratorViewMode === "weekly" ? (
-                          !selectedUserInsight || weekDays.length === 0 ? (
-                            <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-border/60 bg-muted/20 p-8 text-center">
-                              <div>
-                                <p className="text-sm font-medium text-foreground">
-                                  Nenhuma semana disponível
-                                </p>
-                                <p className="mt-1 text-sm text-muted-foreground">
-                                  Ajuste os filtros ou selecione outro
-                                  colaborador.
-                                </p>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="overflow-x-auto">
-                              <motion.div
-                                layout
-                                className={cn(
-                                  "grid gap-3",
-                                  showWeekends
-                                    ? "min-w-[980px] grid-cols-7"
-                                    : "min-w-[700px] grid-cols-5",
-                                )}
-                              >
-                                <AnimatePresence
-                                  initial={false}
-                                  mode="popLayout"
-                                >
-                                  {weekDays.map((day) => {
-                                    const dayKey = format(day, "yyyy-MM-dd");
-                                    const dayEntries =
-                                      weekEntriesMap.get(dayKey) ?? [];
-                                    const dayTotal = dayEntries.reduce(
-                                      (sum, entry) => sum + entry.duration,
-                                      0,
-                                    );
-
-                                    return (
-                                      <motion.div
-                                        key={dayKey}
-                                        layout
-                                        initial={{ opacity: 0, scale: 0.9 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.9 }}
-                                        transition={{
-                                          duration: 0.22,
-                                          ease: [0.25, 0.46, 0.45, 0.94],
-                                          layout: {
-                                            type: "spring",
-                                            stiffness: 400,
-                                            damping: 30,
-                                          },
-                                        }}
-                                        className="flex min-h-[360px] flex-col rounded-2xl border border-border/60 bg-background/70"
-                                      >
-                                        <div className="border-b border-border/50 px-4 py-4">
-                                          <div className="flex items-center justify-between gap-2">
-                                            <div>
-                                              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                                {format(day, "EEE", {
-                                                  locale: ptBR,
-                                                })}
-                                              </p>
-                                              <p className="mt-1 font-display text-xl font-semibold text-foreground">
-                                                {format(day, "d")}
-                                              </p>
-                                            </div>
-                                            <div className="text-right">
-                                              <p className="font-mono text-sm font-semibold text-foreground">
-                                                {formatDuration(dayTotal)}
-                                              </p>
-                                              <p className="text-[11px] text-muted-foreground">
-                                                {dayEntries.length} itens
-                                              </p>
-                                            </div>
-                                          </div>
-                                        </div>
-
-                                        <div
-                                          className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3"
-                                          style={{
-                                            maxHeight:
-                                              TEAM_HOURS_DAY_LIST_MAX_HEIGHT,
-                                          }}
-                                        >
-                                          {dayEntries.length > 0 ? (
-                                            dayEntries.map((entry) => (
-                                              <WeekEntryCard
-                                                key={entry.id}
-                                                entry={entry}
-                                                onSelect={setSelectedEntry}
-                                              />
-                                            ))
-                                          ) : (
-                                            <div className="flex h-full min-h-28 items-center justify-center rounded-2xl border border-dashed border-border/50 bg-muted/20 px-4 text-center text-sm text-muted-foreground">
-                                              Sem registros neste dia
-                                            </div>
-                                          )}
-                                        </div>
-                                      </motion.div>
-                                    );
-                                  })}
-                                </AnimatePresence>
-                              </motion.div>
-                            </div>
-                          )
-                        ) : !selectedUserInsight ||
-                          selectedUserProjectGroups.length === 0 ? (
-                          <div className="flex min-h-[360px] items-center justify-center rounded-3xl border border-dashed border-border/60 bg-muted/20 p-8 text-center">
-                            <div>
-                              <p className="text-sm font-medium text-foreground">
-                                Nenhum registro por projeto disponível
-                              </p>
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                Ajuste os filtros ou selecione outro
-                                colaborador.
-                              </p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-4">
-                            {selectedUserProjectGroups.map((group) => {
-                              const isExpanded =
-                                !!expandedProjects[group.project.id];
-                              const toggleExpand = () => {
-                                setExpandedProjects((prev) => ({
-                                  ...prev,
-                                  [group.project.id]: !prev[group.project.id],
-                                }));
-                              };
-
-                              const projectBillableRate =
-                                group.totalMinutes > 0
-                                  ? Math.round(
-                                      (group.billableMinutes /
-                                        group.totalMinutes) *
-                                        100,
-                                    )
-                                  : 0;
-
-                              return (
-                                <div
-                                  key={group.project.id}
-                                  className="rounded-2xl border border-border/50 bg-background/30 overflow-hidden transition-all hover:bg-background/50 hover:border-brand-500/20"
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={toggleExpand}
-                                    className="flex w-full items-center justify-between gap-4 p-4 text-left focus:outline-none focus:ring-1 focus:ring-brand-500/20 cursor-pointer"
-                                  >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                      <span
-                                        className="h-3 w-3 shrink-0 rounded-full"
-                                        style={{
-                                          backgroundColor: group.project.color,
-                                        }}
-                                      />
-                                      <div className="min-w-0">
-                                        <h4 className="font-semibold text-sm text-foreground truncate">
-                                          {group.project.name}
-                                        </h4>
-                                        <p className="text-xs text-muted-foreground truncate">
-                                          {group.project.clientName ||
-                                            "Cliente Interno"}
-                                        </p>
-                                      </div>
-                                    </div>
-
-                                    <div className="flex items-center gap-3 shrink-0">
-                                      <Badge className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-500 font-mono">
-                                        {formatDuration(group.totalMinutes)}
-                                      </Badge>
-                                      <Badge
-                                        variant="outline"
-                                        className="rounded-full border-border/60 text-[10px] hidden sm:inline-flex"
-                                      >
-                                        {projectBillableRate}% faturável
-                                      </Badge>
-                                      <Badge
-                                        variant="outline"
-                                        className="rounded-full border-border/60 text-[10px]"
-                                      >
-                                        {group.entries.length} itens
-                                      </Badge>
-                                      <motion.div
-                                        animate={{
-                                          rotate: isExpanded ? 180 : 0,
-                                        }}
-                                        transition={{ duration: 0.2 }}
-                                      >
-                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                                      </motion.div>
-                                    </div>
-                                  </button>
-
-                                  <AnimatePresence initial={false}>
-                                    {isExpanded && (
-                                      <motion.div
-                                        initial={{ height: 0, opacity: 0 }}
-                                        animate={{ height: "auto", opacity: 1 }}
-                                        exit={{ height: 0, opacity: 0 }}
-                                        transition={{
-                                          duration: 0.25,
-                                          ease: "easeInOut",
-                                        }}
-                                        className="border-t border-border/40 bg-muted/5"
-                                      >
-                                        <div className="p-4 pt-1 overflow-x-auto">
-                                          <Table>
-                                            <TableHeader>
-                                              <TableRow className="border-b border-border/30 hover:bg-transparent">
-                                                <TableHead className="w-[100px] h-9 text-xs">
-                                                  Data
-                                                </TableHead>
-                                                <TableHead className="h-9 text-xs">
-                                                  Descrição da Ação
-                                                </TableHead>
-                                                <TableHead className="w-[100px] text-right h-9 text-xs">
-                                                  Duração
-                                                </TableHead>
-                                                <TableHead className="w-[90px] text-right h-9 text-xs">
-                                                  Tipo
-                                                </TableHead>
-                                              </TableRow>
-                                            </TableHeader>
-                                            <TableBody>
-                                              {group.entries.map((entry) => (
-                                                <TableRow
-                                                  key={entry.id}
-                                                  onClick={() =>
-                                                    setSelectedEntry(entry)
-                                                  }
-                                                  className="border-b border-border/20 last:border-0 hover:bg-muted/30 cursor-pointer transition-colors"
-                                                >
-                                                  <TableCell className="py-2.5 text-xs text-muted-foreground whitespace-nowrap">
-                                                    {format(
-                                                      parseLocalDate(
-                                                        entry.date,
-                                                      ),
-                                                      "dd/MM/yyyy",
-                                                    )}
-                                                  </TableCell>
-                                                  <TableCell className="py-2.5 text-xs font-normal text-foreground max-w-md truncate">
-                                                    {entry.description ||
-                                                      "Sem descrição"}
-                                                  </TableCell>
-                                                  <TableCell className="py-2.5 text-right font-mono text-xs font-semibold text-foreground">
-                                                    {formatDuration(
-                                                      entry.duration,
-                                                    )}
-                                                  </TableCell>
-                                                  <TableCell className="py-2.5 text-right">
-                                                    <Badge
-                                                      variant="outline"
-                                                      className={cn(
-                                                        "h-5 rounded px-1 text-[9px] uppercase tracking-tighter",
-                                                        entry.billable
-                                                          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
-                                                          : "bg-muted text-muted-foreground",
-                                                      )}
-                                                    >
-                                                      {entry.billable
-                                                        ? "Faturável"
-                                                        : "Interno"}
-                                                    </Badge>
-                                                  </TableCell>
-                                                </TableRow>
-                                              ))}
-                                            </TableBody>
-                                          </Table>
-                                        </div>
-                                      </motion.div>
-                                    )}
-                                  </AnimatePresence>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  <TabsContent value="records" className="mt-0 p-6 pt-5">
-                    <div className="overflow-x-auto rounded-2xl border border-border/50">
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="border-y border-border/50 bg-muted/30 hover:bg-muted/30">
-                            <TableHead className="w-[120px] font-bold">
-                              Data
-                            </TableHead>
-                            <TableHead className="w-[220px] font-bold">
-                              Colaborador
-                            </TableHead>
-                            <TableHead className="w-[220px] font-bold">
-                              Projeto
-                            </TableHead>
-                            <TableHead className="min-w-[280px] font-bold">
-                              Descrição
-                            </TableHead>
-                            <TableHead className="w-[120px] text-right font-bold">
-                              Duração
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {paginatedEntries.map((entry) => (
-                            <TableRow
-                              key={entry.id}
-                              className="border-b border-border/40 transition-colors hover:bg-muted/20"
-                            >
-                              <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
-                                {format(
-                                  parseLocalDate(entry.date),
-                                  "dd/MM/yyyy",
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center gap-3">
-                                  <UserAvatar
-                                    name={entry.user.name}
-                                    image={entry.user.image}
-                                    size="sm"
-                                  />
-                                  <div className="min-w-0">
-                                    <span className="block truncate text-sm font-medium text-foreground">
-                                      {entry.user.name}
-                                    </span>
-                                    <span className="block truncate text-[10px] text-muted-foreground">
-                                      {entry.user.email}
-                                    </span>
-                                  </div>
-                                </div>
-                              </TableCell>
-                              <TableCell>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span
-                                      className="h-2 w-2 shrink-0 rounded-full"
-                                      style={{
-                                        backgroundColor: entry.project.color,
-                                      }}
-                                    />
-                                    <span className="truncate text-sm font-medium">
-                                      {entry.project.name}
-                                    </span>
-                                  </div>
-                                  <span className="ml-4 block truncate text-[10px] text-muted-foreground">
-                                    {entry.project.clientName || "Interno"}
-                                  </span>
-                                </div>
-                              </TableCell>
-                              <TableCell className="max-w-xl">
-                                <DescriptionCell
-                                  description={entry.description}
-                                />
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex flex-col items-end gap-1">
-                                  <span className="font-mono text-sm font-bold text-foreground">
-                                    {formatDuration(entry.duration)}
-                                  </span>
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "h-4 rounded px-1 text-[9px] uppercase tracking-tighter",
-                                      entry.billable
-                                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
-                                        : "bg-muted text-muted-foreground",
-                                    )}
-                                  >
-                                    {entry.billable ? "Faturável" : "Interno"}
-                                  </Badge>
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-
-                    <div className="mt-4 flex flex-col gap-3 border-t border-border/50 pt-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="text-xs text-muted-foreground">
-                        Mostrando{" "}
-                        <span className="font-medium text-foreground">
-                          {safePage * ITEMS_PER_PAGE + 1}
-                        </span>{" "}
-                        até{" "}
-                        <span className="font-medium text-foreground">
-                          {Math.min(
-                            (safePage + 1) * ITEMS_PER_PAGE,
-                            filteredEntries.length,
-                          )}
-                        </span>{" "}
-                        de{" "}
-                        <span className="font-medium text-foreground">
-                          {filteredEntries.length}
-                        </span>{" "}
-                        resultados
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg border-border/50 hover:bg-muted"
-                          disabled={safePage === 0}
-                          onClick={() => setPage((current) => current - 1)}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <div className="mx-2 flex items-center gap-1">
-                          <span className="text-xs font-medium">
-                            {safePage + 1}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            /
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {totalPages}
-                          </span>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-8 w-8 rounded-lg border-border/50 hover:bg-muted"
-                          disabled={safePage >= totalPages - 1}
-                          onClick={() => setPage((current) => current + 1)}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
+                <TeamHoursTable
+                  entries={tableEntries}
+                  total={entries.data?.total ?? 0}
+                  page={page}
+                  pageSize={PAGE_SIZE}
+                  loading={entries.loading}
+                  onPageChange={setPage}
+                  onSelectEntry={setSelectedEntry}
+                />
               )}
-            </CardContent>
-          </Card>
+            </TabsContent>
+          </Tabs>
         </motion.section>
       </motion.div>
 
-      <Sheet
-        open={selectedEntry !== null}
+      <EntryDetailSheet
+        entry={selectedEntry}
         onOpenChange={(open) => {
-          if (!open) {
-            setSelectedEntry(null);
-          }
+          if (!open) setSelectedEntry(null);
         }}
-      >
-        <SheetContent side="right" className="w-full sm:max-w-lg">
-          {selectedEntry ? (
-            <>
-              <SheetHeader className="space-y-3 border-b border-border/50 pb-5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge
-                    variant="outline"
-                    className={cn(
-                      "rounded-full border-border/60 bg-background/70 text-[10px]",
-                      selectedEntry.billable &&
-                        "border-emerald-500/30 text-emerald-600",
-                    )}
-                  >
-                    {selectedEntry.billable ? "Faturável" : "Interno"}
-                  </Badge>
-                  <Badge className="rounded-full bg-brand-500/10 px-2.5 py-1 text-[10px] text-brand-500">
-                    {formatDuration(selectedEntry.duration)}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2">
-                  <SheetTitle className="text-xl">
-                    {selectedEntry.project.name}
-                  </SheetTitle>
-                  <SheetDescription className="text-sm">
-                    {selectedEntry.project.clientName || "Projeto interno"}
-                  </SheetDescription>
-                </div>
-              </SheetHeader>
-
-              <div className="space-y-6 px-4 pb-6">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-border/50 bg-muted/20 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Colaborador
-                    </p>
-                    <div className="mt-3 flex items-center gap-3">
-                      <UserAvatar
-                        name={selectedEntry.user.name}
-                        image={selectedEntry.user.image}
-                        size="sm"
-                      />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
-                          {selectedEntry.user.name}
-                        </p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {selectedEntry.user.email}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-border/50 bg-muted/20 p-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                      Registro
-                    </p>
-                    <div className="mt-3 space-y-2 text-sm">
-                      <p className="text-foreground">
-                        {format(
-                          parseLocalDate(selectedEntry.date),
-                          "dd/MM/yyyy",
-                        )}
-                      </p>
-                      <p className="text-muted-foreground">
-                        Criado em{" "}
-                        {format(
-                          new Date(selectedEntry.createdAt),
-                          "dd/MM/yyyy HH:mm",
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-border/50 bg-background/60 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                    Tarefa registrada
-                  </p>
-                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
-                    {selectedEntry.description || "Sem descrição informada."}
-                  </p>
-                </div>
-              </div>
-            </>
-          ) : null}
-        </SheetContent>
-      </Sheet>
+      />
     </TooltipProvider>
   );
 }

@@ -437,6 +437,34 @@ export const TOURS: readonly TourDefinition[] = [
         placement: "right",
       },
       {
+        id: "team-hours-period",
+        title: "Comece pelo período",
+        description:
+          "Os atalhos 7d, 30d e 90d cobrem a maioria das conferências; o calendário abre um intervalo livre. Todo o resto da tela responde a esta escolha.",
+        target: '[data-tour="team-hours-period"]',
+        placement: "bottom",
+        route: "/dashboard/team-hours",
+        hint: "Períodos mais curtos carregam mais rápido.",
+      },
+      {
+        id: "team-hours-filters",
+        title: "Refine sem perder o total",
+        description:
+          "Busca, projeto, pessoa e ordenação rodam no banco — os indicadores acima recalculam junto e a tabela nunca carrega mais que uma página.",
+        target: '[data-tour="team-hours-filters"]',
+        placement: "bottom",
+        route: "/dashboard/team-hours",
+      },
+      {
+        id: "team-hours-views",
+        title: "Duas leituras da mesma seleção",
+        description:
+          "Por colaborador mostra a semana e a divisão por projeto de quem você selecionar na lista. Registros detalhados é a conferência linha a linha.",
+        target: '[data-tour="team-hours-views"]',
+        placement: "bottom",
+        route: "/dashboard/team-hours",
+      },
+      {
         id: "people",
         title: "Equipe",
         description:

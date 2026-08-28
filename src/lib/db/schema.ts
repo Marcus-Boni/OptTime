@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -398,6 +398,11 @@ export const timeEntry = pgTable(
     index("time_entry_project_date_idx").on(table.projectId, table.date),
     index("time_entry_timesheet_idx").on(table.timesheetId),
     index("time_entry_azure_wi_idx").on(table.azureWorkItemId),
+    // Team-wide period scans (Horas da Equipe, HQ, digests) filter by date and
+    // always skip soft-deleted rows, so the partial index keeps them off a seq scan.
+    index("time_entry_active_date_idx")
+      .on(table.date, table.userId)
+      .where(sql`${table.deletedAt} is null`),
   ],
 );
 

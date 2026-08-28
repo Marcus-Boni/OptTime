@@ -1,13 +1,20 @@
-import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
-import {
-  getActiveSession,
-  getActorContext,
-  getDirectReportIds,
-  getManagedProjectIds,
-} from "@/lib/access-control";
+import { asc, desc, eq, sql } from "drizzle-orm";
+import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
+import { buildTeamHoursWhere } from "@/lib/team-hours/scope";
+import {
+  searchParamsToObject,
+  teamHoursEntriesQuerySchema,
+} from "@/lib/validations/team-hours.schema";
+import type { TeamHoursEntriesResponse } from "@/types/team-hours";
 
+/**
+ * GET - Paginated team time entries for the detailed table and PDF exports.
+ *
+ * Search, sort and pagination all run in Postgres so the browser only ever
+ * holds one page of rows.
+ */
 export async function GET(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
   if (!session) {
@@ -15,89 +22,86 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const actor = getActorContext(session.user);
-  const role = actor.role;
-  if (role !== "admin" && role !== "manager") {
-    return Response.json({ error: "Forbidden" }, { status: 403 });
+  if (actor.role !== "manager" && actor.role !== "admin") {
+    return Response.json({ error: "Sem permissão." }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);
-  const from = searchParams.get("from");
-  const to = searchParams.get("to");
-  const projectId = searchParams.get("projectId");
-  const userId = searchParams.get("userId");
+  const parsed = teamHoursEntriesQuerySchema.safeParse(
+    searchParamsToObject(searchParams),
+  );
+
+  if (!parsed.success) {
+    return Response.json(
+      { error: "Parâmetros inválidos", details: parsed.error.flatten() },
+      { status: 400 },
+    );
+  }
 
   try {
-    const filters = [];
+    const { page, pageSize, sort, ...filters } = parsed.data;
+    const where = await buildTeamHoursWhere(actor, filters);
 
-    // Ignorar "deletedAt" sempre para não trazer deletados
-    filters.push(sql`${timeEntry.deletedAt} IS NULL`);
+    const orderBy =
+      sort === "oldest"
+        ? [asc(timeEntry.date), asc(timeEntry.createdAt)]
+        : sort === "longest"
+          ? [desc(timeEntry.duration), desc(timeEntry.date)]
+          : [desc(timeEntry.date), desc(timeEntry.createdAt)];
 
-    if (from) {
-      filters.push(gte(timeEntry.date, from));
-    }
-    if (to) {
-      filters.push(lte(timeEntry.date, to));
-    }
-    if (projectId) {
-      filters.push(eq(timeEntry.projectId, projectId));
-    }
-    if (userId) {
-      filters.push(eq(timeEntry.userId, userId));
-    }
+    const [entries, [totalRow]] = await Promise.all([
+      db
+        .select({
+          id: timeEntry.id,
+          description: timeEntry.description,
+          date: timeEntry.date,
+          duration: timeEntry.duration,
+          billable: timeEntry.billable,
+          azdoSyncStatus: timeEntry.azdoSyncStatus,
+          createdAt: timeEntry.createdAt,
+          // `image` is deliberately absent: avatars are stored inline and
+          // repeating one per row is what made this endpoint slow. The client
+          // resolves them once from the summary payload.
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+          },
+          project: {
+            id: project.id,
+            name: project.name,
+            color: project.color,
+            clientName: project.clientName,
+          },
+        })
+        .from(timeEntry)
+        .innerJoin(user, eq(timeEntry.userId, user.id))
+        .innerJoin(project, eq(timeEntry.projectId, project.id))
+        .where(where)
+        .orderBy(...orderBy)
+        .limit(pageSize)
+        .offset(page * pageSize),
 
-    if (role === "manager") {
-      const directReportIds = await getDirectReportIds(actor.userId);
-      const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
+      db
+        .select({ value: sql<number>`count(*)::int` })
+        .from(timeEntry)
+        .innerJoin(user, eq(timeEntry.userId, user.id))
+        .innerJoin(project, eq(timeEntry.projectId, project.id))
+        .where(where),
+    ]);
 
-      // Removido o early return para garantir que o gerente sempre veja suas próprias horas, mesmo sem subordinados ou projetos
+    const payload: TeamHoursEntriesResponse = {
+      entries: entries.map((entry) => ({
+        ...entry,
+        user: { ...entry.user, image: null },
+        createdAt: entry.createdAt.toISOString(),
+      })),
+      total: totalRow?.value ?? 0,
+      page,
+      pageSize,
+    };
 
-      const managerConditions = [];
-
-      // O gerente sempre vê as próprias horas
-      managerConditions.push(eq(timeEntry.userId, actor.userId));
-
-      if (directReportIds.length > 0) {
-        managerConditions.push(inArray(timeEntry.userId, directReportIds));
-      }
-
-      if (managedProjectIds.length > 0) {
-        managerConditions.push(inArray(timeEntry.projectId, managedProjectIds));
-      }
-
-      filters.push(or(...managerConditions));
-    }
-
-    const whereCondition = filters.length > 0 ? and(...filters) : undefined;
-
-    const entries = await db
-      .select({
-        id: timeEntry.id,
-        description: timeEntry.description,
-        date: timeEntry.date,
-        duration: timeEntry.duration,
-        billable: timeEntry.billable,
-        azdoSyncStatus: timeEntry.azdoSyncStatus,
-        createdAt: timeEntry.createdAt,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          image: user.image,
-        },
-        project: {
-          id: project.id,
-          name: project.name,
-          color: project.color,
-          clientName: project.clientName,
-        },
-      })
-      .from(timeEntry)
-      .innerJoin(user, eq(timeEntry.userId, user.id))
-      .innerJoin(project, eq(timeEntry.projectId, project.id))
-      .where(whereCondition)
-      .orderBy(desc(timeEntry.date), desc(timeEntry.createdAt));
-
-    return Response.json({ entries });
+    return Response.json(payload);
   } catch (err) {
     console.error("[GET /api/team-hours]", err);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
