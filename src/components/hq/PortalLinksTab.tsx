@@ -73,6 +73,19 @@ const itemVariants = {
   },
 };
 
+/**
+ * Entry animation for the portal cards.
+ *
+ * Self-contained rather than inherited from the parent's staggered variants:
+ * the parent orchestrates only on mount, so a card created afterwards would
+ * inherit `hidden` and stay invisible.
+ */
+const ENTRY_ANIMATION = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] as const },
+};
+
 const STATUS_META: Record<
   PortalLinkSummary["status"],
   { label: string; className: string }
@@ -458,7 +471,11 @@ export function PortalLinksTab() {
         </motion.div>
 
         {links.length === 0 ? (
-          <motion.div variants={itemVariants}>
+          <motion.div
+            initial={ENTRY_ANIMATION.initial}
+            animate={ENTRY_ANIMATION.animate}
+            transition={ENTRY_ANIMATION.transition}
+          >
             <Card>
               <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
                 <Globe
@@ -475,8 +492,16 @@ export function PortalLinksTab() {
           </motion.div>
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {links.map((link) => (
-              <motion.div key={link.id} variants={itemVariants}>
+            {links.map((link, index) => (
+              <motion.div
+                key={link.id}
+                initial={ENTRY_ANIMATION.initial}
+                animate={ENTRY_ANIMATION.animate}
+                transition={{
+                  ...ENTRY_ANIMATION.transition,
+                  delay: Math.min(index, 8) * 0.05,
+                }}
+              >
                 <PortalLinkCard
                   link={link}
                   onRevoke={setRevokeTarget}

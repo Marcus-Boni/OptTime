@@ -41,6 +41,25 @@ const itemVariants = {
   },
 };
 
+/**
+ * Entry animation for the filtered project list.
+ *
+ * The cards deliberately animate themselves instead of inheriting the parent's
+ * staggered variants: the parent orchestrates only once, on mount, so a card
+ * that mounts later — when a filter narrows the list — would inherit `hidden`
+ * and stay stuck at `opacity: 0`, rendering an empty grid.
+ */
+const ENTRY_ANIMATION = {
+  initial: { opacity: 0, y: 16 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] as const },
+};
+
+/** Caps the cascade so a long list never waits seconds for the last card. */
+function entryDelay(index: number): number {
+  return Math.min(index, 8) * 0.05;
+}
+
 interface StatCardProps {
   icon: typeof Target;
   label: string;
@@ -280,7 +299,11 @@ export function HealthRadarTab() {
       </motion.div>
 
       {filteredProjects.length === 0 ? (
-        <motion.div variants={itemVariants}>
+        <motion.div
+          initial={ENTRY_ANIMATION.initial}
+          animate={ENTRY_ANIMATION.animate}
+          transition={ENTRY_ANIMATION.transition}
+        >
           <Card>
             <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
               <Search
@@ -296,8 +319,16 @@ export function HealthRadarTab() {
         </motion.div>
       ) : (
         <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-          {filteredProjects.map((project) => (
-            <motion.div key={project.projectId} variants={itemVariants}>
+          {filteredProjects.map((project, index) => (
+            <motion.div
+              key={project.projectId}
+              initial={ENTRY_ANIMATION.initial}
+              animate={ENTRY_ANIMATION.animate}
+              transition={{
+                ...ENTRY_ANIMATION.transition,
+                delay: entryDelay(index),
+              }}
+            >
               <ProjectHealthCard
                 project={project}
                 currentWeek={data.currentWeek}

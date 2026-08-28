@@ -64,6 +64,20 @@ const itemVariants = {
   },
 };
 
+/**
+ * Entry animation for the conditional sections.
+ *
+ * Self-contained rather than inherited: the parent's staggered variants
+ * orchestrate only on mount, so a section that appears later — when a refresh
+ * turns an empty group into a populated one — would inherit `hidden` and stay
+ * invisible.
+ */
+const ENTRY_ANIMATION = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.3, ease: [0.16, 1, 0.3, 1] as const },
+};
+
 const SEVERITY_STYLES: Record<AnomalySeverity, string> = {
   critical: "bg-red-500/10 text-red-500 dark:text-red-400",
   warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
@@ -466,7 +480,12 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
         </motion.div>
 
         {withAnomalies.length > 0 ? (
-          <motion.section variants={itemVariants} className="space-y-3">
+          <motion.section
+            initial={ENTRY_ANIMATION.initial}
+            animate={ENTRY_ANIMATION.animate}
+            transition={ENTRY_ANIMATION.transition}
+            className="space-y-3"
+          >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <ShieldAlert
                 className="size-4 text-amber-500"
@@ -494,7 +513,12 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
         ) : null}
 
         {conformant.length > 0 ? (
-          <motion.section variants={itemVariants} className="space-y-3">
+          <motion.section
+            initial={ENTRY_ANIMATION.initial}
+            animate={ENTRY_ANIMATION.animate}
+            transition={ENTRY_ANIMATION.transition}
+            className="space-y-3"
+          >
             <h2 className="flex items-center gap-2 text-sm font-semibold">
               <ShieldCheck
                 className="size-4 text-emerald-500"
