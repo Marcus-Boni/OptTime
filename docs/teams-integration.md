@@ -16,7 +16,7 @@ preciso configurar tudo para começar a usar.
 | 1 | **Standup do time** | Card no canal às 08h15 com as horas de ontem, por pessoa | Admin, uma vez |
 | 2 | **Lembrete vespertino** | Nudge individual às 17h30: "você registrou 6h, faltam 2h" com botão de 1 clique | Admin liga; cada pessoa escolhe o canal |
 | 3 | **Comandos no chat** | `@OptSolv timer start`, `hoje`, `semana`… direto no Teams | Admin, uma vez |
-| 4 | **Status sincronizado** | Timer rodando vira `⏱️ Focado: OPT-101` no seu status | Admin (env) + consentimento do tenant |
+| 4 | **Status sincronizado** | Timer rodando vira `⏱️ Focado: OPT-101` no seu status | Consentimento do tenant + toggle de cada pessoa |
 
 **Comece pelo #2** — é o que dá mais valor com menos esforço: funciona por
 e-mail sem nenhuma configuração no Teams.
@@ -32,6 +32,10 @@ e-mail sem nenhuma configuração no Teams.
 
 Nada disso precisa ser refeito. Após o deploy, os crons passam a rodar sozinhos —
 mas **só disparam se a integração estiver habilitada** na tela de configuração.
+
+**Não há variável de ambiente para o Teams.** Tudo é configurado pela interface
+e guardado criptografado no banco. A única dependência externa é a permissão
+`Presence.ReadWrite` no Entra, exigida apenas pelo recurso #4 — veja §7.
 
 ---
 
@@ -175,23 +179,24 @@ O passo 4 é o que evita que cada pessoa veja uma tela de consentimento no
 próximo login. Exige perfil *Global Administrator* ou
 *Privileged Role Administrator*.
 
-### Passo 2 — Variável de ambiente
+> ⚠️ **Faça este passo antes do deploy.** O escopo é solicitado em **todo
+> login**. Se o tenant exigir admin consent e a permissão não estiver
+> concedida, o Entra recusa a autenticação com `AADSTS65001` — o que derruba o
+> login de todo mundo, não só o status.
 
-**Produção (Azure Web App):** Configuration → Application settings →
-**New application setting** → nome `TEAMS_PRESENCE_SCOPE`, valor `true` → Save.
-O app reinicia sozinho.
-
-**Local (opcional):** adicione `TEAMS_PRESENCE_SCOPE=true` ao `.env.local` e
-reinicie o `pnpm dev`.
-
-Enquanto essa variável estiver desligada, o app **nem pede** o escopo no login —
-é o que impede um re-consentimento acidental de todo o tenant.
-
-### Passo 3 — Cada pessoa (uma vez)
+### Passo 2 — Cada pessoa (uma vez)
 
 1. **Saia e entre novamente** no OptSolv Time usando o login Microsoft
 2. Vá em Configurações → Integrações → Microsoft Teams
 3. Ligue **"Sincronizar status do Teams com o timer"**
+
+Ao ligar, o app faz um **teste real** contra o Graph na hora e responde:
+
+| Resposta | Significado |
+|----------|-------------|
+| "Ativado e testado com sucesso" | Tudo certo |
+| "O Teams recusou a permissão" | Falta o consentimento do §Passo 1, ou sua sessão é anterior a ele — relogue |
+| "Reconecte sua conta Microsoft" | Token expirado; saia e entre novamente |
 
 > **Por que o logout é obrigatório?** O token guardado hoje foi emitido para os
 > escopos antigos (`User.Read`, `Calendars.Read`…). Um *refresh* renova o token
@@ -207,7 +212,6 @@ Se não aparecer, confira nesta ordem:
 
 | Verificação | Onde |
 |-------------|------|
-| A variável está ativa? | O aviso amarelo sumiu da tela de configuração |
 | O escopo foi consentido? | Entra → App registrations → API permissions (deve estar "Granted") |
 | Você relogou depois disso? | Logout + login novamente |
 | O toggle está ligado? | Configurações → Integrações → Microsoft Teams |
@@ -224,7 +228,8 @@ Se não aparecer, confira nesta ordem:
 | Comando não responde nada | Segredo HMAC divergente entre Teams e app, ou chave-geral desligada |
 | Standup não chegou | Chave-geral ou "Standup do time" desligados; ou o cron do dia já rodou |
 | Lembrete não chegou | Meta do dia já batida (comportamento esperado), ou preferência desligada |
-| Status não muda | `TEAMS_PRESENCE_SCOPE` desligado ou escopo não consentido no tenant |
+| Status não muda | Escopo `Presence.ReadWrite` não consentido no tenant, ou sessão anterior ao consentimento (relogue) |
+| Login falha com `AADSTS65001` | `Presence.ReadWrite` pedido sem admin consent — conceda no Entra (§7, Passo 1) |
 
 **Testar sem esperar o horário:** rode os workflows manualmente no GitHub
 (*Actions → Teams Standup Digest / Teams Evening Digest → Run workflow*).

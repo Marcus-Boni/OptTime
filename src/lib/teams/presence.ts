@@ -2,10 +2,13 @@
  * Teams status-message sync ("⏱️ Focado: OPT-101 (Refactor Auth)").
  *
  * Uses the delegated Graph endpoint `/me/presence/setStatusMessage`, which
- * requires the `Presence.ReadWrite` scope. That scope is only requested when
- * `TEAMS_PRESENCE_SCOPE=true` (see lib/auth.ts) to avoid forcing a tenant-wide
- * re-consent — so this module treats 403 as a knowable, reportable state, and
- * every call is strictly fire-and-forget from the timer routes.
+ * requires the `Presence.ReadWrite` scope granted at login (see lib/auth.ts)
+ * and consented for the app in Entra. Whether it runs at all is the user's own
+ * `teamsStatusSyncEnabled` toggle.
+ *
+ * A tenant that never consented yields 403, which is reported as
+ * `missing_scope` rather than thrown: every call from the timer routes is
+ * fire-and-forget, so a Teams problem must never fail a time entry.
  */
 
 import { eq } from "drizzle-orm";
@@ -124,6 +127,29 @@ export async function syncTimerPresence(
     return await callSetStatusMessage(accessToken, buildStatusContent(input));
   } catch (error: unknown) {
     console.error("[teams-presence] sync failed:", error);
+    return "failed";
+  }
+}
+
+/**
+ * Verifies that this user can actually write their Teams status, by clearing
+ * it — a no-op the user never sees.
+ *
+ * Called when someone switches the feature on, so a missing tenant consent or
+ * a stale token surfaces immediately instead of silently doing nothing at the
+ * next timer start.
+ */
+export async function verifyPresenceAccess(
+  headers: Headers,
+  userId: string,
+): Promise<PresenceSyncOutcome> {
+  try {
+    const accessToken = await getMicrosoftAccessToken(headers, userId);
+    if (!accessToken) return "no_token";
+
+    return await callSetStatusMessage(accessToken, null);
+  } catch (error: unknown) {
+    console.error("[teams-presence] verification failed:", error);
     return "failed";
   }
 }

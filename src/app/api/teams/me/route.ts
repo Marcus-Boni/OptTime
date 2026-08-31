@@ -5,6 +5,7 @@ import { user } from "@/lib/db/schema";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { fetchMicrosoftObjectId } from "@/lib/microsoft-graph";
 import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
+import { verifyPresenceAccess } from "@/lib/teams/presence";
 import { saveTeamsPreferencesSchema } from "@/lib/validations/teams.schema";
 
 interface TeamsPreferencesView {
@@ -13,8 +14,6 @@ interface TeamsPreferencesView {
   hasPersonalWebhook: boolean;
   /** Non-secret preview so the user recognizes the stored URL. */
   personalWebhookPreview: string | null;
-  /** Whether the login scope for presence sync is active in this deploy. */
-  presenceScopeEnabled: boolean;
   /**
    * True once the Entra object id is stored — chat commands can only resolve
    * the sender back to an app user when this is linked.
@@ -42,7 +41,6 @@ async function buildView(userId: string): Promise<TeamsPreferencesView | null> {
     eveningDigestEnabled: row.eveningDigestEnabled,
     hasPersonalWebhook: Boolean(webhook),
     personalWebhookPreview: webhook ? `${webhook.slice(0, 34)}…` : null,
-    presenceScopeEnabled: process.env.TEAMS_PRESENCE_SCOPE === "true",
     identityLinked: Boolean(row.azureId),
   };
 }
@@ -153,7 +151,17 @@ export async function PUT(req: Request): Promise<Response> {
       .where(eq(user.id, session.user.id));
 
     const preferences = await buildView(session.user.id);
-    return Response.json({ preferences });
+
+    // Switching the status sync on is the moment to prove it actually works:
+    // the scope lives in the login token, so a tenant that never consented (or
+    // a session predating the consent) would otherwise fail silently at the
+    // next timer start.
+    const presenceCheck =
+      teamsStatusSyncEnabled === true
+        ? await verifyPresenceAccess(req.headers, session.user.id)
+        : null;
+
+    return Response.json({ preferences, presenceCheck });
   } catch (error) {
     console.error("[PUT /api/teams/me]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

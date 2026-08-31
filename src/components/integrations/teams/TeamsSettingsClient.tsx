@@ -32,9 +32,47 @@ interface TeamsPreferences {
   eveningDigestEnabled: boolean;
   hasPersonalWebhook: boolean;
   personalWebhookPreview: string | null;
-  presenceScopeEnabled: boolean;
   identityLinked: boolean;
 }
+
+/** Outcome of the live check run when the status sync is switched on. */
+type PresenceCheck =
+  | "updated"
+  | "cleared"
+  | "disabled"
+  | "no_token"
+  | "missing_scope"
+  | "failed";
+
+const PRESENCE_FEEDBACK: Record<
+  PresenceCheck,
+  { tone: "success" | "warning"; message: string }
+> = {
+  cleared: {
+    tone: "success",
+    message: "Status sincronizado ativado e testado com sucesso.",
+  },
+  updated: {
+    tone: "success",
+    message: "Status sincronizado ativado e testado com sucesso.",
+  },
+  missing_scope: {
+    tone: "warning",
+    message:
+      "Ativado, mas o Teams recusou a permissão. Saia e entre novamente no app; se persistir, peça ao admin para conceder Presence.ReadWrite no Entra.",
+  },
+  no_token: {
+    tone: "warning",
+    message:
+      "Ativado, mas sua conta Microsoft precisa ser reconectada — saia e entre novamente.",
+  },
+  failed: {
+    tone: "warning",
+    message:
+      "Ativado, mas o teste com o Teams falhou. Tente iniciar um timer e verifique seu status.",
+  },
+  disabled: { tone: "success", message: "Preferências salvas." },
+};
 
 interface MaskedTeamsSettings {
   enabled: boolean;
@@ -156,6 +194,7 @@ export function TeamsSettingsClient() {
 
         const body = (await res.json().catch(() => ({}))) as {
           preferences?: TeamsPreferences;
+          presenceCheck?: PresenceCheck | null;
           error?: string;
         };
 
@@ -164,7 +203,16 @@ export function TeamsSettingsClient() {
         }
 
         setPreferences(body.preferences);
-        toast.success("Preferências salvas.");
+
+        const feedback = body.presenceCheck
+          ? PRESENCE_FEEDBACK[body.presenceCheck]
+          : null;
+
+        if (feedback && feedback.tone !== "success") {
+          toast.warning(feedback.message, { duration: 8000 });
+        } else {
+          toast.success(feedback?.message ?? "Preferências salvas.");
+        }
       } catch (error: unknown) {
         console.error("[TeamsSettingsClient] savePreferences:", error);
         toast.error(error instanceof Error ? error.message : "Erro ao salvar.");
@@ -326,17 +374,9 @@ export function TeamsSettingsClient() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     Ao rodar o timer, seu status vira “⏱️ Focado: PROJETO”. Ao
-                    parar, volta ao normal.
+                    parar, volta ao normal. Ao ativar, testamos o acesso na hora
+                    e avisamos se algo faltar.
                   </p>
-                  {!preferences?.presenceScopeEnabled ? (
-                    <Badge
-                      variant="outline"
-                      className="mt-1.5 border-amber-500/40 text-[10px] text-amber-600 dark:text-amber-400"
-                    >
-                      Requer o escopo Presence.ReadWrite (admin: defina
-                      TEAMS_PRESENCE_SCOPE=true e reconecte)
-                    </Badge>
-                  ) : null}
                 </div>
                 <Switch
                   id="status-sync"

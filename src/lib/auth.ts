@@ -104,12 +104,11 @@ export const auth = betterAuth({
         "User.Read",
         "Calendars.Read",
         "offline_access",
-        // Opt-in: mirrors the running timer into the Teams status message.
-        // Requesting it changes the consent screen, so it stays behind a flag
-        // until the tenant admin grants Presence.ReadWrite to the app.
-        ...(process.env.TEAMS_PRESENCE_SCOPE === "true"
-          ? ["Presence.ReadWrite"]
-          : []),
+        // Mirrors the running timer into the Teams status message. Whether the
+        // feature is used is a per-user toggle, but the scope itself can only
+        // be granted at login — so it is always requested and must be consented
+        // for the app in Entra (see docs/teams-integration.md §7).
+        "Presence.ReadWrite",
       ],
       refreshAccessToken: refreshMicrosoftAccessToken,
     },
