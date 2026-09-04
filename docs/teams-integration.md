@@ -65,19 +65,97 @@ o gap e um botão **"✨ Preencher meu dia com IA"** que abre o reconstructor.
 
 ### Pelo Teams (opcional, por pessoa)
 
-Para receber no Teams em vez do e-mail, cada pessoa cria um fluxo pessoal:
+> **Este passo a passo também está no app**, no botão **"Como configurar"** ao
+> lado do campo do webhook. Mantenha os dois em sincronia ao editar —
+> `src/components/integrations/teams/PersonalWebhookGuide.tsx`.
 
-1. Abra [make.powerautomate.com](https://make.powerautomate.com) → **Criar** →
-   **Fluxo de nuvem instantâneo**
-2. Gatilho: **"When a Teams webhook request is received"**
-3. Ação: **"Post a message in a chat or channel"** → *Post in:* `Chat with Flow bot`
-   → *Recipient:* você mesmo
-4. No corpo da mensagem, use o conteúdo dinâmico do gatilho
-5. Salve, copie a **URL HTTP POST** gerada
-6. Cole em **"Webhook pessoal do Teams"** na página de configuração
+Para receber no Teams em vez do e-mail, cada pessoa cria um fluxo pessoal. Leva
+cerca de 5 minutos e **não tem custo** (veja §4.1).
+
+**1. Criar o fluxo**
+
+Abra [make.powerautomate.com](https://make.powerautomate.com) → **Criar** →
+**Fluxo de nuvem instantâneo**. Nomeie e escolha o gatilho **"Quando uma
+solicitação de webhook do Teams é recebida"**.
+
+**2. Liberar o disparo** ⚠️
+
+No bloco do gatilho, mude **"Quem pode disparar o fluxo?"** para
+**"Qualquer pessoa"**.
+
+> Esse é o passo que mais gente erra. Nas demais opções o Power Automate exige um
+> token da Microsoft em cada chamada, e o app envia apenas o card — o resultado é
+> `401` e nenhum lembrete. A URL gerada já é longa e secreta; é ela que protege o
+> fluxo.
+
+**3. Adicionar a ação de envio**
+
+**+ Nova etapa** → busque `Teams` → **"Postar cartão em um chat ou canal"**:
+
+| Campo | Valor |
+|---|---|
+| Postar como | `Bot do Fluxo` |
+| Postar em | `Chat com o Bot do Fluxo` |
+| Destinatário | você mesmo |
+| Cartão adaptável | a expressão do passo 4 |
+
+**4. Preencher o "Cartão adaptável"**
+
+Esse campo não aceita conteúdo dinâmico da lista. Clique nele, abra a aba
+**Expressão** (*fx*) e cole:
+
+```
+string(triggerBody()?['attachments']?[0]?['content'])
+```
+
+O app posta um envelope `{type, attachments[0].content}` com um Adaptive Card
+1.4 (veja `src/lib/teams/client.ts`). A expressão extrai o card e o repassa
+inteiro, com os `Action.OpenUrl` funcionando.
+
+**5. Salvar e colar a URL**
+
+Salve, volte ao gatilho, copie a **URL HTTP** e cole em **"Webhook pessoal do
+Teams"** na página de configuração.
 
 Se o envio pelo Teams falhar, o sistema cai automaticamente no e-mail — você não
 fica sem o lembrete.
+
+### Testando o fluxo antes das 17h30
+
+O campo do webhook pessoal **não tem botão de teste** (o "Enviar card de teste"
+valida apenas o webhook do canal, na seção de admin). Para validar na hora, cole
+a URL do fluxo e rode no PowerShell:
+
+```powershell
+$url = 'COLE_AQUI_A_URL_DO_FLUXO'
+$body = '{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","version":"1.4","msteams":{"width":"Full"},"body":[{"type":"TextBlock","text":"Teste OptSolv Time","weight":"Bolder","wrap":true}]}}]}'
+try { Invoke-RestMethod -Uri $url -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($body)); Write-Host "OK - enviado" -ForegroundColor Green } catch { $s = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); Write-Host $s.ReadToEnd() -ForegroundColor Yellow }
+```
+
+Duas particularidades do comando, ambas necessárias:
+
+- **`UTF8.GetBytes`** — o PowerShell 5.1 codifica um `-Body` de texto usando a
+  página de código do Windows. Os acentos do card viram bytes que o serviço
+  recusa como JSON malformado, devolvendo `400`. O app real não sofre disso: o
+  `fetch` do Node envia UTF-8 por padrão.
+- **`try/catch`** — o `Invoke-RestMethod` descarta o corpo da resposta e mostra
+  só o status. O `catch` abre o envelope e imprime o erro real do Power Automate.
+
+| Resultado | Causa |
+|---|---|
+| `401` | Passo 2 — "Quem pode disparar" não está em "Qualquer pessoa" |
+| `400` | Acentos: use o comando acima, com `UTF8.GetBytes` |
+| Nada chega | Veja *Histórico de execuções (28 dias)* no fluxo |
+
+### 4.1 Custo
+
+Nenhum. Os dois blocos são do conector **Microsoft Teams**, que é *standard* e
+já vem na licença Microsoft 365 (Power Automate for Microsoft 365). A cota
+inclusa é de 6.000 requisições/dia por usuário; o fluxo gasta ~2 por dia útil.
+
+> ⚠️ Evite o gatilho **"Quando uma solicitação HTTP é recebida"**. Ele parece o
+> caminho óbvio para quem já conhece webhooks, mas pertence ao conector HTTP,
+> que é **premium** e cobrado por usuário.
 
 ---
 
@@ -228,6 +306,7 @@ Se não aparecer, confira nesta ordem:
 | Comando não responde nada | Segredo HMAC divergente entre Teams e app, ou chave-geral desligada |
 | Standup não chegou | Chave-geral ou "Standup do time" desligados; ou o cron do dia já rodou |
 | Lembrete não chegou | Meta do dia já batida (comportamento esperado), ou preferência desligada |
+| Lembrete cai sempre no e-mail | Fluxo pessoal recusando a chamada — teste com o comando do §4 e confira o passo 2 |
 | Status não muda | Escopo `Presence.ReadWrite` não consentido no tenant, ou sessão anterior ao consentimento (relogue) |
 | Login falha com `AADSTS65001` | `Presence.ReadWrite` pedido sem admin consent — conceda no Entra (§7, Passo 1) |
 

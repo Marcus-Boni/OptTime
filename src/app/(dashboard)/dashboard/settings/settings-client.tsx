@@ -29,6 +29,7 @@ import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
 import { GamificationPreferencesCard } from "@/components/gamification/GamificationPreferencesCard";
+import { McpLogo } from "@/components/integrations/mcp/McpLogo";
 import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
 import { OnboardingSettingsCard } from "@/components/onboarding/OnboardingSettingsCard";
 import { Badge } from "@/components/ui/badge";
@@ -785,7 +786,7 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between">
                       <CardTitle className="flex items-center gap-2 font-display text-base">
-                        <Sparkles className="h-5 w-5 text-brand-500" />
+                        <McpLogo className="h-5 w-5 text-brand-500" />
                         Agentes de IA (MCP)
                       </CardTitle>
                       <Badge

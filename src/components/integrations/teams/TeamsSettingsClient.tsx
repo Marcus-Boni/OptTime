@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion";
 import {
-  ArrowLeft,
   BellRing,
   Copy,
   Loader2,
@@ -13,9 +12,10 @@ import {
   TerminalSquare,
   Trash2,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { IntegrationBackLink } from "@/components/integrations/IntegrationBackLink";
+import { PersonalWebhookGuide } from "@/components/integrations/teams/PersonalWebhookGuide";
 import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -301,12 +301,7 @@ export function TeamsSettingsClient() {
       className="mx-auto w-full max-w-3xl space-y-6"
     >
       <div className="space-y-3">
-        <Button variant="ghost" size="sm" asChild className="-ml-2 w-fit">
-          <Link href="/dashboard/settings?tab=integrations">
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            Integrações
-          </Link>
-        </Button>
+        <IntegrationBackLink />
         <div className="flex items-center gap-3">
           <div className="rounded-xl bg-[#6264A7]/10 p-2.5">
             <TeamsLogo className="size-6" />
@@ -389,14 +384,16 @@ export function TeamsSettingsClient() {
               </div>
 
               <div className="space-y-2 rounded-lg border border-border/60 px-3 py-2.5">
-                <Label htmlFor="personal-webhook" className="text-sm">
-                  Webhook pessoal do Teams (opcional)
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="personal-webhook" className="text-sm">
+                    Webhook pessoal do Teams (opcional)
+                  </Label>
+                  <PersonalWebhookGuide />
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Para receber o lembrete direto no Teams: crie um fluxo no
-                  Power Automate com o gatilho “When a Teams webhook request is
-                  received” → ação “Post a message in a chat with me” e cole a
-                  URL aqui.
+                  Recebe o lembrete no chat do Teams em vez do e-mail. Exige um
+                  fluxo do Power Automate — o passo a passo está em “Como
+                  configurar”.
                 </p>
                 {preferences?.hasPersonalWebhook ? (
                   <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5">

@@ -8,7 +8,6 @@ import {
   MessageSquareQuote,
   Plug,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { IntegrationBackLink } from "@/components/integrations/IntegrationBackLink";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +17,7 @@ import { ApiTokenManager } from "./ApiTokenManager";
 import { CopyBlock } from "./CopyBlock";
 import { McpCatalog } from "./McpCatalog";
 import { McpClientSetup } from "./McpClientSetup";
+import { McpLogo } from "./McpLogo";
 
 const containerVariants = {
   hidden: {},
@@ -111,7 +111,7 @@ export function McpSetupClient({ baseUrl }: McpSetupClientProps) {
       <motion.header variants={itemVariants} className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <Badge className="gap-1 bg-brand-500/10 text-brand-500">
-            <Sparkles className="h-3 w-3" />
+            <McpLogo className="h-3.5 w-3.5" />
             Model Context Protocol
           </Badge>
           <Badge variant="outline" className="text-[10px]">

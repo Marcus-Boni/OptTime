@@ -75,7 +75,7 @@ The response includes an `access_token` (JWT). Use it as a Bearer token in subse
 ### Check you get 401 without a token
 
 ```bash
-curl -i https://time.optsolv.com.br/api/v1/time-entries
+curl -i https://opt-time.optsolv.com.br/api/v1/time-entries
 # → 401 UNAUTHORIZED
 ```
 
@@ -85,28 +85,28 @@ curl -i https://time.optsolv.com.br/api/v1/time-entries
 TOKEN="eyJ..."   # JWT from the token endpoint above
 
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://time.optsolv.com.br/api/v1/time-entries?from=2026-05-01&to=2026-05-31&limit=20"
+  "https://opt-time.optsolv.com.br/api/v1/time-entries?from=2026-05-01&to=2026-05-31&limit=20"
 ```
 
 ### Get a single time entry
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://time.optsolv.com.br/api/v1/time-entries/<entry-id>"
+  "https://opt-time.optsolv.com.br/api/v1/time-entries/<entry-id>"
 ```
 
 ### List active users
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://time.optsolv.com.br/api/v1/users"
+  "https://opt-time.optsolv.com.br/api/v1/users"
 ```
 
 ### List projects (filter by status)
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://time.optsolv.com.br/api/v1/projects?status=active"
+  "https://opt-time.optsolv.com.br/api/v1/projects?status=active"
 ```
 
 ### Register a webhook subscription (requires opt-time.admin)
@@ -116,7 +116,7 @@ curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://opt-pms.azurewebsites.net/webhooks/opt-time","secret":"your-hmac-secret-min-16-chars","events":["ping"]}' \
-  "https://time.optsolv.com.br/api/v1/webhooks/subscriptions"
+  "https://opt-time.optsolv.com.br/api/v1/webhooks/subscriptions"
 ```
 
 The `secret` is stored encrypted and **never returned again**. Keep it safe — it is used to verify `X-OptSolv-Signature` on every delivery.
@@ -128,7 +128,7 @@ curl -X POST \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"url":"https://opt-pms.azurewebsites.net/webhooks/opt-time","secret":"your-hmac-secret-min-16-chars"}' \
-  "https://time.optsolv.com.br/api/v1/webhooks/test-dispatch"
+  "https://opt-time.optsolv.com.br/api/v1/webhooks/test-dispatch"
 ```
 
 ---
