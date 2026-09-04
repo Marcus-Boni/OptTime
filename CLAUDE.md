@@ -1030,7 +1030,7 @@ approved                  rejected → entries voltam a draft
 | ----------- | --------------------------- | ------------------- |
 | Development | `localhost:3000`            | `next dev`          |
 | Preview     | `optsolv-time-*.vercel.app` | PR aberto no GitHub |
-| Production  | `time.optsolv.com.br`       | Merge na `main`     |
+| Production  | `opt-time.optsolv.com.br`       | Merge na `main`     |
 
 ### 9.2 Variáveis de Ambiente Obrigatórias
 
@@ -1041,7 +1041,7 @@ DATABASE_URL_UNPOOLED=postgresql://...@my-server.postgres.database.azure.com:543
 
 # Autenticação
 BETTER_AUTH_SECRET=min-32-chars-random-string
-BETTER_AUTH_URL=https://time.optsolv.com.br
+BETTER_AUTH_URL=https://opt-time.optsolv.com.br/
 
 # Azure AD SSO
 AZURE_AD_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
@@ -1052,7 +1052,7 @@ AZURE_AD_TENANT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_DEVOPS_ORG_URL=https://dev.azure.com/optsolv
 
 # App
-NEXT_PUBLIC_APP_URL=https://time.optsolv.com.br
+NEXT_PUBLIC_APP_URL=https://opt-time.optsolv.com.br/
 ```
 
 ### 9.3 CI/CD Pipeline (GitHub Actions)

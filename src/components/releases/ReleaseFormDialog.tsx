@@ -88,7 +88,7 @@ export default function ReleaseFormDialog({
         versionTag: "",
         title: "",
         description: "",
-        videoUrl: "remotion:ReleaseShowcaseV17",
+        videoUrl: "remotion:ReleaseShowcaseV18",
       });
     }
   }, [form, isOpen, release]);
@@ -99,10 +99,10 @@ export default function ReleaseFormDialog({
       toast.success(
         isEdit
           ? "Release atualizada com sucesso!"
-          : "Release criada como rascunho!",
+          : "Release criada com sucesso!",
       );
-      handleOpenChange(false);
       onSuccess?.();
+      handleOpenChange(false);
     } catch (err: unknown) {
       console.error("[ReleaseFormDialog] handleSubmit:", err);
       toast.error(
@@ -115,38 +115,26 @@ export default function ReleaseFormDialog({
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {!isControlled && (
         <DialogTrigger asChild>
-          {isEdit ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-8 text-xs"
-              aria-label={`Editar release ${release.versionTag}`}
-            >
-              <PencilLine className="mr-1.5 h-3.5 w-3.5" />
-              Editar
-            </Button>
-          ) : (
-            <Button
-              size="sm"
-              className="bg-brand-500 text-white hover:bg-brand-600"
-              aria-label="Criar nova release"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Nova Versão
-            </Button>
-          )}
+          <Button
+            size="sm"
+            className="gap-2 bg-brand-500 hover:bg-brand-600 text-white"
+          >
+            <Plus className="h-4 w-4" />
+            Nova Versão
+          </Button>
         </DialogTrigger>
       )}
 
-      <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
-          <DialogTitle>
-            {isEdit ? `Editar ${release.versionTag}` : "Nova Release"}
+      <DialogContent className="flex max-h-[90vh] flex-col p-0 sm:max-w-[640px]">
+        <DialogHeader className="px-6 pt-6 pb-2">
+          <DialogTitle className="flex items-center gap-2">
+            <PencilLine className="h-5 w-5 text-brand-400" />
+            {isEdit ? `Editar ${release.versionTag}` : "Publicar Nova Versão"}
           </DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Edite os detalhes da release. Ela só pode ser alterada enquanto for um rascunho."
-              : "Preencha os detalhes da nova versão. Ela será salva como rascunho até você publicar."}
+              ? "Atualize as notas de lançamento desta versão."
+              : "Crie notas de lançamento para informar os usuários sobre novidades."}
           </DialogDescription>
         </DialogHeader>
 
@@ -281,6 +269,25 @@ export default function ReleaseFormDialog({
 
                     {/* Quick Preset Buttons */}
                     <div className="flex flex-wrap gap-1.5 py-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          field.value === "remotion:ReleaseShowcaseV18"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          field.onChange("remotion:ReleaseShowcaseV18")
+                        }
+                        className={`h-7 text-xs ${
+                          field.value === "remotion:ReleaseShowcaseV18"
+                            ? "bg-brand-500 text-white"
+                            : ""
+                        }`}
+                      >
+                        🎬 Showcase v1.8.0
+                      </Button>
                       <Button
                         type="button"
                         size="sm"

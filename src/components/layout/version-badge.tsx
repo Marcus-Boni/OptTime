@@ -30,18 +30,19 @@ export function VersionBadge({
             <Link
               href={CHANGELOG_HREF}
               onClick={markAsSeen}
-              className="relative flex h-7 w-7 items-center justify-center rounded-lg border border-border/40 bg-accent/40 text-[10px] font-mono text-muted-foreground transition-colors hover:border-brand-500/30 hover:text-brand-400"
+              aria-label={`Versão ${latestVersion} — Ver notas de lançamento`}
+              className="relative mx-auto flex h-8 w-8 items-center justify-center rounded-lg border border-border/40 bg-accent/40 text-[10px] font-mono text-muted-foreground transition-colors hover:border-brand-500/30 hover:bg-accent/80 hover:text-foreground"
             >
               {hasUnseen ? (
                 <>
-                  <Sparkles className="h-3.5 w-3.5 text-orange-400" />
+                  <Sparkles className="h-4 w-4 text-orange-400" />
                   <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-75" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-orange-500 ring-2 ring-background" />
                   </span>
                 </>
               ) : (
-                <Tag className="h-3.5 w-3.5" />
+                <Tag className="h-4 w-4" />
               )}
             </Link>
           </TooltipTrigger>

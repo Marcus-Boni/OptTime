@@ -87,10 +87,15 @@ export function Hero() {
         <div className="absolute -right-40 -top-40 h-[600px] w-[600px] rounded-full bg-brand-500/8 blur-[120px]" />
         <div className="absolute -bottom-20 -left-40 h-[400px] w-[400px] rounded-full bg-brand-500/5 blur-[100px]" />
 
-        {/* Floating particles */}
-        {[...Array(5)].map((_, i) => (
+        {[
+          "particle-a",
+          "particle-b",
+          "particle-c",
+          "particle-d",
+          "particle-e",
+        ].map((particleId, i) => (
           <motion.div
-            key={`particle-${i}`}
+            key={particleId}
             className="absolute h-1 w-1 rounded-full bg-brand-500/30"
             style={{
               top: `${20 + i * 15}%`,
@@ -202,7 +207,7 @@ export function Hero() {
                 <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                 <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
                 <div className="ml-4 flex-1 rounded-md bg-white/5 px-3 py-1 text-center text-[10px] text-white/30">
-                  time.optsolv.com
+                  opt-time.optsolv.com.br
                 </div>
               </div>
 
@@ -253,9 +258,15 @@ export function Hero() {
                 <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
                   <div className="mb-2 h-3 w-24 rounded bg-white/10" />
                   <div className="flex items-end gap-1.5">
-                    {[60, 80, 50, 90, 40].map((h, i) => (
+                    {[
+                      { h: 60, id: "bar-mon" },
+                      { h: 80, id: "bar-tue" },
+                      { h: 50, id: "bar-wed" },
+                      { h: 90, id: "bar-thu" },
+                      { h: 40, id: "bar-fri" },
+                    ].map(({ h, id }, i) => (
                       <motion.div
-                        key={`bar-mock-${i}`}
+                        key={id}
                         initial={{ height: 0 }}
                         animate={{ height: `${h}%` }}
                         transition={{ duration: 0.5, delay: 0.5 + i * 0.1 }}

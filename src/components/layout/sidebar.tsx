@@ -561,7 +561,12 @@ export function Sidebar() {
             <UserProfileWidget user={user} collapsed={sidebarCollapsed} />
           )}
 
-          <div className="mt-2 pt-2 border-t border-border/40">
+          <div
+            className={cn(
+              "mt-2 pt-2 border-t border-border/40",
+              sidebarCollapsed && "flex justify-center",
+            )}
+          >
             <VersionBadge
               variant="sidebar-footer"
               collapsed={sidebarCollapsed}

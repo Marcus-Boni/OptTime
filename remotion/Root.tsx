@@ -2,6 +2,7 @@ import { Composition, Folder } from "remotion";
 import { ProductDemo } from "./ProductDemo";
 import { ReleaseShowcaseV16 } from "./ReleaseShowcaseV16";
 import { ReleaseShowcaseV17 } from "./ReleaseShowcaseV17";
+import { ReleaseShowcaseV18 } from "./ReleaseShowcaseV18";
 
 /**
  * Remotion Root: the evergreen ProductDemo plus one showcase per release.
@@ -33,6 +34,16 @@ export const RemotionRoot = () => {
       <Composition
         id="ReleaseShowcaseV17"
         component={ReleaseShowcaseV17}
+        durationInFrames={2100}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
+
+      {/* v1.8.0 Release Showcase (Executive HQ, Teams & AI) — 70s = 2100 frames @ 30fps */}
+      <Composition
+        id="ReleaseShowcaseV18"
+        component={ReleaseShowcaseV18}
         durationInFrames={2100}
         fps={30}
         width={1920}

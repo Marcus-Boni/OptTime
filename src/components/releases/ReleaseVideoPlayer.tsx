@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ProductDemo } from "@/remotion/ProductDemo";
 import { ReleaseShowcaseV16 } from "@/remotion/ReleaseShowcaseV16";
 import { ReleaseShowcaseV17 } from "@/remotion/ReleaseShowcaseV17";
+import { ReleaseShowcaseV18 } from "@/remotion/ReleaseShowcaseV18";
 
 /**
  * Remotion compositions a release can point at, newest first.
@@ -24,6 +25,14 @@ import { ReleaseShowcaseV17 } from "@/remotion/ReleaseShowcaseV17";
  * and the duration all follow from it.
  */
 const REMOTION_COMPOSITIONS = [
+  {
+    id: "ReleaseShowcaseV18",
+    component: ReleaseShowcaseV18,
+    durationInFrames: 2100,
+    aliases: ["v1.8", "v18"],
+    label: (versionTag: string) =>
+      `Demonstração Oficial ${versionTag} (Remotion)`,
+  },
   {
     id: "ReleaseShowcaseV17",
     component: ReleaseShowcaseV17,
