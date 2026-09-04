@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import type { ApiTokenPreset, ApiTokenSummary } from "@/lib/api-tokens.shared";
+import type {
+  ApiTokenClientKind,
+  ApiTokenPreset,
+  ApiTokenSummary,
+} from "@/lib/api-tokens.shared";
 
 /**
  * Personal access tokens for AI agents.
@@ -16,6 +20,13 @@ export interface CreateTokenInput {
   name: string;
   preset: ApiTokenPreset;
   expiresInDays: number | null;
+  /**
+   * What will carry this token, so the list can label it.
+   *
+   * Omitted, the API records `"mcp"` — right for the agents page, wrong for the
+   * editor extension, which would otherwise show up as "Agente de IA".
+   */
+  client?: ApiTokenClientKind;
 }
 
 interface UseApiTokensReturn {

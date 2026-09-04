@@ -68,6 +68,17 @@ export interface ApiTokenManagerProps {
   onCreate: (input: CreateTokenInput) => Promise<boolean>;
   onRevoke: (id: string) => Promise<boolean>;
   onDismissCreated: () => void;
+  /**
+   * Copy overrides for hosts other than the AI agents page.
+   *
+   * The token list is the same everywhere, but "cada agente deve ter o seu
+   * próprio token" reads wrong on the editor extension page. Defaults keep the
+   * agents wording so existing callers are untouched.
+   */
+  description?: string;
+  emptyDescription?: string;
+  /** Recorded on the token so the list labels it by what actually carries it. */
+  client?: CreateTokenInput["client"];
 }
 
 function ScopeBadges({ scopes }: { scopes: string[] }) {
@@ -180,6 +191,9 @@ export function ApiTokenManager({
   onCreate,
   onRevoke,
   onDismissCreated,
+  description = "Cada agente deve ter o seu próprio token. Revogar um token derruba apenas aquele agente.",
+  emptyDescription = "Crie um token para conectar o Cursor, o Claude Code ou qualquer outro agente ao seu apontamento de horas.",
+  client,
 }: ApiTokenManagerProps) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [name, setName] = useState("");
@@ -194,6 +208,7 @@ export function ApiTokenManager({
       name: trimmed,
       preset,
       expiresInDays: expiry === "never" ? null : Number.parseInt(expiry, 10),
+      ...(client ? { client } : {}),
     });
 
     if (created) {
@@ -212,10 +227,7 @@ export function ApiTokenManager({
             <KeyRound className="h-4 w-4 text-brand-500" />
             Tokens de acesso pessoal
           </CardTitle>
-          <p className="text-xs text-muted-foreground">
-            Cada agente deve ter o seu próprio token. Revogar um token derruba
-            apenas aquele agente.
-          </p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
 
         <Button
@@ -285,8 +297,7 @@ export function ApiTokenManager({
               Nenhum token ativo
             </p>
             <p className="mx-auto mt-1 max-w-sm text-xs text-muted-foreground">
-              Crie um token para conectar o Cursor, o Claude Code ou qualquer
-              outro agente ao seu apontamento de horas.
+              {emptyDescription}
             </p>
           </div>
         ) : (

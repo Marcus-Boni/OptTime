@@ -303,6 +303,9 @@ export function VsCodeSetupClient({ baseUrl }: VsCodeSetupClientProps) {
           onCreate={createToken}
           onRevoke={revokeToken}
           onDismissCreated={dismissCreatedToken}
+          client="extension"
+          description="Use um token por máquina. Revogar derruba apenas aquele editor, sem afetar os outros."
+          emptyDescription="Crie um token para conectar a extensão ao seu apontamento de horas. Ele aparece uma única vez."
         />
       </motion.div>
 
