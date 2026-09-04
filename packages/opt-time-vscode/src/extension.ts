@@ -249,7 +249,7 @@ async function promptFirstRun(
   } else if (answer === tour) {
     await vscode.commands.executeCommand(
       "workbench.action.openWalkthrough",
-      "optsolv.opt-time-vscode#optTime.setup",
+      "OptSolvTimeTracker.opt-time-vscode#optTime.setup",
       false,
     );
   }

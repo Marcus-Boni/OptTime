@@ -3,7 +3,7 @@
   "displayName": "OptSolv Time Tracker",
   "description": "Cronômetro no rodapé, detecção de branch/Work Item e lançamento de horas sem sair do editor.",
   "version": "1.0.0",
-  "publisher": "optsolv",
+  "publisher": "OptSolvTimeTracker",
   "license": "MIT",
   "private": false,
   "icon": "media/icon.png",
