@@ -152,7 +152,12 @@ export async function PATCH(
     const action = body.action as string;
 
     if (action === "submit") {
-      if (ts.userId !== session.user.id) {
+      const isOwner = ts.userId === session.user.id;
+      const canManage =
+        actor.role === "admin" ||
+        (actor.role === "manager" && (await canManageUser(actor, ts.userId)));
+
+      if (!isOwner && !canManage) {
         return Response.json({ error: "Sem permissão." }, { status: 403 });
       }
 

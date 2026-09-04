@@ -361,12 +361,13 @@ export default function TimesheetDetailPage() {
     : null;
   const currentWeek = `${format(new Date(), "yyyy")}-W${getISOWeek(new Date()).toString().padStart(2, "0")}`;
   const isCurrentWeek = timesheet.period === currentWeek;
-  const canSubmit = isTimesheetSubmittableStatus(timesheet.status);
-  const isResubmission = timesheet.status === "rejected";
-
   const user = session?.user as { role?: string } | undefined;
-
+  const isOwner = timesheet?.userId === session?.user?.id;
   const isManagerOrAdmin = user?.role === "admin" || user?.role === "manager";
+  const canSubmit =
+    isTimesheetSubmittableStatus(timesheet.status) &&
+    (isOwner || isManagerOrAdmin);
+  const isResubmission = timesheet.status === "rejected";
   const isOtherUserTimesheet =
     !!timesheet?.userId && timesheet.userId !== session?.user?.id;
   const isFromApprovals = fromParam?.includes("approvals");
@@ -426,7 +427,9 @@ export default function TimesheetDetailPage() {
       toast.success(
         isResubmission
           ? "Timesheet submetido novamente com sucesso."
-          : "Timesheet submetido com sucesso.",
+          : isOwner
+            ? "Timesheet submetido com sucesso."
+            : "Timesheet submetido pelo colaborador com sucesso.",
       );
     } catch (submitError) {
       toast.error(
@@ -546,7 +549,9 @@ export default function TimesheetDetailPage() {
                         : "Submetendo..."
                       : isResubmission
                         ? "Submeter timesheet novamente"
-                        : "Submeter timesheet"}
+                        : isOwner
+                          ? "Submeter timesheet"
+                          : "Submeter pelo colaborador"}
                   </Button>
                 )}
               </div>
