@@ -511,9 +511,9 @@ export const TOURS: readonly TourDefinition[] = [
       },
       {
         id: "integrations",
-        title: "Azure DevOps, Teams e MCP",
+        title: "Azure DevOps, editor, Teams e MCP",
         description:
-          "Conecte o Azure DevOps para vincular work items, o Teams para notificações e digests, e o MCP para operar o tracker de dentro do seu editor.",
+          "Conecte o Azure DevOps para vincular work items, a extensão do editor para o cronômetro no rodapé do VS Code, o Teams para notificações e digests, e o MCP para operar o tracker conversando com seu agente de IA.",
         target: '[data-tour="settings-integrations"]',
         placement: "top",
       },
