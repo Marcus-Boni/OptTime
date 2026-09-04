@@ -38,6 +38,7 @@ export interface Timesheet {
     email: string;
     image: string | null;
     department: string | null;
+    isActive?: boolean;
   };
   entries?: unknown[];
 }

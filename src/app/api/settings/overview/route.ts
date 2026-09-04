@@ -29,8 +29,16 @@ export async function GET(req: Request): Promise<Response> {
     const directReportIds =
       actor.role === "manager" ? await getDirectReportIds(actor.userId) : [];
 
+    const peopleInScope = await db.query.user.findMany({
+      columns: { id: true },
+      where:
+        actor.role === "admin"
+          ? eq(user.isActive, true)
+          : and(eq(user.managerId, actor.userId), eq(user.isActive, true)),
+    });
+    const activeUserIds = peopleInScope.map((u) => u.id);
+
     const [
-      peopleInScope,
       pendingInvitations,
       pendingApprovals,
       projectsInScope,
@@ -40,13 +48,6 @@ export async function GET(req: Request): Promise<Response> {
       pendingSuggestions,
       syncedProjects,
     ] = await Promise.all([
-      db.query.user.findMany({
-        columns: { id: true },
-        where:
-          actor.role === "admin"
-            ? eq(user.isActive, true)
-            : and(eq(user.managerId, actor.userId), eq(user.isActive, true)),
-      }),
       db.query.invitation.findMany({
         columns: { id: true },
         where:
@@ -57,20 +58,15 @@ export async function GET(req: Request): Promise<Response> {
                 eq(invitation.invitedById, actor.userId),
               ),
       }),
-      actor.role === "admin"
-        ? db.query.timesheet.findMany({
+      activeUserIds.length === 0
+        ? Promise.resolve([])
+        : db.query.timesheet.findMany({
             columns: { id: true },
-            where: eq(timesheet.status, "submitted"),
-          })
-        : directReportIds.length === 0
-          ? Promise.resolve([])
-          : db.query.timesheet.findMany({
-              columns: { id: true },
-              where: and(
-                eq(timesheet.status, "submitted"),
-                inArray(timesheet.userId, directReportIds),
-              ),
-            }),
+            where: and(
+              eq(timesheet.status, "submitted"),
+              inArray(timesheet.userId, activeUserIds),
+            ),
+          }),
       db.query.project.findMany({
         columns: { id: true },
         where:

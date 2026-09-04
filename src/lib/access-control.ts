@@ -42,9 +42,16 @@ export function getActorContext(user: SessionUser): ActorContext {
   };
 }
 
-export async function getDirectReportIds(managerId: string): Promise<string[]> {
+export async function getDirectReportIds(
+  managerId: string,
+  options?: { includeInactive?: boolean },
+): Promise<string[]> {
+  const where = options?.includeInactive
+    ? eq(user.managerId, managerId)
+    : and(eq(user.managerId, managerId), eq(user.isActive, true));
+
   const reports = await db.query.user.findMany({
-    where: eq(user.managerId, managerId),
+    where,
     columns: { id: true },
   });
 

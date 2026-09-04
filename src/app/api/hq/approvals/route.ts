@@ -80,7 +80,13 @@ export async function GET(req: Request): Promise<Response> {
       where: timesheetWhere,
       with: {
         user: {
-          columns: { id: true, name: true, image: true, weeklyCapacity: true },
+          columns: {
+            id: true,
+            name: true,
+            image: true,
+            weeklyCapacity: true,
+            isActive: true,
+          },
         },
         entries: {
           where: isNull(timeEntry.deletedAt),
@@ -109,7 +115,11 @@ export async function GET(req: Request): Promise<Response> {
       orderBy: (fields, { asc }) => [asc(fields.submittedAt)],
     });
 
-    const insights: ApprovalInsight[] = pendingTimesheets.map((ts) => {
+    const activePendingTimesheets = pendingTimesheets.filter(
+      (ts) => Boolean(ts.user) && ts.user?.isActive !== false,
+    );
+
+    const insights: ApprovalInsight[] = activePendingTimesheets.map((ts) => {
       const anomalyEntries: AnomalyEntryInput[] = ts.entries.map((entry) => ({
         id: entry.id,
         date: entry.date,

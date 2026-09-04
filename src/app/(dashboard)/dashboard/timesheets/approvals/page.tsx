@@ -492,9 +492,10 @@ export default function TimesheetApprovalsPage() {
     () =>
       approvals.filter(
         (ts) =>
-          ts.status === "submitted" ||
-          ts.status === "open" ||
-          ts.status === "rejected",
+          ts.user?.isActive !== false &&
+          (ts.status === "submitted" ||
+            ts.status === "open" ||
+            ts.status === "rejected"),
       ),
     [approvals],
   );

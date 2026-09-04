@@ -41,9 +41,15 @@ async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
     memberIds = members.map((m) => m.userId);
   }
 
-  const allIds = new Set([...directReportIds, ...memberIds]);
+  const candidateIds = Array.from(new Set([...directReportIds, ...memberIds]));
+  if (candidateIds.length === 0) return [];
 
-  return Array.from(allIds);
+  const activeUsers = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(inArray(user.id, candidateIds), eq(user.isActive, true)));
+
+  return activeUsers.map((person) => person.id);
 }
 
 async function ensureRecentUnsubmittedWeeks(userIds: string[]) {
@@ -83,20 +89,14 @@ export async function GET(req: Request): Promise<Response> {
 
   try {
     const scopedUserIds = await getApprovalUserIds(actor);
+    if (scopedUserIds.length === 0) {
+      return Response.json({ timesheets: [] });
+    }
+
     await ensureRecentUnsubmittedWeeks(scopedUserIds);
 
     const statusFilter = inArray(timesheet.status, APPROVAL_QUEUE_STATUSES);
-
-    const where =
-      actor.role === "admin"
-        ? statusFilter
-        : scopedUserIds.length === 0
-          ? null
-          : and(statusFilter, inArray(timesheet.userId, scopedUserIds));
-
-    if (!where) {
-      return Response.json({ timesheets: [] });
-    }
+    const where = and(statusFilter, inArray(timesheet.userId, scopedUserIds));
 
     const pending = await db.query.timesheet.findMany({
       where,
@@ -108,6 +108,7 @@ export async function GET(req: Request): Promise<Response> {
             email: true,
             image: true,
             department: true,
+            isActive: true,
           },
         },
         approver: { columns: { id: true, name: true } },
@@ -115,7 +116,11 @@ export async function GET(req: Request): Promise<Response> {
       orderBy: (ts, { desc, asc }) => [desc(ts.period), asc(ts.submittedAt)],
     });
 
-    return Response.json({ timesheets: pending });
+    const activePending = pending.filter(
+      (ts) => Boolean(ts.user) && ts.user?.isActive !== false,
+    );
+
+    return Response.json({ timesheets: activePending });
   } catch (error) {
     console.error("[GET /api/timesheets/approvals]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
