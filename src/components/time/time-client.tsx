@@ -30,10 +30,6 @@ import {
 import { WeekView } from "@/components/time/WeekView";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  getEventDurationMinutes,
-  type OutlookEvent,
-} from "@/hooks/use-outlook-events";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
 import {
   type TimeSuggestion,
@@ -46,6 +42,7 @@ import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { getWeekPeriod } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
+import type { MeetingSignal } from "@/types/collaboration";
 
 const containerVariants = {
   hidden: {},
@@ -668,21 +665,23 @@ export function TimeClient() {
     [openCreate, selectedDate, selectedDateLockMessage, selectedDateLocked],
   );
 
-  const handleCreateFromOutlook = useCallback(
-    (event: OutlookEvent) => {
+  /**
+   * "ajustar" on a detected meeting: opens the manual form already filled with
+   * the generated title and the real duration, so the person only picks the
+   * project. Nothing is written until they save.
+   */
+  const handleAdjustMeeting = useCallback(
+    (meeting: MeetingSignal) => {
       if (selectedDateLocked) {
         toast.error(selectedDateLockMessage);
         return;
       }
 
-      const iso = event.start.dateTime;
-      const eventDate = new Date(iso.endsWith("Z") ? iso : `${iso}Z`);
-
       openCreate({
         billable: latestEntry?.billable ?? true,
-        date: format(eventDate, "yyyy-MM-dd"),
-        description: event.subject || "",
-        duration: getEventDurationMinutes(event),
+        date: format(new Date(meeting.startIso), "yyyy-MM-dd"),
+        description: meeting.title,
+        duration: meeting.minutes,
         projectId: latestEntry?.projectId,
       });
     },
@@ -965,7 +964,7 @@ export function TimeClient() {
             onEdit={handleEdit}
             onDelete={handleDelete}
             onDuplicate={handleDuplicate}
-            onCreateFromOutlook={handleCreateFromOutlook}
+            onAdjustMeeting={handleAdjustMeeting}
             onOpenCreate={() => openCreate()}
             assistantEnabled={assistantFeatureEnabled && assistantEnabled}
             suggestions={visibleSuggestions}

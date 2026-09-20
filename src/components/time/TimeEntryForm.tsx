@@ -5,17 +5,13 @@ import { format } from "date-fns";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { OutlookMeetingDrawer } from "@/components/time/OutlookMeetingDrawer";
+import { MeetingPickerDrawer } from "@/components/collaboration/MeetingPickerDrawer";
 import { TimeEntryDialogShell } from "@/components/time/TimeEntryDialogShell";
 import {
   TimeEntryFormFields,
   type TimeEntryFormValues,
 } from "@/components/time/TimeEntryFormFields";
 import { Button } from "@/components/ui/button";
-import {
-  type OutlookEvent,
-  parseGraphDateTime,
-} from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
@@ -26,6 +22,7 @@ import {
 } from "@/lib/time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { parseLocalDate } from "@/lib/utils";
+import type { MeetingSignal } from "@/types/collaboration";
 
 const schema = z.object({
   projectId: z.string().min(1, "Selecione um projeto"),
@@ -248,21 +245,24 @@ export function TimeEntryForm({
     });
   }, [form, initialValues?.projectId, mode, open, projects]);
 
-  const handleOutlookEvent = useCallback(
-    (event: OutlookEvent) => {
+  const handleMeetingPick = useCallback(
+    (meeting: MeetingSignal) => {
       setActiveDescriptionVariant(null);
 
-      const subject = event.subject || "";
-      const normalizedSubject = subject.trim().toLowerCase();
+      // The project memory is keyed on the calendar subject, which is stable
+      // across occurrences; the description uses the generated title, which is
+      // what a person recognises as their own work.
+      const normalizedSubject = meeting.subject.trim().toLowerCase();
       agendaSubjectRef.current = normalizedSubject || null;
-      const startTime = parseGraphDateTime(event.start.dateTime);
-      const endTime = parseGraphDateTime(event.end.dateTime);
+
+      const startTime = new Date(meeting.startIso);
+      const endTime = new Date(meeting.endIso);
       agendaTimeRangeRef.current = {
         startTime: startTime.toISOString(),
         endTime: endTime.toISOString(),
       };
 
-      form.setValue("description", subject, {
+      form.setValue("description", meeting.title, {
         shouldDirty: true,
         shouldValidate: true,
       });
@@ -281,16 +281,14 @@ export function TimeEntryForm({
       form.setValue("date", startTime, {
         shouldDirty: true,
       });
-      form.setValue(
-        "duration",
-        Math.max(
-          1,
-          Math.round((endTime.getTime() - startTime.getTime()) / 60000),
-        ),
-        { shouldDirty: true, shouldValidate: true },
-      );
+      // `minutes` is already rounded and clipped for overlapping meetings —
+      // the raw end-start span would double-count a double-booked hour.
+      form.setValue("duration", Math.max(1, meeting.minutes), {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
 
-      // Removed setOutlookOpen(false) to keep drawer open for "Create and continue" workflow
+      // The drawer stays open on purpose, for the "Criar e continuar" flow.
     },
     [form, preferences.agendaProjectMap, projects],
   );
@@ -365,11 +363,11 @@ export function TimeEntryForm({
   }
 
   const outlookDrawer = (
-    <OutlookMeetingDrawer
+    <MeetingPickerDrawer
       open={outlookOpen}
       onOpenChange={setOutlookOpen}
       selectedDate={selectedDateStr}
-      onSelectEvent={handleOutlookEvent}
+      onSelectMeeting={handleMeetingPick}
     />
   );
 

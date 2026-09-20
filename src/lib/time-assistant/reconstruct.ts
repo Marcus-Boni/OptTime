@@ -1,10 +1,18 @@
 /**
  * Magic Timesheet Reconstructor ("Preencher meu dia").
  *
- * Rebuilds a full workday from three evidence layers:
+ * Rebuilds a full workday from four evidence layers:
  *   1. Outlook calendar meetings (exact durations),
- *   2. Azure DevOps activity (the existing autofill engine's proposals),
- *   3. the user's own historical patterns for that weekday.
+ *   2. code work — commit sessions, each labelled with its pull request,
+ *   3. Azure DevOps work items assigned to the user,
+ *   4. the user's own historical patterns for that weekday.
+ *
+ * Layer 2 treats the *work session* as the atom, not the pull request. A day
+ * is usually three or four distinct stretches of work; a PR merged at the end
+ * of it is a label for one of them, not a container for all of them. Deriving
+ * a duration from "first commit to last commit in this repository" turns a
+ * morning push plus a late-evening fix into a twelve-hour block and hides
+ * every session that never opened a PR.
  *
  * The composition is deterministic and auditable; an optional AI pass may only
  * polish descriptions and rebalance minutes — it can never invent items,
@@ -16,13 +24,18 @@ import { z } from "zod";
 import { completeText } from "@/lib/ai/completion";
 import { formatDuration } from "@/lib/utils";
 import type { AutofillProposal } from "@/types/autofill";
+import type { AzureDevOpsPullRequest } from "@/types/azure-devops";
 import type {
   DayPlan,
   DayPlanItem,
   ReconstructConfidence,
-  ReconstructSourceKind,
 } from "@/types/reconstruct";
-import type { AutofillProject } from "./autofill";
+import { type AutofillProject, matchProjectForAzureProject } from "./autofill";
+import {
+  type CommitSession,
+  estimateFromSessions,
+  sessionsForPullRequest,
+} from "./commit-sessions";
 
 export type {
   DayPlan,
@@ -30,11 +43,22 @@ export type {
   ReconstructConfidence,
   ReconstructSourceKind,
 } from "@/types/reconstruct";
+export type { CommitSession } from "./commit-sessions";
 
 export interface CalendarEventInput {
   subject: string;
   startIso: string;
   endIso: string;
+  /**
+   * Fields below are filled by the collaboration layer (lib/collaboration),
+   * which already resolved cancellations, declines and double-booking. All
+   * optional so a caller with a bare calendar row still works.
+   */
+  title?: string;
+  /** Duration after overlap clipping — beats the raw start/end difference. */
+  minutes?: number;
+  confidence?: ReconstructConfidence;
+  evidence?: string;
 }
 
 export interface WeekdayPattern {
@@ -52,8 +76,22 @@ export interface BuildDayPlanInput {
   targetMinutes: number;
   existingMinutes: number;
   existingDescriptions: string[];
+  /** Work items already logged on this day — never proposed a second time. */
+  existingWorkItemIds: number[];
   events: CalendarEventInput[];
-  proposals: AutofillProposal[];
+  /** Commit clusters for the day, longest first. */
+  commitSessions: CommitSession[];
+  /** Pull requests touched that day, used to label the sessions. */
+  pullRequests: AzureDevOpsPullRequest[];
+  /**
+   * Work-item nudges from the autofill radar. Pull-request and commit signals
+   * are deliberately NOT taken from there: the radar answers "which day did
+   * you forget entirely", which is a different question from "how was this
+   * day actually spent".
+   */
+  workItemProposals: AutofillProposal[];
+  /** Radar fingerprints the user dismissed, honoured for pull requests. */
+  dismissedFingerprints: string[];
   patterns: WeekdayPattern[];
   projects: AutofillProject[];
   defaultBillable: boolean;
@@ -63,7 +101,11 @@ export interface BuildDayPlanInput {
 
 const MIN_ITEM_MINUTES = 15;
 const MAX_MEETING_MINUTES = 240;
-const MAX_PLAN_ITEMS = 8;
+const MAX_PLAN_ITEMS = 10;
+/** Beyond this a day of commits reads as noise rather than as a plan. */
+const MAX_COMMIT_SESSIONS = 6;
+/** A merged PR with no commits of ours that day: review, merge, deploy. */
+const PR_WITHOUT_COMMITS_MINUTES = 60;
 /** Gaps smaller than this are not worth reconstructing. */
 export const MIN_GAP_MINUTES = 15;
 
@@ -84,6 +126,32 @@ function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Keeps a generated description inside the entry field's comfortable range. */
+function truncateDescription(value: string, max = 180): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}…`;
+}
+
+/**
+ * How much a commit session should be trusted. Volume is the signal: one
+ * stray commit could be a typo fix, while a linked work item and a handful of
+ * commits is a morning of work nobody would dispute.
+ */
+function commitSessionConfidence(
+  session: CommitSession,
+): ReconstructConfidence {
+  const hasWorkItem = session.workItemIds.length > 0;
+
+  if (
+    session.substantiveCount >= 3 ||
+    (session.substantiveCount >= 2 && hasWorkItem)
+  ) {
+    return "high";
+  }
+  if (session.substantiveCount >= 2 || hasWorkItem) return "medium";
+  return "low";
+}
+
 /** Matches a meeting subject to a project by name or code mention. */
 function matchProjectBySubject(
   subject: string,
@@ -97,18 +165,24 @@ function matchProjectBySubject(
   );
 }
 
-function proposalSourceKind(
+/** HH:mm, so the evidence line says when the session actually happened. */
+function clockOf(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes(),
+  ).padStart(2, "0")}`;
+}
+
+/** Mirrors the autofill radar's key, so a dismissal there is honoured here. */
+function buildRadarFingerprint(
   signal: AutofillProposal["signal"],
-): ReconstructSourceKind {
-  switch (signal) {
-    case "pr_completed":
-    case "pr_active":
-      return "pull_request";
-    case "commits_unlogged":
-      return "commits";
-    default:
-      return "work_item";
-  }
+  date: string,
+  projectId: string,
+  reference: string,
+): string {
+  return `autofill:${signal}:${date}:${projectId}:${reference}`;
 }
 
 /**
@@ -121,8 +195,12 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     targetMinutes,
     existingMinutes,
     existingDescriptions,
+    existingWorkItemIds,
     events,
-    proposals,
+    commitSessions,
+    pullRequests,
+    workItemProposals,
+    dismissedFingerprints,
     patterns,
     projects,
     defaultBillable,
@@ -142,6 +220,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     narrative: null,
     sources,
     warnings,
+    generatedAt: new Date().toISOString(),
   };
 
   if (gapMinutes < MIN_GAP_MINUTES || projects.length === 0) {
@@ -161,23 +240,34 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     const end = new Date(event.endIso).getTime();
     if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
 
-    const description = `Reunião: ${event.subject.trim()}`.slice(0, 180);
-    // An entry may exist either as the bare subject or already prefixed.
+    // A collaboration-built title already reads like a description
+    // ("Reunião com Marcus Boni"); a bare subject still needs the prefix.
+    const description = (
+      event.title?.trim() || `Reunião: ${event.subject.trim()}`
+    ).slice(0, 180);
+
+    // An entry may exist under the generated title, the bare subject or the
+    // prefixed form — any of the three means the meeting is already logged.
     if (
       alreadyLogged.has(normalize(description)) ||
-      alreadyLogged.has(normalize(event.subject))
+      alreadyLogged.has(normalize(event.subject)) ||
+      alreadyLogged.has(normalize(`Reunião: ${event.subject}`))
     ) {
       continue;
     }
 
     const minutes = Math.min(
-      roundToQuarter((end - start) / 60_000),
+      roundToQuarter(event.minutes ?? (end - start) / 60_000),
       MAX_MEETING_MINUTES,
     );
 
     const matched = matchProjectBySubject(event.subject, projects);
     const project = matched ?? defaultProject;
     if (!project) continue;
+
+    const baseEvidence = matched
+      ? `Evento de ${formatDuration(minutes)} no seu calendário, associado a ${project.name}.`
+      : `Evento de ${formatDuration(minutes)} no seu calendário (projeto sugerido — confira).`;
 
     items.push({
       id: crypto.randomUUID(),
@@ -186,20 +276,187 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       projectColor: project.color,
       description,
       minutes,
+      estimatedMinutes: minutes,
+      startsAt: event.startIso,
       billable: project.billable && defaultBillable,
       azureWorkItemId: null,
       azureWorkItemTitle: null,
       source: "calendar",
-      confidence: matched ? "high" : "medium",
-      evidence: matched
-        ? `Evento de ${formatDuration(minutes)} no seu calendário, associado a ${project.name}.`
-        : `Evento de ${formatDuration(minutes)} no seu calendário (projeto sugerido — confira).`,
+      // The calendar layer's own read of the invitation (declined, tentative,
+      // clipped) is more informative than "did the subject match a project".
+      confidence: event.confidence ?? (matched ? "high" : "medium"),
+      evidence: event.evidence
+        ? `${event.evidence} ${matched ? `Associado a ${project.name}.` : "Projeto sugerido — confira."}`
+        : baseEvidence,
     });
   }
 
-  // ── 2. Azure DevOps activity via the autofill engine ──
-  for (const proposal of proposals) {
+  // ── 2. Code work: one item per work session, labelled by its PR ──
+  const coveredWorkItemIds = new Set<number>(existingWorkItemIds);
+  const dismissed = new Set(dismissedFingerprints);
+
+  // A pull request labels the sessions it can be held responsible for. Any
+  // session it cannot claim stands on its own — that is the work that used to
+  // disappear behind whichever PR happened to merge that day.
+  const pullRequestBySession = new Map<string, AzureDevOpsPullRequest>();
+  const sessionsByPullRequest = new Map<number, CommitSession[]>();
+
+  for (const pullRequest of pullRequests) {
+    const matched = sessionsForPullRequest(commitSessions, pullRequest);
+    sessionsByPullRequest.set(pullRequest.id, matched);
+
+    for (const session of matched) {
+      if (!pullRequestBySession.has(session.id)) {
+        pullRequestBySession.set(session.id, pullRequest);
+      }
+    }
+  }
+
+  const claimedSessionIds = new Set<string>();
+  let sessionItems = 0;
+
+  for (const session of commitSessions) {
+    if (sessionItems >= MAX_COMMIT_SESSIONS) break;
+
+    const project = matchProjectForAzureProject(projects, session.projectName);
+    if (!project) continue;
+
+    const pullRequest = pullRequestBySession.get(session.id) ?? null;
+    const workItemId =
+      pullRequest?.workItemIds[0] ?? session.workItemIds[0] ?? null;
+
+    // Already on the day, logged by hand or claimed by an earlier item.
+    if (workItemId !== null && coveredWorkItemIds.has(workItemId)) continue;
+
+    if (
+      pullRequest &&
+      dismissed.has(
+        buildRadarFingerprint(
+          "pr_completed",
+          date,
+          project.id,
+          `pr${pullRequest.id}`,
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const headline =
+      session.substantiveCount > 1
+        ? `${session.headline} (+${session.substantiveCount - 1} commits)`
+        : session.headline;
+
+    const description = truncateDescription(
+      pullRequest ? `${session.headline} — PR #${pullRequest.id}` : headline,
+    );
+
+    if (
+      alreadyLogged.has(normalize(description)) ||
+      alreadyLogged.has(normalize(session.headline))
+    ) {
+      continue;
+    }
+
+    const window = `${clockOf(session.startIso)}–${clockOf(session.endIso)}`;
+    const branch = session.branches[0] ? ` (${session.branches[0]})` : "";
+    const evidence = pullRequest
+      ? `${session.substantiveCount} commit(s) entre ${window} em ${session.repositoryName}${branch}, entregues no PR #${pullRequest.id}.`
+      : `${session.substantiveCount} commit(s) entre ${window} em ${session.repositoryName}${branch}. ${session.basis}`;
+
+    items.push({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      projectName: project.name,
+      projectColor: project.color,
+      description,
+      minutes: roundToQuarter(session.minutes),
+      estimatedMinutes: roundToQuarter(session.minutes),
+      startsAt: session.startIso,
+      billable: project.billable && defaultBillable,
+      azureWorkItemId: workItemId,
+      azureWorkItemTitle: null,
+      source: pullRequest ? "pull_request" : "commits",
+      confidence: commitSessionConfidence(session),
+      evidence,
+    });
+
+    sessionItems += 1;
+    claimedSessionIds.add(session.id);
+    if (workItemId !== null) coveredWorkItemIds.add(workItemId);
+  }
+
+  // A pull request merged today whose commits landed on other days still cost
+  // review, merge and deploy time.
+  for (const pullRequest of pullRequests) {
+    if (pullRequest.status !== "completed") continue;
+
+    const matched = sessionsByPullRequest.get(pullRequest.id) ?? [];
+    if (matched.some((session) => claimedSessionIds.has(session.id))) continue;
+
+    const project = matchProjectForAzureProject(
+      projects,
+      pullRequest.projectName,
+    );
+    if (!project) continue;
+
+    const workItemId = pullRequest.workItemIds[0] ?? null;
+    if (workItemId !== null && coveredWorkItemIds.has(workItemId)) continue;
+
+    if (
+      dismissed.has(
+        buildRadarFingerprint(
+          "pr_completed",
+          date,
+          project.id,
+          `pr${pullRequest.id}`,
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const description = truncateDescription(
+      `PR #${pullRequest.id} — ${pullRequest.title}`,
+    );
+    if (alreadyLogged.has(normalize(description))) continue;
+
+    const estimate = estimateFromSessions(matched);
+
+    items.push({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      projectName: project.name,
+      projectColor: project.color,
+      description,
+      minutes: roundToQuarter(estimate?.minutes ?? PR_WITHOUT_COMMITS_MINUTES),
+      estimatedMinutes: roundToQuarter(
+        estimate?.minutes ?? PR_WITHOUT_COMMITS_MINUTES,
+      ),
+      startsAt: pullRequest.closedAt,
+      billable: project.billable && defaultBillable,
+      azureWorkItemId: workItemId,
+      azureWorkItemTitle: null,
+      source: "pull_request",
+      confidence: estimate ? "medium" : "low",
+      evidence: estimate
+        ? `PR #${pullRequest.id} concluído. ${estimate.basis}`
+        : `PR #${pullRequest.id} concluído, sem commits seus neste dia — revisão, merge e deploy. Ajuste se o trabalho foi em outro dia.`,
+    });
+
+    if (workItemId !== null) coveredWorkItemIds.add(workItemId);
+  }
+
+  // ── 3. Work items assigned to you, as a lighter nudge ──
+  for (const proposal of workItemProposals) {
     if (proposal.date !== date) continue;
+    if (
+      proposal.azureWorkItemId !== null &&
+      coveredWorkItemIds.has(proposal.azureWorkItemId)
+    ) {
+      continue;
+    }
+    if (alreadyLogged.has(normalize(proposal.description))) continue;
 
     items.push({
       id: crypto.randomUUID(),
@@ -208,16 +465,22 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       projectColor: proposal.projectColor,
       description: proposal.description,
       minutes: roundToQuarter(proposal.durationMinutes),
+      estimatedMinutes: roundToQuarter(proposal.durationMinutes),
+      startsAt: null,
       billable: proposal.billable,
       azureWorkItemId: proposal.azureWorkItemId,
       azureWorkItemTitle: proposal.azureWorkItemTitle,
-      source: proposalSourceKind(proposal.signal),
+      source: "work_item",
       confidence: proposal.confidence,
       evidence: proposal.reasons[0] ?? proposal.durationBasis,
     });
+
+    if (proposal.azureWorkItemId !== null) {
+      coveredWorkItemIds.add(proposal.azureWorkItemId);
+    }
   }
 
-  // ── 3. Pattern fill: close the remaining gap with the weekday habit ──
+  // ── 4. Pattern fill: close the remaining gap with the weekday habit ──
   const committed = items.reduce((sum, item) => sum + item.minutes, 0);
   const remainder = gapMinutes - committed;
 
@@ -236,6 +499,8 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
         description:
           pattern?.description ?? "Desenvolvimento e atividades do dia",
         minutes: roundToQuarter(remainder),
+        estimatedMinutes: roundToQuarter(remainder),
+        startsAt: null,
         billable: project.billable && defaultBillable,
         azureWorkItemId: null,
         azureWorkItemTitle: null,
@@ -248,40 +513,133 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     }
   }
 
-  // ── 4. Balance: trim/drop lowest-confidence items until the plan fits ──
-  const ordered = [...items].sort(
-    (a, b) => CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence],
+  // ── 5. Fit the plan to the day ──
+  const ranked = [...items].sort(
+    (a, b) =>
+      CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence] ||
+      b.minutes - a.minutes,
   );
 
-  let total = ordered.reduce((sum, item) => sum + item.minutes, 0);
-
-  for (
-    let index = ordered.length - 1;
-    index >= 0 && total > gapMinutes;
-    index--
-  ) {
-    const item = ordered[index];
-    if (!item) continue;
-
-    const excess = total - gapMinutes;
-    const reducible = item.minutes - MIN_ITEM_MINUTES;
-
-    if (reducible >= excess) {
-      item.minutes = roundToQuarter(item.minutes - excess);
-      total = ordered.reduce((sum, current) => sum + current.minutes, 0);
-    } else {
-      total -= item.minutes;
-      ordered.splice(index, 1);
-    }
-  }
-
-  const finalItems = ordered.slice(0, MAX_PLAN_ITEMS);
+  const finalItems = orderChronologically(
+    fitToGap(ranked.slice(0, MAX_PLAN_ITEMS), gapMinutes),
+  );
 
   return {
     ...basePlan,
     items: finalItems,
     planMinutes: finalItems.reduce((sum, item) => sum + item.minutes, 0),
   };
+}
+
+// ─── Fitting ──────────────────────────────────────────
+
+function totalMinutes(items: DayPlanItem[]): number {
+  return items.reduce((sum, item) => sum + item.minutes, 0);
+}
+
+/**
+ * Shrinks a set of estimates to a budget, keeping their relative weight.
+ *
+ * Quarter-hour granularity is preserved by flooring every share and handing
+ * the leftover quarters to whoever lost the most in the rounding — so the
+ * shares still add up to the budget exactly.
+ */
+function scaleToBudget(items: DayPlanItem[], budget: number): DayPlanItem[] {
+  const current = totalMinutes(items);
+  if (current <= 0) return items;
+
+  const ratio = budget / current;
+  const shares = items.map((item) =>
+    Math.max(MIN_ITEM_MINUTES, item.minutes * ratio),
+  );
+
+  const minutes = shares.map((share) =>
+    Math.max(
+      MIN_ITEM_MINUTES,
+      Math.floor(share / MIN_ITEM_MINUTES) * MIN_ITEM_MINUTES,
+    ),
+  );
+
+  // Hand out whatever the flooring left over, biggest loser first.
+  const byRemainder = shares
+    .map((share, index) => ({ index, lost: share - (minutes[index] ?? 0) }))
+    .sort((a, b) => b.lost - a.lost);
+
+  let spare = budget - minutes.reduce((sum, value) => sum + value, 0);
+
+  for (const { index } of byRemainder) {
+    if (spare < MIN_ITEM_MINUTES) break;
+    minutes[index] = (minutes[index] ?? 0) + MIN_ITEM_MINUTES;
+    spare -= MIN_ITEM_MINUTES;
+  }
+
+  // The MIN_ITEM_MINUTES floor can push the total back over the budget; take
+  // it out of the largest shares, which can afford it.
+  while (spare < 0) {
+    const candidates = minutes
+      .map((value, index) => ({ index, value }))
+      .filter((entry) => entry.value > MIN_ITEM_MINUTES)
+      .sort((a, b) => b.value - a.value);
+
+    const biggest = candidates[0];
+    if (!biggest) break;
+
+    minutes[biggest.index] = biggest.value - MIN_ITEM_MINUTES;
+    spare += MIN_ITEM_MINUTES;
+  }
+
+  return items.map((item, index) => ({
+    ...item,
+    minutes: minutes[index] ?? item.minutes,
+  }));
+}
+
+/**
+ * Fits the day plan into the hours still missing.
+ *
+ * Meetings are measured, not estimated — a 45-minute call was 45 minutes, and
+ * shrinking it would be a lie. Everything else is inferred from evidence, so
+ * the inferences absorb the difference together and in proportion: a day whose
+ * activity adds up to nine hours becomes the same day at six, with every
+ * stretch of work still on screen. Dropping the smallest items instead would
+ * hide real work — exactly what this plan exists to surface.
+ */
+function fitToGap(items: DayPlanItem[], gapMinutes: number): DayPlanItem[] {
+  const measured = items.filter((item) => item.source === "calendar");
+  const estimated = items.filter((item) => item.source !== "calendar");
+
+  if (estimated.length === 0) return items;
+
+  const budget = Math.max(0, gapMinutes - totalMinutes(measured));
+  if (totalMinutes(estimated) <= budget) return items;
+
+  // Below one quarter-hour each there is nothing left to scale: the least
+  // confident estimates step aside so the rest stay readable.
+  const kept = [...estimated];
+  while (kept.length > 1 && kept.length * MIN_ITEM_MINUTES > budget) {
+    kept.pop();
+  }
+
+  const scaled = new Map(
+    scaleToBudget(kept, budget).map((item) => [item.id, item]),
+  );
+
+  return items.flatMap((item) => {
+    if (item.source === "calendar") return [item];
+
+    const match = scaled.get(item.id);
+    return match ? [match] : [];
+  });
+}
+
+/** Reads as a timeline: anchored items in order, the rest after them. */
+function orderChronologically(items: DayPlanItem[]): DayPlanItem[] {
+  return [...items].sort((a, b) => {
+    if (a.startsAt && b.startsAt) return a.startsAt.localeCompare(b.startsAt);
+    if (a.startsAt) return -1;
+    if (b.startsAt) return 1;
+    return 0;
+  });
 }
 
 // ─── AI refinement ────────────────────────────────────────────────────
@@ -307,7 +665,14 @@ Regras invioláveis:
 - Mantenha exatamente os mesmos itens (mesmos "id") — nunca adicione ou remova itens.
 - Ajuste apenas "description" (português profissional, específica, máx. 140 caracteres, sem emojis) e "minutes" (múltiplos de 15).
 - A soma de "minutes" não pode ultrapassar o limite informado.
-- Não invente detalhes que não estejam nas evidências.`;
+- Não invente detalhes que não estejam nas evidências.
+
+Como ler o campo "origem":
+- "calendar": reunião real da agenda — descreva o encontro, não a tarefa.
+- "pull_request": PR concluído ou em revisão — cite o que foi entregue.
+- "commits": código versionado sem PR (branch de trabalho, correções, spikes) — descreva o que foi implementado.
+- "work_item": task atribuída no Azure DevOps.
+- "pattern": bloco do hábito da pessoa naquele dia da semana — mantenha genérico e honesto.`;
 
 /** Extracts the first JSON object from a possibly noisy model answer. */
 function extractJson(text: string): string | null {
@@ -327,7 +692,7 @@ export async function refineDayPlanWithAI(plan: DayPlan): Promise<DayPlan> {
 
   const payload = {
     data: plan.date,
-    limiteMinutos: plan.gapMinutes,
+    limiteMinutos: plan.planMinutes,
     itens: plan.items.map((item) => ({
       id: item.id,
       projeto: item.projectName,
@@ -374,8 +739,9 @@ export async function refineDayPlanWithAI(plan: DayPlan): Promise<DayPlan> {
       });
     }
 
-    // The model must respect the gap; tolerate one 15-minute slot of drift.
-    if (total > plan.gapMinutes + MIN_ITEM_MINUTES) return plan;
+    // The model rebalances inside what the deterministic plan already fitted
+    // to the day; it never gets to grow the total. One slot of drift is fine.
+    if (total > plan.planMinutes + MIN_ITEM_MINUTES) return plan;
 
     return {
       ...plan,

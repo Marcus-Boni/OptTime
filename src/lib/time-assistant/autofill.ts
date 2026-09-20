@@ -22,6 +22,12 @@ import type {
   AzureDevOpsPullRequest,
 } from "@/types/azure-devops";
 import type { SuggestionConfidence } from "@/types/time-suggestions";
+import {
+  buildCommitSessions,
+  type CommitSession,
+  estimateFromSessions,
+  sessionsForPullRequest,
+} from "./commit-sessions";
 import type { NormalizedCommitActivity } from "./engine";
 
 /** Work-item states that count as "actively being worked on". */
@@ -36,8 +42,6 @@ const ACTIVE_WORK_ITEM_STATES = new Set([
 
 const MIN_DURATION_MINUTES = 30;
 const MAX_DURATION_MINUTES = 480;
-/** Padding added to a commit span: work starts before the first commit. */
-const COMMIT_SPAN_PADDING_MINUTES = 30;
 /** Fallback estimate for a merged PR with no commit trail we can see. */
 const PR_FALLBACK_MINUTES = 120;
 const MAX_PROPOSALS = 6;
@@ -103,7 +107,8 @@ function clampDuration(minutes: number): number {
   return Math.round(bounded / 30) * 30;
 }
 
-function matchProjectForAzureProject(
+/** Resolves an Azure DevOps project name to a Time Tracker project. */
+export function matchProjectForAzureProject(
   projects: AutofillProject[],
   azureProjectName: string,
 ): AutofillProject | null {
@@ -122,33 +127,41 @@ function matchProjectForAzureProject(
   );
 }
 
-/** Minutes between the first and last commit of a set, plus padding. */
-function estimateFromCommitSpan(commits: NormalizedCommitActivity[]): {
+/**
+ * Effort implied by a set of commits.
+ *
+ * Measures the work sessions inside the set rather than the distance from the
+ * first commit to the last: a morning push and a late-evening fix are two
+ * hours of work across a twelve-hour day, not twelve hours of work.
+ */
+function estimateFromCommits(commits: NormalizedCommitActivity[]): {
   minutes: number;
   basis: string;
 } | null {
-  if (commits.length === 0) return null;
+  const estimate = estimateFromSessions(buildCommitSessions(commits));
+  if (!estimate) return null;
 
-  const times = commits
-    .map((commit) => new Date(commit.timestamp).getTime())
-    .filter((time) => !Number.isNaN(time))
-    .sort((a, b) => a - b);
+  return { minutes: clampDuration(estimate.minutes), basis: estimate.basis };
+}
 
-  const first = times[0];
-  const last = times.at(-1);
+/**
+ * Commits a pull request can be held responsible for. Falls back to the single
+ * largest session in the repository, since a PR almost always corresponds to
+ * at least one stretch of work — but never to the whole day.
+ */
+function sessionsBehindPullRequest(
+  pullRequest: AzureDevOpsPullRequest,
+  repositoryCommits: NormalizedCommitActivity[],
+): CommitSession[] {
+  const sessions = buildCommitSessions(repositoryCommits);
+  if (sessions.length === 0) return [];
 
-  if (first === undefined || last === undefined) return null;
+  const matched = sessionsForPullRequest(sessions, pullRequest);
+  if (matched.length > 0) return matched;
 
-  const spanMinutes = Math.round((last - first) / 60_000);
-  const minutes = clampDuration(spanMinutes + COMMIT_SPAN_PADDING_MINUTES);
-
-  return {
-    minutes,
-    basis:
-      commits.length === 1
-        ? "Estimado a partir de 1 commit, com 30min de preparação."
-        : `Estimado pelo intervalo entre o primeiro e o último de ${commits.length} commits, + 30min.`,
-  };
+  // `buildCommitSessions` returns longest-first.
+  const largest = sessions[0];
+  return largest ? [largest] : [];
 }
 
 function scoreFor(
@@ -297,15 +310,27 @@ export function buildAutofillProposals(
     );
     if (alreadyCovered) continue;
 
-    const dayCommits = (commitsByDate.get(date) ?? []).filter(
+    const repositoryCommits = (commitsByDate.get(date) ?? []).filter(
       (commit) => commit.repositoryName === pullRequest.repositoryName,
     );
 
-    const estimate = estimateFromCommitSpan(dayCommits) ?? {
+    const attributed = sessionsBehindPullRequest(
+      pullRequest,
+      repositoryCommits,
+    );
+    const attributedCommitIds = attributed.flatMap(
+      (session) => session.commitIds,
+    );
+    const dayCommits = repositoryCommits.filter((commit) =>
+      attributedCommitIds.includes(commit.commitId),
+    );
+
+    const estimate = estimateFromSessions(attributed) ?? {
       minutes: PR_FALLBACK_MINUTES,
       basis:
         "Estimativa padrão para um PR concluído — ajuste se levou mais ou menos tempo.",
     };
+    estimate.minutes = clampDuration(estimate.minutes);
 
     const workItemId = pullRequest.workItemIds[0] ?? null;
     const { score, confidence } = scoreFor(
@@ -357,6 +382,8 @@ export function buildAutofillProposals(
       billable: project.billable && defaults.billable,
       azureWorkItemId: workItemId,
       azureWorkItemTitle: null,
+      repositoryName: pullRequest.repositoryName,
+      commitIds: dayCommits.map((commit) => commit.commitId),
       confidence,
       score,
       reasons,
@@ -389,7 +416,7 @@ export function buildAutofillProposals(
       const project = projects.find((item) => item.id === projectId);
       if (!project || !canPropose(date, projectId)) continue;
 
-      const estimate = estimateFromCommitSpan(projectCommits);
+      const estimate = estimateFromCommits(projectCommits);
       if (!estimate) continue;
 
       const workItemId =
@@ -419,6 +446,8 @@ export function buildAutofillProposals(
         billable: project.billable && defaults.billable,
         azureWorkItemId: workItemId,
         azureWorkItemTitle: null,
+        repositoryName: projectCommits[0]?.repositoryName ?? null,
+        commitIds: projectCommits.map((commit) => commit.commitId),
         confidence,
         score,
         reasons: [
@@ -448,13 +477,25 @@ export function buildAutofillProposals(
     );
     if (!project || !canPropose(today, project.id)) continue;
 
-    const dayCommits = (commitsByDate.get(today) ?? []).filter(
+    const repositoryCommits = (commitsByDate.get(today) ?? []).filter(
       (commit) => commit.repositoryName === pullRequest.repositoryName,
     );
-    if (dayCommits.length === 0) continue;
+    if (repositoryCommits.length === 0) continue;
 
-    const estimate = estimateFromCommitSpan(dayCommits);
+    const attributed = sessionsBehindPullRequest(
+      pullRequest,
+      repositoryCommits,
+    );
+    const attributedCommitIds = attributed.flatMap(
+      (session) => session.commitIds,
+    );
+    const dayCommits = repositoryCommits.filter((commit) =>
+      attributedCommitIds.includes(commit.commitId),
+    );
+
+    const estimate = estimateFromSessions(attributed);
     if (!estimate) continue;
+    estimate.minutes = clampDuration(estimate.minutes);
 
     const workItemId = pullRequest.workItemIds[0] ?? null;
     const { score, confidence } = scoreFor(
@@ -480,6 +521,8 @@ export function buildAutofillProposals(
       billable: project.billable && defaults.billable,
       azureWorkItemId: workItemId,
       azureWorkItemTitle: null,
+      repositoryName: pullRequest.repositoryName,
+      commitIds: dayCommits.map((commit) => commit.commitId),
       confidence,
       score,
       reasons: [
@@ -543,6 +586,8 @@ export function buildAutofillProposals(
         billable: project.billable && defaults.billable,
         azureWorkItemId: workItem.id,
         azureWorkItemTitle: workItem.title,
+        repositoryName: null,
+        commitIds: [],
         confidence,
         score,
         reasons: [

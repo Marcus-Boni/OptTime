@@ -14,34 +14,18 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
+import { GeneratedStamp, StaleNotice } from "@/components/ai/cached";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
-import type { DigestPresentation } from "@/lib/digest/presenter";
-import type { DigestAudience, DigestNarrative } from "@/lib/digest/types";
+import { useWeeklyDigest } from "@/hooks/use-weekly-digest";
+import type { DigestAudience } from "@/lib/digest/types";
 import { playEarcon } from "@/lib/sound/sound-effects";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
-
-interface PreviewResponse {
-  audience: DigestAudience;
-  available: boolean;
-  reason?: string;
-  narrative?: DigestNarrative;
-  presentation?: DigestPresentation;
-  lastSent?: { period: string; status: string; at: string } | null;
-}
-
-function resolveTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "America/Sao_Paulo";
-  }
-}
 
 export function WeeklyDigestDialog() {
   const { weeklyDigestModalOpen, closeWeeklyDigestModal } = useUIStore();
@@ -49,13 +33,24 @@ export function WeeklyDigestDialog() {
   const { role } = useOperatorPolicy();
 
   const [audience, setAudience] = useState<DigestAudience>("member");
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   const mountedRef = useRef(true);
   const canSeeTeamDigest = role === "manager" || role === "admin";
+
+  // Cached per audience and per week: reopening restores what was already
+  // generated instead of spending another model call.
+  const {
+    digest: preview,
+    generatedAt,
+    isLoading,
+    isRefreshing,
+    isStale,
+    staleReason,
+    error,
+    regenerate,
+  } = useWeeklyDigest({ audience, enabled: weeklyDigestModalOpen });
 
   useEffect(() => {
     setMounted(true);
@@ -65,43 +60,9 @@ export function WeeklyDigestDialog() {
     };
   }, []);
 
-  const loadDigest = useCallback(async (target: DigestAudience) => {
-    setIsLoading(true);
-
-    try {
-      const params = new URLSearchParams({
-        audience: target,
-        timezone: resolveTimeZone(),
-      });
-
-      const res = await fetch(`/api/digest/preview?${params.toString()}`, {
-        cache: "no-store",
-      });
-
-      const payload = (await res.json()) as PreviewResponse & {
-        error?: string;
-      };
-
-      if (!res.ok) {
-        throw new Error(payload.error ?? "Falha ao gerar o resumo semanal.");
-      }
-
-      if (mountedRef.current) setPreview(payload);
-    } catch (error: unknown) {
-      console.error("[WeeklyDigestDialog] loadDigest:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Falha ao gerar o resumo.",
-      );
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (weeklyDigestModalOpen) {
-      loadDigest(audience);
-    }
-  }, [weeklyDigestModalOpen, audience, loadDigest]);
+    if (error) toast.error(error);
+  }, [error]);
 
   useEffect(() => {
     if (!weeklyDigestModalOpen) return;
@@ -261,13 +222,33 @@ export function WeeklyDigestDialog() {
               </div>
             )}
 
+            {/* Provenance: when it was generated, and the only way to redo it */}
+            {generatedAt && (
+              <div className="border-neutral-200 border-b px-6 py-2 dark:border-white/5">
+                <GeneratedStamp
+                  generatedAt={generatedAt}
+                  isRefreshing={isRefreshing}
+                  onRegenerate={regenerate}
+                  regenerateLabel="Gerar novamente"
+                />
+              </div>
+            )}
+
             {/* Body */}
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 space-y-4 overflow-y-auto p-6">
+              {isStale && staleReason && (
+                <StaleNotice
+                  reason={staleReason}
+                  isRefreshing={isRefreshing}
+                  onRegenerate={regenerate}
+                />
+              )}
+
               {isLoading ? (
                 <div className="flex flex-col items-center justify-center space-y-3 py-16 text-center">
                   <Loader2 className="size-8 animate-spin text-orange-500" />
                   <p className="font-medium text-neutral-900 text-sm dark:text-white">
-                    Gerando síntese com IA...
+                    Gerando síntese com IA…
                   </p>
                   <p className="text-neutral-500 text-xs dark:text-neutral-400">
                     Analisando lançamentos, categorias e tendências
@@ -366,6 +347,26 @@ export function WeeklyDigestDialog() {
                       <span>{preview.presentation.attention}</span>
                     </div>
                   )}
+                </div>
+              ) : error && !preview ? (
+                <div className="flex flex-col items-center gap-3 py-12 text-center">
+                  <AlertTriangle
+                    className="size-7 text-red-400"
+                    aria-hidden="true"
+                  />
+                  <p className="text-neutral-600 text-xs dark:text-neutral-300">
+                    {error}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={regenerate}
+                    disabled={isRefreshing}
+                    className="h-8 text-xs"
+                  >
+                    Tentar novamente
+                  </Button>
                 </div>
               ) : (
                 <div className="rounded-xl border border-neutral-200 border-dashed py-12 text-center text-neutral-500 text-xs dark:border-white/10 dark:text-neutral-400">

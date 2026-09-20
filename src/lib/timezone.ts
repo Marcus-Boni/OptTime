@@ -81,10 +81,25 @@ export function shiftDay(date: string, days: number): string {
  * workday they actually belong to.
  */
 export function dateOfInstantInAppTimeZone(instant: Date | string): string {
+  return dateOfInstantInTimeZone(instant, getAppTimeZone());
+}
+
+/**
+ * Same, in an explicit timezone.
+ *
+ * Registro por Colaboração buckets a person's calendar into *their* workday,
+ * which is the mailbox timezone — someone travelling would otherwise see the
+ * late meetings of one day land on the next. An unknown timezone falls back to
+ * the organisation's, so a bad value degrades instead of throwing.
+ */
+export function dateOfInstantInTimeZone(
+  instant: Date | string,
+  timeZone: string | null | undefined,
+): string {
   const value = typeof instant === "string" ? new Date(instant) : instant;
 
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: getAppTimeZone(),
+    timeZone: normalizeTimeZone(timeZone),
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

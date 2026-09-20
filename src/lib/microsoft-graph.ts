@@ -19,6 +19,12 @@ export class MicrosoftConnectionError extends Error {
   }
 }
 
+export interface OutlookAttendee {
+  type?: string;
+  status?: { response?: string; time?: string };
+  emailAddress?: { name?: string; address?: string };
+}
+
 export interface OutlookEvent {
   id: string;
   subject: string;
@@ -29,10 +35,35 @@ export interface OutlookEvent {
   isCancelled: boolean;
   categories: string[];
   webLink: string;
+  /** Whether the signed-in user owns the invitation. */
+  isOrganizer?: boolean;
+  /** The signed-in user's own response to the invitation. */
+  responseStatus?: { response?: string; time?: string };
+  /** "free" | "tentative" | "busy" | "oof" | "workingElsewhere" | "unknown" */
+  showAs?: string;
+  /** "normal" | "personal" | "private" | "confidential" */
+  sensitivity?: string;
+  /** "singleInstance" | "occurrence" | "exception" | "seriesMaster" */
+  type?: string;
+  /** Present on every occurrence of a recurring series. */
+  seriesMasterId?: string | null;
+  isOnlineMeeting?: boolean;
+  onlineMeetingProvider?: string | null;
+  attendees?: OutlookAttendee[];
 }
 
 interface OutlookEventsResponse {
   value: OutlookEvent[];
+  "@odata.nextLink"?: string;
+}
+
+export interface FetchOutlookEventsOptions {
+  /**
+   * Keep cancelled and all-day rows in the result. Registro por Colaboração
+   * needs them to explain *why* an event did not become a signal; every other
+   * caller wants them gone.
+   */
+  includeExcluded?: boolean;
 }
 
 export interface MicrosoftAccountSnapshot {
@@ -166,40 +197,78 @@ export async function fetchMicrosoftObjectId(
   }
 }
 
+const CALENDAR_SELECT = [
+  "id",
+  "subject",
+  "start",
+  "end",
+  "organizer",
+  "isAllDay",
+  "isCancelled",
+  "categories",
+  "webLink",
+  // Fields below drive Registro por Colaboração: who was in the room, whether
+  // the person actually accepted, and whether the occurrence was moved.
+  "isOrganizer",
+  "responseStatus",
+  "showAs",
+  "sensitivity",
+  "type",
+  "seriesMasterId",
+  "isOnlineMeeting",
+  "onlineMeetingProvider",
+  "attendees",
+].join(",");
+
+const CALENDAR_PAGE_SIZE = 100;
+/** A packed week for a lead still fits well inside three pages. */
+const CALENDAR_MAX_PAGES = 3;
+
 export async function fetchOutlookEvents(
   accessToken: string,
   startDateTime: string,
   endDateTime: string,
+  options: FetchOutlookEventsOptions = {},
 ): Promise<OutlookEvent[]> {
   const url = new URL(`${GRAPH_BASE}/me/calendarView`);
   url.searchParams.set("startDateTime", startDateTime);
   url.searchParams.set("endDateTime", endDateTime);
-  url.searchParams.set(
-    "$select",
-    "id,subject,start,end,organizer,isAllDay,isCancelled,categories,webLink",
-  );
+  url.searchParams.set("$select", CALENDAR_SELECT);
   url.searchParams.set("$orderby", "start/dateTime");
-  url.searchParams.set("$top", "50");
+  url.searchParams.set("$top", String(CALENDAR_PAGE_SIZE));
 
-  const response = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-    cache: "no-store",
-  });
+  const events: OutlookEvent[] = [];
+  let nextUrl: string | null = url.toString();
+  let page = 0;
 
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new MicrosoftConnectionError(
-        "graph_auth_failed",
-        "Microsoft Graph rejected the access token",
-      );
+  while (nextUrl && page < CALENDAR_MAX_PAGES) {
+    const response: Response = await fetch(nextUrl, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+        // Attendee display names come back in the user's locale.
+        Prefer: 'outlook.timezone="UTC"',
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new MicrosoftConnectionError(
+          "graph_auth_failed",
+          "Microsoft Graph rejected the access token",
+        );
+      }
+
+      throw new Error(`Microsoft Graph API error: ${response.status}`);
     }
 
-    throw new Error(`Microsoft Graph API error: ${response.status}`);
+    const data = (await response.json()) as OutlookEventsResponse;
+    events.push(...data.value);
+    nextUrl = data["@odata.nextLink"] ?? null;
+    page += 1;
   }
 
-  const data = (await response.json()) as OutlookEventsResponse;
-  return data.value.filter((event) => !event.isCancelled && !event.isAllDay);
+  if (options.includeExcluded) return events;
+  return events.filter((event) => !event.isCancelled && !event.isAllDay);
 }

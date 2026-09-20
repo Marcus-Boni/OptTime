@@ -33,6 +33,10 @@ export interface AutofillProposal {
   billable: boolean;
   azureWorkItemId: number | null;
   azureWorkItemTitle: string | null;
+  /** Azure DevOps repository behind the proposal, when it came from code. */
+  repositoryName: string | null;
+  /** Commits already accounted for here, so no other layer counts them twice. */
+  commitIds: string[];
   confidence: SuggestionConfidence;
   /** 0–100, drives ordering. */
   score: number;

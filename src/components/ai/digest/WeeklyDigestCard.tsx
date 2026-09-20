@@ -18,8 +18,9 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { GeneratedStamp, StaleNotice } from "@/components/ai/cached";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,30 +28,14 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
-import type { DigestPresentation } from "@/lib/digest/presenter";
-import type { DigestAudience, DigestNarrative } from "@/lib/digest/types";
+import { useWeeklyDigest } from "@/hooks/use-weekly-digest";
+import type { DigestAudience } from "@/lib/digest/types";
 import { cn } from "@/lib/utils";
-
-interface PreviewResponse {
-  audience: DigestAudience;
-  available: boolean;
-  reason?: string;
-  narrative?: DigestNarrative;
-  presentation?: DigestPresentation;
-  lastSent?: { period: string; status: string; at: string } | null;
-}
-
-function resolveTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "America/Sao_Paulo";
-  }
-}
+import type { DigestPreviewResponse } from "@/types/digest";
 
 // ─── Preview ─────────────────────────────────────────────────────────
 
-function PreviewBody({ preview }: { preview: PreviewResponse }) {
+function PreviewBody({ preview }: { preview: DigestPreviewResponse }) {
   if (!preview.available) {
     return (
       <p className="rounded-lg border border-border/60 border-dashed px-3 py-4 text-center text-muted-foreground text-xs">
@@ -173,67 +158,33 @@ export function WeeklyDigestCard() {
   const { settings, role, isLoading, save } = useOperatorPolicy();
 
   const [audience, setAudience] = useState<DigestAudience>("member");
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
-  const mountedRef = useRef(true);
   const canSeeTeamDigest = role === "manager" || role === "admin";
 
+  // Same cache the modal reads: a preview generated here is the one the
+  // header modal shows, and neither re-spends a generation on reopen.
+  const {
+    digest: preview,
+    generatedAt,
+    isLoading: isLoadingPreview,
+    isRefreshing,
+    isStale,
+    staleReason,
+    error,
+    regenerate,
+  } = useWeeklyDigest({ audience, enabled: isPreviewOpen });
+
   useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
-  }, []);
-
-  const loadPreview = useCallback(async (target: DigestAudience) => {
-    setIsLoadingPreview(true);
-
-    try {
-      const params = new URLSearchParams({
-        audience: target,
-        timezone: resolveTimeZone(),
-      });
-
-      const res = await fetch(`/api/digest/preview?${params.toString()}`, {
-        cache: "no-store",
-      });
-
-      const payload = (await res.json()) as PreviewResponse & {
-        error?: string;
-      };
-
-      if (!res.ok) {
-        throw new Error(payload.error ?? "Falha ao gerar a prévia.");
-      }
-
-      if (mountedRef.current) setPreview(payload);
-    } catch (error: unknown) {
-      console.error("[WeeklyDigestCard] loadPreview:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Falha ao gerar a prévia.",
-      );
-    } finally {
-      if (mountedRef.current) setIsLoadingPreview(false);
-    }
-  }, []);
+    if (error) toast.error(error);
+  }, [error]);
 
   function handleTogglePreview() {
-    if (isPreviewOpen) {
-      setIsPreviewOpen(false);
-      return;
-    }
-
-    setIsPreviewOpen(true);
-    if (!preview || preview.audience !== audience) {
-      loadPreview(audience);
-    }
+    setIsPreviewOpen((open) => !open);
   }
 
   function handleAudienceChange(next: DigestAudience) {
     setAudience(next);
-    if (isPreviewOpen) loadPreview(next);
   }
 
   async function handleToggleDigest(enabled: boolean) {
@@ -356,11 +307,10 @@ export function WeeklyDigestCard() {
             variant="outline"
             size="sm"
             onClick={handleTogglePreview}
-            disabled={isLoadingPreview}
             aria-expanded={isPreviewOpen}
             className="h-8 cursor-pointer gap-1.5 text-xs"
           >
-            {isLoadingPreview ? (
+            {isLoadingPreview || isRefreshing ? (
               <Loader2
                 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
                 aria-hidden="true"
@@ -389,6 +339,24 @@ export function WeeklyDigestCard() {
               transition={{ duration: 0.25 }}
               className="overflow-hidden"
             >
+              {generatedAt && preview ? (
+                <div className="space-y-2 pb-3">
+                  {isStale && staleReason ? (
+                    <StaleNotice
+                      reason={staleReason}
+                      isRefreshing={isRefreshing}
+                      onRegenerate={regenerate}
+                    />
+                  ) : null}
+                  <GeneratedStamp
+                    generatedAt={generatedAt}
+                    isRefreshing={isRefreshing}
+                    onRegenerate={regenerate}
+                    regenerateLabel="Gerar novamente"
+                  />
+                </div>
+              ) : null}
+
               {isLoadingPreview && !preview ? (
                 <output
                   className="block animate-pulse space-y-2 rounded-xl border border-border/60 p-4 motion-reduce:animate-none"

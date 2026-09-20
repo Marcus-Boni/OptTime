@@ -1,0 +1,502 @@
+"use client";
+
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  CalendarClock,
+  Check,
+  Loader2,
+  Plane,
+  RefreshCw,
+  Users,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { ActivityPortraitBar } from "@/components/collaboration/ActivityPortraitBar";
+import { MeetingBadges } from "@/components/collaboration/MeetingBadges";
+import { MeetingExclusionsNote } from "@/components/collaboration/MeetingExclusionsNote";
+import { MeetingTitle } from "@/components/collaboration/MeetingTitle";
+import { ReauthNotice } from "@/components/collaboration/ReauthNotice";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import {
+  formatMeetingRange,
+  useCollaborationDay,
+} from "@/hooks/use-collaboration-day";
+import { cn, formatDuration } from "@/lib/utils";
+import type { MeetingSignal } from "@/types/collaboration";
+
+/** Beyond this the list collapses behind a "ver todas" toggle. */
+const VISIBLE_MEETINGS = 5;
+/** The apply route caps a batch at 12 items. */
+const MAX_BATCH = 12;
+
+interface ProjectOption {
+  id: string;
+  name: string;
+  color: string;
+  billable?: boolean;
+  members?: { userId: string }[];
+}
+
+export interface DayCollaborationPanelProps {
+  /** YYYY-MM-DD being inspected. */
+  date: string;
+  /** The day belongs to a submitted or approved timesheet. */
+  locked: boolean;
+  lockMessage?: string;
+  /** Opens the manual form pre-filled from one meeting. */
+  onAdjust?: (meeting: MeetingSignal) => void;
+}
+
+// ─── Meeting row ──────────────────────────────────────────────────────
+
+interface MeetingRowProps {
+  meeting: MeetingSignal;
+  selected: boolean;
+  disabled: boolean;
+  onToggle: (id: string) => void;
+  onAdjust?: (meeting: MeetingSignal) => void;
+}
+
+function MeetingRow({
+  meeting,
+  selected,
+  disabled,
+  onToggle,
+  onAdjust,
+}: MeetingRowProps) {
+  return (
+    <li className="group">
+      <div
+        className={cn(
+          "flex items-start gap-3 rounded-xl border px-3 py-2.5 transition-colors",
+          selected
+            ? "border-brand-500/40 bg-brand-500/5"
+            : "border-border/50 bg-muted/10 hover:border-border",
+          disabled && "opacity-60",
+        )}
+      >
+        <span className="relative mt-0.5 flex size-4 shrink-0 items-center justify-center">
+          <input
+            type="checkbox"
+            checked={selected}
+            disabled={disabled}
+            onChange={() => onToggle(meeting.id)}
+            aria-label={`${selected ? "Remover" : "Incluir"} ${meeting.title}`}
+            className={cn(
+              "peer size-4 cursor-pointer appearance-none rounded border border-border bg-background transition-colors",
+              "checked:border-brand-500 checked:bg-brand-500 hover:border-brand-500/50",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40",
+              "disabled:cursor-not-allowed",
+            )}
+          />
+          <Check
+            className="pointer-events-none absolute size-3 text-white opacity-0 transition-opacity peer-checked:opacity-100"
+            aria-hidden="true"
+          />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <p className="min-w-0 text-sm font-medium text-foreground">
+              <MeetingTitle title={meeting.title} subject={meeting.subject} />
+            </p>
+            <MeetingBadges meeting={meeting} />
+          </div>
+
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {meeting.evidence}
+          </p>
+
+          {meeting.participants.length > 0 && (
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground/80">
+              <Users className="size-3 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {meeting.participants
+                  .slice(0, 4)
+                  .map((person) => person.name)
+                  .join(", ")}
+                {meeting.participantCount > 4 &&
+                  ` e mais ${meeting.participantCount - 4}`}
+              </span>
+            </p>
+          )}
+        </div>
+
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <span className="font-mono text-xs tabular-nums text-foreground">
+            {formatDuration(meeting.minutes)}
+          </span>
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
+            {formatMeetingRange(meeting)}
+          </span>
+          {onAdjust && !disabled && (
+            <button
+              type="button"
+              onClick={() => onAdjust(meeting)}
+              className="rounded text-[10px] text-muted-foreground underline-offset-2 opacity-0 transition-opacity hover:text-brand-500 hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 group-hover:opacity-100"
+            >
+              ajustar
+            </button>
+          )}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+// ─── Panel ────────────────────────────────────────────────────────────
+
+/**
+ * "O que você fez hoje" — the day's meetings, ready to become entries.
+ *
+ * Built for the people whose work never reaches Azure DevOps: the list is
+ * already filtered of cancellations, declined invitations and double-booking,
+ * so what shows up is what actually happened.
+ */
+export function DayCollaborationPanel({
+  date,
+  locked,
+  lockMessage,
+  onAdjust,
+}: DayCollaborationPanelProps) {
+  const prefersReducedMotion = useReducedMotion();
+  const { day, isLoading, isLogging, error, reload, logMeetings } =
+    useCollaborationDay({ date });
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [showAll, setShowAll] = useState(false);
+
+  // High-confidence meetings start selected; the rest is an explicit choice.
+  useEffect(() => {
+    if (!day) return;
+    setSelectedIds(
+      new Set(
+        day.meetings
+          .filter((meeting) => meeting.confidence === "high")
+          .slice(0, MAX_BATCH)
+          .map((meeting) => meeting.id),
+      ),
+    );
+    setShowAll(false);
+  }, [day]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProjects() {
+      try {
+        const res = await fetch("/api/projects?status=active");
+        if (!res.ok) return;
+
+        const data = (await res.json()) as { projects?: ProjectOption[] };
+        if (active) setProjects(data.projects ?? []);
+      } catch (err: unknown) {
+        console.error("[DayCollaborationPanel] loadProjects:", err);
+      }
+    }
+
+    void loadProjects();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const meetings = day?.meetings ?? [];
+  const visibleMeetings = showAll
+    ? meetings
+    : meetings.slice(0, VISIBLE_MEETINGS);
+
+  const selected = useMemo(
+    () => meetings.filter((meeting) => selectedIds.has(meeting.id)),
+    [meetings, selectedIds],
+  );
+  const selectedMinutes = selected.reduce(
+    (sum, meeting) => sum + meeting.minutes,
+    0,
+  );
+
+  const handleToggle = useCallback((id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < MAX_BATCH) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleLog = useCallback(async () => {
+    if (!projectId) {
+      toast.error("Escolha o projeto antes de lançar.");
+      return;
+    }
+    if (selected.length === 0) return;
+
+    const project = projects.find((item) => item.id === projectId);
+
+    try {
+      const created = await logMeetings(
+        selected.map((meeting) => ({
+          projectId,
+          description: meeting.title,
+          minutes: meeting.minutes,
+          billable: project?.billable ?? true,
+        })),
+      );
+
+      toast.success(
+        `${created} ${created === 1 ? "reunião lançada" : "reuniões lançadas"} · ${formatDuration(selectedMinutes)}`,
+      );
+      setSelectedIds(new Set());
+    } catch (err: unknown) {
+      console.error("[DayCollaborationPanel] handleLog:", err);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Não foi possível lançar as horas.",
+      );
+    }
+  }, [logMeetings, projectId, projects, selected, selectedMinutes]);
+
+  // ── Loading ──
+  // `isLoading` only flips inside the effect, so the first render has
+  // isLoading=false and day=null. The absence of both is the pending state.
+  if ((isLoading || !day) && !error) {
+    return (
+      <section className="rounded-[28px] border border-border/60 bg-card/90 p-5 shadow-sm">
+        <output
+          aria-label="Carregando o que você fez hoje..."
+          className="block space-y-3"
+        >
+          <Skeleton className="h-4 w-48 rounded" />
+          <Skeleton className="h-2 w-full rounded-full" />
+          <Skeleton className="h-14 w-full rounded-xl" />
+          <Skeleton className="h-14 w-full rounded-xl" />
+        </output>
+      </section>
+    );
+  }
+
+  // ── Error ──
+  if (error) {
+    return (
+      <section className="rounded-[28px] border border-border/60 bg-card/90 p-5 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">{error}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full"
+            onClick={() => void reload()}
+          >
+            <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
+            Tentar de novo
+          </Button>
+        </div>
+      </section>
+    );
+  }
+
+  // Unreachable — the loading branch above covers a null day. Kept so the
+  // narrowing is explicit rather than implied.
+  if (!day) return null;
+
+  const hasNothing = meetings.length === 0 && day.exclusions.length === 0;
+  const portraitWorth =
+    !day.needsReauth &&
+    day.portrait &&
+    (day.portrait.availability === "ok"
+      ? day.portrait.totalMinutes > 0
+      : meetings.length > 0);
+
+  // Nothing detected and nothing to say — stay out of the way. The re-login
+  // prompt is the exception: hiding it would strand the person on a feature
+  // that silently never works.
+  if (hasNothing && !portraitWorth && !day.needsReauth) return null;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <motion.section
+        data-tour="time-collaboration"
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="rounded-[28px] border border-border/60 bg-card/90 shadow-sm"
+      >
+        <div className="space-y-4 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-brand-500/10">
+                <CalendarClock
+                  className="size-4 text-brand-500"
+                  aria-hidden="true"
+                />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-foreground">
+                  O que você fez hoje
+                </h2>
+                <p className="text-xs text-muted-foreground">
+                  {meetings.length > 0
+                    ? `${meetings.length} ${meetings.length === 1 ? "reunião encontrada" : "reuniões encontradas"} na sua agenda`
+                    : "Nenhuma reunião para lançar na sua agenda"}
+                </p>
+              </div>
+            </div>
+
+            {day.suggestedMinutes > 0 && (
+              <Badge
+                variant="secondary"
+                className="rounded-full font-mono text-[11px] tabular-nums"
+              >
+                {formatDuration(day.suggestedMinutes)} disponíveis
+              </Badge>
+            )}
+          </div>
+
+          {day.needsReauth && <ReauthNotice feature="o resumo do seu dia" />}
+
+          {day.away && (
+            <div className="flex items-start gap-2 rounded-xl border border-border/50 bg-muted/20 px-3 py-2.5">
+              <Plane
+                className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <p className="text-xs text-muted-foreground">
+                Sua resposta automática está ligada hoje. Nada de cobrança —
+                lance só se realmente trabalhou.
+              </p>
+            </div>
+          )}
+
+          {/* Only shown when the mailbox is the source: a target that differs
+              from the familiar 8h has to explain where it came from. */}
+          {day.sources.mailbox && day.target.isWorkingDay && (
+            <p className="text-xs text-muted-foreground">
+              Meta de hoje:{" "}
+              <span className="font-mono tabular-nums text-foreground">
+                {formatDuration(day.target.minutes)}
+              </span>{" "}
+              — sua semana de {day.target.workingDaysPerWeek}{" "}
+              {day.target.workingDaysPerWeek === 1 ? "dia" : "dias"}, pelo
+              horário de trabalho do seu Outlook.
+            </p>
+          )}
+
+          {day.sources.mailbox && !day.target.isWorkingDay && (
+            <p className="text-xs text-muted-foreground">
+              Hoje não é dia útil no seu horário de trabalho do Outlook — o que
+              você lançar aqui é hora extra.
+            </p>
+          )}
+
+          {!day.needsReauth && day.portrait && (
+            <ActivityPortraitBar portrait={day.portrait} />
+          )}
+
+          {day.warnings.map((warning) => (
+            <p key={warning} className="text-xs text-muted-foreground">
+              {warning}
+            </p>
+          ))}
+
+          {meetings.length > 0 && (
+            <>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <label
+                  htmlFor="collaboration-project"
+                  className="shrink-0 text-xs font-medium text-muted-foreground"
+                >
+                  Lançar em
+                </label>
+                <div id="collaboration-project" className="min-w-0 flex-1">
+                  <ProjectCombobox
+                    projects={projects}
+                    value={projectId}
+                    onChange={setProjectId}
+                    placeholder="Escolha o projeto"
+                    disabled={locked}
+                  />
+                </div>
+              </div>
+
+              <ul className="space-y-2">
+                <AnimatePresence initial={false}>
+                  {visibleMeetings.map((meeting) => (
+                    <motion.div
+                      key={meeting.id}
+                      layout={!prefersReducedMotion}
+                      initial={prefersReducedMotion ? false : { opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                    >
+                      <MeetingRow
+                        meeting={meeting}
+                        selected={selectedIds.has(meeting.id)}
+                        disabled={locked}
+                        onToggle={handleToggle}
+                        onAdjust={onAdjust}
+                      />
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </ul>
+
+              {meetings.length > VISIBLE_MEETINGS && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((current) => !current)}
+                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                >
+                  {showAll
+                    ? "Mostrar menos"
+                    : `Ver todas as ${meetings.length} reuniões`}
+                </button>
+              )}
+            </>
+          )}
+
+          <MeetingExclusionsNote exclusions={day.exclusions} />
+
+          {meetings.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-4">
+              <p className="text-xs text-muted-foreground">
+                {selected.length === 0
+                  ? "Selecione o que quer lançar"
+                  : `${selected.length} ${selected.length === 1 ? "selecionada" : "selecionadas"} · ${formatDuration(selectedMinutes)}`}
+              </p>
+
+              <Button
+                size="sm"
+                className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
+                disabled={locked || isLogging || selected.length === 0}
+                onClick={() => void handleLog()}
+                title={locked ? lockMessage : undefined}
+              >
+                {isLogging ? (
+                  <>
+                    <Loader2
+                      className="mr-1.5 size-3.5 animate-spin"
+                      aria-hidden="true"
+                    />
+                    Lançando…
+                  </>
+                ) : (
+                  <>
+                    <Check className="mr-1.5 size-3.5" aria-hidden="true" />
+                    Lançar {selected.length > 0 ? selected.length : ""}
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+        </div>
+      </motion.section>
+    </TooltipProvider>
+  );
+}

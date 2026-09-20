@@ -135,6 +135,12 @@ export interface EveningSuggestion {
   url: string;
 }
 
+/** One meeting the collaboration layer found and nobody logged yet. */
+export interface EveningMeeting {
+  title: string;
+  minutes: number;
+}
+
 export interface EveningCardInput {
   firstName: string;
   /** e.g. "quinta-feira, 21/08" */
@@ -144,7 +150,16 @@ export interface EveningCardInput {
   topProjectName: string | null;
   suggestions: EveningSuggestion[];
   appUrl: string;
+  /**
+   * Meetings detected on the calendar and still unlogged. This is what makes
+   * the digest useful to people who never touch Azure DevOps: instead of
+   * "faltam 4h", it says what those hours were.
+   */
+  detectedMeetings?: EveningMeeting[];
 }
+
+/** Up to this many rows; more turns the card into a wall of text. */
+const MAX_CARD_MEETINGS = 4;
 
 export function buildEveningCard(input: EveningCardInput): AdaptiveCard {
   const {
@@ -155,6 +170,7 @@ export function buildEveningCard(input: EveningCardInput): AdaptiveCard {
     topProjectName,
     suggestions,
     appUrl,
+    detectedMeetings = [],
   } = input;
 
   const gap = Math.max(0, targetMinutes - loggedMinutes);
@@ -168,13 +184,63 @@ export function buildEveningCard(input: EveningCardInput): AdaptiveCard {
       ? `Faltam **${formatDuration(gap)}** para fechar o dia de ${formatDuration(targetMinutes)}.`
       : "Meta do dia batida — bora descansar. ✅";
 
+  const visibleMeetings = detectedMeetings.slice(0, MAX_CARD_MEETINGS);
+  const hiddenMeetings = detectedMeetings.length - visibleMeetings.length;
+  const detectedMinutes = detectedMeetings.reduce(
+    (sum, meeting) => sum + meeting.minutes,
+    0,
+  );
+
+  const meetingBlocks =
+    visibleMeetings.length > 0
+      ? [
+          {
+            type: "TextBlock",
+            text: `**O que encontrei na sua agenda** — ${formatDuration(detectedMinutes)}`,
+            wrap: true,
+            spacing: "Medium",
+          },
+          {
+            type: "FactSet",
+            spacing: "Small",
+            facts: visibleMeetings.map((meeting) => ({
+              title: meeting.title.slice(0, 60),
+              value: formatDuration(meeting.minutes),
+            })),
+          },
+          ...(hiddenMeetings > 0
+            ? [
+                {
+                  type: "TextBlock",
+                  text: `_e mais ${hiddenMeetings} ${hiddenMeetings === 1 ? "reunião" : "reuniões"}_`,
+                  isSubtle: true,
+                  spacing: "None",
+                  wrap: true,
+                },
+              ]
+            : []),
+        ]
+      : [];
+
   return baseCard(
     [
       ...header(`🌆 Fim de dia, ${firstName}`, `OptSolv Time · ${dateLabel}`),
       { type: "TextBlock", text: summary, wrap: true, spacing: "Medium" },
       { type: "TextBlock", text: nudge, wrap: true },
+      ...meetingBlocks,
     ],
     [
+      // A webhook card cannot post back, so "confirmar" is a deep link into the
+      // day panel where the same meetings are already selected.
+      ...(visibleMeetings.length > 0
+        ? [
+            {
+              type: "Action.OpenUrl",
+              title: `✅ Confirmar ${detectedMeetings.length} ${detectedMeetings.length === 1 ? "reunião" : "reuniões"}`,
+              url: `${appUrl}/dashboard/time`,
+            },
+          ]
+        : []),
       ...suggestions.slice(0, 2).map((suggestion) => ({
         type: "Action.OpenUrl",
         title: suggestion.label,

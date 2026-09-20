@@ -169,10 +169,19 @@ export const TOURS: readonly TourDefinition[] = [
         id: "fill-day",
         title: "Preencher meu dia",
         description:
-          "A IA reconstrói seu dia a partir de reuniões do Outlook, work items do Azure DevOps e do seu histórico. Você revisa e aprova antes de salvar.",
+          "A IA reconstrói seu dia a partir de reuniões do Outlook, pull requests, commits e work items do Azure DevOps, e do seu histórico. Cada item mostra a evidência que o originou — você revisa, ajusta e aprova antes de salvar.",
         target: '[data-tour="time-fill-day"]',
         placement: "bottom",
-        hint: "Nada é salvo sem a sua confirmação.",
+        hint: "O plano fica guardado com os seus ajustes: fechar não perde nada, e a IA só roda de novo quando você clicar em Gerar novamente.",
+      },
+      {
+        id: "collaboration",
+        title: "O que você fez hoje",
+        description:
+          "Suas reuniões do dia já chegam prontas: com quem foi, quanto durou e o resumo do seu tempo no Microsoft 365. Marque as que quer lançar, escolha o projeto e confirme — é o caminho de quem trabalha em reunião, não em código.",
+        target: '[data-tour="time-collaboration"]',
+        placement: "top",
+        hint: "Convites recusados, reuniões canceladas e horários sobrepostos ficam de fora sozinhos.",
       },
       {
         id: "workspace",
@@ -366,6 +375,7 @@ export const TOURS: readonly TourDefinition[] = [
           "Uma narrativa curta do que você fez na semana, gerada por IA. Também chega por e-mail nas segundas, se você quiser.",
         target: '[data-tour="header-digest"]',
         placement: "bottom",
+        hint: "Gerado uma vez por semana e reaproveitado — use Gerar novamente quando quiser refazer.",
       },
       {
         id: "settings",

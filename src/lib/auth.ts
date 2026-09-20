@@ -5,7 +5,12 @@ import { db } from "./db";
 import { refreshMicrosoftAccessToken } from "./microsoft-oauth";
 
 const microsoftTenantId = process.env.MICROSOFT_TENANT_ID ?? "common";
-const allowedEmailDomain = "@optsolv.com.br";
+
+/**
+ * The only domain allowed to sign in. Also the line between an internal
+ * colleague and an external participant in Registro por Colaboração.
+ */
+export const allowedEmailDomain = "@optsolv.com.br";
 
 export const auth = betterAuth({
   baseURL: getServerAppUrl(),
@@ -104,11 +109,26 @@ export const auth = betterAuth({
         "User.Read",
         "Calendars.Read",
         "offline_access",
-        // Mirrors the running timer into the Teams status message. Whether the
-        // feature is used is a per-user toggle, but the scope itself can only
-        // be granted at login — so it is always requested and must be consented
-        // for the app in Entra (see docs/teams-integration.md §7).
+        // ── Scopes below need admin consent in Entra ──
+        // This tenant disables user consent, so *every* permission the app
+        // requests must be granted on the App Registration first. A scope is
+        // sent on every login, so requesting an unconsented one does not
+        // degrade its feature — it blocks authentication for the whole
+        // organisation with AADSTS65001. Never add one here before the grant.
+        //
+        // Mirrors the running timer into the Teams status message.
         "Presence.ReadWrite",
+        // Viva Insights activity statistics — the daily portrait behind
+        // Registro por Colaboração.
+        "Analytics.Read",
+        // The person's own working hours, timezone and out-of-office. Replaces
+        // three hardcoded assumptions: a five-day week for everyone, a single
+        // company timezone, and nudging people who are on holiday.
+        "MailboxSettings.Read",
+        // A granted scope only reaches a session created by a *full* login —
+        // a token refresh never adds scopes, so sessions predating the grant
+        // keep getting 403. Both features detect that and offer a one-click
+        // "entrar de novo" instead of failing silently.
       ],
       refreshAccessToken: refreshMicrosoftAccessToken,
     },

@@ -20,6 +20,13 @@ export interface DayPlanItem {
   projectColor: string;
   description: string;
   minutes: number;
+  /**
+   * Minutes the evidence implied, before the plan was fitted to the day. Equal
+   * to `minutes` unless the day's activity added up to more than the gap.
+   */
+  estimatedMinutes: number;
+  /** When the activity started, for items anchored in time. */
+  startsAt: string | null;
   billable: boolean;
   azureWorkItemId: number | null;
   azureWorkItemTitle: string | null;
@@ -44,7 +51,11 @@ export interface DayPlan {
   sources: {
     calendar: boolean;
     azureDevops: boolean;
+    /** Commits were read for this day — true even when they were all covered. */
+    commits: boolean;
     patterns: boolean;
   };
   warnings: string[];
+  /** Server clock at build time, so the client can show the plan's age. */
+  generatedAt: string;
 }

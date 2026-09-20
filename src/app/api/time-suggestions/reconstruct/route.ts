@@ -17,6 +17,7 @@ import {
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import {
   project,
@@ -25,12 +26,11 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
-import { fetchOutlookEvents } from "@/lib/microsoft-graph";
-import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
 import {
   type AutofillProject,
   buildAutofillProposals,
 } from "@/lib/time-assistant/autofill";
+import { buildCommitSessions } from "@/lib/time-assistant/commit-sessions";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import type { NormalizedCommitActivity } from "@/lib/time-assistant/engine";
 import {
@@ -41,12 +41,8 @@ import {
   type WeekdayPattern,
 } from "@/lib/time-assistant/reconstruct";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
-import {
-  dateOfInstantInAppTimeZone,
-  shiftDay,
-  todayInAppTimeZone,
-} from "@/lib/timezone";
-import { parseLocalDate } from "@/lib/utils";
+import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
+import { formatLocalDate, parseLocalDate } from "@/lib/utils";
 import { reconstructDaySchema } from "@/lib/validations/reconstruct.schema";
 import type {
   AzureDevOpsAssignedWorkItem,
@@ -238,46 +234,32 @@ export async function POST(req: Request): Promise<Response> {
         ];
       });
 
-    // ── Outlook calendar (best-effort) ──
-    const events: CalendarEventInput[] = [];
-    let calendarAvailable = false;
+    // ── Calendar via the collaboration layer (best-effort) ──
+    // Cancellations, declined invitations, placeholder blocks and
+    // double-booking are all resolved there, so the plan never proposes a
+    // meeting that did not happen.
+    const collaboration = await buildCollaborationDay({
+      headers: req.headers,
+      userId: session.user.id,
+      userEmail: session.user.email ?? null,
+      date,
+      skipPortrait: true,
+    });
 
-    try {
-      const accessToken = await getMicrosoftAccessToken(
-        req.headers,
-        session.user.id,
-      );
+    warnings.push(...collaboration.warnings);
+    const calendarAvailable = collaboration.sources.calendar;
 
-      if (accessToken) {
-        // Window widened by a day on each side, then filtered to the LOCAL
-        // calendar day — Graph returns UTC instants.
-        const rawEvents = await fetchOutlookEvents(
-          accessToken,
-          `${shiftDay(date, -1)}T12:00:00`,
-          `${shiftDay(date, 1)}T12:00:00`,
-        );
-
-        calendarAvailable = true;
-
-        for (const event of rawEvents) {
-          const startIso = `${event.start.dateTime}Z`;
-          if (dateOfInstantInAppTimeZone(startIso) !== date) continue;
-
-          events.push({
-            subject: event.subject || "Reunião",
-            startIso,
-            endIso: `${event.end.dateTime}Z`,
-          });
-        }
-      } else {
-        warnings.push(
-          "Calendário Outlook indisponível — reconecte sua conta Microsoft para incluir reuniões.",
-        );
-      }
-    } catch (error: unknown) {
-      console.error("[reconstruct] outlook fetch failed:", error);
-      warnings.push("Não foi possível ler o calendário Outlook agora.");
-    }
+    const events: CalendarEventInput[] = collaboration.meetings.map(
+      (meeting) => ({
+        subject: meeting.subject || meeting.title,
+        title: meeting.title,
+        startIso: meeting.startIso,
+        endIso: meeting.endIso,
+        minutes: meeting.minutes,
+        confidence: meeting.confidence,
+        evidence: meeting.evidence,
+      }),
+    );
 
     // ── Azure DevOps signals for the single day (best-effort) ──
     const pullRequests: AzureDevOpsPullRequest[] = [];
@@ -302,7 +284,7 @@ export async function POST(req: Request): Promise<Response> {
         const untilIso = `${date}T23:59:59`;
 
         const buckets = await mapWithConcurrencyLimit(
-          projects.filter((item) => item.azureProjectId),
+          projects,
           AZURE_CONCURRENCY,
           async (item) => {
             const ref = item.azureProjectId ?? item.name;
@@ -388,35 +370,54 @@ export async function POST(req: Request): Promise<Response> {
       0,
     );
 
-    const proposals =
+    const dismissedFingerprints = dismissals.map(
+      (row) => row.suggestionFingerprint,
+    );
+
+    // Only the work-item nudge is taken from the radar. Its pull-request and
+    // commit signals answer a different question — "which day did you forget
+    // entirely?" — and collapse a day of distinct sessions into one block.
+    const workItemProposals =
       targetMinutes - existingMinutes >= MIN_GAP_MINUTES
         ? buildAutofillProposals({
             dates: [date],
             today,
             projects,
-            pullRequests,
+            pullRequests: [],
             workItems,
-            commits,
+            commits: [],
             existingEntries,
             lockedDates: [],
-            dismissedFingerprints: dismissals.map(
-              (row) => row.suggestionFingerprint,
-            ),
+            dismissedFingerprints,
             defaults: {
               durationMinutes: 60,
               billable: profile?.timeDefaultBillable ?? true,
               dailyTargetMinutes: targetMinutes,
             },
-          })
+          }).filter((proposal) => proposal.signal === "work_item_active")
         : [];
+
+    // Azure filters commits by a naive timestamp range, so a late-night commit
+    // can arrive tagged with the neighbouring day. Trust the local date.
+    const commitSessions = buildCommitSessions(
+      commits.filter(
+        (commit) => formatLocalDate(new Date(commit.timestamp)) === date,
+      ),
+    );
 
     const deterministic = buildDeterministicDayPlan({
       date,
       targetMinutes,
       existingMinutes,
       existingDescriptions: existingEntries.map((entry) => entry.description),
+      existingWorkItemIds: existingEntries
+        .map((entry) => entry.azureWorkItemId)
+        .filter((id): id is number => id != null),
       events,
-      proposals,
+      commitSessions,
+      pullRequests,
+      workItemProposals,
+      dismissedFingerprints,
       patterns,
       projects,
       defaultBillable: profile?.timeDefaultBillable ?? true,
@@ -424,6 +425,7 @@ export async function POST(req: Request): Promise<Response> {
       sources: {
         calendar: calendarAvailable,
         azureDevops: integrationReady,
+        commits: commits.length > 0,
         patterns: patterns.length > 0,
       },
     });
@@ -434,9 +436,19 @@ export async function POST(req: Request): Promise<Response> {
       userId: session.user.id,
       date,
       events: events.length,
-      proposals: proposals.length,
+      pullRequests: pullRequests.length,
+      workItemProposals: workItemProposals.length,
+      commits: commits.length,
+      commitSessions: commitSessions.length,
       patterns: patterns.length,
       items: plan.items.length,
+      itemsBySource: plan.items.reduce<Record<string, number>>(
+        (tally, item) => {
+          tally[item.source] = (tally[item.source] ?? 0) + 1;
+          return tally;
+        },
+        {},
+      ),
       refinedBy: plan.refinedBy,
     });
 

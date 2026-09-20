@@ -12,6 +12,8 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getServerAppUrl } from "@/lib/app-url";
+import { getBackgroundMicrosoftToken } from "@/lib/collaboration/background-token";
+import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import {
   project,
@@ -24,7 +26,7 @@ import { decrypt } from "@/lib/encryption";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { formatDuration, parseLocalDate } from "@/lib/utils";
-import { buildEveningCard } from "./cards";
+import { buildEveningCard, type EveningMeeting } from "./cards";
 import { postTeamsCard } from "./client";
 import { getTeamsSettings } from "./settings";
 
@@ -49,6 +51,73 @@ interface EveningCandidate {
   teamsWebhookUrl: string | null;
 }
 
+/**
+ * What Microsoft knows about one person's day: the meetings they have not
+ * logged, how much they are actually expected to log, and whether they are away.
+ *
+ * A cron has no session, so the Graph token comes from the stored account row.
+ * Every failure degrades to nulls: the digest still goes out, just on the old
+ * defaults and without the "o que encontrei na sua agenda" block.
+ */
+interface EveningContext {
+  meetings: EveningMeeting[];
+  /** Null when the mailbox scope is absent — caller keeps its own maths. */
+  targetMinutes: number | null;
+  isWorkingDay: boolean;
+  isAway: boolean;
+}
+
+const EMPTY_CONTEXT: EveningContext = {
+  meetings: [],
+  targetMinutes: null,
+  isWorkingDay: true,
+  isAway: false,
+};
+
+async function loadEveningContext(
+  userId: string,
+  userEmail: string,
+  date: string,
+): Promise<EveningContext> {
+  try {
+    const accessToken = await getBackgroundMicrosoftToken(userId);
+    if (!accessToken) return EMPTY_CONTEXT;
+
+    const day = await buildCollaborationDay({
+      accessToken,
+      userId,
+      userEmail,
+      date,
+      skipPortrait: true,
+    });
+
+    return {
+      meetings: day.meetings.map((meeting) => ({
+        title: meeting.title,
+        minutes: meeting.minutes,
+      })),
+      targetMinutes: day.sources.mailbox ? day.target.minutes : null,
+      isWorkingDay: day.target.isWorkingDay,
+      isAway: day.away !== null,
+    };
+  } catch (error: unknown) {
+    console.error("[teams-evening] context load failed:", {
+      userId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return EMPTY_CONTEXT;
+  }
+}
+
+/** Escapes calendar-sourced text before it lands in the e-mail markup. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 function buildEveningEmailHtml(input: {
   firstName: string;
   dateLabel: string;
@@ -56,16 +125,43 @@ function buildEveningEmailHtml(input: {
   targetMinutes: number;
   topProjectName: string | null;
   appUrl: string;
+  detectedMeetings?: EveningMeeting[];
 }): string {
   const gap = Math.max(0, input.targetMinutes - input.loggedMinutes);
   const summary =
     input.loggedMinutes > 0
-      ? `Você registrou <strong>${formatDuration(input.loggedMinutes)}</strong> hoje${input.topProjectName ? `, a maior parte em <strong>${input.topProjectName}</strong>` : ""}.`
+      ? `Você registrou <strong>${formatDuration(input.loggedMinutes)}</strong> hoje${input.topProjectName ? `, a maior parte em <strong>${escapeHtml(input.topProjectName)}</strong>` : ""}.`
       : "Você ainda não registrou horas hoje.";
   const nudge =
     gap > 0
       ? `Faltam <strong>${formatDuration(gap)}</strong> para fechar o dia de ${formatDuration(input.targetMinutes)}.`
       : "Meta do dia batida — bom descanso. ✅";
+
+  const meetings = input.detectedMeetings ?? [];
+  const detectedMinutes = meetings.reduce(
+    (sum, meeting) => sum + meeting.minutes,
+    0,
+  );
+
+  const meetingsBlock =
+    meetings.length > 0
+      ? `
+        <p style="margin:0 0 8px;color:#a3a3a3;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;">
+          O que encontrei na sua agenda · ${formatDuration(detectedMinutes)}
+        </p>
+        <table role="presentation" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
+          ${meetings
+            .slice(0, 4)
+            .map(
+              (meeting) => `
+          <tr>
+            <td style="padding:6px 0;color:#d4d4d4;font-size:13px;">${escapeHtml(meeting.title)}</td>
+            <td style="padding:6px 0;color:#fb923c;font-size:13px;text-align:right;white-space:nowrap;">${formatDuration(meeting.minutes)}</td>
+          </tr>`,
+            )
+            .join("")}
+        </table>`
+      : "";
 
   return `
   <div style="background:#0a0a0a;padding:32px 16px;font-family:'Segoe UI',Arial,sans-serif;">
@@ -77,6 +173,7 @@ function buildEveningEmailHtml(input: {
       <div style="padding:24px 28px;color:#d4d4d4;font-size:14px;line-height:1.6;">
         <p style="margin:0 0 8px;">${summary}</p>
         <p style="margin:0 0 20px;">${nudge}</p>
+        ${meetingsBlock}
         <a href="${input.appUrl}/dashboard/time?reconstruct=1"
            style="display:inline-block;background:#f97316;color:#ffffff;text-decoration:none;font-weight:600;padding:12px 20px;border-radius:10px;margin-right:8px;">✨ Preencher meu dia com IA</a>
         <a href="${input.appUrl}/dashboard/time"
@@ -238,9 +335,47 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
           topProject: null,
           topMinutes: 0,
         };
-        const targetMinutes = Math.round(
-          ((candidate.weeklyCapacity ?? 40) * 60) / WORKING_DAYS_PER_WEEK,
+
+        // What Microsoft knows about the day. Read before deciding whether to
+        // nudge, because the mailbox is what says how much this person owes
+        // today — and whether today counts for them at all.
+        const context = await loadEveningContext(
+          candidate.id,
+          candidate.email,
+          today,
         );
+
+        if (context.isAway) {
+          skipped += 1;
+          await writeLog(
+            candidate.id,
+            today,
+            "skipped",
+            "none",
+            "Resposta automática ativa no Outlook — pessoa ausente.",
+          );
+          return;
+        }
+
+        if (!context.isWorkingDay) {
+          skipped += 1;
+          await writeLog(
+            candidate.id,
+            today,
+            "skipped",
+            "none",
+            "Não é dia útil no horário de trabalho da pessoa.",
+          );
+          return;
+        }
+
+        // Mailbox working hours know how many days the week is spread across;
+        // the fallback is the historical five.
+        const targetMinutes =
+          context.targetMinutes ??
+          Math.round(
+            ((candidate.weeklyCapacity ?? 40) * 60) / WORKING_DAYS_PER_WEEK,
+          );
         const gap = targetMinutes - stats.minutes;
 
         if (gap < MIN_GAP_MINUTES) {
@@ -256,6 +391,7 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
         }
 
         const firstName = candidate.name.split(" ")[0] ?? candidate.name;
+        const detectedMeetings = context.meetings;
 
         const personalWebhook = candidate.teamsWebhookUrl
           ? decrypt(candidate.teamsWebhookUrl) || null
@@ -268,6 +404,7 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
             loggedMinutes: stats.minutes,
             targetMinutes,
             topProjectName: stats.topProject,
+            detectedMeetings,
             suggestions: [
               {
                 label: "✨ Preencher meu dia com IA",
@@ -302,6 +439,7 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
             loggedMinutes: stats.minutes,
             targetMinutes,
             topProjectName: stats.topProject,
+            detectedMeetings,
             appUrl,
           }),
         });

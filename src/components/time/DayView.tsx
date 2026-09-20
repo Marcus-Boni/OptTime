@@ -18,19 +18,16 @@ import {
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Calendar,
-  CalendarClock,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock,
   Plus,
-  Zap,
 } from "lucide-react";
 import { type ComponentProps, useEffect, useMemo, useState } from "react";
+import { DayCollaborationPanel } from "@/components/collaboration/DayCollaborationPanel";
 import { SmartSuggestionsPanel } from "@/components/time/SmartSuggestionsPanel";
 import { TimeEntryCard } from "@/components/time/TimeEntryCard";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Calendar as CalendarComponent,
@@ -42,17 +39,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-  type OutlookEvent,
-  parseGraphDateTime,
-  useOutlookEvents,
-} from "@/hooks/use-outlook-events";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import type {
   TimeSuggestion,
@@ -60,6 +46,7 @@ import type {
 } from "@/hooks/use-time-suggestions";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { cn, formatDuration } from "@/lib/utils";
+import type { MeetingSignal } from "@/types/collaboration";
 
 interface DayViewProps {
   entries: TimeEntry[];
@@ -70,7 +57,8 @@ interface DayViewProps {
   onEdit: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
   onDuplicate: (entry: TimeEntry) => void;
-  onCreateFromOutlook: (event: OutlookEvent) => void;
+  /** Opens the manual form pre-filled from one detected meeting. */
+  onAdjustMeeting: (meeting: MeetingSignal) => void;
   onOpenCreate: () => void;
   assistantEnabled: boolean;
   suggestions: TimeSuggestion[];
@@ -89,44 +77,6 @@ interface DayViewProps {
   /** When false, Saturday and Sunday are hidden from the week strip */
   showWeekends?: boolean;
   onShowWeekendsChange?: (show: boolean) => void;
-}
-
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "").trim().toLocaleLowerCase("pt-BR");
-}
-
-function toDateKey(date: Date): string {
-  return format(date, "yyyy-MM-dd");
-}
-
-function getOutlookEventKeys(event: OutlookEvent) {
-  const subject = normalizeText(event.subject);
-  const start = parseGraphDateTime(event.start.dateTime);
-  const end = parseGraphDateTime(event.end.dateTime);
-
-  return {
-    fallback: `${subject}|${toDateKey(start)}`,
-    precise: `${subject}|${toDateKey(start)}|${start.toISOString()}|${end.toISOString()}`,
-  };
-}
-
-function getTimeEntryOutlookKeys(entry: TimeEntry) {
-  const subject = normalizeText(entry.description);
-
-  if (entry.startTime && entry.endTime) {
-    const start = new Date(entry.startTime);
-    const end = new Date(entry.endTime);
-
-    return {
-      precise: `${subject}|${entry.date}|${start.toISOString()}|${end.toISOString()}`,
-      fallback: null,
-    };
-  }
-
-  return {
-    precise: null,
-    fallback: `${subject}|${entry.date}`,
-  };
 }
 
 const dailyTarget = 8 * 60;
@@ -276,7 +226,7 @@ export function DayView({
   onEdit,
   onDelete,
   onDuplicate,
-  onCreateFromOutlook,
+  onAdjustMeeting,
   onOpenCreate,
   assistantEnabled,
   suggestions,
@@ -326,33 +276,6 @@ export function DayView({
     }
     return map;
   }, [entries]);
-
-  const outlook = useOutlookEvents({
-    startDate: selectedDateStr,
-    endDate: selectedDateStr,
-    enabled: true,
-  });
-
-  const importedOutlookKeys = useMemo(() => {
-    const precise = new Set<string>();
-    const fallback = new Set<string>();
-
-    for (const entry of dayEntries) {
-      const keys = getTimeEntryOutlookKeys(entry);
-      if (keys.precise) precise.add(keys.precise);
-      if (keys.fallback) fallback.add(keys.fallback);
-    }
-
-    return { precise, fallback };
-  }, [dayEntries]);
-
-  const pendingMeetings = outlook.events.filter((event) => {
-    const keys = getOutlookEventKeys(event);
-    return (
-      !importedOutlookKeys.precise.has(keys.precise) &&
-      !importedOutlookKeys.fallback.has(keys.fallback)
-    );
-  });
 
   const [datePopoverOpen, setDatePopoverOpen] = useState(false);
 
@@ -640,103 +563,13 @@ export function DayView({
         />
       </AnimatePresence>
 
-      {/* Meeting indicator */}
-      {outlook.connected !== false && pendingMeetings.length > 0 && (
-        <section className="rounded-[28px] border border-border/60 bg-card/90 shadow-sm">
-          <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/50">
-                <Calendar className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  {pendingMeetings.length}{" "}
-                  {pendingMeetings.length === 1
-                    ? "reunião disponível"
-                    : "reuniões disponíveis"}{" "}
-                  <Badge
-                    variant="secondary"
-                    className="ml-1 rounded-full px-2 py-0 text-[10px]"
-                  >
-                    Outlook
-                  </Badge>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Importe para completar o dia rapidamente
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="rounded-full"
-                onClick={onOpenCreate}
-                disabled={selectedDateLocked}
-                title={selectedDateLocked ? lockMessage : undefined}
-              >
-                <Calendar className="mr-1.5 h-3.5 w-3.5" />
-                Ver agenda
-              </Button>
-              <Button
-                size="sm"
-                className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
-                onClick={() => onCreateFromOutlook(pendingMeetings[0])}
-                disabled={selectedDateLocked}
-                title={selectedDateLocked ? lockMessage : undefined}
-              >
-                <Zap className="mr-1.5 h-3.5 w-3.5" />
-                Importar próxima
-              </Button>
-            </div>
-          </div>
-
-          {/* Meeting chips */}
-          {pendingMeetings.length > 1 && (
-            <TooltipProvider delayDuration={0}>
-              <div className="border-t border-border/40 px-5 py-3">
-                <div className="flex flex-wrap gap-2">
-                  {pendingMeetings.slice(0, 5).map((meeting) => (
-                    <Tooltip key={meeting.id}>
-                      <TooltipTrigger asChild>
-                        <motion.button
-                          type="button"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => onCreateFromOutlook(meeting)}
-                          disabled={selectedDateLocked}
-                          className={cn(
-                            "group flex items-center gap-2 rounded-lg border border-border/60 bg-muted/20 px-2.5 py-1.5 text-xs text-foreground/80 transition-colors",
-                            "hover:border-brand-500/30 hover:bg-brand-500/5 hover:text-brand-600 dark:hover:text-brand-400",
-                            selectedDateLocked &&
-                              "opacity-50 cursor-not-allowed",
-                          )}
-                        >
-                          <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm bg-muted/50 group-hover:bg-brand-500/10">
-                            <CalendarClock className="h-2.5 w-2.5 text-muted-foreground group-hover:text-brand-500" />
-                          </div>
-                          <span className="max-w-[220px] truncate font-medium">
-                            {meeting.subject || "Sem título"}
-                          </span>
-                        </motion.button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom" className="max-w-xs">
-                        {meeting.subject || "Sem título"}
-                      </TooltipContent>
-                    </Tooltip>
-                  ))}
-                  {pendingMeetings.length > 5 && (
-                    <div className="flex items-center rounded-lg border border-border/40 bg-muted/10 px-2 py-1.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                      +{pendingMeetings.length - 5} MAIS
-                    </div>
-                  )}
-                </div>
-              </div>
-            </TooltipProvider>
-          )}
-        </section>
-      )}
+      {/* What you actually did — meetings normalized out of the calendar */}
+      <DayCollaborationPanel
+        date={selectedDateStr}
+        locked={selectedDateLocked}
+        lockMessage={lockMessage}
+        onAdjust={onAdjustMeeting}
+      />
 
       {/* Entries list */}
       <section className="rounded-[28px] border border-border/60 bg-card/85 shadow-sm">

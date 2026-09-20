@@ -18,6 +18,10 @@ preciso configurar tudo para começar a usar.
 | 3 | **Comandos no chat** | `@OptSolv timer start`, `hoje`, `semana`… direto no Teams | Admin, uma vez |
 | 4 | **Status sincronizado** | Timer rodando vira `⏱️ Focado: OPT-101` no seu status | Consentimento do tenant + toggle de cada pessoa |
 
+> O recurso #2 também lista **as reuniões que você teve e ainda não lançou**.
+> Essa detecção é do módulo Registro por Colaboração — veja
+> [`docs/collaboration.md`](collaboration.md).
+
 **Comece pelo #2** — é o que dá mais valor com menos esforço: funciona por
 e-mail sem nenhuma configuração no Teams.
 
@@ -323,3 +327,4 @@ Se não aparecer, confira nesta ordem:
 | Preferências pessoais | Colunas `teams_*` e `evening_digest_enabled` em `user` |
 | Histórico de envios | `teams_notification_log` (garante idempotência por dia) |
 | Código | `src/lib/teams/`, `src/app/api/teams/`, `src/app/api/cron/teams-*` |
+| Detecção de reuniões do digest | `src/lib/collaboration/` — ver [`docs/collaboration.md`](collaboration.md) |
