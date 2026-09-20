@@ -125,12 +125,12 @@ export function Hero() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
             >
-              <span className="inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-1.5 text-xs font-medium text-brand-400">
+              <span className="inline-flex items-center gap-2 rounded-full border border-brand-500/30 bg-brand-500/10 px-4 py-1.5 text-xs font-medium text-brand-400 backdrop-blur-md">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-500 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-500" />
                 </span>
-                Novo · Hackathon OptSolv 2026
+                Plataforma Corporativa OptSolv · v1.8 Oficial
               </span>
             </motion.div>
 
@@ -157,8 +157,8 @@ export function Hero() {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="mt-6 max-w-lg text-lg leading-relaxed text-white/60"
             >
-              Registro inteligente de tempo integrado ao Azure DevOps — feito
-              para o time OptSolv.
+              Registro inteligente e governança de tempo integrado nativamente
+              ao Azure DevOps — desenvolvido sob medida para a OptSolv.
             </motion.p>
 
             {/* CTAs */}
@@ -170,7 +170,7 @@ export function Hero() {
             >
               <Button
                 size="lg"
-                className="shimmer-btn gap-2 bg-brand-500 px-8 text-base font-semibold text-white hover:bg-brand-600"
+                className="shimmer-btn gap-2 bg-brand-500 px-8 text-base font-semibold text-white hover:bg-brand-600 shadow-lg shadow-brand-500/25"
                 asChild
               >
                 <Link href="/login">
@@ -186,7 +186,7 @@ export function Hero() {
               >
                 <a href="#video-demo">
                   <Play className="h-4 w-4" />
-                  Ver Demo
+                  Ver Demo (90s)
                 </a>
               </Button>
             </motion.div>
@@ -206,19 +206,32 @@ export function Hero() {
                 <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
                 <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                 <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
-                <div className="ml-4 flex-1 rounded-md bg-white/5 px-3 py-1 text-center text-[10px] text-white/30">
-                  opt-time.optsolv.com.br
+                <div className="ml-4 flex-1 rounded-md bg-white/5 px-3 py-1 text-center font-mono text-[10px] text-white/40">
+                  time.optsolv.com.br/dashboard
                 </div>
               </div>
 
               {/* Dashboard mockup content */}
               <div className="space-y-3 bg-[#0a0a0a] p-4">
-                {/* Header bar */}
-                <div className="flex items-center justify-between">
-                  <div className="h-6 w-32 rounded bg-white/5" />
-                  <div className="flex gap-2">
-                    <div className="h-6 w-6 rounded bg-brand-500/20" />
-                    <div className="h-6 w-6 rounded-full bg-white/10" />
+                {/* Header bar with live timer badge */}
+                <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-green-500" />
+                    </span>
+                    <span className="font-mono text-xs font-semibold text-white">
+                      01:42:15
+                    </span>
+                    <span className="rounded bg-brand-500/15 px-1.5 py-0.5 font-mono text-[9px] text-brand-400">
+                      AB#2184
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/50">
+                      Azure DevOps Sync
+                    </span>
+                    <div className="h-2 w-2 rounded-full bg-blue-500" />
                   </div>
                 </div>
 
@@ -227,15 +240,19 @@ export function Hero() {
                   {[
                     {
                       label: "Hoje",
-                      value: "5h 30m",
-                      color: "bg-brand-500/20",
+                      value: "6h 15m",
+                      color: "bg-brand-500",
                     },
                     {
                       label: "Semana",
-                      value: "35.5h",
-                      color: "bg-blue-500/20",
+                      value: "38.5h",
+                      color: "bg-blue-500",
                     },
-                    { label: "Projetos", value: "4", color: "bg-green-500/20" },
+                    {
+                      label: "Projetos",
+                      value: "5 Ativos",
+                      color: "bg-green-500",
+                    },
                   ].map((card) => (
                     <div
                       key={card.label}
@@ -248,58 +265,59 @@ export function Hero() {
                         {card.value}
                       </div>
                       <div
-                        className={`mt-1.5 h-1 w-2/3 rounded-full ${card.color}`}
+                        className={`mt-1.5 h-1 w-2/3 rounded-full ${card.color} opacity-60`}
                       />
                     </div>
                   ))}
                 </div>
 
-                {/* Chart mockup */}
-                <div className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                  <div className="mb-2 h-3 w-24 rounded bg-white/10" />
-                  <div className="flex items-end gap-1.5">
-                    {[
-                      { h: 60, id: "bar-mon" },
-                      { h: 80, id: "bar-tue" },
-                      { h: 50, id: "bar-wed" },
-                      { h: 90, id: "bar-thu" },
-                      { h: 40, id: "bar-fri" },
-                    ].map(({ h, id }, i) => (
-                      <motion.div
-                        key={id}
-                        initial={{ height: 0 }}
-                        animate={{ height: `${h}%` }}
-                        transition={{ duration: 0.5, delay: 0.5 + i * 0.1 }}
-                        className="flex-1 rounded-t bg-brand-500/40"
-                        style={{ maxHeight: 60 }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {/* Entry rows mockup */}
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={`entry-${i}`}
-                    className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] p-2"
-                  >
+                {/* Recent entries mockup with real enterprise context */}
+                <div className="space-y-1.5">
+                  {[
+                    {
+                      project: "OptSolv Platform · Core",
+                      task: "Sincronização Azure DevOps Pipelines & MCP Server",
+                      time: "3h 30m",
+                      tag: "AB#1924",
+                      color: "#f97316",
+                    },
+                    {
+                      project: "Executive HQ · Analytics",
+                      task: "Magic Reconstructor & Gestão de Times",
+                      time: "2h 45m",
+                      tag: "AB#1855",
+                      color: "#3b82f6",
+                    },
+                  ].map((item) => (
                     <div
-                      className="h-2 w-2 rounded-full"
-                      style={{
-                        backgroundColor: ["#f97316", "#3b82f6", "#22c55e"][
-                          i - 1
-                        ],
-                      }}
-                    />
-                    <div className="flex-1">
-                      <div className="h-2.5 w-3/4 rounded bg-white/10" />
-                      <div className="mt-1 h-2 w-1/2 rounded bg-white/5" />
+                      key={item.task}
+                      className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] p-2.5 transition-colors hover:border-white/10"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-2 w-2 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium text-white">
+                              {item.project}
+                            </span>
+                            <span className="font-mono text-[9px] text-white/40">
+                              {item.tag}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-white/50">
+                            {item.task}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="font-mono text-xs font-semibold text-white/80">
+                        {item.time}
+                      </span>
                     </div>
-                    <div className="font-mono text-[10px] text-white/40">
-                      {["3h", "2h", "1.5h"][i - 1]}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 

@@ -292,4 +292,27 @@
       transform: translateY(-20px);
     }
   }
+
+  /* Lenis smooth scrolling styles */
+  html.lenis,
+  html.lenis-smooth {
+    scroll-behavior: auto;
+  }
+
+  html.lenis body,
+  html.lenis-smooth body {
+    height: auto;
+  }
+
+  .lenis.lenis-smooth [data-lenis-prevent] {
+    overscroll-behavior: contain;
+  }
+
+  .lenis.lenis-stopped {
+    overflow: clip;
+  }
+
+  .lenis.lenis-scrolling iframe {
+    pointer-events: none;
+  }
 }
