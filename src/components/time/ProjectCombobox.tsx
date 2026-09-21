@@ -22,6 +22,7 @@ interface ProjectOption {
   id: string;
   name: string;
   color: string;
+  code?: string;
   members?: { userId: string }[];
 }
 
@@ -31,6 +32,7 @@ interface EmptyOption {
 }
 
 interface ProjectComboboxProps {
+  id?: string;
   projects: ProjectOption[];
   value: string;
   onChange: (projectId: string) => void;
@@ -44,6 +46,7 @@ interface ProjectComboboxProps {
 }
 
 export function ProjectCombobox({
+  id,
   projects,
   value,
   onChange,
@@ -84,6 +87,7 @@ export function ProjectCombobox({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Comp
+          id={id}
           type="button"
           {...(variant !== "none" ? { variant } : {})}
           role="combobox"
@@ -148,7 +152,7 @@ export function ProjectCombobox({
             {sortedProjects.map((project) => (
               <CommandItem
                 key={project.id}
-                value={`${project.name} ${project.id}`.toLowerCase()}
+                value={`${project.name} ${project.code ?? ""} ${project.id}`.toLowerCase()}
                 onSelect={() => {
                   onChange(project.id);
                   setOpen(false);
@@ -165,6 +169,11 @@ export function ProjectCombobox({
                   style={{ backgroundColor: project.color }}
                 />
                 <span className="truncate">{project.name}</span>
+                {project.code ? (
+                  <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                    {project.code}
+                  </span>
+                ) : null}
               </CommandItem>
             ))}
           </CommandList>

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -646,25 +647,14 @@ export function PortalLinksTab() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="portal-project">Projeto</Label>
-                    <Select value={projectId} onValueChange={setProjectId}>
-                      <SelectTrigger id="portal-project" className="w-full">
-                        <SelectValue placeholder="Selecione o projeto" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            <span className="flex items-center gap-2">
-                              <span
-                                className="size-2 rounded-full"
-                                style={{ backgroundColor: project.color }}
-                                aria-hidden="true"
-                              />
-                              {project.name}
-                            </span>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <ProjectCombobox
+                      id="portal-project"
+                      projects={projects}
+                      value={projectId}
+                      onChange={setProjectId}
+                      placeholder="Buscar ou selecionar projeto..."
+                      byPassMemberFilter={true}
+                    />
                   </div>
 
                   <div className="space-y-2">
