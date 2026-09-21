@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, GitCommit, Sparkles, Tag } from "lucide-react";
+import Image from "next/image";
 import type { SlideProps } from "@/components/portal/presentation/types";
 import { Badge } from "@/components/ui/badge";
 import { formatDateLabel, formatDuration, getInitials } from "@/lib/utils";
@@ -122,11 +123,22 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
               {/* Author and metric footer */}
               <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
                 <div className="flex items-center gap-2">
-                  <div className="flex size-6 items-center justify-center rounded-full bg-brand-500/20 text-[10px] font-bold text-brand-300 ring-1 ring-white/10">
-                    {getInitials(item.member)}
-                  </div>
-                  <span className="text-xs text-neutral-400 truncate max-w-[120px]">
-                    {item.member}
+                  {item.userImage ? (
+                    <Image
+                      src={item.userImage}
+                      alt={item.member}
+                      width={24}
+                      height={24}
+                      unoptimized
+                      className="size-6 shrink-0 rounded-full object-cover ring-1 ring-white/10"
+                    />
+                  ) : (
+                    <div className="flex size-6 items-center justify-center rounded-full bg-brand-500/20 text-[10px] font-bold text-brand-300 ring-1 ring-white/10">
+                      {getInitials(item.member)}
+                    </div>
+                  )}
+                  <span className="text-xs text-neutral-400 truncate max-w-[140px]">
+                    {item.member.split(" | ")[0].trim()}
                   </span>
                 </div>
 

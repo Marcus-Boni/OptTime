@@ -109,6 +109,7 @@ export async function buildPortalSnapshot(
         .select({
           userId: timeEntry.userId,
           name: user.name,
+          image: user.image,
           minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
           count: sql<number>`COUNT(*)::int`,
         })
@@ -120,13 +121,14 @@ export async function buildPortalSnapshot(
             isNull(timeEntry.deletedAt),
           ),
         )
-        .groupBy(timeEntry.userId, user.name),
+        .groupBy(timeEntry.userId, user.name, user.image),
       db
         .select({
           date: timeEntry.date,
           description: timeEntry.description,
           duration: timeEntry.duration,
           userName: user.name,
+          userImage: user.image,
           azureWorkItemId: timeEntry.azureWorkItemId,
           azureWorkItemTitle: timeEntry.azureWorkItemTitle,
         })
@@ -270,6 +272,7 @@ export async function buildPortalSnapshot(
     weeklySeries,
     team: sortedMembers.map((member, index) => ({
       name: link.showTeam ? member.name : anonymizeName(index),
+      image: link.showTeam ? member.image : null,
       minutes: isDeliverablesMode ? 0 : Number(member.minutes),
       contributionsCount: Number(member.count ?? 0),
     })),
@@ -280,6 +283,7 @@ export async function buildPortalSnapshot(
       member:
         memberDisplayName.get(entry.userName) ??
         (link.showTeam ? entry.userName : "Equipe"),
+      userImage: link.showTeam ? entry.userImage : null,
       azureWorkItemId: entry.azureWorkItemId,
       azureWorkItemTitle: entry.azureWorkItemTitle,
     })),

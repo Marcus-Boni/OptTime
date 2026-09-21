@@ -412,6 +412,7 @@ type ViewMode = "overview" | "timeline" | "team";
 
 interface TeamMemberWithMeta {
   name: string;
+  image?: string | null;
   minutes: number;
   contributionsCount?: number;
   parsed: ParsedMemberName;
@@ -518,14 +519,25 @@ function TeamDedicationCard({
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div
-                      className={cn(
-                        "flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold shadow-xs",
-                        member.palette.light,
-                      )}
-                    >
-                      {getInitials(member.parsed.displayName)}
-                    </div>
+                    {member.image ? (
+                      <Image
+                        src={member.image}
+                        alt={member.parsed.displayName}
+                        width={32}
+                        height={32}
+                        unoptimized
+                        className="size-8 shrink-0 rounded-lg object-cover shadow-xs"
+                      />
+                    ) : (
+                      <div
+                        className={cn(
+                          "flex size-8 shrink-0 items-center justify-center rounded-lg font-mono text-xs font-bold shadow-xs",
+                          member.palette.light,
+                        )}
+                      >
+                        {getInitials(member.parsed.displayName)}
+                      </div>
+                    )}
                     <div className="min-w-0 flex-1">
                       <p
                         className="truncate text-sm font-semibold text-foreground"
@@ -842,14 +854,25 @@ function RecentActivityCard({
                         className="group flex flex-col gap-2 rounded-xl border border-border/60 bg-muted/20 p-3.5 transition-colors hover:border-brand-500/30 hover:bg-muted/40 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
                       >
                         <div className="flex items-start gap-3 min-w-0">
-                          <div
-                            className={cn(
-                              "flex size-7 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold shadow-xs",
-                              palette.light,
-                            )}
-                          >
-                            {getInitials(parsed.displayName)}
-                          </div>
+                          {item.userImage || memberMeta?.image ? (
+                            <Image
+                              src={item.userImage || memberMeta?.image || ""}
+                              alt={parsed.displayName}
+                              width={28}
+                              height={28}
+                              unoptimized
+                              className="size-7 shrink-0 rounded-lg object-cover shadow-xs"
+                            />
+                          ) : (
+                            <div
+                              className={cn(
+                                "flex size-7 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold shadow-xs",
+                                palette.light,
+                              )}
+                            >
+                              {getInitials(parsed.displayName)}
+                            </div>
+                          )}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <span className="text-sm font-semibold text-foreground">
@@ -1157,8 +1180,7 @@ function LiveSnapshot({
               style={{ backgroundColor: snapshot.color }}
               aria-hidden="true"
             />
-            <span className="font-mono">{snapshot.projectCode}</span>
-            {snapshot.clientName ? <span>· {snapshot.clientName}</span> : null}
+            {snapshot.clientName ? <span>{snapshot.clientName}</span> : null}
             {snapshot.periodStart || snapshot.periodEnd ? (
               <span className="flex items-center gap-1">
                 <CalendarRange className="size-3.5" aria-hidden="true" />

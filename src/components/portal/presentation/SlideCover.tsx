@@ -167,27 +167,23 @@ export function SlideCover({ snapshot, isDeliverablesMode }: SlideProps) {
         transition={{ duration: 0.5, delay: 0.1 }}
         className="my-auto max-w-4xl space-y-6 py-8"
       >
-        {/* Project code & client */}
+        {/* Client & Period */}
         <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-400">
           <span
             className="size-3 rounded-full ring-2 ring-white/20"
             style={{ backgroundColor: snapshot.color }}
             aria-hidden="true"
           />
-          <span className="font-mono font-semibold tracking-wider text-neutral-300">
-            {snapshot.projectCode}
-          </span>
           {snapshot.clientName ? (
-            <>
-              <span className="text-neutral-400">/</span>
-              <span className="text-white font-medium">
-                {snapshot.clientName}
-              </span>
-            </>
+            <span className="text-white font-medium">
+              {snapshot.clientName}
+            </span>
           ) : null}
           {periodLabel ? (
             <>
-              <span className="text-neutral-400">/</span>
+              {snapshot.clientName ? (
+                <span className="text-neutral-400">/</span>
+              ) : null}
               {periodLabel}
             </>
           ) : null}

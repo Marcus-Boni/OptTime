@@ -2,6 +2,7 @@
 
 import { motion, useReducedMotion } from "framer-motion";
 import { Award, Users } from "lucide-react";
+import Image from "next/image";
 import { useMemo } from "react";
 import type { SlideProps } from "@/components/portal/presentation/types";
 import { Badge } from "@/components/ui/badge";
@@ -151,6 +152,10 @@ export function SlideTeam({ snapshot, isDeliverablesMode }: SlideProps) {
                   ? Math.round((member.minutes / totalMinutes) * 100)
                   : 0;
 
+              const cleanName = member.name.includes(" | ")
+                ? member.name.split(" | ")[0].trim()
+                : member.name.trim();
+
               return (
                 <motion.div
                   key={member.name}
@@ -160,14 +165,25 @@ export function SlideTeam({ snapshot, isDeliverablesMode }: SlideProps) {
                   className="rounded-2xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-md space-y-4 hover:border-brand-500/30 transition-all"
                 >
                   <div className="flex items-center gap-3.5">
-                    <div
-                      className={`flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${gradientClass} text-sm font-bold text-white shadow-lg ring-2 ring-white/20`}
-                    >
-                      {getInitials(member.name)}
-                    </div>
+                    {member.image ? (
+                      <Image
+                        src={member.image}
+                        alt={cleanName}
+                        width={48}
+                        height={48}
+                        unoptimized
+                        className="size-12 shrink-0 rounded-2xl object-cover shadow-lg ring-2 ring-white/20"
+                      />
+                    ) : (
+                      <div
+                        className={`flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${gradientClass} text-sm font-bold text-white shadow-lg ring-2 ring-white/20`}
+                      >
+                        {getInitials(cleanName)}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <p className="font-display text-base font-semibold text-white truncate">
-                        {member.name}
+                        {cleanName}
                       </p>
                       <p className="text-xs text-neutral-400">
                         Especialista em Soluções Digitais

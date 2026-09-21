@@ -269,6 +269,8 @@ export interface PortalActivityItem {
   minutes: number;
   /** Team member display — anonymized initials when showTeam=false */
   member: string;
+  /** Team member Microsoft/user avatar image URL or base64 */
+  userImage?: string | null;
   /** Azure DevOps Work Item numeric ID if available */
   azureWorkItemId?: number | null;
   /** Azure DevOps Work Item title if available */
@@ -321,7 +323,12 @@ export interface PortalSnapshot {
     teamSize: number;
   };
   weeklySeries: PortalWeeklyPoint[];
-  team: Array<{ name: string; minutes: number; contributionsCount?: number }>;
+  team: Array<{
+    name: string;
+    image?: string | null;
+    minutes: number;
+    contributionsCount?: number;
+  }>;
   recentActivity: PortalActivityItem[];
   generatedAt: string;
 }
