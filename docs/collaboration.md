@@ -133,6 +133,10 @@ de criar a app setting em produção) do que previne.
 
 ### Campos novos na agenda
 
+`originalStart` entra no `$select` por conta de [Meu Tempo](my-time.md): é o
+único jeito de distinguir uma ocorrência **remarcada** de uma apenas editada.
+
+
 O `$select` de `fetchOutlookEvents` passou a pedir `isOrganizer`,
 `responseStatus`, `showAs`, `sensitivity`, `type`, `seriesMasterId`,
 `isOnlineMeeting`, `onlineMeetingProvider` e `attendees` — todos cobertos pelo
@@ -229,6 +233,7 @@ Microsoft, são **cobradas por mensagem lida** e dão acesso a conteúdo.
 | `src/lib/collaboration/analytics.ts` | Viva Insights + parser de duração ISO-8601 |
 | `src/lib/collaboration/mailbox.ts` | horário de trabalho, fuso Windows→IANA, ausência, meta do dia |
 | `src/lib/collaboration/service.ts` | composição do dia (agenda + resumo + lançamentos) |
+| `src/lib/collaboration/period*.ts` | a camada de período — ver [Meu Tempo](my-time.md) |
 | `src/lib/collaboration/background-token.ts` | token do Graph para cron, sem sessão |
 | `src/app/api/collaboration/day/route.ts` | `GET /api/collaboration/day?date=` |
 | `src/components/collaboration/DayCollaborationPanel.tsx` | o painel do dia (multi-seleção) |
@@ -267,6 +272,10 @@ marcado, o painel pede só o que falta fazer.
   também parou de propor reunião cancelada, recusada ou sobreposta.
 - **Digest vespertino** (`src/lib/teams/evening.ts`): o card das 17h30 lista as
   reuniões detectadas e ainda não lançadas.
+- **[Meu Tempo](my-time.md)**: a mesma normalização aplicada a uma semana ou a
+  um mês, com o raio-X de canceladas e remarcadas, com quem o tempo foi e o
+  assistente. É a superfície de período desta camada — o painel do dia leva até
+  lá pelo link "Ver o período".
 - **Onboarding**: passo `collaboration` no tour `time-tracking`.
 
 ### Escrita
