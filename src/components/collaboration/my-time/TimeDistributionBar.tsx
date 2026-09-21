@@ -101,7 +101,10 @@ export function TimeDistributionBar({
   if (total === 0) return null;
 
   return (
-    <div className="space-y-3" data-tour="my-time-distribution">
+    <div
+      className="space-y-3 rounded-2xl border border-border bg-card/60 px-5 py-4"
+      data-tour="my-time-distribution"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-base font-bold text-foreground">
           O seu tempo comprometido

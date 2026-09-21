@@ -36,6 +36,14 @@ import {
   shiftRange,
   startOfWeek,
 } from "../src/lib/collaboration/period-presets";
+import {
+  buildAzureDevOpsStatus,
+  buildCalendarStatus,
+  buildMailboxStatus,
+  buildPortraitStatus,
+  issuesOf,
+  needsReauth,
+} from "../src/lib/collaboration/source-status";
 import type {
   CollaborationPeriod,
   MeetingExclusion,
@@ -700,6 +708,11 @@ function buildPeriod(
       { kind: "meeting", minutes: 240 },
     ],
     sources: { calendar: true, portrait: true, mailbox: true },
+    statuses: [
+      buildCalendarStatus("ok"),
+      buildPortraitStatus("ok"),
+      buildMailboxStatus("ok"),
+    ],
     warnings: [],
     needsReauth: false,
     ...overrides,
@@ -951,6 +964,69 @@ function verifyNarrative(): void {
   );
 }
 
+// ─── Source health ────────────────────────────────────────────────────
+
+function verifySourceStatus(): void {
+  const healthy = [
+    buildCalendarStatus("ok"),
+    buildPortraitStatus("ok"),
+    buildMailboxStatus("ok"),
+    buildAzureDevOpsStatus("ok"),
+  ];
+  check("a healthy period reports no issues", issuesOf(healthy).length === 0);
+  check("and offers no sign-in prompt", !needsReauth(healthy));
+
+  // A 401/403 on the calendar is a session older than the consent, not an
+  // outage. Telling someone to wait when a button would fix it is the worse
+  // of the two mistakes.
+  const stale = buildCalendarStatus("auth_failed");
+  check("an auth failure asks for a new sign-in", stale.action === "reauth");
+  check("and is not reported as an outage", stale.health === "needs_reauth");
+
+  const outage = buildCalendarStatus("unavailable");
+  check("a real outage offers no button", outage.action === null);
+
+  // An unlicensed account cannot fix anything by signing in again, so it must
+  // never be offered that button.
+  const unlicensed = buildPortraitStatus("unlicensed");
+  check(
+    "an unlicensed Viva account is told it is a licence, not a login",
+    unlicensed.health === "unlicensed" && unlicensed.action === null,
+  );
+
+  const noAzure = buildAzureDevOpsStatus("not_configured");
+  check(
+    "a missing Azure DevOps points at the integration page",
+    noAzure.action === "connect_azure_devops",
+  );
+  check(
+    "and says the rest of the screen still works",
+    noAzure.detail.toLowerCase().includes("não depende dele"),
+  );
+
+  for (const status of [
+    stale,
+    outage,
+    unlicensed,
+    noAzure,
+    buildMailboxStatus("missing_scope"),
+    buildAzureDevOpsStatus("bad_token"),
+  ]) {
+    check(
+      "every issue carries a label and a sentence the person can read",
+      status.label.length > 0 && status.detail.length > 20,
+      status.id,
+    );
+  }
+
+  check(
+    "reauth is detected across every Microsoft source",
+    needsReauth([buildMailboxStatus("missing_scope")]) &&
+      needsReauth([buildPortraitStatus("missing_scope")]) &&
+      needsReauth([buildCalendarStatus("no_token")]),
+  );
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────
 
 function main(): void {
@@ -964,6 +1040,7 @@ function main(): void {
   verifyLabels();
   verifyInsights();
   verifyRhythm();
+  verifySourceStatus();
   verifyNarrative();
 
   if (problems.length > 0) {

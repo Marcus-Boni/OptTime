@@ -17,9 +17,9 @@ import { PeriodPicker } from "@/components/collaboration/my-time/PeriodPicker";
 import { QuickLogDialog } from "@/components/collaboration/my-time/QuickLogDialog";
 import { RhythmBadge } from "@/components/collaboration/my-time/RhythmBadge";
 import { RitualsCard } from "@/components/collaboration/my-time/RitualsCard";
+import { SourceStatusPanel } from "@/components/collaboration/my-time/SourceStatusPanel";
 import { TimeDistributionBar } from "@/components/collaboration/my-time/TimeDistributionBar";
 import { TimeFlowChart } from "@/components/collaboration/my-time/TimeFlowChart";
-import { ReauthNotice } from "@/components/collaboration/ReauthNotice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -267,20 +267,25 @@ export function MyTimeClient() {
 
         {period && (
           <>
-            {period.needsReauth && (
-              <Section index={1}>
-                <ReauthNotice feature="o seu resumo completo do Microsoft 365" />
-              </Section>
-            )}
+            {/* Every integration that did not answer, with the button that
+                fixes it — at the top, not in a footnote. */}
+            <Section index={1}>
+              <SourceStatusPanel
+                statuses={
+                  actions
+                    ? [...period.statuses, actions.status]
+                    : period.statuses
+                }
+                isLoadingActions={isLoadingActions}
+              />
+            </Section>
 
             {/* ── Camada 2: para onde o tempo comprometido foi ── */}
             <Section index={1}>
-              <div className="rounded-2xl border border-border bg-card/60 px-5 py-4">
-                <TimeDistributionBar
-                  period={period}
-                  onLogMeetings={handleQuickAction}
-                />
-              </div>
+              <TimeDistributionBar
+                period={period}
+                onLogMeetings={handleQuickAction}
+              />
             </Section>
 
             <Section index={2}>
@@ -430,20 +435,6 @@ export function MyTimeClient() {
                   />
                 </div>
               </Section>
-            )}
-
-            {period.warnings.length > 0 && (
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                {period.warnings.map((warning) => (
-                  <li key={warning} className="flex items-start gap-1.5">
-                    <AlertCircle
-                      className="mt-0.5 size-3 shrink-0"
-                      aria-hidden="true"
-                    />
-                    {warning}
-                  </li>
-                ))}
-              </ul>
             )}
 
             <QuickLogDialog

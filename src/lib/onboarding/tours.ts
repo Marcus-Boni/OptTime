@@ -237,6 +237,15 @@ export const TOURS: readonly TourDefinition[] = [
         optional: false,
       },
       {
+        id: "sources",
+        title: "Quando uma integração não responde",
+        description:
+          "Se a agenda, o Viva ou o Azure DevOps ficarem fora do ar, aparece um aviso aqui no topo dizendo qual foi e o que fazer — com o botão junto. Nada quebra: a tela segue funcionando com as fontes que responderam, e os números que dependem da fonte ausente aparecem como traço em vez de zero.",
+        target: '[data-tour="my-time-sources"]',
+        placement: "bottom",
+        hint: "Quem não usa Azure DevOps pode ignorar o aviso dele — o resto da tela não depende disso.",
+      },
+      {
         id: "distribution",
         title: "O seu tempo comprometido, numa barra só",
         description:

@@ -11,6 +11,7 @@ const segmentLabels: Record<string, string> = {
   time: "Registrar Tempo",
   timesheets: "Timesheets",
   journey: "Minha Jornada",
+  "my-time": "Meu Tempo",
   approvals: "Aprovações",
   calendar: "Calendário",
   projects: "Projetos",

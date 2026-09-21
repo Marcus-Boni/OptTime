@@ -101,7 +101,7 @@ ancoram no atributo `data-tour`, que é um **contrato público** do componente.
 | `timesheets-list`, `timesheets-submit`                        | `time/TimesheetsView.tsx`       |
 | `journey-level`, `journey-insights`, `journey-balance`, `journey-achievements`, `journey-mural` | `gamification/journey-client.tsx` |
 | `time-collaboration`                                          | `collaboration/DayCollaborationPanel.tsx` |
-| `my-time-distribution`, `my-time-kpis`, `my-time-assistant`, `my-time-daily`, `my-time-portrait` | `collaboration/my-time/*` |
+| `my-time-sources`, `my-time-distribution`, `my-time-kpis`, `my-time-assistant`, `my-time-daily`, `my-time-portrait` | `collaboration/my-time/*` |
 | `my-time-tabs`, `my-time-tab-agenda`, `my-time-tab-people`, `my-time-tab-delivery` | `collaboration/my-time/MyTimeClient.tsx` |
 | `my-time-ledger`, `my-time-shape`, `my-time-people`, `my-time-rituals`, `my-time-projects`, `my-time-activity` | `collaboration/my-time/*` (dentro das abas) |
 | `hq-tabs`, `hq-tab-radar`, `hq-tab-capacity`, `hq-tab-approvals`, `hq-tab-portal` | `hq/hq-client.tsx` |

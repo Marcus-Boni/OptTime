@@ -15,6 +15,10 @@ import { and, eq, inArray } from "drizzle-orm";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import {
+  type AzureDevOpsOutcome,
+  buildAzureDevOpsStatus,
+} from "@/lib/collaboration/source-status";
 import { db } from "@/lib/db";
 import { project, user } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
@@ -59,13 +63,24 @@ export async function buildPeriodActions({
   accessibleProjectIds,
 }: BuildPeriodActionsInput): Promise<PeriodActionsResult> {
   const warnings: string[] = [];
-  const empty: PeriodActionsResult = {
-    from,
-    to,
-    actions: [],
-    sources: { azureDevOps: false, azureDevOpsConfigured: false },
-    warnings,
-  };
+
+  function result(
+    outcome: AzureDevOpsOutcome,
+    actions: PeriodAction[] = [],
+    configured = false,
+  ): PeriodActionsResult {
+    return {
+      from,
+      to,
+      actions,
+      sources: {
+        azureDevOps: outcome === "ok",
+        azureDevOpsConfigured: configured,
+      },
+      status: buildAzureDevOpsStatus(outcome),
+      warnings,
+    };
+  }
 
   const [profile, azdoConfig] = await Promise.all([
     db.query.user.findFirst({
@@ -76,17 +91,14 @@ export async function buildPeriodActions({
   ]);
 
   const configured = Boolean(azdoConfig?.commitAuthor && azdoConfig?.pat);
-  if (!configured || !azdoConfig) return empty;
+  if (!configured || !azdoConfig) return result("not_configured");
 
   const pat = decrypt(azdoConfig.pat);
   if (!pat) {
     warnings.push(
       "Não foi possível ler o token do Azure DevOps. Reconfigure a integração.",
     );
-    return {
-      ...empty,
-      sources: { azureDevOps: false, azureDevOpsConfigured: true },
-    };
+    return result("bad_token", [], true);
   }
 
   const projectRows = await db.query.project.findMany({
@@ -102,12 +114,7 @@ export async function buildPeriodActions({
     columns: { name: true, azureProjectId: true },
   });
 
-  if (projectRows.length === 0) {
-    return {
-      ...empty,
-      sources: { azureDevOps: false, azureDevOpsConfigured: true },
-    };
-  }
+  if (projectRows.length === 0) return result("no_projects", [], true);
 
   const client = createAzureDevOpsClient(azdoConfig.organizationUrl, pat);
   const authorCandidates = buildCommitAuthorCandidates({
@@ -218,11 +225,9 @@ export async function buildPeriodActions({
 
   actions.sort((a, b) => b.timestampIso.localeCompare(a.timestampIso));
 
-  return {
-    from,
-    to,
-    actions: actions.slice(0, MAX_ACTIONS),
-    sources: { azureDevOps: anySucceeded, azureDevOpsConfigured: true },
-    warnings,
-  };
+  return result(
+    anySucceeded ? "ok" : "unavailable",
+    actions.slice(0, MAX_ACTIONS),
+    true,
+  );
 }

@@ -192,6 +192,40 @@ export interface DailyTarget {
 
 // ─── Composed response ────────────────────────────────────────────────
 
+// ─── Source health ────────────────────────────────────────────────────
+
+export type SourceId = "calendar" | "portrait" | "mailbox" | "azure_devops";
+
+export type SourceHealth =
+  /** Answered normally. */
+  | "ok"
+  /** Granted in Entra, but this session predates the consent. */
+  | "needs_reauth"
+  /** The person never connected this integration. */
+  | "not_connected"
+  /** Connected, but the account has no licence for it. */
+  | "unlicensed"
+  /** Transient: the service was unreachable or errored. */
+  | "unavailable";
+
+/**
+ * What each integration had to say, in a shape the UI can act on.
+ *
+ * Free-text warnings were the first attempt and failed the people who needed
+ * them most: "reconecte sua conta" ended up as grey 11px text at the bottom of
+ * a page of zeros. A status carries the reason *and* the button that fixes it.
+ */
+export interface SourceStatus {
+  id: SourceId;
+  /** How the person calls this integration. */
+  label: string;
+  health: SourceHealth;
+  /** One sentence explaining the consequence, not the HTTP error. */
+  detail: string;
+  /** What the UI should offer. `null` when there is nothing to do. */
+  action: "reauth" | "connect_azure_devops" | null;
+}
+
 export interface CollaborationSources {
   calendar: boolean;
   portrait: boolean;
@@ -392,6 +426,8 @@ export interface PeriodActionsResult {
   to: string;
   actions: PeriodAction[];
   sources: ActionSources;
+  /** Azure DevOps, in the same shape as the Microsoft sources. */
+  status: SourceStatus;
   warnings: string[];
 }
 
@@ -436,6 +472,8 @@ export interface CollaborationPeriod {
   allocations: ProjectAllocation[];
   slices: ActivitySlice[];
   sources: CollaborationSources;
+  /** One entry per Microsoft source, whether or not it answered. */
+  statuses: SourceStatus[];
   warnings: string[];
   needsReauth: boolean;
 }

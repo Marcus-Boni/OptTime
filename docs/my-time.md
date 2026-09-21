@@ -115,6 +115,43 @@ Duas armadilhas resolvidas junto:
 - O gráfico é afordância de mouse. A mesma seleção existe numa lista `sr-only`
   de botões logo abaixo, para teclado e leitor de tela.
 
+### Quando uma integração não responde
+
+A tela lê cinco fontes e qualquer uma pode faltar por um motivo que a pessoa
+resolve: sessão anterior ao admin consent, conta sem licença do Viva, Azure
+DevOps que ninguém configurou — e **a maioria da empresa não usa Azure DevOps**.
+
+A primeira versão reportava isso como avisos em texto livre, numa lista de
+11px **no rodapé da página** — embaixo de uma tela inteira de zeros, que é
+exatamente onde quem não está vendo os dados nunca vai olhar.
+
+Hoje cada fonte devolve um `SourceStatus` com a razão **e** o botão que
+resolve:
+
+| `health` | Significa | Ação oferecida |
+|---|---|---|
+| `ok` | respondeu | — |
+| `needs_reauth` | sessão anterior à permissão | **Entrar novamente** |
+| `not_connected` | nunca foi configurada | **Configurar** (Azure DevOps) |
+| `unlicensed` | conta sem licença | nenhuma — login não resolve |
+| `unavailable` | fora do ar agora | nenhuma — só esperar |
+
+O `SourceStatusPanel` fica **no topo**, abre expandido quando há algo que um
+novo login resolve e colapsado quando não há — um Azure DevOps ausente é
+normal para a maior parte da empresa e não deve abrir como alarme.
+
+Distinção que importa: um 401/403 na agenda é **sessão velha**, não queda.
+Mandar alguém esperar quando um botão resolveria é o pior dos dois erros, então
+`period-service` inspeciona o `MicrosoftConnectionError` e separa os casos.
+
+### Números que não podem mentir
+
+Sem a agenda, três KPIs deixam de afirmar coisas: *Carga de reuniões*, *Maior
+janela sem reunião* e *Sem registro* viram **traço**, não zero.
+
+"Sem registro: **em dia**" com a agenda fora do ar seria uma afirmação falsa —
+diria que toda reunião está apontada quando não conseguimos ler nenhuma.
+
 ### A armadilha do `ScrollArea`
 
 O `ScrollArea` deste projeto tem só `relative` no Root — **sem
@@ -394,10 +431,12 @@ requisições ao Graph, não sessenta.
 | `src/lib/collaboration/period-service.ts` | composição do período |
 | `src/lib/collaboration/actions-service.ts` | Azure DevOps do período |
 | `src/lib/collaboration/insights.ts` | os achados (puro) |
+| `src/lib/collaboration/source-status.ts` | saúde de cada integração (puro) |
 | `src/lib/collaboration/narrative.ts` | ficha de dados + IA + fallback local |
 | `src/app/(dashboard)/dashboard/my-time/page.tsx` | a rota |
 | `src/components/collaboration/my-time/MyTimeClient.tsx` | orquestração, seções e abas |
 | `src/components/collaboration/my-time/MyTimeGlossary.tsx` | o glossário da tela |
+| `src/components/collaboration/my-time/SourceStatusPanel.tsx` | o que não respondeu, e o botão que resolve |
 | `src/components/collaboration/my-time/AssistantFeed.tsx` | resumo curto + cartões de achado com ação |
 | `src/components/collaboration/my-time/QuickLogDialog.tsx` | o lote de "apontar em 1 clique" |
 | `src/components/collaboration/my-time/RhythmBadge.tsx` | a pílula de ritmo do período |
@@ -421,9 +460,9 @@ requisições ao Graph, não sessenta.
 
 - Tour próprio `my-time` (8 passos), na Central de Ajuda.
 - Tarefa `discover_my_time` na checklist "Primeiros Passos".
-- Âncoras usadas pelo tour: `my-time-distribution` (a barra), `my-time-kpis`,
-  `my-time-assistant`, `my-time-daily` (o gráfico), `my-time-tabs`,
-  `my-time-portrait`.
+- Âncoras usadas pelo tour: `my-time-sources`, `my-time-distribution` (a
+  barra), `my-time-kpis`, `my-time-assistant`, `my-time-daily` (o gráfico),
+  `my-time-tabs`, `my-time-portrait`.
 - Âncoras disponíveis mas não usadas hoje (ficam dentro das abas):
   `my-time-tab-agenda`, `my-time-tab-people`, `my-time-tab-delivery`,
   `my-time-ledger`, `my-time-shape`, `my-time-people`, `my-time-rituals`,
@@ -496,7 +535,8 @@ e-mail de participante.
 | Confundi "espaço livre" com "maior janela" | Um soma todas as janelas da semana, o outro é só a mais longa (§3.1) |
 | Não sei a diferença entre reunião, chamada e conversa | Botão "O que significa cada número", no topo da tela |
 | Nenhuma reunião no período | Confira se a sessão é anterior ao consent: o aviso "entrar de novo" aparece no topo |
-| Linha do tempo só com reuniões | Azure DevOps não configurado, ou PAT inválido — o rodapé do card diz |
+| Linha do tempo só com reuniões | Azure DevOps não configurado, ou PAT inválido — o painel de fontes no topo diz qual dos dois |
+| Tela cheia de traços em vez de zeros | A agenda não respondeu; o painel de fontes explica se é login ou queda |
 | Soma de "com quem" maior que o total | Correto e proposital: atribuição integral por participante (§4) |
 | "Fora do expediente" sumiu | Só aparece quando a caixa postal respondeu; sem ela não há janela confiável |
 | Resumo diferente dos números | Clique em **Refazer**: o texto estava em cache de antes dos dados mudarem |

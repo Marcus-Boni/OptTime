@@ -32,9 +32,20 @@ import {
   mergeSlices,
   weekdayOf,
 } from "@/lib/collaboration/period";
+import {
+  buildCalendarStatus,
+  buildMailboxStatus,
+  buildPortraitStatus,
+  type CalendarOutcome,
+  needsReauth,
+} from "@/lib/collaboration/source-status";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
-import { fetchOutlookEvents, type OutlookEvent } from "@/lib/microsoft-graph";
+import {
+  fetchOutlookEvents,
+  MicrosoftConnectionError,
+  type OutlookEvent,
+} from "@/lib/microsoft-graph";
 import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
 import { dateOfInstantInTimeZone, shiftDay } from "@/lib/timezone";
 import type {
@@ -183,6 +194,7 @@ export async function buildCollaborationPeriod({
 
   // ── Calendar: one read for the whole range ──
   let calendarAvailable = false;
+  let calendarOutcome: CalendarOutcome = accessToken ? "ok" : "no_token";
   let rawEvents: OutlookEvent[] = [];
 
   if (accessToken) {
@@ -197,6 +209,16 @@ export async function buildCollaborationPeriod({
     } catch (error: unknown) {
       console.error("[collaboration-period] calendar fetch failed:", error);
       warnings.push("Não foi possível ler sua agenda agora.");
+
+      // A 401/403 here is a session that predates the consent, not an outage.
+      // The difference matters: one is fixed by signing in again, the other
+      // only by waiting, and telling someone to wait when a button would fix
+      // it is the worst of the two mistakes.
+      calendarOutcome =
+        error instanceof MicrosoftConnectionError &&
+        error.code === "graph_auth_failed"
+          ? "auth_failed"
+          : "unavailable";
     }
   }
 
@@ -282,6 +304,14 @@ export async function buildCollaborationPeriod({
 
   const timeZone = personalTimeZone ?? "America/Sao_Paulo";
 
+  const statuses = [
+    buildCalendarStatus(calendarOutcome),
+    buildPortraitStatus(
+      skipPortrait ? null : (portraits?.availability ?? "no_token"),
+    ),
+    buildMailboxStatus(mailbox?.availability ?? "no_token"),
+  ];
+
   return {
     from,
     to,
@@ -312,12 +342,11 @@ export async function buildCollaborationPeriod({
       portrait: portraits?.availability === "ok",
       mailbox: mailboxOk,
     },
+    statuses,
     warnings,
     // A scope granted in Entra only reaches a session created by a *full*
     // login, so an existing session keeps getting 403 until the person signs
     // in again. The page turns this into one button.
-    needsReauth:
-      mailbox?.availability === "missing_scope" ||
-      portraits?.availability === "missing_scope",
+    needsReauth: needsReauth(statuses),
   };
 }

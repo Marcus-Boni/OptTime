@@ -140,6 +140,11 @@ export interface PeriodKpisProps {
 export function PeriodKpis({ period, onLogMeetings }: PeriodKpisProps) {
   const { totals, shape } = period;
 
+  // Without the calendar these three cannot be computed, and printing zeros
+  // would be worse than printing nothing: "sem registro: em dia" would claim
+  // every meeting is logged when we could not read a single one.
+  const hasCalendar = period.sources.calendar;
+
   const unloggedMinutes = Math.max(
     0,
     totals.meetingMinutes - totals.loggedMeetingMinutes,
@@ -177,49 +182,71 @@ export function PeriodKpis({ period, onLogMeetings }: PeriodKpisProps) {
 
       <Metric
         icon={Users}
-        tone={shape.meetingLoadPercent >= 50 ? "action" : "default"}
+        tone={
+          hasCalendar && shape.meetingLoadPercent >= 50 ? "action" : "default"
+        }
         label="Carga de reuniões"
-        value={formatDuration(totals.meetingMinutes)}
-        progress={shape.meetingLoadPercent}
+        value={hasCalendar ? formatDuration(totals.meetingMinutes) : "—"}
+        progress={hasCalendar ? shape.meetingLoadPercent : undefined}
         hint={
-          shape.contractedMinutes === 0
-            ? `${period.ledger.attended.count} reunião(ões) no período`
-            : outsideWindowMinutes > 0
-              ? `${formatDuration(shape.meetingMinutesInWindow)} dentro da jornada de ${formatDuration(shape.contractedMinutes)} (${shape.meetingLoadPercent}%) · ${formatDuration(outsideWindowMinutes)} fora do expediente`
-              : `${shape.meetingLoadPercent}% da sua jornada de ${formatDuration(shape.contractedMinutes)}, em ${period.ledger.attended.count} reunião(ões)`
+          !hasCalendar
+            ? "agenda indisponível neste período"
+            : shape.contractedMinutes === 0
+              ? `${period.ledger.attended.count} reunião(ões) no período`
+              : outsideWindowMinutes > 0
+                ? `${formatDuration(shape.meetingMinutesInWindow)} dentro da jornada de ${formatDuration(shape.contractedMinutes)} (${shape.meetingLoadPercent}%) · ${formatDuration(outsideWindowMinutes)} fora do expediente`
+                : `${shape.meetingLoadPercent}% da sua jornada de ${formatDuration(shape.contractedMinutes)}, em ${period.ledger.attended.count} reunião(ões)`
         }
         tooltip={`Duração já normalizada: reuniões sobrepostas são recortadas para que a mesma hora não conte duas vezes. A porcentagem é sobre a sua jornada de trabalho (${formatDuration(shape.contractedMinutes)} no período), e não sobre a janela ${formatClock(shape.windowStartMinute)}–${formatClock(shape.windowEndMinute)} do Outlook, que é maior porque inclui o almoço.`}
       />
 
       <Metric
         icon={Focus}
-        tone={shape.longestFocusBlockMinutes >= 240 ? "positive" : "default"}
+        tone={
+          hasCalendar && shape.longestFocusBlockMinutes >= 240
+            ? "positive"
+            : "default"
+        }
         label="Maior janela sem reunião"
         value={
-          shape.longestFocusBlockMinutes > 0
+          hasCalendar && shape.longestFocusBlockMinutes > 0
             ? formatDuration(shape.longestFocusBlockMinutes)
             : "—"
         }
         hint={
-          shape.longestFocusBlockDate
-            ? `o intervalo seguido mais longo, em ${shape.longestFocusBlockDate.split("-").reverse().join("/")}`
-            : "nenhum intervalo livre de 30min no expediente"
+          !hasCalendar
+            ? "agenda indisponível neste período"
+            : shape.longestFocusBlockDate
+              ? `o intervalo seguido mais longo, em ${shape.longestFocusBlockDate.split("-").reverse().join("/")}`
+              : "nenhum intervalo livre de 30min no expediente"
         }
         tooltip="UM intervalo: o mais longo do período sem nenhuma reunião, dentro do seu horário de trabalho. Não confunda com o 'espaço livre na agenda' do Microsoft 365, que soma TODAS as janelas livres da semana e por isso é muito maior."
       />
 
       <Metric
         icon={CalendarClock}
-        tone={unloggedMinutes > 0 ? "action" : "positive"}
+        tone={
+          !hasCalendar ? "default" : unloggedMinutes > 0 ? "action" : "positive"
+        }
         label="Sem registro"
-        value={unloggedMinutes > 0 ? formatDuration(unloggedMinutes) : "em dia"}
+        value={
+          !hasCalendar
+            ? "—"
+            : unloggedMinutes > 0
+              ? formatDuration(unloggedMinutes)
+              : "em dia"
+        }
         hint={
-          unloggedMinutes > 0
-            ? "reuniões que aconteceram e ainda não viraram apontamento"
-            : "toda reunião da agenda já está apontada"
+          !hasCalendar
+            ? "sem a agenda não dá para dizer o que falta apontar"
+            : unloggedMinutes > 0
+              ? "reuniões que aconteceram e ainda não viraram apontamento"
+              : "toda reunião da agenda já está apontada"
         }
         tooltip="Comparação entre as reuniões detectadas na agenda e as descrições já lançadas no seu registro de horas."
-        onAction={unloggedMinutes > 0 ? onLogMeetings : undefined}
+        onAction={
+          hasCalendar && unloggedMinutes > 0 ? onLogMeetings : undefined
+        }
         actionLabel="Apontar em 1 clique"
       />
     </div>
