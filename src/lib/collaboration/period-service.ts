@@ -12,6 +12,7 @@
 import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import { allowedEmailDomain } from "@/lib/auth";
 import { fetchPortraitRange } from "@/lib/collaboration/analytics";
+import { fetchTeamCallRecords } from "@/lib/collaboration/call-records";
 import {
   fetchMailboxProfile,
   isAwayOn,
@@ -42,6 +43,7 @@ import {
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
 import {
+  fetchMicrosoftObjectId,
   fetchOutlookEvents,
   MicrosoftConnectionError,
   type OutlookEvent,
@@ -51,6 +53,7 @@ import { dateOfInstantInTimeZone, shiftDay } from "@/lib/timezone";
 import type {
   ActivitySlice,
   CollaborationPeriod,
+  DayPortrait,
   MeetingExclusion,
   MeetingSignal,
   PeriodDay,
@@ -239,6 +242,16 @@ export async function buildCollaborationPeriod({
       ? null
       : await fetchPortraitRange(accessToken, from, to);
 
+  // ── Teams call records (Application permissions with fallback) ──
+  const userAadObjectId = accessToken
+    ? await fetchMicrosoftObjectId(accessToken)
+    : null;
+  const callRecordsResult = await fetchTeamCallRecords({
+    userAadObjectId,
+    from,
+    to,
+  });
+
   // ── Per-day fold ──
   const days: PeriodDay[] = [];
   const meetings: MeetingSignal[] = [];
@@ -283,6 +296,18 @@ export async function buildCollaborationPeriod({
     const portrait = portraits?.byDate.get(date) ?? null;
     if (portrait) sliceGroups.push(portrait.slices);
 
+    const callSlice = portrait?.slices.find((slice) => slice.kind === "call");
+    const vivaCallMinutes = callSlice ? callSlice.minutes : 0;
+    const dayCallRecords = callRecordsResult.calls.filter(
+      (c) => c.startIso.slice(0, 10) === date,
+    );
+    const callRecordsMinutes = dayCallRecords.reduce(
+      (sum, c) => sum + c.minutes,
+      0,
+    );
+    const dayCallMinutes =
+      callRecordsMinutes > 0 ? callRecordsMinutes : vivaCallMinutes;
+
     days.push({
       date,
       weekday: weekdayOf(date),
@@ -293,6 +318,7 @@ export async function buildCollaborationPeriod({
       meetingCount: dayMeetings.length,
       focusMinutes: portrait?.focusMinutes ?? 0,
       collaborationMinutes: portrait?.collaborationMinutes ?? 0,
+      callMinutes: dayCallMinutes,
       hasPortrait: portrait !== null,
       away,
     });
@@ -312,6 +338,13 @@ export async function buildCollaborationPeriod({
     buildMailboxStatus(mailbox?.availability ?? "no_token"),
   ];
 
+  const portraitsByDate: Record<string, DayPortrait> = {};
+  if (portraits?.byDate) {
+    for (const [d, p] of portraits.byDate) {
+      portraitsByDate[d] = p;
+    }
+  }
+
   return {
     from,
     to,
@@ -325,6 +358,7 @@ export async function buildCollaborationPeriod({
         (sum, day) => sum + day.collaborationMinutes,
         0,
       ),
+      callMinutes: days.reduce((sum, day) => sum + day.callMinutes, 0),
       focusMinutes: days.reduce((sum, day) => sum + day.focusMinutes, 0),
       loggedMeetingMinutes,
       workingDays: days.filter((day) => day.isWorkingDay).length,
@@ -332,11 +366,13 @@ export async function buildCollaborationPeriod({
     },
     ledger: buildMeetingLedger(meetings, exclusions),
     meetings,
+    calls: callRecordsResult.calls,
     collaborators: buildCollaborators(meetings),
     rituals: buildRituals(meetings, cancelledSubjects),
     shape: buildTimeShape({ meetings, days, workingHours, timeZone }),
     allocations,
     slices: mergeSlices(sliceGroups),
+    portraitsByDate,
     sources: {
       calendar: calendarAvailable,
       portrait: portraits?.availability === "ok",

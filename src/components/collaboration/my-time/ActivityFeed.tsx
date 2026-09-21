@@ -7,6 +7,7 @@ import {
   GitPullRequest,
   Loader2,
   type LucideIcon,
+  PhoneCall,
   SquareKanban,
   Users,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import type {
   PeriodAction,
   PeriodActionKind,
   PeriodActionsResult,
+  TeamCallSignal,
 } from "@/types/collaboration";
 
 /** Days rendered before the "ver tudo" toggle. */
@@ -51,6 +53,11 @@ const KIND_META: Record<
     label: "Reunião",
     className: "bg-brand-500/12 text-brand-500",
   },
+  call: {
+    icon: PhoneCall,
+    label: "Chamada",
+    className: "bg-sky-500/12 text-sky-600 dark:text-sky-400",
+  },
   pull_request: {
     icon: GitPullRequest,
     label: "Pull request",
@@ -71,6 +78,7 @@ const KIND_META: Record<
 const FILTERS: Array<{ value: PeriodActionKind | "all"; label: string }> = [
   { value: "all", label: "Tudo" },
   { value: "meeting", label: "Reuniões" },
+  { value: "call", label: "Chamadas" },
   { value: "pull_request", label: "PRs" },
   { value: "commit", label: "Commits" },
   { value: "work_item", label: "Work items" },
@@ -87,6 +95,20 @@ function meetingToAction(meeting: MeetingSignal): PeriodAction {
     timestampIso: meeting.startIso,
     context: formatMeetingRange(meeting),
     minutes: meeting.minutes,
+    url: null,
+  };
+}
+
+function callToAction(call: TeamCallSignal): PeriodAction {
+  return {
+    id: `call-${call.id}`,
+    kind: "call",
+    title: call.otherParticipantName,
+    date: formatLocalDate(new Date(call.startIso)),
+    timestampIso: call.startIso,
+    context:
+      call.callType === "groupCall" ? "Chamada em grupo" : "Chamada direta",
+    minutes: call.minutes,
     url: null,
   };
 }
@@ -163,6 +185,7 @@ function ActionRow({
 
 export interface ActivityFeedProps {
   meetings: MeetingSignal[];
+  calls?: TeamCallSignal[];
   actions: PeriodActionsResult | null;
   isLoadingActions: boolean;
   /** When set, only this day's rows are shown — driven by the day chart. */
@@ -179,6 +202,7 @@ export interface ActivityFeedProps {
  */
 export function ActivityFeed({
   meetings,
+  calls = [],
   actions,
   isLoadingActions,
   selectedDate = null,
@@ -204,7 +228,11 @@ export function ActivityFeed({
   );
 
   const grouped = useMemo(() => {
-    const all = [...meetings.map(meetingToAction), ...(actions?.actions ?? [])]
+    const all = [
+      ...meetings.map(meetingToAction),
+      ...calls.map(callToAction),
+      ...(actions?.actions ?? []),
+    ]
       .filter((action) => filter === "all" || action.kind === filter)
       .filter((action) => !selectedDate || action.date === selectedDate);
 
@@ -218,7 +246,7 @@ export function ActivityFeed({
     }
 
     return [...byDate.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [meetings, actions, filter, selectedDate]);
+  }, [meetings, calls, actions, filter, selectedDate]);
 
   const visible = expanded ? grouped : grouped.slice(0, VISIBLE_DAYS);
   const totalActions = grouped.reduce((sum, [, rows]) => sum + rows.length, 0);

@@ -447,6 +447,22 @@ export function buildPeriodInsights({
     });
   }
 
+  const callMinutes = totals.callMinutes ?? 0;
+  if (callMinutes >= 20) {
+    drafts.push({
+      id: "teams-calls",
+      tone: "neutral",
+      icon: "PhoneCall",
+      rank: 26,
+      title: `${formatDuration(callMinutes)} em chamadas no Teams`,
+      description:
+        "Tempo em ligações diretas fora dos convites formais de agenda. Lembre-se de auditar se essas conversas foram apontadas.",
+      actionLabel: null,
+      actionHref: null,
+      quickAction: null,
+    });
+  }
+
   return drafts
     .sort(
       (a, b) => TONE_WEIGHT[a.tone] - TONE_WEIGHT[b.tone] || a.rank - b.rank,

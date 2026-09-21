@@ -324,6 +324,8 @@ export interface PeriodDay {
   /** Viva focus minutes, when the portrait is available. */
   focusMinutes: number;
   collaborationMinutes: number;
+  /** Minutes in Teams calls without a calendar invite. */
+  callMinutes: number;
   hasPortrait: boolean;
   away: boolean;
 }
@@ -393,6 +395,7 @@ export interface TimeShape {
  */
 export type PeriodActionKind =
   | "meeting"
+  | "call"
   | "pull_request"
   | "commit"
   | "work_item";
@@ -440,6 +443,8 @@ export interface PeriodTotals {
   meetingMinutes: number;
   /** Viva collaboration minutes (meeting + call + chat + e-mail). */
   collaborationMinutes: number;
+  /** Viva call minutes, when available. */
+  callMinutes?: number;
   /** Free 2h+ calendar blocks — availability. See `DayPortrait.focusMinutes`. */
   focusMinutes: number;
   /** Meeting minutes that already have a matching time entry. */
@@ -471,11 +476,27 @@ export interface CollaborationPeriod {
   shape: TimeShape;
   allocations: ProjectAllocation[];
   slices: ActivitySlice[];
+  /** Teams direct / ad-hoc calls in the period (when available). */
+  calls?: TeamCallSignal[];
+  /** Daily portraits from Viva Insights, keyed by YYYY-MM-DD. */
+  portraitsByDate?: Record<string, DayPortrait>;
   sources: CollaborationSources;
   /** One entry per Microsoft source, whether or not it answered. */
   statuses: SourceStatus[];
   warnings: string[];
   needsReauth: boolean;
+}
+
+export interface TeamCallSignal {
+  id: string;
+  startIso: string;
+  endIso: string;
+  minutes: number;
+  otherParticipantName: string;
+  callerName: string | null;
+  calleeName: string | null;
+  callType: "peerToPeer" | "groupCall";
+  mediaTypes: string[];
 }
 
 // ─── Assistant layer ──────────────────────────────────────────────────

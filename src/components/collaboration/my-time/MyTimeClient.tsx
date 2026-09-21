@@ -1,7 +1,14 @@
 "use client";
 
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, CalendarRange, Plane, Target, Users } from "lucide-react";
+import {
+  AlertCircle,
+  CalendarRange,
+  PhoneCall,
+  Plane,
+  Target,
+  Users,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
 import { ActivityPortraitBar } from "@/components/collaboration/ActivityPortraitBar";
@@ -37,7 +44,7 @@ import {
   resolveRhythm,
 } from "@/lib/collaboration/insights";
 import { formatClock } from "@/lib/collaboration/period";
-import { formatDateLabel } from "@/lib/utils";
+import { formatDateLabel, formatDuration } from "@/lib/utils";
 import type { DayPortrait, MeetingSignal } from "@/types/collaboration";
 
 const ENTRY_EASE = [0.16, 1, 0.3, 1] as const;
@@ -189,10 +196,16 @@ export function MyTimeClient() {
   const isShifted =
     range.from !== presetRange.from || range.to !== presetRange.to;
 
-  // Reuses the day panel's bar for the whole window: same component, same
-  // legend, one less thing for a user to learn.
-  const periodPortrait = useMemo<DayPortrait | null>(() => {
-    if (!period || period.slices.length === 0) return null;
+  // Reuses the day panel's bar for the whole window or the selected day:
+  // same component, same legend, one less thing for a user to learn.
+  const activePortrait = useMemo<DayPortrait | null>(() => {
+    if (!period) return null;
+
+    if (selectedDate && period.portraitsByDate?.[selectedDate]) {
+      return period.portraitsByDate[selectedDate];
+    }
+
+    if (period.slices.length === 0) return null;
 
     return {
       date: period.from,
@@ -203,7 +216,7 @@ export function MyTimeClient() {
         period.totals.collaborationMinutes + period.totals.focusMinutes,
       availability: "ok",
     };
-  }, [period]);
+  }, [period, selectedDate]);
 
   // The dialog follows whatever the page is showing: with a day selected it
   // offers that day only, so "apontar em 1 clique" never quietly logs hours
@@ -333,14 +346,30 @@ export function MyTimeClient() {
             {/* ── Camada 5: o detalhe, por contexto ── */}
             <Section index={5}>
               {selectedDate && (
-                <p className="mb-3 text-sm text-muted-foreground">
-                  Mostrando apenas{" "}
-                  <span className="font-medium text-foreground">
-                    {formatDateLabel(selectedDate)}
-                  </span>
-                  . Clique no dia novamente no gráfico para ver o período
-                  inteiro.
-                </p>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+                  <p>
+                    Mostrando apenas{" "}
+                    <span className="font-medium text-foreground">
+                      {formatDateLabel(selectedDate)}
+                    </span>
+                    . Clique no dia novamente no gráfico para ver o período
+                    inteiro.
+                  </p>
+                  {(() => {
+                    const day = period.days.find(
+                      (d) => d.date === selectedDate,
+                    );
+                    if (day && day.callMinutes > 0) {
+                      return (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/10 px-2.5 py-1 text-xs font-medium text-sky-600 dark:text-sky-400">
+                          <PhoneCall className="size-3" aria-hidden="true" />
+                          {formatDuration(day.callMinutes)} em chamadas
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
               )}
 
               <Tabs defaultValue="delivery" className="gap-4">
@@ -388,6 +417,7 @@ export function MyTimeClient() {
                     <div className="lg:col-span-2">
                       <ActivityFeed
                         meetings={period.meetings}
+                        calls={period.calls}
                         actions={actions}
                         isLoadingActions={isLoadingActions}
                         selectedDate={selectedDate}
@@ -420,17 +450,25 @@ export function MyTimeClient() {
 
             {/* The Microsoft reading closes the page: it is context for
                 everything above, and the part people need least often. */}
-            {periodPortrait && (
+            {activePortrait && (
               <Section index={6}>
                 <div
                   className="rounded-2xl border border-border bg-card/60 px-5 py-4"
                   data-tour="my-time-portrait"
                 >
                   <ActivityPortraitBar
-                    portrait={periodPortrait}
-                    label="Medido pelo Microsoft 365"
+                    portrait={activePortrait}
+                    label={
+                      selectedDate
+                        ? `Medido pelo Microsoft 365 (${formatDateLabel(selectedDate)})`
+                        : "Medido pelo Microsoft 365"
+                    }
                     variant="detailed"
-                    capacityMinutes={period.shape.windowCapacityMinutes}
+                    capacityMinutes={
+                      selectedDate
+                        ? period.shape.windowMinutes
+                        : period.shape.windowCapacityMinutes
+                    }
                     windowLabel={`${formatClock(period.shape.windowStartMinute)}–${formatClock(period.shape.windowEndMinute)}`}
                   />
                 </div>

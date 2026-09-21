@@ -115,6 +115,7 @@ function day(date: string, overrides: Partial<PeriodDay> = {}): PeriodDay {
     meetingCount: 0,
     focusMinutes: 0,
     collaborationMinutes: 0,
+    callMinutes: 0,
     hasPortrait: false,
     away: false,
     ...overrides,
