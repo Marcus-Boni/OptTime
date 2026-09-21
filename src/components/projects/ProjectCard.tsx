@@ -1,7 +1,15 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { CalendarRange, Cloud, Edit2, Folder, Link2, User } from "lucide-react";
+import {
+  CalendarRange,
+  Cloud,
+  Edit2,
+  Folder,
+  Link2,
+  Trash2,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
 import type { ProjectFromAPI } from "@/components/projects/types";
@@ -14,7 +22,9 @@ import { cn, getInitials } from "@/lib/utils";
 export interface ProjectCardProps {
   project: ProjectFromAPI;
   isPrivileged: boolean;
+  isAdmin?: boolean;
   onEdit?: (project: ProjectFromAPI) => void;
+  onDelete?: (project: ProjectFromAPI) => void;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -86,7 +96,9 @@ function formatDate(date: string | null): string | null {
 export function ProjectCard({
   project: proj,
   isPrivileged,
+  isAdmin,
   onEdit,
+  onDelete,
 }: ProjectCardProps) {
   const members = proj.members ?? [];
   const memberCount = members.length;
@@ -126,29 +138,49 @@ export function ProjectCard({
                   color={proj.color}
                 />
                 <div className="min-w-0 flex-1 overflow-hidden">
-                  {/* Title + edit button */}
+                  {/* Title + actions */}
                   <div className="flex min-w-0 items-start gap-1.5">
                     <CardTitle className="min-w-0 flex-1 wrap-break-word font-display text-sm font-semibold leading-snug line-clamp-2">
                       {proj.name}
                     </CardTitle>
-                    {isPrivileged && onEdit && (
-                      <button
-                        type="button"
-                        aria-label={`Editar projeto ${proj.name}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          onEdit(proj);
-                        }}
-                        className={cn(
-                          "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-                          "opacity-0 group-hover:opacity-100 transition-all bg-card/50",
-                          "hover:text-brand-400 hover:bg-brand-500/10",
-                        )}
-                      >
-                        <Edit2 className="h-3 w-3" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isPrivileged && onEdit && (
+                        <button
+                          type="button"
+                          aria-label={`Editar projeto ${proj.name}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onEdit(proj);
+                          }}
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                            "opacity-0 group-hover:opacity-100 transition-all bg-card/50",
+                            "hover:text-brand-400 hover:bg-brand-500/10",
+                          )}
+                        >
+                          <Edit2 className="h-3 w-3" />
+                        </button>
+                      )}
+                      {isAdmin && onDelete && (
+                        <button
+                          type="button"
+                          aria-label={`Excluir projeto ${proj.name}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onDelete(proj);
+                          }}
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                            "opacity-0 group-hover:opacity-100 transition-all bg-card/50",
+                            "hover:text-red-400 hover:bg-red-500/10",
+                          )}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* Client */}

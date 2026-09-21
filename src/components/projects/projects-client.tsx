@@ -1,7 +1,16 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { Cloud, Folder, Loader2, Plus, Search, Tag } from "lucide-react";
+import {
+  Archive,
+  Cloud,
+  Folder,
+  Loader2,
+  Plus,
+  Search,
+  Tag,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -19,6 +28,16 @@ import {
   ProjectFilters,
   ProjectSkeleton,
 } from "@/components/projects";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -224,11 +243,15 @@ function TableSortTh({
 function ProjectsTable({
   projects,
   isPrivileged,
+  isAdmin,
   onEdit,
+  onDelete,
 }: {
   projects: ProjectFromAPI[];
   isPrivileged: boolean;
+  isAdmin?: boolean;
   onEdit: (project: ProjectFromAPI) => void;
+  onDelete?: (project: ProjectFromAPI) => void;
 }) {
   const [sortCol, setSortCol] = useState<TableSortCol>("name");
   const [sortDir, setSortDir] = useState<TableSortDir>("asc");
@@ -469,16 +492,31 @@ function ProjectsTable({
                       <td
                         className="px-4 py-3 text-right"
                         onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
                       >
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-3 text-xs opacity-0 transition-opacity group-hover:opacity-100"
-                          onClick={() => onEdit(proj)}
-                        >
-                          Editar
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 px-3 text-xs opacity-0 transition-opacity group-hover:opacity-100"
+                            onClick={() => onEdit(proj)}
+                          >
+                            Editar
+                          </Button>
+                          {isAdmin && onDelete && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-label={`Excluir projeto ${proj.name}`}
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 opacity-0 transition-opacity group-hover:opacity-100"
+                              onClick={() => onDelete(proj)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -513,19 +551,20 @@ function computeGanttRange(projects: ProjectFromAPI[]): {
 
   const rangeStart = minDate - 18 * DAY_MS;
   const rangeEnd = maxDate + 18 * DAY_MS;
-  const rangeMs = rangeEnd - rangeStart;
+  const rangeMs = Math.max(rangeEnd - rangeStart, 1);
 
   const months: Array<{ label: string; percent: number }> = [];
   const cursor = new Date(rangeStart);
   cursor.setDate(1);
   cursor.setHours(0, 0, 0, 0);
   while (cursor.getTime() <= rangeEnd) {
+    const rawPct = ((cursor.getTime() - rangeStart) / rangeMs) * 100;
     months.push({
       label: cursor.toLocaleDateString("pt-BR", {
         month: "short",
         year: "2-digit",
       }),
-      percent: ((cursor.getTime() - rangeStart) / rangeMs) * 100,
+      percent: Math.max(0, Math.min(100, rawPct)),
     });
     cursor.setMonth(cursor.getMonth() + 1);
   }
@@ -569,9 +608,10 @@ function ProjectsGantt({
                   Projeto
                 </span>
               </div>
-              <div className="relative h-9 flex-1 overflow-hidden">
+              <div className="relative h-9 flex-1 min-w-0 overflow-hidden">
                 {months.map((m, i) => {
-                  const nextPct = months[i + 1]?.percent ?? 105;
+                  const nextPct = Math.min(100, months[i + 1]?.percent ?? 100);
+                  const width = Math.max(0, nextPct - m.percent);
                   return (
                     <div
                       key={`bg-${m.label}`}
@@ -581,7 +621,7 @@ function ProjectsGantt({
                       )}
                       style={{
                         left: `${m.percent}%`,
-                        width: `${nextPct - m.percent}%`,
+                        width: `${width}%`,
                       }}
                     />
                   );
@@ -589,8 +629,8 @@ function ProjectsGantt({
                 {months.map((m) => (
                   <span
                     key={`lbl-${m.label}`}
-                    className="absolute top-2 pl-2 text-[11px] font-medium capitalize text-muted-foreground/60"
-                    style={{ left: `${m.percent}%` }}
+                    className="absolute top-2 pl-2 text-[11px] font-medium capitalize text-muted-foreground/60 select-none truncate"
+                    style={{ left: `${m.percent}%`, maxWidth: "80px" }}
                   >
                     {m.label}
                   </span>
@@ -631,8 +671,9 @@ function ProjectsGantt({
                 const effectiveEnd = endMs ?? startMs! + 30 * DAY_MS;
                 const rawLeft = ((effectiveStart - rangeStart) / rangeMs) * 100;
                 const rawRight = ((effectiveEnd - rangeStart) / rangeMs) * 100;
-                const left = Math.max(0, rawLeft);
-                const width = Math.max(Math.min(rawRight, 100) - left, 1.5);
+                const left = Math.max(0, Math.min(rawLeft, 98.5));
+                const right = Math.max(left + 1.5, Math.min(rawRight, 100));
+                const width = Math.min(100 - left, Math.max(right - left, 1.5));
 
                 const elapsedPct =
                   startMs !== null && endMs !== null && now > startMs
@@ -688,9 +729,13 @@ function ProjectsGantt({
                     </div>
                   </div>
 
-                  <div className="relative min-h-[56px] flex-1">
+                  <div className="relative min-h-[56px] flex-1 min-w-0 overflow-hidden">
                     {months.map((m, i) => {
-                      const nextPct = months[i + 1]?.percent ?? 105;
+                      const nextPct = Math.min(
+                        100,
+                        months[i + 1]?.percent ?? 100,
+                      );
+                      const width = Math.max(0, nextPct - m.percent);
                       return (
                         <div
                           key={m.label}
@@ -700,7 +745,7 @@ function ProjectsGantt({
                           )}
                           style={{
                             left: `${m.percent}%`,
-                            width: `${nextPct - m.percent}%`,
+                            width: `${width}%`,
                           }}
                         />
                       );
@@ -914,6 +959,63 @@ export function ProjectsClient() {
     setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
   }
 
+  function handleProjectDeleted(deletedId: string) {
+    setProjects((prev) => prev.filter((p) => p.id !== deletedId));
+  }
+
+  const [projectToDelete, setProjectToDelete] = useState<ProjectFromAPI | null>(
+    null,
+  );
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [deleteCheckingHours, setDeleteCheckingHours] = useState(false);
+  const [deleteHoursCount, setDeleteHoursCount] = useState<number | null>(null);
+
+  async function handleOpenDeleteDialog(proj: ProjectFromAPI) {
+    setProjectToDelete(proj);
+    setDeleteDialogOpen(true);
+    setDeleteCheckingHours(true);
+    setDeleteHoursCount(null);
+    try {
+      const res = await fetch(`/api/projects/${proj.id}`, {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDeleteHoursCount(data.project?.timeEntriesCount ?? 0);
+      }
+    } catch (err: unknown) {
+      console.error("[ProjectsClient] handleOpenDeleteDialog:", err);
+    } finally {
+      setDeleteCheckingHours(false);
+    }
+  }
+
+  async function handleConfirmDelete() {
+    if (!projectToDelete) return;
+    setIsDeletingProject(true);
+    try {
+      const res = await fetch(`/api/projects/${projectToDelete.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Falha ao excluir projeto");
+      }
+      toast.success("Projeto excluído com sucesso!");
+      setDeleteDialogOpen(false);
+      handleProjectDeleted(projectToDelete.id);
+      setProjectToDelete(null);
+    } catch (err: unknown) {
+      console.error("[ProjectsClient] handleConfirmDelete:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao excluir projeto",
+      );
+    } finally {
+      setIsDeletingProject(false);
+    }
+  }
+
   const openImportDialog = async () => {
     setImportDialogOpen(true);
     setAzureLoading(true);
@@ -1069,20 +1171,20 @@ export function ProjectsClient() {
             initial="hidden"
             animate="visible"
             exit="hidden"
-            className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-white/5 bg-neutral-900/40 p-12 text-center backdrop-blur-md"
+            className="flex min-h-[400px] flex-col items-center justify-center rounded-2xl border border-dashed border-neutral-200/80 dark:border-white/10 bg-neutral-50/50 dark:bg-neutral-900/40 p-12 text-center backdrop-blur-md shadow-xs dark:shadow-none"
           >
             <div className="relative mb-8">
               <div className="absolute inset-0 animate-pulse rounded-full bg-brand-500/10 blur-3xl" />
-              <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-neutral-950 shadow-2xl transition-transform hover:scale-110">
+              <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-neutral-100 dark:bg-neutral-950 border border-neutral-200/80 dark:border-white/10 shadow-md transition-transform hover:scale-110">
                 {filters.search ? (
-                  <Search className="h-12 w-12 text-neutral-500" />
+                  <Search className="h-12 w-12 text-neutral-400 dark:text-neutral-500" />
                 ) : (
-                  <Folder className="h-12 w-12 text-neutral-500" />
+                  <Folder className="h-12 w-12 text-neutral-400 dark:text-neutral-500" />
                 )}
               </div>
             </div>
 
-            <h3 className="font-display text-2xl font-bold text-white tracking-tight">
+            <h3 className="font-display text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
               {filters.search
                 ? `Sem resultados para "${filters.search}"`
                 : filters.status !== "all" || filters.membership !== "all"
@@ -1090,7 +1192,7 @@ export function ProjectsClient() {
                   : "Nenhum projeto encontrado"}
             </h3>
 
-            <p className="mx-auto mt-3 max-w-sm text-base text-neutral-400 leading-relaxed font-sans">
+            <p className="mx-auto mt-3 max-w-md text-base text-neutral-600 dark:text-neutral-400 leading-relaxed font-sans">
               {filters.search ||
               filters.status !== "all" ||
               filters.membership !== "all"
@@ -1105,16 +1207,15 @@ export function ProjectsClient() {
                 <Button
                   variant="outline"
                   onClick={() =>
-                    setFilters({
+                    setFilters((prev) => ({
+                      ...prev,
                       search: "",
                       status: "all",
                       membership: "all",
                       scopeId: "all",
-                      view: "cards",
-                      sort: "updated",
-                    })
+                    }))
                   }
-                  className="h-12 px-8 border-neutral-800 text-neutral-300 hover:bg-white/5 rounded-xl transition-all"
+                  className="h-12 px-8 border-neutral-300 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-white/5 rounded-xl transition-all"
                 >
                   Limpar todos os filtros
                 </Button>
@@ -1130,7 +1231,7 @@ export function ProjectsClient() {
               )}
 
               {!isPrivileged && !filters.search && filters.status === "all" && (
-                <p className="text-xs text-neutral-500/80 italic mt-4 sm:mt-0 font-sans">
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 italic mt-4 sm:mt-0 font-sans">
                   Contate um administrador para acesso a novos projetos.
                 </p>
               )}
@@ -1141,7 +1242,9 @@ export function ProjectsClient() {
             key="projects-table"
             projects={visibleProjects}
             isPrivileged={isPrivileged}
+            isAdmin={isAdmin}
             onEdit={handleEditProject}
+            onDelete={handleOpenDeleteDialog}
           />
         ) : filters.view === "gantt" ? (
           <ProjectsGantt
@@ -1161,7 +1264,9 @@ export function ProjectsClient() {
                   key={proj.id}
                   project={proj}
                   isPrivileged={isPrivileged}
+                  isAdmin={isAdmin}
                   onEdit={handleEditProject}
+                  onDelete={handleOpenDeleteDialog}
                 />
               ))}
             </AnimatePresence>
@@ -1174,9 +1279,95 @@ export function ProjectsClient() {
         open={editOpen}
         onOpenChange={setEditOpen}
         onSuccess={handleEditSuccess}
+        onDeleted={handleProjectDeleted}
         currentUserId={currentUserId}
         isAdmin={isAdmin}
       />
+
+      {projectToDelete && (
+        <AlertDialog
+          open={deleteDialogOpen}
+          onOpenChange={(open) => {
+            if (!isDeletingProject) {
+              setDeleteDialogOpen(open);
+              if (!open) setProjectToDelete(null);
+            }
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir Projeto</AlertDialogTitle>
+              <AlertDialogDescription>
+                Você selecionou o projeto{" "}
+                <strong className="text-foreground font-semibold">
+                  {projectToDelete.name}
+                </strong>
+                .
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            {deleteCheckingHours ? (
+              <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin text-brand-500" />
+                <span>Verificando registros de horas no projeto...</span>
+              </div>
+            ) : deleteHoursCount !== null && deleteHoursCount > 0 ? (
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-4 space-y-2 text-sm">
+                <p className="font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-2">
+                  <Archive className="h-4 w-4 shrink-0" />
+                  Exclusão não permitida
+                </p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Este projeto possui <strong>{deleteHoursCount}</strong>{" "}
+                  registro(s) de tempo vinculados. Por motivos de auditoria e
+                  consistência dos relatórios, projetos com horas lançadas não
+                  podem ser excluídos definitivamente.
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Você pode <strong>arquivar</strong> este projeto através da
+                  opção de edição para ocultá-lo das listagens ativas.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>
+                  Nenhuma hora foi registrada neste projeto. Todos os dados,
+                  membros vinculados e configurações serão removidos
+                  permanentemente.
+                </p>
+                <p className="text-xs font-medium text-destructive">
+                  Esta ação não pode ser desfeita.
+                </p>
+              </div>
+            )}
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeletingProject}>
+                {deleteHoursCount !== null && deleteHoursCount > 0
+                  ? "Entendi"
+                  : "Cancelar"}
+              </AlertDialogCancel>
+
+              {deleteHoursCount === 0 && (
+                <AlertDialogAction
+                  disabled={isDeletingProject}
+                  onClick={handleConfirmDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {isDeletingProject ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Excluindo...
+                    </>
+                  ) : (
+                    "Sim, excluir projeto"
+                  )}
+                </AlertDialogAction>
+              )}
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
         <DialogContent className="max-w-lg">

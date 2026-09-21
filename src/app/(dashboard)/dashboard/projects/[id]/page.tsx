@@ -706,6 +706,9 @@ export default function ProjectDetailPage() {
         open={editOpen}
         onOpenChange={setEditOpen}
         onSuccess={handleEditSuccess}
+        onDeleted={() => {
+          router.push("/dashboard/projects");
+        }}
         currentUserId={user?.id ?? ""}
         isAdmin={isAdmin}
       />

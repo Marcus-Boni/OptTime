@@ -27,6 +27,16 @@ import type {
   ProjectScope,
   TeamMember,
 } from "@/components/projects/types";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -106,6 +116,7 @@ export interface ProjectEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: (updated: ProjectFromAPI) => void;
+  onDeleted?: (projectId: string) => void;
   currentUserId: string;
   isAdmin: boolean;
 }
@@ -213,10 +224,15 @@ export function ProjectEditDialog({
   open,
   onOpenChange,
   onSuccess,
+  onDeleted,
   currentUserId,
   isAdmin,
 }: ProjectEditDialogProps) {
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [timeEntriesCount, setTimeEntriesCount] = useState<number | null>(null);
+  const [checkingHours, setCheckingHours] = useState(false);
   const [scopes, setScopes] = useState<ProjectScope[]>([]);
   const [people, setPeople] = useState<TeamMember[]>([]);
   const [selectedMembers, setSelectedMembers] = useState<Set<string>>(
@@ -273,6 +289,36 @@ export function ProjectEditDialog({
     setMemberSearch("");
     setManagerSearch("");
   }, [project, reset, currentUserId]);
+
+  // ─── Check project hours count for admin deletion guard ─────────────────────
+
+  useEffect(() => {
+    if (!open || !project || !isAdmin) {
+      setTimeEntriesCount(null);
+      return;
+    }
+    let isMounted = true;
+    async function checkHours() {
+      setCheckingHours(true);
+      try {
+        const res = await fetch(`/api/projects/${project?.id}`, {
+          cache: "no-store",
+        });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setTimeEntriesCount(data.project?.timeEntriesCount ?? 0);
+        }
+      } catch (err: unknown) {
+        console.error("[ProjectEditDialog] checkHours:", err);
+      } finally {
+        if (isMounted) setCheckingHours(false);
+      }
+    }
+    checkHours();
+    return () => {
+      isMounted = false;
+    };
+  }, [open, project, isAdmin]);
 
   // ─── Fetch team members ───────────────────────────────────────────────────────
 
@@ -349,6 +395,33 @@ export function ProjectEditDialog({
   function selectManager(id: string) {
     setValue("managerId", id, { shouldDirty: true, shouldValidate: true });
     setSelectedMembers((prev) => new Set(prev).add(id));
+  }
+
+  // ─── Delete project ─────────────────────────────────────────────────────────
+
+  async function handleDeleteProject() {
+    if (!project) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Falha ao excluir projeto");
+      }
+      toast.success("Projeto excluído com sucesso!");
+      setDeleteConfirmOpen(false);
+      onOpenChange(false);
+      onDeleted?.(project.id);
+    } catch (err: unknown) {
+      console.error("[ProjectEditDialog] handleDeleteProject:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao excluir projeto",
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   // ─── Submit ───────────────────────────────────────────────────────────────────
@@ -1071,20 +1144,89 @@ export function ProjectEditDialog({
                 <Separator />
                 <section
                   aria-labelledby="edit-danger-label"
-                  className="space-y-3"
+                  className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 space-y-3"
                 >
                   <Label
                     id="edit-danger-label"
-                    className="flex items-center gap-2 text-sm font-medium text-destructive"
+                    className="flex items-center gap-2 text-sm font-semibold text-destructive"
                   >
                     <AlertTriangle className="h-4 w-4" />
                     Zona de Perigo
                   </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Para arquivar o projeto altere o status acima para
-                    &quot;Arquivado&quot;. O projeto deixará de aparecer nos
-                    filtros padrão mas todos os registros de tempo são mantidos.
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Para desativar o projeto sem perder dados, altere o status
+                    acima para &quot;Arquivado&quot;. Todos os registros de
+                    tempo são mantidos e o projeto deixa de aparecer nas buscas
+                    ativas.
                   </p>
+
+                  {isAdmin && (
+                    <div className="pt-3 border-t border-destructive/15">
+                      {checkingHours ? (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                          <span>
+                            Verificando registros de horas vinculados...
+                          </span>
+                        </div>
+                      ) : timeEntriesCount !== null && timeEntriesCount > 0 ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-xs font-medium text-amber-600 dark:text-amber-400">
+                            <span>
+                              Este projeto possui{" "}
+                              <strong>{timeEntriesCount}</strong> registro(s) de
+                              tempo.
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            A exclusão definitiva está{" "}
+                            <strong>bloqueada</strong> para evitar perda de
+                            dados e conflitos de auditoria. Para encerrá-lo,
+                            utilize o arquivamento.
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setValue("status", "archived", {
+                                shouldDirty: true,
+                              });
+                              toast.info(
+                                "Status alterado para Arquivado. Clique em Salvar Alterações para confirmar.",
+                              );
+                            }}
+                            className="h-8 text-xs border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+                          >
+                            <Archive className="mr-1.5 h-3.5 w-3.5" />
+                            Definir como Arquivado
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                          <div className="space-y-0.5">
+                            <p className="text-xs font-medium text-destructive">
+                              Exclusão Definitiva
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              Nenhuma hora registrada. O projeto pode ser
+                              excluído com segurança.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => setDeleteConfirmOpen(true)}
+                            className="h-8 text-xs gap-1.5 shrink-0"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Excluir Projeto
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </section>
               </>
             )}
@@ -1117,6 +1259,48 @@ export function ProjectEditDialog({
           </Button>
         </div>
       </DialogContent>
+
+      {project && (
+        <AlertDialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                Excluir projeto permanentemente?
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                Você está prestes a excluir o projeto{" "}
+                <strong className="text-foreground font-semibold">
+                  {project.name}
+                </strong>
+                . Esta ação removerá todos os vínculos, membros e configurações
+                associados. Esta operação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>
+                Cancelar
+              </AlertDialogCancel>
+              <AlertDialogAction
+                disabled={deleting}
+                onClick={handleDeleteProject}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  "Sim, excluir projeto"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </Dialog>
   );
 }

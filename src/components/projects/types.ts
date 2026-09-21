@@ -74,6 +74,8 @@ export interface ProjectFromAPI {
   manager: ProjectMemberUser | null;
   /** Populated when scope is linked */
   scope?: ProjectScope | null;
+  /** Count of registered time entries for this project */
+  timeEntriesCount?: number;
 }
 
 export interface TeamMember {

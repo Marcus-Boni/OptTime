@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import {
   canAccessProject,
   canManageProject,
@@ -7,7 +7,15 @@ import {
   getActorContext,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { project, projectMember, user } from "@/lib/db/schema";
+import {
+  activeTimer,
+  allocation,
+  portalLink,
+  project,
+  projectMember,
+  timeEntry,
+  user,
+} from "@/lib/db/schema";
 import { projectSchema } from "@/lib/validations/project.schema";
 
 function safeParseStages(raw: string): string[] {
@@ -88,6 +96,13 @@ export async function GET(
       );
     }
 
+    const [entryCount] = await db
+      .select({ count: count() })
+      .from(timeEntry)
+      .where(eq(timeEntry.projectId, id));
+
+    const timeEntriesCount = entryCount ? Number(entryCount.count) : 0;
+
     // Parse scope stages JSON
     const projectData = found.scope
       ? {
@@ -96,8 +111,12 @@ export async function GET(
             ...found.scope,
             stages: safeParseStages(found.scope.stages),
           },
+          timeEntriesCount,
         }
-      : found;
+      : {
+          ...found,
+          timeEntriesCount,
+        };
 
     return Response.json({ project: projectData });
   } catch (error) {
@@ -265,7 +284,8 @@ export async function PUT(
 
 /**
  * DELETE /api/projects/[id]
- * Soft-deletes (archives) a project. Restricted to admin only.
+ * Permanently deletes a project. Restricted to admin only.
+ * Blocked if the project has registered time entries.
  */
 export async function DELETE(
   req: Request,
@@ -279,7 +299,7 @@ export async function DELETE(
   const actor = getActorContext(session.user);
   if (actor.role !== "admin") {
     return Response.json(
-      { error: "Forbidden — apenas administradores podem arquivar projetos" },
+      { error: "Apenas administradores podem excluir projetos." },
       { status: 403 },
     );
   }
@@ -297,12 +317,35 @@ export async function DELETE(
       );
     }
 
-    await db
-      .update(project)
-      .set({ status: "archived" })
-      .where(eq(project.id, id));
+    const [entryCount] = await db
+      .select({ count: count() })
+      .from(timeEntry)
+      .where(eq(timeEntry.projectId, id));
 
-    return Response.json({ success: true });
+    const totalHoursCount = entryCount ? Number(entryCount.count) : 0;
+    if (totalHoursCount > 0) {
+      return Response.json(
+        {
+          error: `Não é possível excluir este projeto porque existem ${totalHoursCount} registro(s) de tempo associados a ele. Para preservar a integridade dos dados e o histórico financeiro, arquive o projeto ao invés de excluí-lo.`,
+          code: "PROJECT_HAS_TIME_ENTRIES",
+          timeEntriesCount: totalHoursCount,
+        },
+        { status: 409 },
+      );
+    }
+
+    await db.transaction(async (tx) => {
+      await tx.delete(activeTimer).where(eq(activeTimer.projectId, id));
+      await tx.delete(allocation).where(eq(allocation.projectId, id));
+      await tx.delete(portalLink).where(eq(portalLink.projectId, id));
+      await tx.delete(projectMember).where(eq(projectMember.projectId, id));
+      await tx.delete(project).where(eq(project.id, id));
+    });
+
+    return Response.json({
+      success: true,
+      message: "Projeto excluído com sucesso.",
+    });
   } catch (error) {
     console.error("[DELETE /api/projects/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
