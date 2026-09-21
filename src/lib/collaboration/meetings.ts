@@ -37,6 +37,8 @@ const MAX_MEETING_MINUTES = 240;
 const WORKSHOP_THRESHOLD = 6;
 /** Graph returns large invites truncated; keep the list readable regardless. */
 const MAX_STORED_PARTICIPANTS = 12;
+/** Below this, a difference against `originalStart` is rounding, not a move. */
+const RESCHEDULE_TOLERANCE_MS = 60_000;
 
 export interface RawCalendarAttendee {
   name: string | null;
@@ -63,6 +65,8 @@ export interface RawCalendarEvent {
   /** "singleInstance" | "occurrence" | "exception" | "seriesMaster" */
   type: string | null;
   seriesMasterId: string | null;
+  /** Original slot of a moved occurrence — Graph only fills it on exceptions. */
+  originalStartIso: string | null;
   isOnlineMeeting: boolean;
   onlineMeetingProvider: string | null;
   /** The signed-in user's own response to the invitation. */
@@ -139,6 +143,20 @@ function isExternalEmail(
   const domain = internalDomain.replace(/^@/, "").toLowerCase();
   if (!domain) return false;
   return !email.trim().toLowerCase().endsWith(`@${domain}`);
+}
+
+/**
+ * True when a series occurrence no longer sits where the recurrence put it.
+ *
+ * `isException` alone is too loose: Outlook marks an occurrence as an
+ * exception when the organizer only edits its subject or body. The minute
+ * tolerance absorbs the timezone rounding Graph applies to `originalStart`.
+ */
+function isRescheduled(event: RawCalendarEvent, startMs: number): boolean {
+  if (!event.originalStartIso) return false;
+  const originalMs = new Date(event.originalStartIso).getTime();
+  if (Number.isNaN(originalMs)) return false;
+  return Math.abs(originalMs - startMs) >= RESCHEDULE_TOLERANCE_MS;
 }
 
 function resolveShape(
@@ -366,6 +384,7 @@ export function buildMeetingSignals({
 
     const eventType = (event.type ?? "").toLowerCase();
     const isException = eventType === "exception";
+    const wasRescheduled = isRescheduled(event, candidate.startMs);
     const isRecurring =
       isException ||
       eventType === "occurrence" ||
@@ -428,6 +447,8 @@ export function buildMeetingSignals({
       isOrganizer: candidate.acceptance === "organizer",
       isRecurring,
       isException,
+      wasRescheduled,
+      originalStartIso: wasRescheduled ? event.originalStartIso : null,
       wasClipped,
       alreadyLogged: isLogged,
       confidence: resolveConfidence(candidate.acceptance, wasClipped),

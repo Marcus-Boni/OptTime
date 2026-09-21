@@ -47,6 +47,13 @@ export interface OutlookEvent {
   type?: string;
   /** Present on every occurrence of a recurring series. */
   seriesMasterId?: string | null;
+  /**
+   * Where a moved occurrence was originally scheduled.
+   *
+   * Graph only fills this on `exception` rows, which is precisely the
+   * "reunião remarcada" case Meu Tempo counts.
+   */
+  originalStart?: string | null;
   isOnlineMeeting?: boolean;
   onlineMeetingProvider?: string | null;
   attendees?: OutlookAttendee[];
@@ -64,6 +71,11 @@ export interface FetchOutlookEventsOptions {
    * caller wants them gone.
    */
   includeExcluded?: boolean;
+  /**
+   * Pages of 100 events to walk. The default covers a week comfortably; Meu
+   * Tempo raises it because it reads a whole month in one request.
+   */
+  maxPages?: number;
 }
 
 export interface MicrosoftAccountSnapshot {
@@ -215,6 +227,7 @@ const CALENDAR_SELECT = [
   "sensitivity",
   "type",
   "seriesMasterId",
+  "originalStart",
   "isOnlineMeeting",
   "onlineMeetingProvider",
   "attendees",
@@ -241,7 +254,9 @@ export async function fetchOutlookEvents(
   let nextUrl: string | null = url.toString();
   let page = 0;
 
-  while (nextUrl && page < CALENDAR_MAX_PAGES) {
+  const maxPages = Math.max(1, options.maxPages ?? CALENDAR_MAX_PAGES);
+
+  while (nextUrl && page < maxPages) {
     const response: Response = await fetch(nextUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,

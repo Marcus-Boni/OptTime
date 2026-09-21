@@ -67,6 +67,7 @@ function event(
     sensitivity: "normal",
     type: "singleInstance",
     seriesMasterId: null,
+    originalStartIso: null,
     isOnlineMeeting: true,
     onlineMeetingProvider: "teamsForBusiness",
     responseStatus: "accepted",

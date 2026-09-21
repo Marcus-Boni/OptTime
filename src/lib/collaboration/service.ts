@@ -52,6 +52,7 @@ function toRawCalendarEvent(event: OutlookEvent): RawCalendarEvent {
     sensitivity: event.sensitivity ?? null,
     type: event.type ?? null,
     seriesMasterId: event.seriesMasterId ?? null,
+    originalStartIso: event.originalStart ?? null,
     isOnlineMeeting: Boolean(event.isOnlineMeeting),
     onlineMeetingProvider: event.onlineMeetingProvider ?? null,
     responseStatus: event.responseStatus?.response ?? null,

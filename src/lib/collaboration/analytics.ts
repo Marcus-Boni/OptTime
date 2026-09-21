@@ -22,6 +22,8 @@ import type {
 const GRAPH_ANALYTICS_URL =
   "https://graph.microsoft.com/beta/me/analytics/activityStatistics";
 const CALL_TIMEOUT_MS = 8_000;
+/** A month of rows takes longer to come back than a single day. */
+const RANGE_TIMEOUT_MS = 12_000;
 
 /** Graph reports focus separately; the other four are collaboration time. */
 const COLLABORATION_KINDS: readonly ActivityKind[] = [
@@ -237,14 +239,156 @@ export async function fetchDayPortrait(
   }
 }
 
-/** pt-BR label for each activity kind, used by the portrait bar. */
+// ─── Range reads (Meu Tempo) ──────────────────────────────────────────
+
+/**
+ * Buckets raw Graph rows into one portrait per local day.
+ *
+ * A row with no `startDate` is dropped here, unlike the single-day path: with
+ * a range there is nowhere to put it, and silently adding it to the first day
+ * would invent minutes on a date the person may not have worked.
+ */
+export function summarizeActivityRowsByDay(
+  rows: GraphActivityStatistic[],
+  from: string,
+  to: string,
+): Map<string, ActivitySlice[]> {
+  const byDate = new Map<string, GraphActivityStatistic[]>();
+
+  for (const row of rows) {
+    const date = row.startDate?.slice(0, 10);
+    if (!date || date < from || date > to) continue;
+
+    const bucket = byDate.get(date);
+    if (bucket) bucket.push(row);
+    else byDate.set(date, [row]);
+  }
+
+  const result = new Map<string, ActivitySlice[]>();
+  for (const [date, dayRows] of byDate) {
+    result.set(date, summarizeActivityRows(dayRows));
+  }
+  return result;
+}
+
+export interface PortraitRange {
+  /** One entry per day that actually returned data. */
+  byDate: Map<string, DayPortrait>;
+  availability: PortraitAvailability;
+}
+
+/**
+ * Reads the whole period in a single request.
+ *
+ * `activityStatistics` only accepts a lower bound (`ge`), so asking for the
+ * first day of the range already returns everything after it; the upper bound
+ * is applied while bucketing. One call for a month beats thirty daily ones and
+ * keeps the page inside a normal request budget.
+ */
+export async function fetchPortraitRange(
+  accessToken: string,
+  from: string,
+  to: string,
+): Promise<PortraitRange> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), RANGE_TIMEOUT_MS);
+
+  try {
+    const filter = encodeURIComponent(`startDate ge ${from}`);
+    const url = `${GRAPH_ANALYTICS_URL}?$filter=${filter}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      const availability = availabilityFromError(response.status, body);
+
+      if (availability === "unavailable") {
+        console.error("[collaboration-analytics] range error:", {
+          from,
+          to,
+          status: response.status,
+          body: body.slice(0, 500),
+        });
+      }
+
+      return { byDate: new Map(), availability };
+    }
+
+    const data = (await response.json()) as GraphActivityResponse;
+    const grouped = summarizeActivityRowsByDay(data.value ?? [], from, to);
+
+    const byDate = new Map<string, DayPortrait>();
+    for (const [date, slices] of grouped) {
+      byDate.set(date, buildPortrait(date, slices, "ok"));
+    }
+
+    return { byDate, availability: "ok" };
+  } catch (error: unknown) {
+    console.error("[collaboration-analytics] fetchPortraitRange:", {
+      from,
+      to,
+      error,
+    });
+    return { byDate: new Map(), availability: "unavailable" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * pt-BR label for each activity kind.
+ *
+ * `focus` carries neither "trabalho" nor "foco", and both omissions are
+ * deliberate. Microsoft defines it as "all time blocks of at least two
+ * consecutive hours in the calendar without a meeting with other people,
+ * within the set work hours" — that is *empty calendar*, not measured work.
+ * Calling it "trabalho focado" made a quiet week read as 43 hours of deep
+ * work; calling it "tempo livre para focar" still collided with our own
+ * "maior bloco de foco", which measures something else entirely.
+ *
+ * "Espaço livre na agenda" says what it is: room, not effort.
+ */
 export const ACTIVITY_LABELS: Record<ActivityKind, string> = {
   meeting: "Reuniões",
   call: "Chamadas",
   chat: "Conversas",
   email: "E-mail",
-  focus: "Trabalho focado",
+  focus: "Espaço livre na agenda",
 };
+
+/**
+ * One plain sentence per activity, shown next to the legend.
+ *
+ * Written from the official Microsoft Graph definitions, because the five
+ * names look interchangeable to anyone who has not read them: "reunião",
+ * "chamada" and "conversa" are the same thing in everyday Portuguese, and the
+ * whole card is useless if the person cannot tell them apart.
+ */
+export const ACTIVITY_DESCRIPTIONS: Record<ActivityKind, string> = {
+  meeting:
+    "Reuniões agendadas na agenda — Outlook, Teams ou Skype. Tem hora marcada e convite.",
+  call: "Ligações do Teams: alguém te chamou, ou você chamou, sem convite de agenda.",
+  chat: "Mensagens trocadas no chat do Teams, uma a uma ou em grupo.",
+  email: "Tempo lendo e escrevendo e-mails no Outlook.",
+  focus:
+    "A soma de TODAS as janelas de 2 horas ou mais sem reunião, no seu horário de trabalho do Outlook. Mede quanto espaço a agenda deixou livre — não quanto você trabalhou. Costuma ser alto: uma semana com poucas reuniões deixa quase todo o expediente livre.",
+};
+
+/** Why the free-space figure is shown apart, in the user's words. */
+export const FOCUS_DISCLAIMER =
+  "Não soma com os números acima: um é tempo ocupado, o outro é o quanto da agenda ficou vago.";
+
+/** Where these numbers come from, shown behind the info button. */
+export const PORTRAIT_SOURCE_NOTE =
+  "Medições do Microsoft Viva Insights, calculadas pela própria Microsoft durante a madrugada e baseadas no horário de trabalho configurado no seu Outlook. Por isso o dia de hoje costuma aparecer vazio — e por isso os números não batem exatamente com o seu apontamento.";
 
 /** User-facing explanation for a portrait that could not be built. */
 export const PORTRAIT_UNAVAILABLE_MESSAGES: Record<
