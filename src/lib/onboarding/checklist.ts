@@ -65,6 +65,17 @@ export const CHECKLIST_TASKS: readonly ChecklistTask[] = [
     roles: ALL_ROLES,
   },
   {
+    id: "discover_my_time",
+    title: "Veja para onde seu tempo foi",
+    description:
+      "O raio-X do período: reuniões realizadas, canceladas e remarcadas, com quem você passou o tempo e o que entregou.",
+    kind: "tour",
+    tourId: "my-time",
+    cta: { label: "Iniciar tour", href: null },
+    icon: "pie-chart",
+    roles: ALL_ROLES,
+  },
+  {
     id: "meet_timebot",
     title: "Conheça a IA do produto",
     description:

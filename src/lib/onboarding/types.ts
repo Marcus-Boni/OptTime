@@ -20,6 +20,7 @@ export type TourPlacement = "top" | "bottom" | "left" | "right" | "center";
 export type TourId =
   | "welcome"
   | "time-tracking"
+  | "my-time"
   | "timesheets"
   | "journey"
   | "ai-assistant"
@@ -82,6 +83,7 @@ export type TourIconName =
   | "trophy"
   | "bot"
   | "radar"
+  | "pie-chart"
   | "settings";
 
 /** How a checklist task gets ticked off. */

@@ -218,6 +218,86 @@ export const TOURS: readonly TourDefinition[] = [
     ],
   },
   {
+    id: "my-time",
+    title: "Descobrir para onde seu tempo foi",
+    description:
+      "O raio-X do período: onde as horas foram, o que fazer a respeito e o que cada número significa.",
+    icon: "pie-chart",
+    estimatedMinutes: 3,
+    roles: ALL_ROLES,
+    entryRoute: "/dashboard/my-time",
+    steps: [
+      {
+        id: "intro",
+        title: "Onde suas horas realmente foram parar",
+        description:
+          "Registrar horas responde quanto. Esta tela responde onde — cruzando a sua agenda, o Microsoft 365, o Azure DevOps e o que você já apontou. Nada aqui pede permissão nova, e nada aqui premia trabalhar mais.",
+        placement: "center",
+        route: "/dashboard/my-time",
+        optional: false,
+      },
+      {
+        id: "distribution",
+        title: "O seu tempo comprometido, numa barra só",
+        description:
+          "Três fatias que não se sobrepõem: o que você apontou fora de reunião, as reuniões que já viraram apontamento e as que ainda não viraram. O total é lido contra a sua jornada — as 8h por dia que você trabalha —, nunca contra a janela do Outlook, que é maior porque inclui o almoço.",
+        target: '[data-tour="my-time-distribution"]',
+        placement: "bottom",
+      },
+      {
+        id: "kpis",
+        title: "Quatro números, um quadro",
+        description:
+          "Horas registradas, carga de reuniões, a maior janela seguida sem reunião que você conseguiu e o que ainda não virou apontamento. A terceira é a única que melhora quando a semana é bem arranjada, e não quando ela é mais longa.",
+        target: '[data-tour="my-time-kpis"]',
+        placement: "bottom",
+        hint: "Passe o mouse em qualquer célula para ver de onde o número sai.",
+      },
+      {
+        id: "assistant",
+        title: "O assistente sugere, e resolve",
+        description:
+          "Cada cartão traz um achado com a etiqueta do que ele é: Ação, Atenção, Conquista ou Contexto. Os de Ação têm botão — o principal lança todas as reuniões pendentes de uma vez, bastando escolher o projeto.",
+        target: '[data-tour="my-time-assistant"]',
+        placement: "top",
+        hint: "O resumo escrito fica guardado: reabrir a tela não gasta uma nova geração.",
+      },
+      {
+        id: "daily",
+        title: "Clique num dia para investigar",
+        description:
+          "Barra laranja é o que você apontou, a roxa é o que a agenda tinha e a linha tracejada é o previsto. Clicar em um dia filtra o resto da tela para ele; clicar de novo volta ao período inteiro.",
+        target: '[data-tour="my-time-daily"]',
+        placement: "top",
+      },
+      {
+        id: "tabs",
+        title: "O detalhe, por contexto",
+        description:
+          "Projetos & Entregas responde o que saiu do seu tempo. Agenda & Foco mostra o que aconteceu com cada convite. Pessoas & Rituais mostra com quem o tempo foi dividido e quanto custa cada recorrente.",
+        target: '[data-tour="my-time-tabs"]',
+        placement: "bottom",
+      },
+      {
+        id: "portrait",
+        title: "Reunião, chamada e conversa não são a mesma coisa",
+        description:
+          'Reunião tem convite e hora marcada; chamada é ligação do Teams sem convite; conversa é o chat. No rodapé, o "espaço livre na agenda" soma TODAS as janelas de 2h+ da semana contra a janela do Outlook — fica aqui embaixo justamente porque diz pouco: uma semana com poucas reuniões deixa quase tudo livre. Tudo isso é medido pela Microsoft de madrugada, por isso hoje costuma vir vazio.',
+        target: '[data-tour="my-time-portrait"]',
+        placement: "top",
+        hint: 'Em dúvida em qualquer ponto da tela, use "O que significa cada número" lá em cima.',
+      },
+      {
+        id: "outro",
+        title: "Para que serve na prática",
+        description:
+          "Use antes de fechar a semana para lançar de uma vez as reuniões que ficaram para trás, e antes de um 1:1 para mostrar com dados onde o seu tempo está indo.",
+        placement: "center",
+        optional: false,
+      },
+    ],
+  },
+  {
     id: "timesheets",
     title: "Fechar e submeter a semana",
     description:

@@ -4,6 +4,7 @@ import {
   Clock,
   Compass,
   type LucideIcon,
+  PieChart,
   Radar,
   Settings,
   Trophy,
@@ -23,6 +24,7 @@ export const TOUR_ICONS: Record<TourIconName, LucideIcon> = {
   trophy: Trophy,
   bot: Bot,
   radar: Radar,
+  "pie-chart": PieChart,
   settings: Settings,
 };
 
