@@ -11,6 +11,7 @@ import {
   Home,
   Lightbulb,
   Pause,
+  PieChart,
   Radar,
   Settings,
   Square,
@@ -64,6 +65,7 @@ const JOURNEY_HREF = "/dashboard/journey";
 const baseNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: Home },
   { name: "Registrar Tempo", href: "/dashboard/time", icon: Clock },
+  { name: "Meu Tempo", href: "/dashboard/my-time", icon: PieChart },
   { name: "Minha Jornada", href: JOURNEY_HREF, icon: Trophy },
   { name: "Projetos", href: "/dashboard/projects", icon: Folder },
   {

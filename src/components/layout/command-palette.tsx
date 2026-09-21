@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Mic,
   Moon,
+  PieChart,
   Plus,
   Radar,
   Send,
@@ -323,6 +324,16 @@ export function CommandPalette() {
             <span className="flex-1">Timesheets & Submissões</span>
             <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
               G S
+            </kbd>
+          </CommandItem>
+
+          <CommandItem onSelect={() => navigate("/dashboard/my-time")}>
+            <PieChart className="mr-2 h-4 w-4 text-neutral-400" />
+            <span className="flex-1">
+              Meu Tempo · Para onde foram suas horas
+            </span>
+            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+              G M
             </kbd>
           </CommandItem>
 

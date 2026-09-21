@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowUpRight,
   CalendarClock,
   Check,
   Loader2,
@@ -9,6 +10,7 @@ import {
   RefreshCw,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ActivityPortraitBar } from "@/components/collaboration/ActivityPortraitBar";
@@ -349,14 +351,31 @@ export function DayCollaborationPanel({
               </div>
             </div>
 
-            {day.suggestedMinutes > 0 && (
-              <Badge
-                variant="secondary"
-                className="rounded-full font-mono text-[11px] tabular-nums"
+            <div className="flex items-center gap-2">
+              {day.suggestedMinutes > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="rounded-full font-mono text-[11px] tabular-nums"
+                >
+                  {formatDuration(day.suggestedMinutes)} disponíveis
+                </Badge>
+              )}
+
+              {/* This panel answers "hoje". The same sources answer the week
+                  and the month one click away, which is where a leader goes
+                  after noticing something odd in a single day. */}
+              <Button
+                asChild
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
               >
-                {formatDuration(day.suggestedMinutes)} disponíveis
-              </Badge>
-            )}
+                <Link href="/dashboard/my-time">
+                  Ver o período
+                  <ArrowUpRight className="size-3" aria-hidden="true" />
+                </Link>
+              </Button>
+            </div>
           </div>
 
           {day.needsReauth && <ReauthNotice feature="o resumo do seu dia" />}
