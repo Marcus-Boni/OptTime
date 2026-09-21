@@ -118,7 +118,7 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
       ];
 
   return (
-    <div className="relative flex min-h-full flex-col justify-between p-8 sm:p-14 md:p-20 overflow-y-auto">
+    <div className="relative flex h-full max-h-full w-full flex-col justify-between px-6 sm:px-12 md:px-16 lg:px-20 pt-16 sm:pt-20 pb-20 sm:pb-24 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Ambient background */}
       <div
         className="pointer-events-none absolute -bottom-20 -right-20 size-[450px] rounded-full bg-blue-500/10 blur-3xl"
@@ -126,13 +126,13 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
       />
 
       {/* Slide Header */}
-      <div className="space-y-3">
+      <div className="space-y-1.5 shrink-0">
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-brand-500/40 bg-brand-500/15 text-brand-300 text-xs gap-1.5"
+            className="border-brand-500/40 bg-brand-500/15 text-brand-300 text-xs gap-1.5 py-0.5"
           >
-            <BarChart3 className="size-3.5" aria-hidden="true" />
+            <BarChart3 className="size-3" aria-hidden="true" />
             Slide 03 · Indicadores & Ritmo
           </Badge>
           <span className="text-xs text-neutral-400">
@@ -142,12 +142,12 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
           </span>
         </div>
 
-        <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white">
+        <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white">
           {isDeliverablesMode
             ? "Métricas de Ritmo & Velocidade"
             : "Indicadores de Alocação & Orçamento"}
         </h2>
-        <p className="text-sm sm:text-base text-neutral-400 max-w-2xl">
+        <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl">
           {isDeliverablesMode
             ? "Demonstração da constância e volume de entregas semana a semana ao longo da execução do roadmap."
             : "Acompanhamento da evolução de esforço por semana e conformidade com o orçamento contratado."}
@@ -155,9 +155,9 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
       </div>
 
       {/* Middle section: Big numbers + Expanded chart */}
-      <div className="my-auto space-y-6 py-6">
+      <div className="my-auto space-y-3 sm:space-y-4 py-1 sm:py-2">
         {/* Big numbers grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
           {kpis.map((kpi) => {
             const Icon = kpi.icon;
             return (
@@ -166,20 +166,20 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
                 initial={prefersReducedMotion ? false : { opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.35 }}
-                className="rounded-2xl border border-white/10 bg-neutral-900/60 p-4 sm:p-5 backdrop-blur-md space-y-2"
+                className="rounded-xl border border-white/10 bg-neutral-900/60 p-3 sm:p-3.5 backdrop-blur-md space-y-1"
               >
-                <div className="flex items-center gap-2 text-neutral-400">
-                  <Icon className="size-4" aria-hidden="true" />
-                  <span className="text-xs uppercase tracking-wider font-medium truncate">
+                <div className="flex items-center gap-1.5 text-neutral-400">
+                  <Icon className="size-3.5" aria-hidden="true" />
+                  <span className="text-[11px] uppercase tracking-wider font-medium truncate">
                     {kpi.label}
                   </span>
                 </div>
                 <p
-                  className={`font-mono text-2xl sm:text-4xl font-bold tracking-tight ${kpi.color} truncate`}
+                  className={`font-mono text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight ${kpi.color} truncate`}
                 >
                   {kpi.value}
                 </p>
-                <p className="text-xs text-neutral-400 truncate">
+                <p className="text-[11px] text-neutral-400 truncate">
                   {kpi.subvalue}
                 </p>
               </motion.div>
@@ -188,22 +188,22 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
         </div>
 
         {/* Cinematic Recharts Chart */}
-        <div className="rounded-2xl border border-white/10 bg-neutral-900/60 p-5 sm:p-6 backdrop-blur-md space-y-3">
+        <div className="rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-semibold text-white">
+              <p className="text-xs sm:text-sm font-semibold text-white">
                 {isDeliverablesMode
                   ? "Ritmo de Entregas por Semana (Velocity)"
                   : "Horas Alocadas por Semana"}
               </p>
-              <p className="text-xs text-neutral-400">
+              <p className="text-[11px] text-neutral-400">
                 Histórico recente consolidado em tempo real
               </p>
             </div>
-            <div className="flex items-center gap-3 text-xs text-neutral-400">
+            <div className="flex items-center gap-3 text-[11px] text-neutral-400">
               <span className="flex items-center gap-1.5">
                 <span
-                  className={`size-2.5 rounded-full ${isDeliverablesMode ? "bg-blue-400" : "bg-brand-400"}`}
+                  className={`size-2 rounded-full ${isDeliverablesMode ? "bg-blue-400" : "bg-brand-400"}`}
                   aria-hidden="true"
                 />
                 {isDeliverablesMode
@@ -213,7 +213,7 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
             </div>
           </div>
 
-          <div className="h-[220px] sm:h-[260px] w-full pt-2">
+          <div className="h-[160px] sm:h-[190px] lg:h-[210px] w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={chartData}
@@ -270,7 +270,7 @@ export function SlideMetrics({ snapshot, isDeliverablesMode }: SlideProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] sm:text-xs text-neutral-400 shrink-0">
         <span>Série cronológica de {snapshot.weeklySeries.length} semanas</span>
         <span>OptSolv Live Engine Analytics</span>
       </div>

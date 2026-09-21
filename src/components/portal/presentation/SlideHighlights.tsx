@@ -32,7 +32,7 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
   };
 
   return (
-    <div className="relative flex min-h-full flex-col justify-between p-8 sm:p-14 md:p-20 overflow-y-auto">
+    <div className="relative flex h-full max-h-full w-full flex-col justify-between px-6 sm:px-12 md:px-16 lg:px-20 pt-16 sm:pt-20 pb-20 sm:pb-24 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Ambient glow */}
       <div
         className="pointer-events-none absolute top-1/3 -right-32 size-[400px] rounded-full bg-brand-500/10 blur-3xl"
@@ -40,13 +40,13 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
       />
 
       {/* Header */}
-      <div className="space-y-3">
+      <div className="space-y-1.5 shrink-0">
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-brand-500/40 bg-brand-500/15 text-brand-300 text-xs gap-1.5"
+            className="border-brand-500/40 bg-brand-500/15 text-brand-300 text-xs gap-1.5 py-0.5"
           >
-            <Sparkles className="size-3.5" aria-hidden="true" />
+            <Sparkles className="size-3" aria-hidden="true" />
             Slide 02 · Conquistas do Ciclo
           </Badge>
           <span className="text-xs text-neutral-400">
@@ -54,10 +54,10 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
           </span>
         </div>
 
-        <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white">
+        <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white">
           Destaques & Entregas Recentes
         </h2>
-        <p className="text-sm sm:text-base text-neutral-400 max-w-2xl">
+        <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl">
           Itens de escopo, funcionalidades e melhorias entregues pela equipe nos
           últimos períodos com validação e rastreabilidade.
         </p>
@@ -68,10 +68,10 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="my-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-8"
+        className="my-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5 py-2 sm:py-3"
       >
         {highlights.length === 0 ? (
-          <div className="col-span-full rounded-2xl border border-white/10 bg-neutral-900/50 p-12 text-center text-neutral-400">
+          <div className="col-span-full rounded-xl border border-white/10 bg-neutral-900/50 p-8 text-center text-neutral-400 text-sm">
             Nenhuma atividade registrada no período recente.
           </div>
         ) : (
@@ -79,9 +79,9 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
             <motion.div
               key={`${item.date}-${item.member}-${index}`}
               variants={itemVariants}
-              className="group relative flex flex-col justify-between rounded-2xl border border-white/10 bg-neutral-900/60 p-5 backdrop-blur-md transition-all duration-300 hover:border-brand-500/40 hover:bg-neutral-900/80"
+              className="group relative flex flex-col justify-between rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md transition-all duration-200 hover:border-brand-500/40 hover:bg-neutral-900/80"
             >
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {/* Meta row: Work item / status tag & date */}
                 <div className="flex items-center justify-between gap-2">
                   {item.azureWorkItemId ? (
@@ -110,18 +110,18 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
                 {/* Work item title or description */}
                 <div>
                   {item.azureWorkItemTitle ? (
-                    <p className="text-xs font-medium text-blue-300/90 mb-1 line-clamp-1">
+                    <p className="text-xs font-medium text-blue-300/90 mb-0.5 line-clamp-1">
                       {item.azureWorkItemTitle}
                     </p>
                   ) : null}
-                  <p className="font-sans text-sm sm:text-base font-medium text-white leading-snug line-clamp-3">
+                  <p className="font-sans text-xs sm:text-sm font-medium text-white leading-snug line-clamp-2">
                     {item.description || "Entrega de funcionalidade técnica"}
                   </p>
                 </div>
               </div>
 
               {/* Author and metric footer */}
-              <div className="mt-4 flex items-center justify-between border-t border-white/5 pt-3">
+              <div className="mt-3 flex items-center justify-between border-t border-white/5 pt-2.5">
                 <div className="flex items-center gap-2">
                   {item.userImage ? (
                     <Image
@@ -159,7 +159,7 @@ export function SlideHighlights({ snapshot, isDeliverablesMode }: SlideProps) {
       </motion.div>
 
       {/* Footer stats pill */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4 text-xs text-neutral-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] sm:text-xs text-neutral-400 shrink-0">
         <div className="flex items-center gap-2">
           <Tag className="size-3.5 text-brand-400" aria-hidden="true" />
           <span>

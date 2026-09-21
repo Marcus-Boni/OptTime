@@ -156,6 +156,15 @@ export function PresentationDeck({ snapshot, onClose }: PresentationDeckProps) {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
+  // Lock body scroll while in presentation mode
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
   // Slide transition animation
   const slideVariants = useMemo(() => {
     if (prefersReducedMotion) {
@@ -226,7 +235,7 @@ export function PresentationDeck({ snapshot, onClose }: PresentationDeckProps) {
       </header>
 
       {/* Main Slide Stage */}
-      <main className="relative flex-1 overflow-hidden pt-12 pb-24">
+      <main className="relative flex-1 size-full overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={currentIndex}

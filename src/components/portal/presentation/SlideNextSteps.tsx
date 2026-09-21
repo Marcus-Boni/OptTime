@@ -39,7 +39,7 @@ export function SlideNextSteps({
   );
 
   return (
-    <div className="relative flex min-h-full flex-col justify-between p-8 sm:p-14 md:p-20 overflow-y-auto">
+    <div className="relative flex h-full max-h-full w-full flex-col justify-between px-6 sm:px-12 md:px-16 lg:px-20 pt-16 sm:pt-20 pb-20 sm:pb-24 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Ambient background */}
       <div
         className="pointer-events-none absolute -top-20 -left-20 size-[450px] rounded-full bg-emerald-500/10 blur-3xl"
@@ -47,13 +47,13 @@ export function SlideNextSteps({
       />
 
       {/* Header */}
-      <div className="space-y-3">
+      <div className="space-y-1.5 shrink-0">
         <div className="flex items-center gap-2">
           <Badge
             variant="outline"
-            className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs gap-1.5"
+            className="border-emerald-500/40 bg-emerald-500/15 text-emerald-300 text-xs gap-1.5 py-0.5"
           >
-            <CalendarCheck className="size-3.5" aria-hidden="true" />
+            <CalendarCheck className="size-3" aria-hidden="true" />
             Slide 05 · Próximos Passos & Governança
           </Badge>
           <span className="text-xs text-neutral-400">
@@ -61,30 +61,30 @@ export function SlideNextSteps({
           </span>
         </div>
 
-        <h2 className="font-display text-3xl sm:text-5xl font-bold tracking-tight text-white">
+        <h2 className="font-display text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-white">
           Próximos Passos & Cerimônias
         </h2>
-        <p className="text-sm sm:text-base text-neutral-400 max-w-2xl">
+        <p className="text-xs sm:text-sm text-neutral-400 max-w-2xl">
           Diretrizes para o próximo período, sincronização de ritos semanais e
           validações conjuntas entre cliente e equipe técnica.
         </p>
       </div>
 
       {/* 3 Executive Pillars */}
-      <div className="my-auto grid grid-cols-1 md:grid-cols-3 gap-5 py-6">
+      <div className="my-auto grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 py-1 sm:py-2">
         {/* Pillar 1: Próximas Entregas e Fases */}
         <motion.div
           initial={prefersReducedMotion ? false : { opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.05 }}
-          className="flex flex-col justify-between rounded-2xl border border-white/10 bg-neutral-900/60 p-6 backdrop-blur-md space-y-4"
+          className="flex flex-col justify-between rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-3"
         >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="rounded-xl bg-blue-500/15 p-2 text-blue-400 border border-blue-500/30">
-                <Layers className="size-5" aria-hidden="true" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-blue-500/15 p-1.5 text-blue-400 border border-blue-500/30">
+                <Layers className="size-4" aria-hidden="true" />
               </div>
-              <h3 className="font-display text-lg font-semibold text-white">
+              <h3 className="font-display text-sm sm:text-base font-semibold text-white">
                 Próximas Fases
               </h3>
             </div>
@@ -95,7 +95,7 @@ export function SlideNextSteps({
                 : "Marcos técnicos e etapas previstas para o próximo sprint de desenvolvimento."}
             </p>
 
-            <div className="space-y-2.5 pt-1">
+            <div className="space-y-2 pt-0.5">
               {upcomingStages.length > 0 ? (
                 upcomingStages.map((stage) => (
                   <div
@@ -153,14 +153,14 @@ export function SlideNextSteps({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
-          className="flex flex-col justify-between rounded-2xl border border-white/10 bg-neutral-900/60 p-6 backdrop-blur-md space-y-4"
+          className="flex flex-col justify-between rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-3"
         >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="rounded-xl bg-brand-500/15 p-2 text-brand-400 border border-brand-500/30">
-                <CalendarCheck className="size-5" aria-hidden="true" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-brand-500/15 p-1.5 text-brand-400 border border-brand-500/30">
+                <CalendarCheck className="size-4" aria-hidden="true" />
               </div>
-              <h3 className="font-display text-lg font-semibold text-white">
+              <h3 className="font-display text-sm sm:text-base font-semibold text-white">
                 Ritos & Governança
               </h3>
             </div>
@@ -170,7 +170,7 @@ export function SlideNextSteps({
               transparência mútua.
             </p>
 
-            <div className="space-y-2.5 pt-1 text-xs">
+            <div className="space-y-2 pt-0.5 text-xs">
               <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-1">
                 <div className="flex items-center gap-2 font-medium text-white">
                   <Users2
@@ -212,14 +212,14 @@ export function SlideNextSteps({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.15 }}
-          className="flex flex-col justify-between rounded-2xl border border-white/10 bg-neutral-900/60 p-6 backdrop-blur-md space-y-4"
+          className="flex flex-col justify-between rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-3"
         >
-          <div className="space-y-4">
-            <div className="flex items-center gap-2.5">
-              <div className="rounded-xl bg-emerald-500/15 p-2 text-emerald-400 border border-emerald-500/30">
-                <ShieldCheck className="size-5" aria-hidden="true" />
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="rounded-lg bg-emerald-500/15 p-1.5 text-emerald-400 border border-emerald-500/30">
+                <ShieldCheck className="size-4" aria-hidden="true" />
               </div>
-              <h3 className="font-display text-lg font-semibold text-white">
+              <h3 className="font-display text-sm sm:text-base font-semibold text-white">
                 Validações & Homologação
               </h3>
             </div>
@@ -229,7 +229,7 @@ export function SlideNextSteps({
               etapas.
             </p>
 
-            <div className="space-y-2.5 pt-1 text-xs">
+            <div className="space-y-2 pt-0.5 text-xs">
               <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 space-y-1">
                 <div className="flex items-center gap-2 font-medium text-white">
                   <CheckCircle2
@@ -269,7 +269,7 @@ export function SlideNextSteps({
       </div>
 
       {/* End Call-To-Action buttons */}
-      <div className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-3 shrink-0">
         <div className="flex items-center gap-3">
           <div className="flex size-8 items-center justify-center rounded-lg bg-brand-500 shadow-md">
             <Image

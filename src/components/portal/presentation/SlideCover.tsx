@@ -71,7 +71,7 @@ export function SlideCover({ snapshot, isDeliverablesMode }: SlideProps) {
     ) : null;
 
   return (
-    <div className="relative flex min-h-full flex-col justify-between p-8 sm:p-14 md:p-20 overflow-y-auto">
+    <div className="relative flex h-full max-h-full w-full flex-col justify-between px-6 sm:px-12 md:px-16 lg:px-20 pt-16 sm:pt-20 pb-20 sm:pb-24 overflow-y-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
       {/* Background ambient lighting */}
       <div
         className="pointer-events-none absolute -top-40 -right-40 size-[500px] rounded-full bg-brand-500/10 blur-3xl"
@@ -165,15 +165,10 @@ export function SlideCover({ snapshot, isDeliverablesMode }: SlideProps) {
         initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.1 }}
-        className="my-auto max-w-4xl space-y-6 py-8"
+        className="my-auto max-w-4xl space-y-4 sm:space-y-5 py-3"
       >
         {/* Client & Period */}
         <div className="flex flex-wrap items-center gap-2 text-sm text-neutral-400">
-          <span
-            className="size-3 rounded-full ring-2 ring-white/20"
-            style={{ backgroundColor: snapshot.color }}
-            aria-hidden="true"
-          />
           {snapshot.clientName ? (
             <span className="text-white font-medium">
               {snapshot.clientName}
@@ -190,18 +185,18 @@ export function SlideCover({ snapshot, isDeliverablesMode }: SlideProps) {
         </div>
 
         {/* Project Title */}
-        <h1 className="font-display text-4xl sm:text-6xl md:text-7xl font-bold tracking-tight text-white leading-tight">
+        <h1 className="font-display text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
           {snapshot.projectName}
         </h1>
 
-        <p className="text-base sm:text-lg text-neutral-300 max-w-2xl leading-relaxed">
+        <p className="text-sm sm:text-base text-neutral-300 max-w-2xl leading-relaxed">
           {healthStatus.description}. Visão consolidada de progresso, marcos
           alcançados, indicadores da equipe e próximos passos acordados.
         </p>
 
         {/* Stage progress highlight banner */}
         {snapshot.currentStage || snapshot.stageProgress ? (
-          <div className="rounded-2xl border border-white/10 bg-neutral-900/70 backdrop-blur-md p-5 sm:p-6 space-y-3">
+          <div className="rounded-xl border border-white/10 bg-neutral-900/70 backdrop-blur-md p-4 sm:p-5 space-y-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <CheckCircle2
@@ -242,7 +237,7 @@ export function SlideCover({ snapshot, isDeliverablesMode }: SlideProps) {
         initial={prefersReducedMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.2 }}
-        className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-neutral-300"
+        className="flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-4 text-xs text-neutral-300 shrink-0"
       >
         <div className="flex items-center gap-2">
           <Sparkles className="size-4 text-brand-400" aria-hidden="true" />
