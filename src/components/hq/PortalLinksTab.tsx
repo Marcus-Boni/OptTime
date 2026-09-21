@@ -14,6 +14,7 @@ import {
   KeyRound,
   Layers,
   Plus,
+  Presentation,
   RefreshCw,
   Timer,
   Trash2,
@@ -280,6 +281,27 @@ function PortalLinkCard({
               </Button>
             </TooltipTrigger>
             <TooltipContent side="top">Abrir em nova aba</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                asChild
+                disabled={link.status !== "active"}
+                className="text-brand-600 dark:text-brand-400 hover:bg-brand-500/10"
+              >
+                <a
+                  href={`${link.url}?present=true`}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`Apresentar portal ${link.label} em modo tela cheia`}
+                >
+                  <Presentation className="size-4" aria-hidden="true" />
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Apresentar Steering Deck</TooltipContent>
           </Tooltip>
           {link.status === "active" ? (
             <Tooltip>

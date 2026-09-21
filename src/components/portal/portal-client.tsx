@@ -16,6 +16,7 @@ import {
   KeyRound,
   Layers,
   Link2Off,
+  Presentation,
   Search,
   ShieldX,
   TimerOff,
@@ -35,6 +36,7 @@ import {
   YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { PresentationDeck } from "@/components/portal/presentation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -949,6 +951,16 @@ function LiveSnapshot({
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isPresentationOpen, setIsPresentationOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("present") === "true") {
+        setIsPresentationOpen(true);
+      }
+    }
+  }, []);
 
   const handleCopyLink = useCallback(async () => {
     try {
@@ -1105,6 +1117,16 @@ function LiveSnapshot({
               </span>
               Dados ao vivo
             </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsPresentationOpen(true)}
+              className="border-brand-500/30 bg-brand-500/10 text-brand-600 dark:text-brand-400 hover:bg-brand-500/20"
+              aria-label="Iniciar Modo Apresentação Executiva"
+            >
+              <Presentation className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Apresentar</span>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1469,6 +1491,12 @@ function LiveSnapshot({
           </span>
         </motion.footer>
       </motion.div>
+      {isPresentationOpen ? (
+        <PresentationDeck
+          snapshot={snapshot}
+          onClose={() => setIsPresentationOpen(false)}
+        />
+      ) : null}
     </PortalShell>
   );
 }
