@@ -1180,6 +1180,8 @@ export const portalLink = pgTable(
     showTeam: boolean("show_team").notNull().default(true),
     /** Show time-entry descriptions in the activity feed */
     showDescriptions: boolean("show_descriptions").notNull().default(false),
+    /** Portal archetype: "hours" (T&M / Alocação) or "deliverables" (Escopo Fechado / Entregas) */
+    portalType: text("portal_type").notNull().default("hours"),
     createdById: text("created_by_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),

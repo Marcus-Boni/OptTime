@@ -224,6 +224,8 @@ export interface BatchApprovalResult {
 
 // ─── Client Portal links ──────────────────────────────────────────────
 
+export type PortalType = "hours" | "deliverables";
+
 export interface PortalLinkSummary {
   id: string;
   projectId: string;
@@ -231,6 +233,8 @@ export interface PortalLinkSummary {
   projectCode: string;
   projectColor: string;
   label: string;
+  /** "hours" (T&M) or "deliverables" (Escopo Fechado & Roadmap) */
+  portalType: PortalType;
   /** Full shareable URL (origin + /portal/token) */
   url: string;
   hasPassword: boolean;
@@ -254,6 +258,8 @@ export interface PortalWeeklyPoint {
   weekStart: string;
   label: string;
   minutes: number;
+  /** Count of deliverables/tasks completed in this week (used in deliverables mode) */
+  deliverablesCount?: number;
 }
 
 export interface PortalActivityItem {
@@ -263,9 +269,34 @@ export interface PortalActivityItem {
   minutes: number;
   /** Team member display — anonymized initials when showTeam=false */
   member: string;
+  /** Azure DevOps Work Item numeric ID if available */
+  azureWorkItemId?: number | null;
+  /** Azure DevOps Work Item title if available */
+  azureWorkItemTitle?: string | null;
+}
+
+export interface PortalStageDetail {
+  name: string;
+  status: "completed" | "current" | "upcoming";
+}
+
+export interface PortalStageProgress {
+  current: string | null;
+  currentIndex: number;
+  totalStages: number;
+  percentage: number;
+  stages: PortalStageDetail[];
+}
+
+export interface PortalDeliverablesTotals {
+  totalDelivered: number;
+  last30DaysDelivered: number;
+  activeWeeks: number;
+  teamSize: number;
 }
 
 export interface PortalSnapshot {
+  portalType: PortalType;
   projectName: string;
   projectCode: string;
   clientName: string | null;
@@ -275,6 +306,8 @@ export interface PortalSnapshot {
   periodEnd: string | null;
   currentStage: string | null;
   stages: string[];
+  stageProgress?: PortalStageProgress;
+  deliverablesTotals?: PortalDeliverablesTotals;
   budget: {
     visible: boolean;
     budgetMinutes: number | null;
@@ -288,7 +321,7 @@ export interface PortalSnapshot {
     teamSize: number;
   };
   weeklySeries: PortalWeeklyPoint[];
-  team: Array<{ name: string; minutes: number }>;
+  team: Array<{ name: string; minutes: number; contributionsCount?: number }>;
   recentActivity: PortalActivityItem[];
   generatedAt: string;
 }

@@ -63,6 +63,9 @@ export async function buildPortalSnapshot(
 
   if (!projectRow) return null;
 
+  const portalType = (link.portalType as "hours" | "deliverables") ?? "hours";
+  const isDeliverablesMode = portalType === "deliverables";
+
   const today = todayInAppTimeZone();
   const weekWindow = buildWeekWindow(today, PORTAL_HISTORY_WEEKS, 0);
   const windowStart = weekWindow[0]?.start ?? today;
@@ -77,6 +80,8 @@ export async function buildPortalSnapshot(
         .select({
           consumed: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
           last30: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.date} >= ${thirtyDaysAgoKey} THEN ${timeEntry.duration} ELSE 0 END), 0)::int`,
+          totalCount: sql<number>`COUNT(*)::int`,
+          last30Count: sql<number>`COUNT(CASE WHEN ${timeEntry.date} >= ${thirtyDaysAgoKey} THEN 1 END)::int`,
         })
         .from(timeEntry)
         .where(
@@ -89,6 +94,7 @@ export async function buildPortalSnapshot(
         .select({
           date: timeEntry.date,
           minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
+          count: sql<number>`COUNT(*)::int`,
         })
         .from(timeEntry)
         .where(
@@ -104,6 +110,7 @@ export async function buildPortalSnapshot(
           userId: timeEntry.userId,
           name: user.name,
           minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
+          count: sql<number>`COUNT(*)::int`,
         })
         .from(timeEntry)
         .innerJoin(user, eq(timeEntry.userId, user.id))
@@ -120,6 +127,8 @@ export async function buildPortalSnapshot(
           description: timeEntry.description,
           duration: timeEntry.duration,
           userName: user.name,
+          azureWorkItemId: timeEntry.azureWorkItemId,
+          azureWorkItemTitle: timeEntry.azureWorkItemTitle,
         })
         .from(timeEntry)
         .innerJoin(user, eq(timeEntry.userId, user.id))
@@ -135,19 +144,22 @@ export async function buildPortalSnapshot(
   );
 
   const minutesByWeek = new Map<string, number>();
+  const entriesByWeek = new Map<string, number>();
   for (const row of recentDaily) {
     const week = getWeekPeriod(row.date);
     minutesByWeek.set(
       week,
       (minutesByWeek.get(week) ?? 0) + Number(row.minutes),
     );
+    entriesByWeek.set(week, (entriesByWeek.get(week) ?? 0) + Number(row.count));
   }
 
   const weeklySeries = weekWindow.map((week) => ({
     week: week.week,
     weekStart: week.start,
     label: week.label,
-    minutes: minutesByWeek.get(week.week) ?? 0,
+    minutes: isDeliverablesMode ? 0 : (minutesByWeek.get(week.week) ?? 0),
+    deliverablesCount: entriesByWeek.get(week.week) ?? 0,
   }));
 
   const consumedMinutes = Number(totals[0]?.consumed ?? 0);
@@ -155,7 +167,11 @@ export async function buildPortalSnapshot(
     projectRow.budget !== null ? projectRow.budget * 60 : null;
 
   const sortedMembers = [...memberMinutes]
-    .sort((a, b) => Number(b.minutes) - Number(a.minutes))
+    .sort((a, b) =>
+      isDeliverablesMode
+        ? Number(b.count ?? 0) - Number(a.count ?? 0)
+        : Number(b.minutes) - Number(a.minutes),
+    )
     .slice(0, TEAM_LIMIT);
 
   const memberDisplayName = new Map<string, string>();
@@ -178,7 +194,36 @@ export async function buildPortalSnapshot(
     stages = [];
   }
 
+  const currentStageIndex = projectRow.currentStage
+    ? stages.indexOf(projectRow.currentStage)
+    : -1;
+
+  const stageProgress =
+    stages.length > 0
+      ? {
+          current: projectRow.currentStage,
+          currentIndex: currentStageIndex,
+          totalStages: stages.length,
+          percentage:
+            currentStageIndex >= 0
+              ? Math.min(
+                  100,
+                  Math.round(((currentStageIndex + 1) / stages.length) * 100),
+                )
+              : 0,
+          stages: stages.map((stage, index) => ({
+            name: stage,
+            status: (index < currentStageIndex
+              ? "completed"
+              : index === currentStageIndex
+                ? "current"
+                : "upcoming") as "completed" | "current" | "upcoming",
+          })),
+        }
+      : undefined;
+
   return {
+    portalType,
     projectName: projectRow.name,
     projectCode: projectRow.code,
     clientName: projectRow.clientName,
@@ -188,33 +233,55 @@ export async function buildPortalSnapshot(
     periodEnd: projectRow.endDate,
     currentStage: projectRow.currentStage,
     stages,
+    stageProgress,
+    deliverablesTotals: {
+      totalDelivered: Number(totals[0]?.totalCount ?? 0),
+      last30DaysDelivered: Number(totals[0]?.last30Count ?? 0),
+      activeWeeks: weeklySeries.filter((w) => (w.deliverablesCount ?? 0) > 0)
+        .length,
+      teamSize: memberMinutes.length,
+    },
     budget: {
-      visible: link.showBudget,
-      budgetMinutes: link.showBudget ? budgetMinutes : null,
-      consumedMinutes: link.showBudget ? consumedMinutes : 0,
+      visible: isDeliverablesMode ? false : link.showBudget,
+      budgetMinutes:
+        isDeliverablesMode || !link.showBudget ? null : budgetMinutes,
+      consumedMinutes:
+        isDeliverablesMode || !link.showBudget ? 0 : consumedMinutes,
       usageRatio:
-        link.showBudget && budgetMinutes !== null && budgetMinutes > 0
+        !isDeliverablesMode &&
+        link.showBudget &&
+        budgetMinutes !== null &&
+        budgetMinutes > 0
           ? Math.round((consumedMinutes / budgetMinutes) * 1000) / 1000
           : null,
     },
     totals: {
-      consumedMinutes,
-      last30DaysMinutes: Number(totals[0]?.last30 ?? 0),
-      activeWeeks: weeklySeries.filter((week) => week.minutes > 0).length,
+      consumedMinutes: isDeliverablesMode ? 0 : consumedMinutes,
+      last30DaysMinutes: isDeliverablesMode
+        ? 0
+        : Number(totals[0]?.last30 ?? 0),
+      activeWeeks: weeklySeries.filter((week) =>
+        isDeliverablesMode
+          ? (week.deliverablesCount ?? 0) > 0
+          : week.minutes > 0,
+      ).length,
       teamSize: memberMinutes.length,
     },
     weeklySeries,
     team: sortedMembers.map((member, index) => ({
       name: link.showTeam ? member.name : anonymizeName(index),
-      minutes: Number(member.minutes),
+      minutes: isDeliverablesMode ? 0 : Number(member.minutes),
+      contributionsCount: Number(member.count ?? 0),
     })),
     recentActivity: recentEntries.map((entry) => ({
       date: entry.date,
       description: link.showDescriptions ? entry.description : null,
-      minutes: entry.duration,
+      minutes: isDeliverablesMode ? 0 : entry.duration,
       member:
         memberDisplayName.get(entry.userName) ??
         (link.showTeam ? entry.userName : "Equipe"),
+      azureWorkItemId: entry.azureWorkItemId,
+      azureWorkItemTitle: entry.azureWorkItemTitle,
     })),
     generatedAt: new Date().toISOString(),
   };

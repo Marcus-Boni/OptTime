@@ -6,6 +6,7 @@ import type {
   HqApprovalsResponse,
   HqHealthResponse,
   PortalLinkSummary,
+  PortalType,
   ScopeCreepResponse,
   WorkloadMatrixResponse,
 } from "@/types/hq";
@@ -228,6 +229,7 @@ export function useHqApprovals(): ApprovalsController {
 export interface CreatePortalLinkPayload {
   projectId: string;
   label: string;
+  portalType?: PortalType;
   password?: string | null;
   expiresInDays?: number | null;
   showBudget: boolean;

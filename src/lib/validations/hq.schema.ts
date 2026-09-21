@@ -55,6 +55,7 @@ export const createPortalLinkSchema = z.object({
   password: z.string().min(6).max(72).nullable().optional(),
   /** Days until expiry; null/absent = never expires. */
   expiresInDays: z.number().int().min(1).max(365).nullable().optional(),
+  portalType: z.enum(["hours", "deliverables"]).default("hours"),
   showBudget: z.boolean().default(true),
   showTeam: z.boolean().default(true),
   showDescriptions: z.boolean().default(false),
@@ -65,6 +66,7 @@ export type CreatePortalLinkInput = z.infer<typeof createPortalLinkSchema>;
 export const updatePortalLinkSchema = z.object({
   action: z.enum(["revoke", "update"]),
   label: z.string().min(3).max(120).optional(),
+  portalType: z.enum(["hours", "deliverables"]).optional(),
   showBudget: z.boolean().optional(),
   showTeam: z.boolean().optional(),
   showDescriptions: z.boolean().optional(),

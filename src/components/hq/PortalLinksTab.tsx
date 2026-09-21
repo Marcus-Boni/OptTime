@@ -5,11 +5,14 @@ import {
   AlertTriangle,
   Ban,
   Check,
+  CheckCircle2,
+  Clock,
   Copy,
   ExternalLink,
   Eye,
   Globe,
   KeyRound,
+  Layers,
   Plus,
   RefreshCw,
   Timer,
@@ -56,8 +59,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { type CreatedPortalLink, usePortalLinks } from "@/hooks/use-hq";
-import { getRelativeTime } from "@/lib/utils";
-import type { PortalLinkSummary } from "@/types/hq";
+import { cn, getRelativeTime } from "@/lib/utils";
+import type { PortalLinkSummary, PortalType } from "@/types/hq";
 
 const containerVariants = {
   hidden: {},
@@ -190,7 +193,26 @@ function PortalLinkCard({
       <CardContent className="space-y-3 p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">{link.label}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="truncate text-sm font-semibold">{link.label}</p>
+              {link.portalType === "deliverables" ? (
+                <Badge
+                  variant="outline"
+                  className="border-blue-500/30 bg-blue-500/10 text-blue-600 dark:text-blue-400 text-[10px] gap-1 px-1.5 py-0 font-normal shrink-0"
+                >
+                  <Layers className="size-2.5" aria-hidden="true" />
+                  Entregas
+                </Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-[10px] gap-1 px-1.5 py-0 font-normal shrink-0"
+                >
+                  <Clock className="size-2.5" aria-hidden="true" />
+                  Horas
+                </Badge>
+              )}
+            </div>
             <p className="truncate text-xs text-muted-foreground">
               {link.projectName} ·{" "}
               <span className="font-mono">{link.projectCode}</span>
@@ -308,6 +330,7 @@ export function PortalLinksTab() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [projectId, setProjectId] = useState("");
+  const [portalType, setPortalType] = useState<PortalType>("hours");
   const [label, setLabel] = useState("");
   const [password, setPassword] = useState("");
   const [expiry, setExpiry] = useState<string>("30");
@@ -326,6 +349,7 @@ export function PortalLinksTab() {
 
   const resetForm = useCallback(() => {
     setProjectId("");
+    setPortalType("hours");
     setLabel("");
     setPassword("");
     setExpiry("30");
@@ -355,9 +379,10 @@ export function PortalLinksTab() {
       const result = await createLink({
         projectId,
         label: label.trim(),
+        portalType,
         password: password || null,
         expiresInDays: expiry === "never" ? null : Number(expiry),
-        showBudget,
+        showBudget: portalType === "hours" ? showBudget : false,
         showTeam,
         showDescriptions,
       });
@@ -376,6 +401,7 @@ export function PortalLinksTab() {
   }, [
     projectId,
     label,
+    portalType,
     password,
     expiry,
     showBudget,
@@ -642,6 +668,86 @@ export function PortalLinksTab() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label>Modelo de Acompanhamento</Label>
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() => setPortalType("hours")}
+                        className={cn(
+                          "flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all cursor-pointer",
+                          portalType === "hours"
+                            ? "border-amber-500/50 bg-amber-500/10 ring-1 ring-amber-500/30"
+                            : "border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50",
+                        )}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <div
+                            className={cn(
+                              "rounded-md p-1.5",
+                              portalType === "hours"
+                                ? "bg-amber-500 text-white"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            <Clock className="size-3.5" aria-hidden="true" />
+                          </div>
+                          <span className="text-xs font-semibold text-foreground">
+                            Horas e Alocação
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="ml-auto border-amber-500/30 px-1.5 py-0 text-[10px] font-normal text-amber-600 dark:text-amber-400"
+                          >
+                            T&M
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          Exibe horas totais, consumo de budget e dedicação.
+                          Ideal para clientes cobrados por hora (ex.: IDU).
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPortalType("deliverables")}
+                        className={cn(
+                          "flex flex-col items-start gap-1.5 rounded-lg border p-3 text-left transition-all cursor-pointer",
+                          portalType === "deliverables"
+                            ? "border-blue-500/50 bg-blue-500/10 ring-1 ring-blue-500/30"
+                            : "border-border/60 text-muted-foreground hover:border-border hover:bg-muted/50",
+                        )}
+                      >
+                        <div className="flex w-full items-center gap-2">
+                          <div
+                            className={cn(
+                              "rounded-md p-1.5",
+                              portalType === "deliverables"
+                                ? "bg-blue-500 text-white"
+                                : "bg-muted text-muted-foreground",
+                            )}
+                          >
+                            <Layers className="size-3.5" aria-hidden="true" />
+                          </div>
+                          <span className="text-xs font-semibold text-foreground">
+                            Entregas e Roadmap
+                          </span>
+                          <Badge
+                            variant="outline"
+                            className="ml-auto border-blue-500/30 px-1.5 py-0 text-[10px] font-normal text-blue-600 dark:text-blue-400"
+                          >
+                            Escopo Fechado
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] leading-relaxed text-muted-foreground">
+                          Foco em marcos, fases e entregas da semana. Oculta
+                          100% das horas internas (ideal para Cidade
+                          Engenharia).
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="portal-label">Nome do link</Label>
                     <Input
                       id="portal-label"
@@ -700,13 +806,26 @@ export function PortalLinksTab() {
                   </div>
 
                   <div className="space-y-2">
-                    <ToggleRow
-                      id="portal-show-budget"
-                      label="Mostrar consumo do budget"
-                      description="Horas consumidas vs. contratadas, com percentual."
-                      checked={showBudget}
-                      onCheckedChange={setShowBudget}
-                    />
+                    {portalType === "hours" ? (
+                      <ToggleRow
+                        id="portal-show-budget"
+                        label="Mostrar consumo do budget"
+                        description="Horas consumidas vs. contratadas, com percentual."
+                        checked={showBudget}
+                        onCheckedChange={setShowBudget}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2.5 rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 text-xs text-muted-foreground">
+                        <CheckCircle2
+                          className="size-4 shrink-0 text-blue-500"
+                          aria-hidden="true"
+                        />
+                        <span>
+                          <strong>Privacidade Ativa:</strong> No Modo Entregas,
+                          as horas e o budget ficam 100% ocultos do cliente.
+                        </span>
+                      </div>
+                    )}
                     <ToggleRow
                       id="portal-show-team"
                       label="Mostrar nomes da equipe"

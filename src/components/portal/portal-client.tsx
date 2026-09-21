@@ -7,6 +7,7 @@ import {
   Activity,
   CalendarRange,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Clock,
@@ -261,46 +262,60 @@ function KpiTile({
 function StageTimeline({
   stages,
   currentStage,
+  progressPercentage,
 }: {
   stages: string[];
   currentStage: string | null;
+  progressPercentage?: number;
 }) {
   const currentIndex = currentStage ? stages.indexOf(currentStage) : -1;
 
   return (
-    <ol className="flex flex-wrap items-center gap-y-2">
-      {stages.map((stage, index) => {
-        const done = currentIndex >= 0 && index < currentIndex;
-        const current = index === currentIndex;
+    <div className="space-y-2">
+      <ol className="flex flex-wrap items-center gap-y-2">
+        {stages.map((stage, index) => {
+          const done = currentIndex >= 0 && index < currentIndex;
+          const current = index === currentIndex;
 
-        return (
-          <li key={stage} className="flex items-center">
-            <span
-              className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
-                current
-                  ? "bg-brand-500 text-white"
-                  : done
-                    ? "bg-brand-500/15 text-brand-500"
-                    : "bg-muted text-muted-foreground",
-              )}
-            >
-              {done ? <Check className="size-3" aria-hidden="true" /> : null}
-              {stage}
-            </span>
-            {index < stages.length - 1 ? (
+          return (
+            <li key={stage} className="flex items-center">
               <span
                 className={cn(
-                  "mx-1.5 h-px w-4 sm:w-6",
-                  done ? "bg-brand-500/50" : "bg-border",
+                  "flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium",
+                  current
+                    ? "bg-brand-500 text-white shadow-xs"
+                    : done
+                      ? "bg-brand-500/15 text-brand-500"
+                      : "bg-muted text-muted-foreground",
                 )}
-                aria-hidden="true"
-              />
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
+              >
+                {done ? <Check className="size-3" aria-hidden="true" /> : null}
+                {stage}
+              </span>
+              {index < stages.length - 1 ? (
+                <span
+                  className={cn(
+                    "mx-1.5 h-px w-4 sm:w-6",
+                    done ? "bg-brand-500/50" : "bg-border",
+                  )}
+                  aria-hidden="true"
+                />
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
+      {progressPercentage !== undefined && stages.length > 0 ? (
+        <div className="flex items-center gap-3 pt-1 max-w-md">
+          <div className="flex-1">
+            <Progress value={progressPercentage} className="h-1.5" />
+          </div>
+          <span className="font-mono text-[11px] font-semibold text-brand-500 shrink-0">
+            {progressPercentage}% concluído
+          </span>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -396,6 +411,7 @@ type ViewMode = "overview" | "timeline" | "team";
 interface TeamMemberWithMeta {
   name: string;
   minutes: number;
+  contributionsCount?: number;
   parsed: ParsedMemberName;
   palette: (typeof TEAM_PALETTES)[number];
   percentage: number;
@@ -404,27 +420,42 @@ interface TeamMemberWithMeta {
 function TeamDedicationCard({
   team,
   totalTeamMinutes,
+  totalTeamContributions,
   teamSize,
+  isDeliverablesMode,
 }: {
   team: TeamMemberWithMeta[];
   totalTeamMinutes: number;
+  totalTeamContributions: number;
   teamSize: number;
+  isDeliverablesMode: boolean;
 }) {
+  const hasItems = isDeliverablesMode
+    ? totalTeamContributions > 0
+    : totalTeamMinutes > 0;
+
   return (
     <Card className="overflow-hidden">
       <CardHeader className="gap-2 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-display text-base font-semibold">
-              Dedicação da equipe
+              {isDeliverablesMode ? "Equipe do projeto" : "Dedicação da equipe"}
             </h2>
             <p className="text-xs text-muted-foreground">
               {team.length}{" "}
-              {team.length === 1 ? "colaborador" : "colaboradores"} ·{" "}
-              {formatDuration(totalTeamMinutes)} registradas
-              {team.length > 0
-                ? ` · Média de ${formatDuration(Math.round(totalTeamMinutes / Math.max(team.length, 1)))}/pessoa`
-                : ""}
+              {team.length === 1 ? "colaborador" : "colaboradores"}
+              {isDeliverablesMode
+                ? ` · ${totalTeamContributions} ${totalTeamContributions === 1 ? "entrega registrada" : "entregas registradas"}`
+                : ` · ${formatDuration(totalTeamMinutes)} registradas${
+                    team.length > 0
+                      ? ` · Média de ${formatDuration(
+                          Math.round(
+                            totalTeamMinutes / Math.max(team.length, 1),
+                          ),
+                        )}/pessoa`
+                      : ""
+                  }`}
             </p>
           </div>
           {team.length > 0 ? (
@@ -435,12 +466,16 @@ function TeamDedicationCard({
         </div>
 
         {/* Barra de distribuição proporcional */}
-        {team.length > 0 && totalTeamMinutes > 0 ? (
+        {team.length > 0 && hasItems ? (
           <div className="space-y-1 pt-1">
             <div
               className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted/60 p-0.5"
               role="progressbar"
-              aria-label="Distribuição proporcional de horas da equipe"
+              aria-label={
+                isDeliverablesMode
+                  ? "Distribuição de contribuições da equipe"
+                  : "Distribuição proporcional de horas da equipe"
+              }
               aria-valuenow={100}
               aria-valuemin={0}
               aria-valuemax={100}
@@ -453,7 +488,11 @@ function TeamDedicationCard({
                     width: `${Math.max(member.percentage, 1.5)}%`,
                     backgroundColor: member.palette.hex,
                   }}
-                  title={`${member.parsed.displayName}: ${formatDuration(member.minutes)} (${member.percentage}%)`}
+                  title={
+                    isDeliverablesMode
+                      ? `${member.parsed.displayName}: ${member.contributionsCount ?? 0} entregas (${member.percentage}%)`
+                      : `${member.parsed.displayName}: ${formatDuration(member.minutes)} (${member.percentage}%)`
+                  }
                 />
               ))}
             </div>
@@ -464,7 +503,9 @@ function TeamDedicationCard({
       <CardContent>
         {team.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            Sem horas registradas ainda.
+            {isDeliverablesMode
+              ? "Sem colaboradores alocados ainda."
+              : "Sem horas registradas ainda."}
           </p>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -496,7 +537,7 @@ function TeamDedicationCard({
                         </span>
                       ) : (
                         <span className="font-mono text-[11px] text-muted-foreground">
-                          #{index + 1} no ranking
+                          #{index + 1} no projeto
                         </span>
                       )}
                     </div>
@@ -513,9 +554,13 @@ function TeamDedicationCard({
 
                 <div className="mt-3.5 space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Dedicação</span>
+                    <span className="text-muted-foreground">
+                      {isDeliverablesMode ? "Contribuições" : "Dedicação"}
+                    </span>
                     <span className="font-mono font-medium text-foreground">
-                      {formatDuration(member.minutes)}
+                      {isDeliverablesMode
+                        ? `${member.contributionsCount ?? 0} ${(member.contributionsCount ?? 0) === 1 ? "entrega" : "entregas"}`
+                        : formatDuration(member.minutes)}
                     </span>
                   </div>
                   <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/80">
@@ -545,6 +590,7 @@ function RecentActivityCard({
   onSelectMember,
   searchQuery,
   onSearchChange,
+  isDeliverablesMode,
 }: {
   recentActivity: PortalActivityItem[];
   teamDistribution: TeamMemberWithMeta[];
@@ -553,6 +599,7 @@ function RecentActivityCard({
   onSelectMember: (member: string | null) => void;
   searchQuery: string;
   onSearchChange: (query: string) => void;
+  isDeliverablesMode: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const INITIAL_VISIBLE_ENTRIES = 6;
@@ -634,15 +681,23 @@ function RecentActivityCard({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-display text-base font-semibold">
-              Atividade recente
+              {isDeliverablesMode ? "Entregas recentes" : "Atividade recente"}
             </h2>
             <p className="text-xs text-muted-foreground">
-              Linha do tempo cronológica com entregas e tarefas realizadas.
+              {isDeliverablesMode
+                ? "Linha do tempo cronológica com entregas e marcos concluídos."
+                : "Linha do tempo cronológica com entregas e tarefas realizadas."}
             </p>
           </div>
           <Badge variant="outline" className="font-mono text-xs">
             {filteredActivities.length}{" "}
-            {filteredActivities.length === 1 ? "registro" : "registros"}
+            {filteredActivities.length === 1
+              ? isDeliverablesMode
+                ? "entrega"
+                : "registro"
+              : isDeliverablesMode
+                ? "entregas"
+                : "registros"}
           </Badge>
         </div>
 
@@ -756,8 +811,16 @@ function RecentActivityCard({
                   </div>
                   <span className="font-mono text-xs font-medium text-muted-foreground">
                     {group.items.length}{" "}
-                    {group.items.length === 1 ? "ação" : "ações"} ·{" "}
-                    {formatDuration(group.totalMinutes)}
+                    {group.items.length === 1
+                      ? isDeliverablesMode
+                        ? "entrega"
+                        : "ação"
+                      : isDeliverablesMode
+                        ? "entregas"
+                        : "ações"}
+                    {!isDeliverablesMode
+                      ? ` · ${formatDuration(group.totalMinutes)}`
+                      : ""}
                   </span>
                 </div>
 
@@ -790,6 +853,14 @@ function RecentActivityCard({
                               <span className="text-sm font-semibold text-foreground">
                                 {parsed.displayName}
                               </span>
+                              {item.azureWorkItemId ? (
+                                <Badge
+                                  variant="outline"
+                                  className="border-blue-500/30 bg-blue-500/10 font-mono text-[10px] text-blue-600 dark:text-blue-400 px-1.5 py-0"
+                                >
+                                  #{item.azureWorkItemId}
+                                </Badge>
+                              ) : null}
                               {parsed.companyTag ? (
                                 <span className="rounded bg-muted/80 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
                                   {parsed.companyTag}
@@ -805,13 +876,23 @@ function RecentActivityCard({
                         </div>
 
                         <div className="flex items-center justify-end shrink-0 sm:self-center">
-                          <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-mono text-xs font-semibold text-foreground">
-                            <Clock
-                              className="size-3 text-muted-foreground"
-                              aria-hidden="true"
-                            />
-                            {formatDuration(item.minutes)}
-                          </span>
+                          {isDeliverablesMode ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-blue-500/10 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                              <Check
+                                className="size-3 text-blue-500"
+                                aria-hidden="true"
+                              />
+                              Entregue
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2.5 py-1 font-mono text-xs font-semibold text-foreground">
+                              <Clock
+                                className="size-3 text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              {formatDuration(item.minutes)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );
@@ -901,10 +982,13 @@ function LiveSnapshot({
     return () => clearInterval(interval);
   }, [token]);
 
+  const isDeliverablesMode = snapshot.portalType === "deliverables";
+
   const chartData = useMemo(
     () =>
       snapshot.weeklySeries.map((week) => ({
         label: week.label,
+        count: week.deliverablesCount ?? 0,
         hours: Math.round((week.minutes / 60) * 10) / 10,
       })),
     [snapshot.weeklySeries],
@@ -928,12 +1012,29 @@ function LiveSnapshot({
     [snapshot.team],
   );
 
+  const totalTeamContributions = useMemo(
+    () =>
+      snapshot.team.reduce(
+        (sum, member) => sum + (member.contributionsCount ?? 0),
+        0,
+      ),
+    [snapshot.team],
+  );
+
   const teamDistribution = useMemo(() => {
     return snapshot.team.map((member, index) => {
       const palette = getMemberPalette(index);
       const parsed = parseMemberName(member.name);
-      const percentage =
-        totalTeamMinutes > 0
+      const percentage = isDeliverablesMode
+        ? totalTeamContributions > 0
+          ? Math.round(
+              ((member.contributionsCount ?? 0) / totalTeamContributions) *
+                1000,
+            ) / 10
+          : snapshot.team.length > 0
+            ? Math.round(1000 / snapshot.team.length) / 10
+            : 0
+        : totalTeamMinutes > 0
           ? Math.round((member.minutes / totalTeamMinutes) * 1000) / 10
           : 0;
       return {
@@ -943,7 +1044,12 @@ function LiveSnapshot({
         percentage,
       };
     });
-  }, [snapshot.team, totalTeamMinutes]);
+  }, [
+    snapshot.team,
+    totalTeamMinutes,
+    totalTeamContributions,
+    isDeliverablesMode,
+  ]);
 
   const memberActivityCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -1055,6 +1161,7 @@ function LiveSnapshot({
             <StageTimeline
               stages={snapshot.stages}
               currentStage={snapshot.currentStage}
+              progressPercentage={snapshot.stageProgress?.percentage}
             />
           ) : null}
         </motion.section>
@@ -1065,26 +1172,59 @@ function LiveSnapshot({
           className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4"
           aria-label="Indicadores do projeto"
         >
-          <KpiTile
-            icon={Clock}
-            label="Horas totais"
-            value={formatDuration(snapshot.totals.consumedMinutes)}
-          />
-          <KpiTile
-            icon={Activity}
-            label="Últimos 30 dias"
-            value={formatDuration(snapshot.totals.last30DaysMinutes)}
-          />
-          <KpiTile
-            icon={CalendarRange}
-            label="Semanas ativas"
-            value={String(snapshot.totals.activeWeeks)}
-          />
-          <KpiTile
-            icon={Users}
-            label="Equipe"
-            value={`${snapshot.totals.teamSize} pessoa${snapshot.totals.teamSize === 1 ? "" : "s"}`}
-          />
+          {isDeliverablesMode ? (
+            <>
+              <KpiTile
+                icon={Layers}
+                label="Fase atual"
+                value={snapshot.currentStage || "Em andamento"}
+              />
+              <KpiTile
+                icon={CheckCircle2}
+                label="Progresso das etapas"
+                value={
+                  snapshot.stageProgress
+                    ? `${snapshot.stageProgress.currentIndex + 1} de ${snapshot.stageProgress.totalStages} (${snapshot.stageProgress.percentage}%)`
+                    : snapshot.stages.length > 0
+                      ? `${snapshot.stages.length} etapas`
+                      : "Em andamento"
+                }
+              />
+              <KpiTile
+                icon={Check}
+                label="Entregas realizadas"
+                value={`${snapshot.deliverablesTotals?.totalDelivered ?? snapshot.recentActivity.length} itens`}
+              />
+              <KpiTile
+                icon={Activity}
+                label="Entregas últimos 30 dias"
+                value={`${snapshot.deliverablesTotals?.last30DaysDelivered ?? 0} entregas`}
+              />
+            </>
+          ) : (
+            <>
+              <KpiTile
+                icon={Clock}
+                label="Horas totais"
+                value={formatDuration(snapshot.totals.consumedMinutes)}
+              />
+              <KpiTile
+                icon={Activity}
+                label="Últimos 30 dias"
+                value={formatDuration(snapshot.totals.last30DaysMinutes)}
+              />
+              <KpiTile
+                icon={CalendarRange}
+                label="Semanas ativas"
+                value={String(snapshot.totals.activeWeeks)}
+              />
+              <KpiTile
+                icon={Users}
+                label="Equipe"
+                value={`${snapshot.totals.teamSize} pessoa${snapshot.totals.teamSize === 1 ? "" : "s"}`}
+              />
+            </>
+          )}
         </motion.section>
 
         {/* Budget */}
@@ -1118,13 +1258,28 @@ function LiveSnapshot({
         <motion.section variants={fadeUp}>
           <Card>
             <CardHeader>
-              <h2 className="font-display text-base font-semibold">
-                Horas por semana
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Últimas {snapshot.weeklySeries.length} semanas de trabalho no
-                projeto.
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-base font-semibold">
+                    {isDeliverablesMode
+                      ? "Ritmo de entregas por semana"
+                      : "Horas por semana"}
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    {isDeliverablesMode
+                      ? `Últimas ${snapshot.weeklySeries.length} semanas · Volume de entregas e tarefas finalizadas.`
+                      : `Últimas ${snapshot.weeklySeries.length} semanas de trabalho no projeto.`}
+                  </p>
+                </div>
+                {isDeliverablesMode ? (
+                  <Badge
+                    variant="outline"
+                    className="border-blue-500/30 bg-blue-500/10 font-mono text-[10px] text-blue-600 dark:text-blue-400"
+                  >
+                    Escopo Fechado
+                  </Badge>
+                ) : null}
+              </div>
             </CardHeader>
             <CardContent>
               <div className="h-[220px]">
@@ -1149,7 +1304,8 @@ function LiveSnapshot({
                       axisLine={false}
                       tickLine={false}
                       tick={{ fontSize: 10, fill: chartColors.tickFill }}
-                      unit="h"
+                      unit={isDeliverablesMode ? "" : "h"}
+                      allowDecimals={!isDeliverablesMode}
                       width={44}
                     />
                     <Tooltip
@@ -1162,13 +1318,18 @@ function LiveSnapshot({
                       }}
                       itemStyle={{ color: chartColors.tooltipColor }}
                       cursor={{ fill: chartColors.cursorFill }}
-                      formatter={(value) => [`${value ?? 0}h`, "Horas"]}
+                      formatter={(value) => [
+                        isDeliverablesMode
+                          ? `${value ?? 0} entregas`
+                          : `${value ?? 0}h`,
+                        isDeliverablesMode ? "Entregas" : "Horas",
+                      ]}
                       labelStyle={{ color: chartColors.tooltipLabelColor }}
                     />
                     <Bar
-                      dataKey="hours"
-                      name="Horas"
-                      fill="#f97316"
+                      dataKey={isDeliverablesMode ? "count" : "hours"}
+                      name={isDeliverablesMode ? "Entregas" : "Horas"}
+                      fill={isDeliverablesMode ? "#3b82f6" : "#f97316"}
                       radius={[6, 6, 0, 0]}
                     />
                   </BarChart>
@@ -1188,8 +1349,9 @@ function LiveSnapshot({
               Execução e Entregas
             </h2>
             <p className="text-xs text-muted-foreground">
-              Acompanhamento da dedicação da equipe e linha do tempo de
-              atividades.
+              {isDeliverablesMode
+                ? "Acompanhamento da equipe alocada e linha do tempo de entregas."
+                : "Acompanhamento da dedicação da equipe e linha do tempo de atividades."}
             </p>
           </div>
 
@@ -1217,8 +1379,12 @@ function LiveSnapshot({
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              <Clock className="size-3.5" aria-hidden="true" />
-              Atividades
+              {isDeliverablesMode ? (
+                <Check className="size-3.5" aria-hidden="true" />
+              ) : (
+                <Clock className="size-3.5" aria-hidden="true" />
+              )}
+              {isDeliverablesMode ? "Entregas" : "Atividades"}
             </button>
             <button
               type="button"
@@ -1250,7 +1416,9 @@ function LiveSnapshot({
                 <TeamDedicationCard
                   team={teamDistribution}
                   totalTeamMinutes={totalTeamMinutes}
+                  totalTeamContributions={totalTeamContributions}
                   teamSize={snapshot.totals.teamSize}
+                  isDeliverablesMode={isDeliverablesMode}
                 />
                 <RecentActivityCard
                   recentActivity={snapshot.recentActivity}
@@ -1260,6 +1428,7 @@ function LiveSnapshot({
                   onSelectMember={setSelectedMember}
                   searchQuery={searchQuery}
                   onSearchChange={setSearchQuery}
+                  isDeliverablesMode={isDeliverablesMode}
                 />
               </div>
             ) : viewMode === "timeline" ? (
@@ -1271,12 +1440,15 @@ function LiveSnapshot({
                 onSelectMember={setSelectedMember}
                 searchQuery={searchQuery}
                 onSearchChange={setSearchQuery}
+                isDeliverablesMode={isDeliverablesMode}
               />
             ) : (
               <TeamDedicationCard
                 team={teamDistribution}
                 totalTeamMinutes={totalTeamMinutes}
+                totalTeamContributions={totalTeamContributions}
                 teamSize={snapshot.totals.teamSize}
+                isDeliverablesMode={isDeliverablesMode}
               />
             )}
           </motion.div>

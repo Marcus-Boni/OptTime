@@ -165,39 +165,79 @@ export async function exportPortalSnapshotToPDF(
   y += 8;
   const gap = 4;
   const cardWidth = (contentWidth - gap * 3) / 4;
+  const isDeliverablesMode = snapshot.portalType === "deliverables";
 
-  drawKpiCard(
-    doc,
-    MARGIN,
-    y,
-    cardWidth,
-    "Horas totais",
-    hoursLabel(snapshot.totals.consumedMinutes),
-  );
-  drawKpiCard(
-    doc,
-    MARGIN + (cardWidth + gap),
-    y,
-    cardWidth,
-    "Últimos 30 dias",
-    hoursLabel(snapshot.totals.last30DaysMinutes),
-  );
-  drawKpiCard(
-    doc,
-    MARGIN + (cardWidth + gap) * 2,
-    y,
-    cardWidth,
-    "Semanas ativas",
-    String(snapshot.totals.activeWeeks),
-  );
-  drawKpiCard(
-    doc,
-    MARGIN + (cardWidth + gap) * 3,
-    y,
-    cardWidth,
-    "Equipe",
-    `${snapshot.totals.teamSize} pessoa${snapshot.totals.teamSize === 1 ? "" : "s"}`,
-  );
+  if (isDeliverablesMode) {
+    drawKpiCard(
+      doc,
+      MARGIN,
+      y,
+      cardWidth,
+      "Fase atual",
+      snapshot.currentStage || "Em andamento",
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap),
+      y,
+      cardWidth,
+      "Progresso",
+      snapshot.stageProgress
+        ? `${snapshot.stageProgress.percentage}%`
+        : snapshot.stages.length > 0
+          ? `${snapshot.stages.length} etapas`
+          : "Em dia",
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap) * 2,
+      y,
+      cardWidth,
+      "Entregas totais",
+      `${snapshot.deliverablesTotals?.totalDelivered ?? snapshot.recentActivity.length} itens`,
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap) * 3,
+      y,
+      cardWidth,
+      "Últimos 30 dias",
+      `${snapshot.deliverablesTotals?.last30DaysDelivered ?? 0} entregas`,
+    );
+  } else {
+    drawKpiCard(
+      doc,
+      MARGIN,
+      y,
+      cardWidth,
+      "Horas totais",
+      hoursLabel(snapshot.totals.consumedMinutes),
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap),
+      y,
+      cardWidth,
+      "Últimos 30 dias",
+      hoursLabel(snapshot.totals.last30DaysMinutes),
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap) * 2,
+      y,
+      cardWidth,
+      "Semanas ativas",
+      String(snapshot.totals.activeWeeks),
+    );
+    drawKpiCard(
+      doc,
+      MARGIN + (cardWidth + gap) * 3,
+      y,
+      cardWidth,
+      "Equipe",
+      `${snapshot.totals.teamSize} pessoa${snapshot.totals.teamSize === 1 ? "" : "s"}`,
+    );
+  }
 
   y += 32;
 
@@ -244,35 +284,48 @@ export async function exportPortalSnapshotToPDF(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(...INK);
-  doc.text("Horas por semana", MARGIN, y);
+  doc.text(
+    isDeliverablesMode ? "Entregas por semana" : "Horas por semana",
+    MARGIN,
+    y,
+  );
   y += 5;
 
   const rowHeight = 8;
-  const maxMinutes = Math.max(
-    ...snapshot.weeklySeries.map((week) => week.minutes),
-    1,
-  );
+  const maxVal = isDeliverablesMode
+    ? Math.max(...snapshot.weeklySeries.map((w) => w.deliverablesCount ?? 0), 1)
+    : Math.max(...snapshot.weeklySeries.map((w) => w.minutes), 1);
   const barMaxWidth = contentWidth - 70;
 
   doc.setFontSize(8.5);
   for (const week of snapshot.weeklySeries) {
+    const val = isDeliverablesMode
+      ? (week.deliverablesCount ?? 0)
+      : week.minutes;
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...MUTED);
     doc.text(week.label, MARGIN, y + 5);
 
-    const barWidth = Math.max((week.minutes / maxMinutes) * barMaxWidth, 0.8);
+    const barWidth = Math.max((val / maxVal) * barMaxWidth, 0.8);
     doc.setFillColor(...SURFACE);
     doc.roundedRect(MARGIN + 30, y + 1.5, barMaxWidth, 4.5, 1.5, 1.5, "F");
-    if (week.minutes > 0) {
+    if (val > 0) {
       doc.setFillColor(...BRAND);
       doc.roundedRect(MARGIN + 30, y + 1.5, barWidth, 4.5, 1.5, 1.5, "F");
     }
 
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...INK);
-    doc.text(hoursLabel(week.minutes), pageWidth - MARGIN, y + 5, {
-      align: "right",
-    });
+    doc.text(
+      isDeliverablesMode
+        ? `${val} ${val === 1 ? "item" : "itens"}`
+        : hoursLabel(week.minutes),
+      pageWidth - MARGIN,
+      y + 5,
+      {
+        align: "right",
+      },
+    );
 
     y += rowHeight;
   }

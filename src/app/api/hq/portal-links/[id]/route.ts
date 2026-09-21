@@ -91,13 +91,20 @@ export async function PATCH(
       return Response.json({ link: updated });
     }
 
-    const { label, showBudget, showTeam, showDescriptions, expiresInDays } =
-      parsed.data;
+    const {
+      label,
+      portalType,
+      showBudget,
+      showTeam,
+      showDescriptions,
+      expiresInDays,
+    } = parsed.data;
 
     const [updated] = await db
       .update(portalLink)
       .set({
         ...(label !== undefined ? { label } : {}),
+        ...(portalType !== undefined ? { portalType } : {}),
         ...(showBudget !== undefined ? { showBudget } : {}),
         ...(showTeam !== undefined ? { showTeam } : {}),
         ...(showDescriptions !== undefined ? { showDescriptions } : {}),

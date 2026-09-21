@@ -37,6 +37,7 @@ function toSummary(row: PortalLinkWithRelations): PortalLinkSummary {
     projectCode: row.project?.code ?? "",
     projectColor: row.project?.color ?? "#6366f1",
     label: row.label,
+    portalType: (row.portalType as "hours" | "deliverables") ?? "hours",
     url: `${getServerAppUrl()}/portal/${row.token}`,
     hasPassword: Boolean(row.passwordHash),
     expiresAt: row.expiresAt?.toISOString() ?? null,
@@ -138,8 +139,14 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const { projectId, label, password, expiresInDays, ...visibility } =
-      parsed.data;
+    const {
+      projectId,
+      label,
+      password,
+      expiresInDays,
+      portalType,
+      ...visibility
+    } = parsed.data;
 
     if (!(await canManageProject(actor, projectId))) {
       return Response.json(
@@ -160,6 +167,7 @@ export async function POST(req: Request): Promise<Response> {
         projectId,
         token: generatePortalToken(),
         label,
+        portalType,
         passwordHash: password ? hashPortalPassword(password) : null,
         expiresAt,
         showBudget: visibility.showBudget,
