@@ -477,16 +477,29 @@ export function PortalLinksTab() {
             transition={ENTRY_ANIMATION.transition}
           >
             <Card>
-              <CardContent className="flex flex-col items-center gap-2 py-16 text-center">
-                <Globe
-                  className="size-8 text-muted-foreground"
-                  aria-hidden="true"
-                />
+              <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
+                <div className="rounded-full bg-muted p-3">
+                  <Globe
+                    className="size-6 text-muted-foreground"
+                    aria-hidden="true"
+                  />
+                </div>
                 <p className="font-medium">Nenhum portal criado ainda</p>
                 <p className="max-w-sm text-sm text-muted-foreground">
                   Crie um link com senha e expiração para o cliente acompanhar o
                   avanço do projeto sem precisar de conta.
                 </p>
+                <Button
+                  onClick={() => {
+                    resetForm();
+                    setCreateOpen(true);
+                  }}
+                  className="mt-2 bg-brand-500 text-white hover:bg-brand-600"
+                  disabled={projects.length === 0}
+                >
+                  <Plus className="size-4" aria-hidden="true" />
+                  Criar primeiro portal
+                </Button>
               </CardContent>
             </Card>
           </motion.div>
