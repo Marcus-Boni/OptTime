@@ -17,6 +17,8 @@ export const updateProfileSchema = z
       .max(100, "Máximo de 100 caracteres")
       .optional(),
     department: optionalTrimmedText,
+    jobTitle: optionalTrimmedText,
+    officeLocation: optionalTrimmedText,
     weeklyCapacity: z
       .number()
       .int("Capacidade deve ser um número inteiro")

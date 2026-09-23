@@ -481,7 +481,9 @@ function UserActionsMenu({
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-xs">Cargo</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs">
+            Nível de acesso no sistema
+          </DropdownMenuLabel>
           <DropdownMenuSeparator />
           {sessionRole === "admin" && (
             <DropdownMenuItem

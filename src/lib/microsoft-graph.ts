@@ -287,3 +287,192 @@ export async function fetchOutlookEvents(
   if (options.includeExcluded) return events;
   return events.filter((event) => !event.isCancelled && !event.isAllDay);
 }
+
+export interface MicrosoftUserProfile {
+  id: string;
+  displayName: string | null;
+  givenName: string | null;
+  surname: string | null;
+  mail: string | null;
+  userPrincipalName: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  officeLocation: string | null;
+  mobilePhone: string | null;
+  businessPhones: string[];
+}
+
+interface GraphUserRaw {
+  id?: string;
+  displayName?: string | null;
+  givenName?: string | null;
+  surname?: string | null;
+  mail?: string | null;
+  userPrincipalName?: string | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  officeLocation?: string | null;
+  mobilePhone?: string | null;
+  businessPhones?: string[] | null;
+}
+
+interface GraphUsersListResponse {
+  value: GraphUserRaw[];
+  "@odata.nextLink"?: string;
+}
+
+const PROFILE_SELECT = [
+  "id",
+  "displayName",
+  "givenName",
+  "surname",
+  "mail",
+  "userPrincipalName",
+  "jobTitle",
+  "department",
+  "officeLocation",
+  "mobilePhone",
+  "businessPhones",
+].join(",");
+
+function parseGraphUser(data: GraphUserRaw): MicrosoftUserProfile {
+  return {
+    id: data.id ?? "",
+    displayName: data.displayName ?? null,
+    givenName: data.givenName ?? null,
+    surname: data.surname ?? null,
+    mail: data.mail ?? null,
+    userPrincipalName: data.userPrincipalName ?? null,
+    jobTitle: data.jobTitle ? data.jobTitle.trim() : null,
+    department: data.department ? data.department.trim() : null,
+    officeLocation: data.officeLocation ? data.officeLocation.trim() : null,
+    mobilePhone: data.mobilePhone ?? null,
+    businessPhones: Array.isArray(data.businessPhones)
+      ? data.businessPhones
+      : [],
+  };
+}
+
+/**
+ * Fetches the authenticated user's profile from Microsoft Graph (/me).
+ * Returns jobTitle, department, officeLocation, names, and Entra Object ID.
+ */
+export async function fetchMicrosoftUserProfile(
+  accessToken: string,
+): Promise<MicrosoftUserProfile | null> {
+  try {
+    const response = await fetch(`${GRAPH_BASE}/me?$select=${PROFILE_SELECT}`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new MicrosoftConnectionError(
+          "graph_auth_failed",
+          "Microsoft Graph rejected the access token when fetching profile",
+        );
+      }
+      return null;
+    }
+
+    const data = (await response.json()) as GraphUserRaw;
+    return parseGraphUser(data);
+  } catch (error: unknown) {
+    if (error instanceof MicrosoftConnectionError) throw error;
+    console.error("[microsoft-graph] fetchMicrosoftUserProfile error:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetches all organization users from Microsoft Graph (/users).
+ * Requires delegated User.Read.All permission (granted with Admin Consent).
+ */
+export async function fetchAllMicrosoftUsers(
+  accessToken: string,
+): Promise<MicrosoftUserProfile[]> {
+  const users: MicrosoftUserProfile[] = [];
+  let nextUrl: string | null =
+    `${GRAPH_BASE}/users?$select=${PROFILE_SELECT}&$top=999`;
+  let page = 0;
+  const maxPages = 10;
+
+  try {
+    while (nextUrl && page < maxPages) {
+      const response: Response = await fetch(nextUrl, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new MicrosoftConnectionError(
+            "graph_auth_failed",
+            "Microsoft Graph rejected User.Read.All access token",
+          );
+        }
+        throw new Error(`Microsoft Graph API error: ${response.status}`);
+      }
+
+      const data = (await response.json()) as GraphUsersListResponse;
+      if (Array.isArray(data.value)) {
+        for (const rawUser of data.value) {
+          if (rawUser.id) {
+            users.push(parseGraphUser(rawUser));
+          }
+        }
+      }
+
+      nextUrl = data["@odata.nextLink"] ?? null;
+      page += 1;
+    }
+
+    return users;
+  } catch (error: unknown) {
+    if (error instanceof MicrosoftConnectionError) throw error;
+    console.error("[microsoft-graph] fetchAllMicrosoftUsers error:", error);
+    return users;
+  }
+}
+
+/**
+ * Fetches the user's official avatar photo from Microsoft Graph.
+ * Returns a data:image/... base64 string suitable for <img> src or db storage, or null if absent.
+ */
+export async function fetchMicrosoftUserPhoto(
+  accessToken: string,
+  targetId: string = "me",
+): Promise<string | null> {
+  try {
+    const endpoint =
+      targetId === "me"
+        ? `${GRAPH_BASE}/me/photo/$value`
+        : `${GRAPH_BASE}/users/${targetId}/photo/$value`;
+
+    const response = await fetch(endpoint, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString("base64");
+    return `data:${contentType};base64,${base64}`;
+  } catch (error: unknown) {
+    console.error("[microsoft-graph] fetchMicrosoftUserPhoto error:", error);
+    return null;
+  }
+}

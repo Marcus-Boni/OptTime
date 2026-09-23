@@ -42,6 +42,9 @@ export interface PersonData {
   image: string | null;
   role: string;
   department: string | null;
+  jobTitle?: string | null;
+  officeLocation?: string | null;
+  microsoftSyncedAt?: Date | string | null;
   isActive: boolean;
   weeklyCapacity: number;
 }
@@ -231,9 +234,24 @@ export default function PersonCard({
               size="lg"
             />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-foreground">
-                {person.name || "Usuario"}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold text-foreground">
+                  {person.name || "Usuário"}
+                </p>
+                {person.microsoftSyncedAt ? (
+                  <span
+                    className="inline-flex items-center rounded border border-sky-500/20 bg-sky-500/10 px-1.5 py-0.2 text-[9px] font-medium text-sky-400"
+                    title="Dados sincronizados com o Microsoft Entra ID"
+                  >
+                    M365
+                  </span>
+                ) : null}
+              </div>
+              {person.jobTitle ? (
+                <p className="truncate text-xs font-medium text-brand-500/90 dark:text-brand-400">
+                  {person.jobTitle}
+                </p>
+              ) : null}
               <p className="truncate text-xs text-muted-foreground">
                 {person.email}
               </p>
@@ -268,6 +286,11 @@ export default function PersonCard({
                     {person.department}
                   </span>
                 )}
+                {person.officeLocation && (
+                  <span className="text-[10px] text-muted-foreground/80">
+                    • {person.officeLocation}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -278,11 +301,11 @@ export default function PersonCard({
                   disabled={isUpdating}
                 >
                   <MoreHorizontal className="h-4 w-4" />
-                  <span className="sr-only">Acoes</span>
+                  <span className="sr-only">Ações</span>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-52">
                   <DropdownMenuLabel className="text-xs">
-                    Acoes
+                    Ações
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -302,7 +325,7 @@ export default function PersonCard({
 
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="text-xs">
-                    Cargo
+                    Nível de acesso no sistema
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   {sessionRole === "admin" && (

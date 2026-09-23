@@ -38,6 +38,18 @@ export const auth = betterAuth({
         type: "string",
         required: false,
       },
+      jobTitle: {
+        type: "string",
+        required: false,
+      },
+      officeLocation: {
+        type: "string",
+        required: false,
+      },
+      microsoftSyncedAt: {
+        type: "date",
+        required: false,
+      },
       managerId: {
         type: "string",
         required: false,
@@ -107,6 +119,7 @@ export const auth = betterAuth({
         "profile",
         "email",
         "User.Read",
+        "User.Read.All",
         "Calendars.Read",
         "offline_access",
         // ── Scopes below need admin consent in Entra ──

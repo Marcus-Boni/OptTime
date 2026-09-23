@@ -10,6 +10,9 @@ export interface User {
   image?: string;
   role: UserRole;
   department?: string;
+  jobTitle?: string;
+  officeLocation?: string;
+  microsoftSyncedAt?: Date | string | null;
   managerId?: string;
   /** Hourly rate for cost calculations — visible to managers only */
   hourlyRate?: number;
@@ -43,4 +46,6 @@ export interface UserSummary {
   email: string;
   image?: string;
   role: UserRole;
+  jobTitle?: string;
+  department?: string;
 }

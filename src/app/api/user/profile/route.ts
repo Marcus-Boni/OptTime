@@ -3,16 +3,22 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
+import { fetchMicrosoftUserProfile } from "@/lib/microsoft-graph";
+import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
 import { updateProfileSchema } from "@/lib/validations/profile.schema";
 
 const userProfileSelect = {
+  azureId: user.azureId,
   createdAt: user.createdAt,
   department: user.department,
   email: user.email,
   id: user.id,
   image: user.image,
   isActive: user.isActive,
+  jobTitle: user.jobTitle,
+  microsoftSyncedAt: user.microsoftSyncedAt,
   name: user.name,
+  officeLocation: user.officeLocation,
   role: user.role,
   timeAssistantEnabled: user.timeAssistantEnabled,
   timeDefaultBillable: user.timeDefaultBillable,
@@ -35,13 +41,17 @@ export async function GET(req: Request): Promise<Response> {
     const found = await db.query.user.findFirst({
       where: eq(user.id, session.user.id),
       columns: {
+        azureId: true,
         createdAt: true,
         department: true,
         email: true,
         id: true,
         image: true,
         isActive: true,
+        jobTitle: true,
+        microsoftSyncedAt: true,
         name: true,
+        officeLocation: true,
         role: true,
         timeAssistantEnabled: true,
         timeDefaultBillable: true,
@@ -57,6 +67,46 @@ export async function GET(req: Request): Promise<Response> {
 
     if (!found) {
       return Response.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Auto-sync transparently if the user has never synced from Microsoft Graph
+    if (found.microsoftSyncedAt === null) {
+      try {
+        const token = await getMicrosoftAccessToken(
+          req.headers,
+          session.user.id,
+        );
+        if (token) {
+          const msProfile = await fetchMicrosoftUserProfile(token);
+          if (msProfile) {
+            const updates: Partial<typeof user.$inferInsert> = {
+              microsoftSyncedAt: new Date(),
+              azureId: msProfile.id || found.azureId,
+            };
+            if (msProfile.jobTitle) {
+              updates.jobTitle = msProfile.jobTitle;
+              found.jobTitle = msProfile.jobTitle;
+            }
+            if (msProfile.department && !found.department) {
+              updates.department = msProfile.department;
+              found.department = msProfile.department;
+            }
+            if (msProfile.officeLocation && !found.officeLocation) {
+              updates.officeLocation = msProfile.officeLocation;
+              found.officeLocation = msProfile.officeLocation;
+            }
+            found.microsoftSyncedAt = updates.microsoftSyncedAt as Date;
+            if (updates.azureId) found.azureId = updates.azureId;
+
+            await db
+              .update(user)
+              .set(updates)
+              .where(eq(user.id, session.user.id));
+          }
+        }
+      } catch (err) {
+        console.warn("[GET /api/user/profile] Auto-sync silent catch:", err);
+      }
     }
 
     return Response.json(found);
@@ -97,6 +147,12 @@ export async function PATCH(req: Request): Promise<Response> {
   }
   if (typeof data.department !== "undefined") {
     updates.department = data.department ?? null;
+  }
+  if (typeof data.jobTitle !== "undefined") {
+    updates.jobTitle = data.jobTitle ?? null;
+  }
+  if (typeof data.officeLocation !== "undefined") {
+    updates.officeLocation = data.officeLocation ?? null;
   }
   if (typeof data.weeklyCapacity !== "undefined") {
     updates.weeklyCapacity = data.weeklyCapacity;

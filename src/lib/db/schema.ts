@@ -1297,3 +1297,6 @@ export const userOnboardingRelations = relations(userOnboarding, ({ one }) => ({
     references: [user.id],
   }),
 }));
+  jobTitle: text("job_title"),
+  officeLocation: text("office_location"),
+  microsoftSyncedAt: timestamp("microsoft_synced_at"),

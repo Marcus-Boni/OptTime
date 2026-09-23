@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   AtSign,
+  Briefcase,
   Building2,
   CalendarClock,
   Camera,
@@ -15,7 +16,9 @@ import {
   Copy,
   KeyRound,
   Loader2,
+  MapPin,
   MonitorCog,
+  RefreshCw,
   Save,
   ShieldCheck,
   TimerReset,
@@ -32,10 +35,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useUpdateProfile } from "@/hooks/use-update-profile";
 import { authClient, useSession } from "@/lib/auth-client";
 import { compressImage } from "@/lib/image-utils";
-import { getInitials, isBase64Image, resolveUserImage } from "@/lib/utils";
+import { cn, getInitials, isBase64Image, resolveUserImage } from "@/lib/utils";
 import {
   type UpdateProfileFormInput,
   type UpdateProfileInput,
@@ -124,6 +133,7 @@ export default function ProfilePage() {
   const [isLoadingToken, setIsLoadingToken] = useState(true);
   const [isGeneratingToken, setIsGeneratingToken] = useState(false);
   const [isRevokingToken, setIsRevokingToken] = useState(false);
+  const [isSyncingMicrosoft, setIsSyncingMicrosoft] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { isSaving, updateProfile } = useUpdateProfile();
@@ -137,7 +147,9 @@ export default function ProfilePage() {
     resolver: zodResolver(updateProfileSchema),
     defaultValues: {
       department: "",
+      jobTitle: "",
       name: "",
+      officeLocation: "",
       weeklyCapacity: 40,
     },
   });
@@ -149,10 +161,60 @@ export default function ProfilePage() {
 
     reset({
       department: user.department ?? "",
+      jobTitle: user.jobTitle ?? "",
       name: user.name ?? "",
+      officeLocation: user.officeLocation ?? "",
       weeklyCapacity: user.weeklyCapacity ?? 40,
     });
   }, [reset, user]);
+
+  async function handleSyncMicrosoft() {
+    setIsSyncingMicrosoft(true);
+    try {
+      const res = await fetch("/api/user/profile/sync-microsoft", {
+        method: "POST",
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        user?: UserType;
+        profile?: {
+          jobTitle?: string | null;
+          department?: string | null;
+          officeLocation?: string | null;
+        };
+      };
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "Não foi possível sincronizar com o Microsoft 365.",
+        );
+      }
+
+      toast.success("Perfil sincronizado com o Microsoft 365 com sucesso!", {
+        description: `Cargo: ${data.profile?.jobTitle || "Não informado"} • Depto: ${data.profile?.department || "Não informado"}`,
+      });
+
+      await refetch();
+      if (data.user) {
+        reset({
+          name: data.user.name ?? "",
+          jobTitle: data.user.jobTitle ?? "",
+          department: data.user.department ?? "",
+          officeLocation: data.user.officeLocation ?? "",
+          weeklyCapacity: data.user.weeklyCapacity ?? 40,
+        });
+      }
+    } catch (error) {
+      console.error("[ProfilePage] handleSyncMicrosoft:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Erro ao sincronizar com o Microsoft 365.",
+      );
+    } finally {
+      setIsSyncingMicrosoft(false);
+    }
+  }
 
   useEffect(() => {
     async function fetchTokenStatus() {
@@ -308,12 +370,33 @@ export default function ProfilePage() {
             configurada e gerencie seus recursos individuais da plataforma.
           </p>
         </div>
-        <Button asChild variant="outline" className="gap-2 self-start">
-          <Link href="/dashboard/settings">
-            Ajustar preferências
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 self-start">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void handleSyncMicrosoft()}
+            disabled={isSyncingMicrosoft}
+            data-tour="profile-microsoft-sync"
+            className="gap-2 border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 dark:border-sky-500/40 dark:bg-sky-500/20 dark:text-sky-300"
+          >
+            <RefreshCw
+              className={cn(
+                "h-3.5 w-3.5",
+                isSyncingMicrosoft && "animate-spin",
+              )}
+            />
+            {isSyncingMicrosoft
+              ? "Sincronizando..."
+              : "Sincronizar com Microsoft 365"}
+          </Button>
+          <Button asChild variant="outline" className="gap-2">
+            <Link href="/dashboard/settings">
+              Ajustar preferências
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </motion.div>
 
       <motion.div variants={itemVariants}>
@@ -378,17 +461,50 @@ export default function ProfilePage() {
                       <CheckCircle2 className="mr-1 h-3 w-3" />
                       Conta ativa
                     </Badge>
+                    {user.microsoftSyncedAt ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Badge
+                              variant="outline"
+                              className="border-sky-500/30 bg-sky-500/10 text-sky-400 dark:border-sky-500/40 dark:bg-sky-500/20"
+                            >
+                              <RefreshCw className="mr-1 h-3 w-3" />
+                              Microsoft 365
+                            </Badge>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Última sincronização:{" "}
+                            {format(
+                              new Date(user.microsoftSyncedAt),
+                              "dd/MM/yyyy 'às' HH:mm",
+                              { locale: ptBR },
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : null}
                   </div>
 
-                  <div className="mt-2 flex flex-wrap gap-3 text-sm text-muted-foreground">
+                  <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <AtSign className="h-4 w-4" />
                       {user.email}
                     </span>
+                    <span className="inline-flex items-center gap-2 font-medium text-foreground">
+                      <Briefcase className="h-4 w-4 text-brand-500" />
+                      {user.jobTitle || "Cargo não informado"}
+                    </span>
                     <span className="inline-flex items-center gap-2">
-                      <Building2 className="h-4 w-4" />
+                      <Building2 className="h-4 w-4 text-sky-400" />
                       {user.department || "Departamento não informado"}
                     </span>
+                    {user.officeLocation ? (
+                      <span className="inline-flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-emerald-400" />
+                        {user.officeLocation}
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -456,7 +572,7 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="profile-email">Email</Label>
+                      <Label htmlFor="profile-email">Email corporativo</Label>
                       <Input
                         id="profile-email"
                         value={user.email}
@@ -469,7 +585,38 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="profile-department">Departamento</Label>
+                      <div className="flex items-center justify-between">
+                        <Label
+                          htmlFor="profile-job-title"
+                          className="flex items-center gap-1.5"
+                        >
+                          <Briefcase className="h-3.5 w-3.5 text-brand-500" />
+                          Cargo corporativo
+                        </Label>
+                        <span className="text-[11px] text-muted-foreground">
+                          Microsoft Graph
+                        </span>
+                      </div>
+                      <Input
+                        id="profile-job-title"
+                        placeholder="Ex: Analista Desenvolvedor, Engenheiro de Software"
+                        {...register("jobTitle")}
+                      />
+                      {errors.jobTitle ? (
+                        <p className="text-xs text-red-400">
+                          {errors.jobTitle.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="profile-department"
+                        className="flex items-center gap-1.5"
+                      >
+                        <Building2 className="h-3.5 w-3.5 text-sky-400" />
+                        Departamento
+                      </Label>
                       <Input
                         id="profile-department"
                         placeholder="Ex: Engenharia, Produto, Operações"
@@ -478,6 +625,26 @@ export default function ProfilePage() {
                       {errors.department ? (
                         <p className="text-xs text-red-400">
                           {errors.department.message}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="profile-office"
+                        className="flex items-center gap-1.5"
+                      >
+                        <MapPin className="h-3.5 w-3.5 text-emerald-400" />
+                        Localização / Escritório
+                      </Label>
+                      <Input
+                        id="profile-office"
+                        placeholder="Ex: São Paulo, Sede, Remoto"
+                        {...register("officeLocation")}
+                      />
+                      {errors.officeLocation ? (
+                        <p className="text-xs text-red-400">
+                          {errors.officeLocation.message}
                         </p>
                       ) : null}
                     </div>
@@ -499,6 +666,46 @@ export default function ProfilePage() {
                         </p>
                       ) : null}
                     </div>
+                  </div>
+
+                  <div className="flex flex-col gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-sky-500/30 dark:bg-sky-500/10">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
+                        <RefreshCw
+                          className={cn(
+                            "h-4 w-4",
+                            isSyncingMicrosoft && "animate-spin",
+                          )}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">
+                          Sincronização com Microsoft 365
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Atualize automaticamente cargo, departamento e dados
+                          cadastrais do Microsoft Entra ID.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleSyncMicrosoft()}
+                      disabled={isSyncingMicrosoft}
+                      data-tour="profile-microsoft-sync-form"
+                      className="h-8 shrink-0 gap-1.5 border-sky-500/30 text-xs text-sky-400 hover:bg-sky-500/15 hover:text-sky-300 dark:border-sky-500/40 dark:text-sky-300"
+                    >
+                      {isSyncingMicrosoft ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3 w-3" />
+                      )}
+                      {isSyncingMicrosoft
+                        ? "Sincronizando..."
+                        : "Sincronizar agora"}
+                    </Button>
                   </div>
 
                   <Separator />
@@ -571,7 +778,18 @@ export default function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <PreferenceRow label="Provedor de login" value="Microsoft" />
+              <PreferenceRow
+                label="Provedor de login"
+                value="Microsoft Entra ID"
+              />
+              <PreferenceRow
+                label="Status Microsoft 365"
+                value={
+                  user.microsoftSyncedAt
+                    ? `Sincronizado (${format(new Date(user.microsoftSyncedAt), "dd/MM 'às' HH:mm", { locale: ptBR })})`
+                    : "Pendente de sincronização"
+                }
+              />
               <PreferenceRow
                 label="Membro desde"
                 value={format(createdAt, "dd 'de' MMMM 'de' yyyy", {
