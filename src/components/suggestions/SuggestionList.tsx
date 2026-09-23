@@ -64,7 +64,6 @@ export default function SuggestionList({
       <output
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
         aria-label="Carregando sugestões..."
-        role="status"
       >
         {Array.from({ length: 6 }).map((_, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: skeleton list

@@ -169,9 +169,7 @@
       "when": 1787529600000,
       "tag": "0023_team_hours_active_date_idx",
       "breakpoints": true
-    }
-  ]
-}
+    },
     {
       "idx": 24,
       "version": "7",
@@ -179,3 +177,12 @@
       "tag": "0024_user_job_title_and_microsoft_sync",
       "breakpoints": true
     },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787686400000,
+      "tag": "0025_suggestion_attachment",
+      "breakpoints": true
+    }
+  ]
+}

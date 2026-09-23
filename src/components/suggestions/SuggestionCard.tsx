@@ -1,7 +1,13 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Calendar, ChevronDown, Loader2, MessageSquare } from "lucide-react";
+import {
+  Calendar,
+  ChevronDown,
+  Image as ImageIcon,
+  Loader2,
+  MessageSquare,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -25,6 +31,7 @@ import type { Suggestion } from "@/hooks/use-suggestions";
 import type { SuggestionStatus } from "@/lib/db/schema";
 import type { UpdateSuggestionStatusInput } from "@/lib/validations/suggestion.schema";
 import { SUGGESTION_STATUSES } from "@/lib/validations/suggestion.schema";
+import SuggestionImageGallery from "./SuggestionImageGallery";
 import SuggestionStatusBadge from "./SuggestionStatusBadge";
 
 const STATUS_LABELS: Record<SuggestionStatus, string> = {
@@ -124,6 +131,14 @@ export default function SuggestionCard({
                   <Calendar className="h-3 w-3" aria-hidden="true" />
                   {formatDate(suggestion.createdAt)}
                 </span>
+                {suggestion.attachments &&
+                  suggestion.attachments.length > 0 && (
+                    <span className="flex items-center gap-1 rounded-full border border-brand-500/20 bg-brand-500/10 px-2 py-0.5 text-[11px] font-medium text-brand-400">
+                      <ImageIcon className="h-3 w-3" aria-hidden="true" />
+                      {suggestion.attachments.length}{" "}
+                      {suggestion.attachments.length === 1 ? "anexo" : "anexos"}
+                    </span>
+                  )}
               </div>
             </div>
             {isAdmin && (
@@ -177,6 +192,11 @@ export default function SuggestionCard({
               </p>
             </CollapsibleContent>
           </Collapsible>
+
+          {/* Image Gallery */}
+          {suggestion.attachments && suggestion.attachments.length > 0 && (
+            <SuggestionImageGallery attachments={suggestion.attachments} />
+          )}
 
           {/* Admin notes display (read-only for non-admin) */}
           {!isAdmin && suggestion.adminNotes && (

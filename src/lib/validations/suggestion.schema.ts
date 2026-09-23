@@ -8,6 +8,35 @@ export const SUGGESTION_STATUSES = [
   "implemented",
 ] as const;
 
+export const suggestionAttachmentInputSchema = z.object({
+  fileName: z.string().min(1, "Nome do arquivo é obrigatório").max(255),
+  fileSize: z
+    .number()
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024, "Arquivo não pode ultrapassar 10MB"),
+  contentType: z
+    .string()
+    .regex(
+      /^image\/(png|jpeg|jpg|webp|gif)$/,
+      "Formato de imagem não suportado (apenas PNG, JPG, WEBP e GIF)",
+    ),
+  url: z
+    .string()
+    .min(1, "Conteúdo da imagem é obrigatório")
+    .refine(
+      (val) =>
+        val.startsWith("data:image/") ||
+        val.startsWith("http://") ||
+        val.startsWith("https://"),
+      "URL da imagem inválida",
+    ),
+});
+
+export type SuggestionAttachmentInput = z.infer<
+  typeof suggestionAttachmentInputSchema
+>;
+
 /** Schema for creating a new suggestion */
 export const createSuggestionSchema = z.object({
   title: z
@@ -18,6 +47,10 @@ export const createSuggestionSchema = z.object({
     .string()
     .min(10, "Descrição deve ter ao menos 10 caracteres")
     .max(2000, "Descrição deve ter no máximo 2000 caracteres"),
+  attachments: z
+    .array(suggestionAttachmentInputSchema)
+    .max(3, "Máximo de 3 imagens por sugestão")
+    .optional(),
 });
 
 export type CreateSuggestionInput = z.infer<typeof createSuggestionSchema>;

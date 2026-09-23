@@ -32,6 +32,9 @@ export const user = pgTable("user", {
     .notNull(),
   role: text("role").default("member").notNull(),
   department: text("department"),
+  jobTitle: text("job_title"),
+  officeLocation: text("office_location"),
+  microsoftSyncedAt: timestamp("microsoft_synced_at"),
   managerId: text("manager_id"),
   hourlyRate: integer("hourly_rate"),
   azureId: text("azure_id"),
@@ -584,7 +587,26 @@ export const suggestion = pgTable(
   ],
 );
 
-export const suggestionRelations = relations(suggestion, ({ one }) => ({
+export const suggestionAttachment = pgTable(
+  "suggestion_attachment",
+  {
+    id: text("id").primaryKey(),
+    suggestionId: text("suggestion_id")
+      .notNull()
+      .references(() => suggestion.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    fileSize: integer("file_size").notNull(),
+    contentType: text("content_type").notNull(),
+    /** Base64 data URL */
+    url: text("url").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("suggestion_attachment_suggestion_idx").on(table.suggestionId),
+  ],
+);
+
+export const suggestionRelations = relations(suggestion, ({ one, many }) => ({
   user: one(user, {
     fields: [suggestion.userId],
     references: [user.id],
@@ -594,7 +616,18 @@ export const suggestionRelations = relations(suggestion, ({ one }) => ({
     references: [user.id],
     relationName: "reviewer",
   }),
+  attachments: many(suggestionAttachment),
 }));
+
+export const suggestionAttachmentRelations = relations(
+  suggestionAttachment,
+  ({ one }) => ({
+    suggestion: one(suggestion, {
+      fields: [suggestionAttachment.suggestionId],
+      references: [suggestion.id],
+    }),
+  }),
+);
 
 // ─── App Release (Changelog) ──────────────────────────────────────────
 export type AppReleaseStatus = "draft" | "published";
@@ -1297,6 +1330,3 @@ export const userOnboardingRelations = relations(userOnboarding, ({ one }) => ({
     references: [user.id],
   }),
 }));
-  jobTitle: text("job_title"),
-  officeLocation: text("office_location"),
-  microsoftSyncedAt: timestamp("microsoft_synced_at"),

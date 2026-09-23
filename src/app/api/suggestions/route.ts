@@ -1,7 +1,7 @@
 import { desc, eq } from "drizzle-orm";
 import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { suggestion } from "@/lib/db/schema";
+import { suggestion, suggestionAttachment } from "@/lib/db/schema";
 import { createSuggestionSchema } from "@/lib/validations/suggestion.schema";
 
 /**
@@ -28,6 +28,7 @@ export async function GET(req: Request): Promise<Response> {
         reviewedBy: {
           columns: { id: true, name: true },
         },
+        attachments: true,
       },
       orderBy: [desc(suggestion.createdAt)],
     });
@@ -41,7 +42,7 @@ export async function GET(req: Request): Promise<Response> {
 
 /**
  * POST /api/suggestions
- * Any authenticated user can submit a suggestion.
+ * Any authenticated user can submit a suggestion with optional image attachments.
  */
 export async function POST(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
@@ -57,10 +58,11 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
+    const suggestionId = crypto.randomUUID();
     const [created] = await db
       .insert(suggestion)
       .values({
-        id: crypto.randomUUID(),
+        id: suggestionId,
         userId: actor.userId,
         title: parsed.data.title,
         description: parsed.data.description,
@@ -68,7 +70,33 @@ export async function POST(req: Request): Promise<Response> {
       })
       .returning();
 
-    return Response.json({ suggestion: created }, { status: 201 });
+    let createdAttachments: Array<typeof suggestionAttachment.$inferSelect> =
+      [];
+    if (parsed.data.attachments && parsed.data.attachments.length > 0) {
+      createdAttachments = await db
+        .insert(suggestionAttachment)
+        .values(
+          parsed.data.attachments.map((att) => ({
+            id: crypto.randomUUID(),
+            suggestionId,
+            fileName: att.fileName,
+            fileSize: att.fileSize,
+            contentType: att.contentType,
+            url: att.url,
+          })),
+        )
+        .returning();
+    }
+
+    return Response.json(
+      {
+        suggestion: {
+          ...created,
+          attachments: createdAttachments,
+        },
+      },
+      { status: 201 },
+    );
   } catch (err) {
     console.error("[POST /api/suggestions]", err);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

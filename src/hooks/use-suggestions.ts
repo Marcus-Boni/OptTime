@@ -19,6 +19,16 @@ export interface SuggestionReviewer {
   name: string;
 }
 
+export interface SuggestionAttachment {
+  id: string;
+  suggestionId: string;
+  fileName: string;
+  fileSize: number;
+  contentType: string;
+  url: string;
+  createdAt: string;
+}
+
 export interface Suggestion {
   id: string;
   userId: string;
@@ -32,6 +42,7 @@ export interface Suggestion {
   updatedAt: string;
   user: SuggestionAuthor;
   reviewedBy: SuggestionReviewer | null;
+  attachments?: SuggestionAttachment[];
 }
 
 export function useSuggestions() {

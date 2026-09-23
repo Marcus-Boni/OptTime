@@ -32,6 +32,7 @@ import {
   type CreateSuggestionInput,
   createSuggestionSchema,
 } from "@/lib/validations/suggestion.schema";
+import SuggestionImageDropzone from "./SuggestionImageDropzone";
 
 export interface SuggestionFormProps {
   onSuccess: (suggestion: Suggestion) => void;
@@ -49,6 +50,7 @@ export default function SuggestionForm({
     defaultValues: {
       title: "",
       description: "",
+      attachments: [],
     },
   });
 
@@ -57,7 +59,11 @@ export default function SuggestionForm({
   function handleClose() {
     if (isLoading) return;
     setOpen(false);
-    form.reset();
+    form.reset({
+      title: "",
+      description: "",
+      attachments: [],
+    });
   }
 
   async function handleSubmit(data: CreateSuggestionInput) {
@@ -95,7 +101,7 @@ export default function SuggestionForm({
       </DialogTrigger>
 
       <DialogContent
-        className="border-border/50 bg-card sm:max-w-lg"
+        className="border-border/50 bg-card sm:max-w-xl max-h-[90vh] overflow-y-auto"
         onEscapeKeyDown={handleClose}
         onInteractOutside={(e) => {
           if (isLoading) e.preventDefault();
@@ -158,7 +164,7 @@ export default function SuggestionForm({
                     <Textarea
                       id="suggestion-description"
                       placeholder="Descreva sua sugestão em detalhes. Qual é o problema atual? Como sua ideia resolve?"
-                      className="min-h-[120px] resize-none bg-background/50"
+                      className="min-h-[110px] resize-none bg-background/50"
                       disabled={isLoading}
                       aria-describedby="suggestion-description-desc"
                       {...field}
@@ -167,6 +173,26 @@ export default function SuggestionForm({
                   <FormDescription id="suggestion-description-desc">
                     {field.value?.length ?? 0}/2000 caracteres
                   </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Image attachments dropzone */}
+            <FormField
+              control={form.control}
+              name="attachments"
+              render={({ field }) => (
+                <FormItem>
+                  <FormControl>
+                    <SuggestionImageDropzone
+                      attachments={field.value ?? []}
+                      onChange={(newAttachments) =>
+                        field.onChange(newAttachments)
+                      }
+                      disabled={isLoading}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
