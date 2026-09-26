@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, RefreshCw, Repeat2, Video } from "lucide-react";
+import { Globe, RefreshCw, Repeat2, Video } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { MeetingSignal } from "@/types/collaboration";
 
@@ -16,7 +16,7 @@ export interface MeetingBadgesProps {
  * one — the day panel and the picker inside the entry form.
  *
  * Ordered by what changes a decision: a moved occurrence explains a duplicate,
- * a client in the room explains why the hour is billable.
+ * an external participant in the room explains why the hour is billable.
  */
 export function MeetingBadges({ meeting }: MeetingBadgesProps) {
   const badges: Array<{ label: string; icon: typeof Repeat2 }> = [];
@@ -28,7 +28,7 @@ export function MeetingBadges({ meeting }: MeetingBadgesProps) {
   }
 
   if (meeting.externalCount > 0) {
-    badges.push({ label: "Cliente", icon: Building2 });
+    badges.push({ label: "Externo", icon: Globe });
   } else if (meeting.isOnline) {
     badges.push({ label: "Teams", icon: Video });
   }
