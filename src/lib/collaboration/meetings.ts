@@ -68,6 +68,7 @@ export interface RawCalendarEvent {
   /** Original slot of a moved occurrence — Graph only fills it on exceptions. */
   originalStartIso: string | null;
   isOnlineMeeting: boolean;
+  joinWebUrl?: string | null;
   onlineMeetingProvider: string | null;
   /** The signed-in user's own response to the invitation. */
   responseStatus: string | null;
@@ -444,6 +445,7 @@ export function buildMeetingSignals({
       isOnline:
         event.isOnlineMeeting ||
         (event.onlineMeetingProvider ?? "").toLowerCase().includes("teams"),
+      joinWebUrl: event.joinWebUrl ?? null,
       isOrganizer: candidate.acceptance === "organizer",
       isRecurring,
       isException,

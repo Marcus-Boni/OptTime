@@ -27,6 +27,17 @@ import {
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
 import {
+  fetchMicrosoftObjectId,
+  getMicrosoftAccountSnapshot,
+} from "@/lib/microsoft-graph";
+import {
+  type FetchMeetingMemoryResult,
+  fetchDocumentSignals,
+  fetchMeetingMemory,
+  type MicrosoftMemoryDocumentSignal,
+} from "@/lib/microsoft-memory";
+import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
+import {
   type AutofillProject,
   buildAutofillProposals,
 } from "@/lib/time-assistant/autofill";
@@ -56,6 +67,13 @@ const AZURE_CONCURRENCY = 4;
 const PATTERN_LOOKBACK_DAYS = 60;
 const MAX_BACKFILL_DAYS = 30;
 const WORKING_DAYS_PER_WEEK = 5;
+const MAX_ENRICHED_MEETINGS = 3;
+
+function hasMicrosoftScope(scopes: string | null, name: string): boolean {
+  return (scopes ?? "")
+    .split(/[\s,]+/)
+    .some((scope) => scope.toLowerCase() === name.toLowerCase());
+}
 
 /**
  * POST - Builds the "Preencher meu dia" plan for one date.
@@ -124,6 +142,7 @@ export async function POST(req: Request): Promise<Response> {
         columns: {
           name: true,
           email: true,
+          azureId: true,
           weeklyCapacity: true,
           timeDefaultBillable: true,
         },
@@ -144,6 +163,8 @@ export async function POST(req: Request): Promise<Response> {
       columns: {
         id: true,
         name: true,
+        code: true,
+        clientName: true,
         color: true,
         billable: true,
         azureProjectId: true,
@@ -153,6 +174,8 @@ export async function POST(req: Request): Promise<Response> {
     const projects: AutofillProject[] = projectRows.map((row) => ({
       id: row.id,
       name: row.name,
+      code: row.code,
+      clientName: row.clientName,
       color: row.color,
       billable: row.billable,
       azureProjectId: row.azureProjectId,
@@ -249,17 +272,124 @@ export async function POST(req: Request): Promise<Response> {
     warnings.push(...collaboration.warnings);
     const calendarAvailable = collaboration.sources.calendar;
 
-    const events: CalendarEventInput[] = collaboration.meetings.map(
-      (meeting) => ({
-        subject: meeting.subject || meeting.title,
-        title: meeting.title,
-        startIso: meeting.startIso,
-        endIso: meeting.endIso,
-        minutes: meeting.minutes,
-        confidence: meeting.confidence,
-        evidence: meeting.evidence,
-      }),
-    );
+    const memoryPromise = (async () => {
+      const snapshot = await getMicrosoftAccountSnapshot(session.user.id);
+      const scopes = snapshot?.scope ?? null;
+      const documentScope =
+        hasMicrosoftScope(scopes, "Sites.Read.All") ||
+        hasMicrosoftScope(scopes, "Files.Read.All");
+      const attendanceScope =
+        hasMicrosoftScope(scopes, "OnlineMeetings.Read") &&
+        hasMicrosoftScope(scopes, "OnlineMeetingArtifact.Read.All");
+      const transcriptScope = false;
+      const token =
+        documentScope || attendanceScope || transcriptScope
+          ? await getMicrosoftAccessToken(req.headers, session.user.id)
+          : null;
+
+      const eligibleMeetings = collaboration.meetings
+        .flatMap((meeting) =>
+          meeting.isOnline && meeting.isOrganizer && meeting.joinWebUrl
+            ? [
+                {
+                  id: meeting.id,
+                  joinWebUrl: meeting.joinWebUrl,
+                  startIso: meeting.startIso,
+                },
+              ]
+            : [],
+        )
+        .slice(0, MAX_ENRICHED_MEETINGS);
+
+      const userObjectId =
+        token && documentScope
+          ? (profile?.azureId ?? (await fetchMicrosoftObjectId(token)))
+          : null;
+
+      const [documents, meetings] = await Promise.all([
+        token && documentScope && profile?.email
+          ? fetchDocumentSignals(token, date, profile.email, { userObjectId })
+          : Promise.resolve(null),
+        token && attendanceScope && profile?.email
+          ? mapWithConcurrencyLimit(eligibleMeetings, 3, async (meeting) => ({
+              id: meeting.id,
+              result: await fetchMeetingMemory(
+                token,
+                meeting.joinWebUrl,
+                profile.email ?? "",
+                { summarize: transcriptScope, eventStartIso: meeting.startIso },
+              ),
+            }))
+          : Promise.resolve([]),
+      ]);
+
+      return {
+        documents:
+          documents?.documents ?? ([] as MicrosoftMemoryDocumentSignal[]),
+        meetings: new Map<string, FetchMeetingMemoryResult>(
+          meetings.map((meeting) => [meeting.id, meeting.result]),
+        ),
+        warnings: [
+          ...(documents?.source.availability === "unavailable"
+            ? ["Documentos do Microsoft 365 indisponíveis no momento."]
+            : []),
+          ...(meetings.some(
+            (meeting) =>
+              meeting.result.sources.attendance.availability === "unavailable",
+          )
+            ? ["Relatórios de presença do Teams indisponíveis no momento."]
+            : []),
+          ...(meetings.some((meeting) =>
+            meeting.result.sources.transcript.message?.includes("desabilitou"),
+          )
+            ? ["O tenant Microsoft desabilitou o acesso a transcrições."]
+            : []),
+        ],
+        sources: {
+          documents: Boolean(
+            documentScope && token && documents?.source.availability === "ok",
+          ),
+          attendance: Boolean(
+            attendanceScope &&
+              token &&
+              !meetings.some(
+                (meeting) =>
+                  meeting.result.sources.attendance.availability ===
+                  "missing_scope",
+              ),
+          ),
+          transcripts: Boolean(
+            transcriptScope &&
+              token &&
+              !meetings.some(
+                (meeting) =>
+                  meeting.result.sources.transcript.availability ===
+                  "missing_scope",
+              ),
+          ),
+          documentsNeedsConsent:
+            !documentScope ||
+            documents?.source.availability === "missing_scope",
+          attendanceNeedsConsent: false,
+          transcriptsNeedsConsent: false,
+        },
+      };
+    })().catch((error: unknown) => {
+      console.error("[reconstruct] Microsoft memory unavailable:", error);
+      return {
+        documents: [] as MicrosoftMemoryDocumentSignal[],
+        meetings: new Map<string, FetchMeetingMemoryResult>(),
+        warnings: ["A memória do Microsoft 365 não respondeu agora."],
+        sources: {
+          documents: false,
+          attendance: false,
+          transcripts: false,
+          documentsNeedsConsent: false,
+          attendanceNeedsConsent: false,
+          transcriptsNeedsConsent: false,
+        },
+      };
+    });
 
     // ── Azure DevOps signals for the single day (best-effort) ──
     const pullRequests: AzureDevOpsPullRequest[] = [];
@@ -405,6 +535,37 @@ export async function POST(req: Request): Promise<Response> {
       ),
     );
 
+    const memory = await memoryPromise;
+    warnings.push(...memory.warnings);
+    const events: CalendarEventInput[] = collaboration.meetings.flatMap(
+      (meeting) => {
+        const evidence = memory.meetings.get(meeting.id);
+        const attendance = evidence?.attendance;
+        const transcript = evidence?.transcriptSummary;
+        if (
+          attendance &&
+          attendance.totalMinutes > 0 &&
+          attendance.totalMinutes < 5
+        ) {
+          return [];
+        }
+        return [
+          {
+            subject: meeting.subject || meeting.title,
+            title: meeting.title,
+            startIso: meeting.startIso,
+            endIso: meeting.endIso,
+            minutes: meeting.minutes,
+            attendanceMinutes: attendance?.totalMinutes || undefined,
+            attendedFromIso: attendance?.intervals[0]?.joinedAt,
+            summary: transcript?.text,
+            confidence: meeting.confidence,
+            evidence: meeting.evidence,
+          },
+        ];
+      },
+    );
+
     const deterministic = buildDeterministicDayPlan({
       date,
       targetMinutes,
@@ -414,6 +575,12 @@ export async function POST(req: Request): Promise<Response> {
         .map((entry) => entry.azureWorkItemId)
         .filter((id): id is number => id != null),
       events,
+      documents: memory.documents.map((document) => ({
+        id: document.id,
+        name: document.name,
+        path: document.webUrl,
+        modifiedAt: document.lastModifiedDateTime,
+      })),
       commitSessions,
       pullRequests,
       workItemProposals,
@@ -424,6 +591,12 @@ export async function POST(req: Request): Promise<Response> {
       warnings,
       sources: {
         calendar: calendarAvailable,
+        documents: memory.sources.documents,
+        attendance: memory.sources.attendance,
+        transcripts: memory.sources.transcripts,
+        documentsNeedsConsent: memory.sources.documentsNeedsConsent,
+        attendanceNeedsConsent: memory.sources.attendanceNeedsConsent,
+        transcriptsNeedsConsent: memory.sources.transcriptsNeedsConsent,
         azureDevops: integrationReady,
         commits: commits.length > 0,
         patterns: patterns.length > 0,

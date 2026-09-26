@@ -58,7 +58,7 @@ export function useUserTimePreferences() {
             typeof payload?.error === "string"
               ? payload.error
               : (options?.errorMessage ??
-                "Nao foi possivel salvar suas preferencias.");
+                "Não foi possível salvar suas preferências.");
 
           if (options?.showErrorToast !== false) {
             toast.error(message);
@@ -75,7 +75,7 @@ export function useUserTimePreferences() {
         if (options?.showErrorToast !== false) {
           toast.error(
             options?.errorMessage ??
-              "Nao foi possivel salvar suas preferencias.",
+              "Não foi possível salvar suas preferências.",
           );
         }
 

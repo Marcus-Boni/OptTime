@@ -66,6 +66,8 @@ export interface MeetingSignal {
   acceptance: MeetingAcceptance;
   shape: MeetingShape;
   isOnline: boolean;
+  /** Server-side meeting lookup only; never include in a persisted time entry. */
+  joinWebUrl?: string | null;
   isOrganizer: boolean;
   /** Part of a recurring series. */
   isRecurring: boolean;

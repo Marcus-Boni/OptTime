@@ -38,7 +38,7 @@ export function QuickEntryDialog() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Nao foi possivel criar o registro de tempo.",
+          : "Não foi possível criar o registro de tempo.",
       );
       throw error;
     }

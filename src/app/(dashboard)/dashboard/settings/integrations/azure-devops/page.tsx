@@ -47,7 +47,7 @@ function CodeSnippet({ code }: { code: string }) {
       toast.success("Conteudo copiado para a area de transferencia.");
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Nao foi possivel copiar o conteudo.");
+      toast.error("Não foi possível copiar o conteúdo.");
     }
   }
   return (

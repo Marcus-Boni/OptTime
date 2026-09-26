@@ -7,20 +7,6 @@ import { decrypt } from "@/lib/encryption";
 
 type AzureImportAction = "create" | "join" | "joined";
 
-interface AzureProject {
-  id: string;
-  name: string;
-  description: string;
-  url: string;
-  state: string;
-  lastUpdateTime: string;
-  importAction: AzureImportAction;
-  platformProjectId: string | null;
-  platformProjectName: string | null;
-  alreadyImported: boolean;
-  alreadyMember: boolean;
-}
-
 function buildProjectCodeBase(name: string) {
   return (
     name
@@ -54,7 +40,9 @@ async function generateUniqueProjectCode(
   const existingCodes = new Set(
     existing.map((existingProject) => existingProject.code),
   );
-  sessionCodes.forEach((code) => existingCodes.add(code));
+  for (const code of sessionCodes) {
+    existingCodes.add(code);
+  }
 
   if (!existingCodes.has(prefixedBase)) {
     sessionCodes.add(prefixedBase);
@@ -440,7 +428,7 @@ export async function POST(req: Request): Promise<Response> {
 
         if (!targetProject) {
           throw new Error(
-            `Nao foi possivel localizar o projeto apos importar ${item.name}.`,
+            `Não foi possível localizar o projeto após importar ${item.name}.`,
           );
         }
 
@@ -486,11 +474,10 @@ export async function POST(req: Request): Promise<Response> {
         status: summary.createdCount > 0 || summary.joinedCount > 0 ? 201 : 200,
       },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[POST /api/integrations/azure-devops/projects]:", error);
-    return Response.json(
-      { error: error?.message || "Internal Server Error" },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error ? error.message : "Internal Server Error";
+    return Response.json({ error: message }, { status: 500 });
   }
 }

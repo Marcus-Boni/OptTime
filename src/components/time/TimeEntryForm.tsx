@@ -332,7 +332,7 @@ export function TimeEntryForm({
           },
           {
             errorMessage:
-              "O registro foi salvo, mas nao foi possivel atualizar suas preferencias padrao.",
+              "O registro foi salvo, mas não foi possível atualizar suas preferências padrão.",
           },
         );
       }

@@ -18,6 +18,7 @@
     "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts",
     "verify:onboarding": "tsx scripts/verify-onboarding.ts",
     "verify:collaboration": "tsx scripts/verify-collaboration.ts",
+    "verify:memory": "tsx scripts/verify-memory-evidence.ts && tsx scripts/verify-memory-reconstruct.ts",
     "verify:my-time": "tsx scripts/verify-my-time.ts"
   },
   "dependencies": {

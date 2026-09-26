@@ -40,7 +40,7 @@ import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useTimesheets } from "@/hooks/use-timesheets";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
-import { getWeekPeriod } from "@/lib/utils";
+import { getWeekPeriod, parseLocalDate } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import type { MeetingSignal } from "@/types/collaboration";
 
@@ -210,7 +210,14 @@ export function TimeClient() {
   const [reconstructOpen, setReconstructOpen] = useState(
     () => searchParams.get("reconstruct") === "1",
   );
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const requestedDate = searchParams.get("date");
+    if (requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+      const parsedDate = parseLocalDate(requestedDate);
+      if (format(parsedDate, "yyyy-MM-dd") === requestedDate) return parsedDate;
+    }
+    return new Date();
+  });
   const [createTarget, setCreateTarget] = useState<
     TimeEntryFormInitialValues | undefined
   >();
@@ -380,7 +387,7 @@ export function TimeClient() {
         const success = await updatePreferences(
           { timeDefaultView: view },
           {
-            errorMessage: "Nao foi possivel salvar sua visualizacao padrao.",
+            errorMessage: "Não foi possível salvar sua visualização padrão.",
           },
         );
 
@@ -712,7 +719,7 @@ export function TimeClient() {
           { timeAssistantEnabled: enabled },
           {
             errorMessage:
-              "Nao foi possivel salvar a preferencia do assistente.",
+              "Não foi possível salvar a preferência do assistente.",
           },
         );
 
@@ -734,7 +741,7 @@ export function TimeClient() {
           { timeShowWeekends: show },
           {
             errorMessage:
-              "Nao foi possivel salvar a exibicao de fins de semana.",
+              "Não foi possível salvar a exibição de fins de semana.",
           },
         );
 

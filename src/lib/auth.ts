@@ -138,10 +138,9 @@ export const auth = betterAuth({
         // three hardcoded assumptions: a five-day week for everyone, a single
         // company timezone, and nudging people who are on holiday.
         "MailboxSettings.Read",
-        // A granted scope only reaches a session created by a *full* login —
-        // a token refresh never adds scopes, so sessions predating the grant
-        // keep getting 403. Both features detect that and offer a one-click
-        // "entrar de novo" instead of failing silently.
+        // Scopes already granted admin consent in Entra ID
+        "Sites.Read.All",
+        "OnlineMeetings.Read",
       ],
       refreshAccessToken: refreshMicrosoftAccessToken,
     },

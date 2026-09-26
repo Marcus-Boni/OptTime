@@ -208,7 +208,7 @@ export function QuickTimerDialog() {
         { timeDefaultBillable: billable },
         {
           errorMessage:
-            "O timer foi iniciado, mas nao foi possivel atualizar sua preferencia de faturamento.",
+            "O timer foi iniciado, mas não foi possível atualizar sua preferência de faturamento.",
         },
       );
 

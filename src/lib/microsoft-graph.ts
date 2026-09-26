@@ -55,6 +55,7 @@ export interface OutlookEvent {
    */
   originalStart?: string | null;
   isOnlineMeeting?: boolean;
+  onlineMeeting?: { joinUrl?: string | null } | null;
   onlineMeetingProvider?: string | null;
   attendees?: OutlookAttendee[];
 }
@@ -229,6 +230,7 @@ const CALENDAR_SELECT = [
   "seriesMasterId",
   "originalStart",
   "isOnlineMeeting",
+  "onlineMeeting",
   "onlineMeetingProvider",
   "attendees",
 ].join(",");

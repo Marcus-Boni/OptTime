@@ -169,10 +169,10 @@ export const TOURS: readonly TourDefinition[] = [
         id: "fill-day",
         title: "Preencher meu dia",
         description:
-          "A IA reconstrói seu dia a partir de reuniões do Outlook, pull requests, commits e work items do Azure DevOps, e do seu histórico. Cada item mostra a evidência que o originou — você revisa, ajusta e aprova antes de salvar.",
+          "A IA reconstrói seu dia a partir da agenda, presença real no Teams, documentos recentes do Microsoft 365, pull requests, commits, work items e do seu histórico. Cada item mostra a evidência que o originou — você revisa, ajusta e aprova antes de salvar.",
         target: '[data-tour="time-fill-day"]',
         placement: "bottom",
-        hint: "O plano fica guardado com os seus ajustes: fechar não perde nada, e a IA só roda de novo quando você clicar em Gerar novamente.",
+        hint: "Se faltar permissão do Microsoft 365, o próprio diálogo mostra o botão para autorizar e voltar direto para o plano.",
       },
       {
         id: "collaboration",

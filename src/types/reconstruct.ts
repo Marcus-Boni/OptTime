@@ -5,6 +5,8 @@
 
 export type ReconstructSourceKind =
   | "calendar"
+  | "teams_attendance"
+  | "document"
   | "pull_request"
   | "commits"
   | "work_item"
@@ -50,6 +52,12 @@ export interface DayPlan {
   narrative: string | null;
   sources: {
     calendar: boolean;
+    documents: boolean;
+    attendance: boolean;
+    transcripts: boolean;
+    documentsNeedsConsent: boolean;
+    attendanceNeedsConsent: boolean;
+    transcriptsNeedsConsent: boolean;
     azureDevops: boolean;
     /** Commits were read for this day — true even when they were all covered. */
     commits: boolean;

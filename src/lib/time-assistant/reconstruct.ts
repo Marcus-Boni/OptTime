@@ -22,6 +22,7 @@
 
 import { z } from "zod";
 import { completeText } from "@/lib/ai/completion";
+import { getAppTimeZone } from "@/lib/timezone";
 import { formatDuration } from "@/lib/utils";
 import type { AutofillProposal } from "@/types/autofill";
 import type { AzureDevOpsPullRequest } from "@/types/azure-devops";
@@ -57,6 +58,10 @@ export interface CalendarEventInput {
   title?: string;
   /** Duration after overlap clipping — beats the raw start/end difference. */
   minutes?: number;
+  /** Signed-in participant's actual attendance, when an artifact is available. */
+  attendanceMinutes?: number;
+  attendedFromIso?: string;
+  summary?: string;
   confidence?: ReconstructConfidence;
   evidence?: string;
 }
@@ -71,6 +76,14 @@ export interface WeekdayPattern {
   weight: number;
 }
 
+/** A file modification is a point-in-time clue, never a measured work span. */
+export interface DocumentEventInput {
+  id: string;
+  name: string;
+  path: string | null;
+  modifiedAt: string;
+}
+
 export interface BuildDayPlanInput {
   date: string;
   targetMinutes: number;
@@ -79,6 +92,7 @@ export interface BuildDayPlanInput {
   /** Work items already logged on this day — never proposed a second time. */
   existingWorkItemIds: number[];
   events: CalendarEventInput[];
+  documents: DocumentEventInput[];
   /** Commit clusters for the day, longest first. */
   commitSessions: CommitSession[];
   /** Pull requests touched that day, used to label the sessions. */
@@ -126,6 +140,14 @@ function normalize(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function compactMatchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
 /** Keeps a generated description inside the entry field's comfortable range. */
 function truncateDescription(value: string, max = 180): string {
   const clean = value.replace(/\s+/g, " ").trim();
@@ -170,9 +192,12 @@ function clockOf(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
 
-  return `${String(date.getHours()).padStart(2, "0")}:${String(
-    date.getMinutes(),
-  ).padStart(2, "0")}`;
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: getAppTimeZone(),
+  }).format(date);
 }
 
 /** Mirrors the autofill radar's key, so a dismissal there is honoured here. */
@@ -197,6 +222,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     existingDescriptions,
     existingWorkItemIds,
     events,
+    documents,
     commitSessions,
     pullRequests,
     workItemProposals,
@@ -243,7 +269,9 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     // A collaboration-built title already reads like a description
     // ("Reunião com Marcus Boni"); a bare subject still needs the prefix.
     const description = (
-      event.title?.trim() || `Reunião: ${event.subject.trim()}`
+      event.summary?.trim() ||
+      event.title?.trim() ||
+      `Reunião: ${event.subject.trim()}`
     ).slice(0, 180);
 
     // An entry may exist under the generated title, the bare subject or the
@@ -256,8 +284,11 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       continue;
     }
 
+    const actualAttendance = event.attendanceMinutes;
     const minutes = Math.min(
-      roundToQuarter(event.minutes ?? (end - start) / 60_000),
+      actualAttendance && actualAttendance > 0
+        ? Math.round(actualAttendance)
+        : roundToQuarter(event.minutes ?? (end - start) / 60_000),
       MAX_MEETING_MINUTES,
     );
 
@@ -277,21 +308,64 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       description,
       minutes,
       estimatedMinutes: minutes,
-      startsAt: event.startIso,
+      startsAt: event.attendedFromIso ?? event.startIso,
       billable: project.billable && defaultBillable,
       azureWorkItemId: null,
       azureWorkItemTitle: null,
-      source: "calendar",
+      source:
+        actualAttendance && actualAttendance > 0
+          ? "teams_attendance"
+          : "calendar",
       // The calendar layer's own read of the invitation (declined, tentative,
       // clipped) is more informative than "did the subject match a project".
       confidence: event.confidence ?? (matched ? "high" : "medium"),
       evidence: event.evidence
-        ? `${event.evidence} ${matched ? `Associado a ${project.name}.` : "Projeto sugerido — confira."}`
+        ? `${actualAttendance && actualAttendance > 0 ? `Presença real no Teams: ${formatDuration(minutes)}. ` : ""}${event.evidence} ${event.summary ? "Descrição sugerida a partir da transcrição. " : ""}${matched ? `Associado a ${project.name}.` : "Projeto sugerido — confira."}`
         : baseEvidence,
     });
   }
 
   // ── 2. Code work: one item per work session, labelled by its PR ──
+  const seenDocuments = new Set<string>();
+  for (const document of documents) {
+    if (seenDocuments.size >= 3) break;
+    if (seenDocuments.has(document.id)) continue;
+    const haystack = compactMatchText(
+      `${document.name} ${document.path ?? ""}`,
+    );
+    const matches = projects.filter((project) =>
+      [project.name, project.code, project.clientName]
+        .filter((label): label is string =>
+          Boolean(label && compactMatchText(label).length >= 4),
+        )
+        .some((label) => haystack.includes(compactMatchText(label))),
+    );
+    if (matches.length !== 1) continue;
+    const project = matches[0];
+    if (!project) continue;
+    const description = truncateDescription(
+      `Trabalho no documento ${document.name}`,
+    );
+    if (alreadyLogged.has(normalize(description))) continue;
+    seenDocuments.add(document.id);
+    items.push({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      projectName: project.name,
+      projectColor: project.color,
+      description,
+      minutes: MIN_ITEM_MINUTES,
+      estimatedMinutes: MIN_ITEM_MINUTES,
+      startsAt: document.modifiedAt,
+      billable: project.billable && defaultBillable,
+      azureWorkItemId: null,
+      azureWorkItemTitle: null,
+      source: "document",
+      confidence: "low",
+      evidence: `Arquivo modificado às ${clockOf(document.modifiedAt)}. 15 min são apenas um ponto de partida; confirme a duração antes de lançar.`,
+    });
+  }
+
   const coveredWorkItemIds = new Set<number>(existingWorkItemIds);
   const dismissed = new Set(dismissedFingerprints);
 
@@ -517,6 +591,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
   const ranked = [...items].sort(
     (a, b) =>
       CONFIDENCE_RANK[a.confidence] - CONFIDENCE_RANK[b.confidence] ||
+      Number(a.source === "pattern") - Number(b.source === "pattern") ||
       b.minutes - a.minutes,
   );
 
@@ -605,12 +680,17 @@ function scaleToBudget(items: DayPlanItem[], budget: number): DayPlanItem[] {
  * hide real work — exactly what this plan exists to surface.
  */
 function fitToGap(items: DayPlanItem[], gapMinutes: number): DayPlanItem[] {
-  const measured = items.filter((item) => item.source === "calendar");
-  const estimated = items.filter((item) => item.source !== "calendar");
+  const measured = items.filter(
+    (item) => item.source === "calendar" || item.source === "teams_attendance",
+  );
+  const estimated = items.filter(
+    (item) => item.source !== "calendar" && item.source !== "teams_attendance",
+  );
 
   if (estimated.length === 0) return items;
 
   const budget = Math.max(0, gapMinutes - totalMinutes(measured));
+  if (budget < MIN_ITEM_MINUTES) return measured;
   if (totalMinutes(estimated) <= budget) return items;
 
   // Below one quarter-hour each there is nothing left to scale: the least
@@ -625,7 +705,8 @@ function fitToGap(items: DayPlanItem[], gapMinutes: number): DayPlanItem[] {
   );
 
   return items.flatMap((item) => {
-    if (item.source === "calendar") return [item];
+    if (item.source === "calendar" || item.source === "teams_attendance")
+      return [item];
 
     const match = scaled.get(item.id);
     return match ? [match] : [];
@@ -669,6 +750,8 @@ Regras invioláveis:
 
 Como ler o campo "origem":
 - "calendar": reunião real da agenda — descreva o encontro, não a tarefa.
+- "teams_attendance": duração da presença real na sala; não altere os minutos medidos.
+- "document": modificação pontual de arquivo; nunca afirme duração contínua de edição.
 - "pull_request": PR concluído ou em revisão — cite o que foi entregue.
 - "commits": código versionado sem PR (branch de trabalho, correções, spikes) — descreva o que foi implementado.
 - "work_item": task atribuída no Azure DevOps.
@@ -729,7 +812,9 @@ export async function refineDayPlanWithAI(plan: DayPlan): Promise<DayPlan> {
       if (!original) return plan;
 
       const minutes =
-        Math.round(refined.minutes / MIN_ITEM_MINUTES) * MIN_ITEM_MINUTES;
+        original.source === "calendar" || original.source === "teams_attendance"
+          ? original.minutes
+          : Math.round(refined.minutes / MIN_ITEM_MINUTES) * MIN_ITEM_MINUTES;
       total += minutes;
 
       refinedItems.push({

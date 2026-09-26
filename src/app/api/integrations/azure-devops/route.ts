@@ -34,7 +34,7 @@ export async function GET(req: Request): Promise<Response> {
       hasPat: !!config.pat,
       warning: commitAuthorPersistenceAvailable
         ? null
-        : "A migration do banco para salvar o autor dos commits ainda nao foi aplicada. O valor informado nao sera persistido apos recarregar a pagina.",
+        : "A migration do banco para salvar o autor dos commits ainda não foi aplicada. O valor informado não será persistido após recarregar a página.",
     });
   } catch (error) {
     console.error("[GET /api/integrations/azure-devops]:", error);

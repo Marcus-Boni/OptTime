@@ -49,6 +49,8 @@ const MAX_PROPOSALS = 6;
 export interface AutofillProject {
   id: string;
   name: string;
+  code?: string;
+  clientName?: string | null;
   color: string;
   billable: boolean;
   azureProjectId: string | null;

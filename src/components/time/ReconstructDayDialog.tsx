@@ -17,15 +17,19 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  FileText,
   GitCommitHorizontal,
   GitPullRequest,
   Loader2,
+  type LucideIcon,
   Minus,
   PartyPopper,
   Plus,
   Repeat2,
   Scale,
+  ShieldCheck,
   Sparkles,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -50,26 +54,63 @@ import {
   type DayPlanDraftItem,
   useReconstructDay,
 } from "@/hooks/use-reconstruct-day";
+import { authClient } from "@/lib/auth-client";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 import type { DayPlan, ReconstructSourceKind } from "@/types/reconstruct";
 
 const MIN_ITEM_MINUTES = 15;
 const STEP_MINUTES = 15;
+const MICROSOFT_MEMORY_SCOPES = [
+  "Sites.Read.All",
+  "OnlineMeetings.Read",
+] as const;
 
 const SOURCE_META: Record<
   ReconstructSourceKind,
-  { label: string; icon: typeof CalendarClock }
+  { label: string; icon: LucideIcon; evidenceLabel: string }
 > = {
-  calendar: { label: "Calendário", icon: CalendarClock },
-  pull_request: { label: "Pull Request", icon: GitPullRequest },
-  commits: { label: "Commits", icon: GitCommitHorizontal },
-  work_item: { label: "Work Item", icon: ClipboardList },
-  pattern: { label: "Seu padrão", icon: Repeat2 },
+  calendar: {
+    label: "Calendário",
+    icon: CalendarClock,
+    evidenceLabel: "agenda do Outlook",
+  },
+  teams_attendance: {
+    label: "Teams real",
+    icon: UsersRound,
+    evidenceLabel: "presença real no Teams",
+  },
+  document: {
+    label: "Documento",
+    icon: FileText,
+    evidenceLabel: "documento recente no Microsoft 365",
+  },
+  pull_request: {
+    label: "Pull Request",
+    icon: GitPullRequest,
+    evidenceLabel: "pull request do Azure DevOps",
+  },
+  commits: {
+    label: "Commits",
+    icon: GitCommitHorizontal,
+    evidenceLabel: "sessão de commits",
+  },
+  work_item: {
+    label: "Work Item",
+    icon: ClipboardList,
+    evidenceLabel: "work item vinculado",
+  },
+  pattern: {
+    label: "Seu padrão",
+    icon: Repeat2,
+    evidenceLabel: "histórico de apontamentos",
+  },
 };
 
 /** Order the legend reads in: strongest evidence first. */
 const SOURCE_ORDER: ReconstructSourceKind[] = [
   "calendar",
+  "teams_attendance",
+  "document",
   "pull_request",
   "commits",
   "work_item",
@@ -78,10 +119,10 @@ const SOURCE_ORDER: ReconstructSourceKind[] = [
 
 const LOADING_STEPS = [
   "Lendo reuniões no calendário Outlook…",
+  "Conferindo presença real nas salas do Teams…",
+  "Procurando documentos recentes no SharePoint e OneDrive…",
   "Cruzando pull requests do Azure DevOps…",
-  "Agrupando seus commits em sessões de trabalho…",
-  "Analisando seus padrões de lançamento…",
-  "Compondo o dia com IA…",
+  "Compondo descrições profissionais com IA…",
 ];
 
 export interface ReconstructDayDialogProps {
@@ -155,6 +196,93 @@ function SourceLegend({ items }: { items: DayPlanDraftItem[] }) {
         );
       })}
     </ul>
+  );
+}
+
+interface MicrosoftConsentNoticeProps {
+  plan: DayPlan;
+  date: string;
+}
+
+function getMissingMicrosoftSources(plan: DayPlan): string[] {
+  const missing: string[] = [];
+
+  if (plan.sources.documentsNeedsConsent) missing.push("documentos recentes");
+
+  return missing;
+}
+
+function MicrosoftConsentNotice({ plan, date }: MicrosoftConsentNoticeProps) {
+  const [isLinking, setIsLinking] = useState(false);
+  const missingSources = getMissingMicrosoftSources(plan);
+
+  async function handleLinkMicrosoft(): Promise<void> {
+    setIsLinking(true);
+
+    try {
+      const { error } = await authClient.linkSocial({
+        provider: "microsoft",
+        callbackURL: `/dashboard/time?reconstruct=1&date=${encodeURIComponent(date)}`,
+        scopes: [...MICROSOFT_MEMORY_SCOPES],
+      });
+
+      if (error) {
+        throw new Error(
+          error.message ||
+            "Não foi possível abrir o consentimento do Microsoft 365.",
+        );
+      }
+    } catch (error: unknown) {
+      console.error("[ReconstructDayDialog] handleLinkMicrosoft:", error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível abrir o consentimento do Microsoft 365.",
+      );
+      setIsLinking(false);
+    }
+  }
+
+  if (missingSources.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-brand-500/25 bg-brand-500/5 px-3 py-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-2.5">
+        <ShieldCheck
+          className="mt-0.5 size-4 shrink-0 text-brand-500"
+          aria-hidden="true"
+        />
+        <div className="space-y-1">
+          <p className="font-medium text-foreground">
+            Libere mais sinais do Microsoft 365
+          </p>
+          <p className="text-muted-foreground leading-relaxed">
+            Faltam {missingSources.join(", ")} para reconstruir este dia com
+            mais precisão. A autorização volta para esta tela e não lança nada
+            sozinha.
+          </p>
+        </div>
+      </div>
+
+      <Button
+        type="button"
+        size="sm"
+        className="shrink-0 gap-1.5 bg-brand-500 text-white hover:bg-brand-600"
+        onClick={handleLinkMicrosoft}
+        disabled={isLinking}
+        aria-busy={isLinking}
+      >
+        {isLinking ? (
+          <Loader2
+            className="size-3.5 animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+        ) : (
+          <ShieldCheck className="size-3.5" aria-hidden="true" />
+        )}
+        {isLinking ? "Abrindo..." : "Autorizar"}
+      </Button>
+    </div>
   );
 }
 
@@ -257,6 +385,9 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
       />
 
       <p className="text-muted-foreground text-xs">
+        <span className="font-medium text-foreground">Evidência:</span>{" "}
+        <span className="capitalize">{meta.evidenceLabel}</span>
+        {" · "}
         {item.evidence}
         {item.azureWorkItemId ? (
           <span className="ml-1 font-mono">· #{item.azureWorkItemId}</span>
@@ -291,9 +422,12 @@ function EmptyState({ plan, isRefreshing, onRegenerate }: EmptyStateProps) {
       <Sparkles className="size-8 text-muted-foreground" aria-hidden="true" />
       <p className="font-medium">Sem sinais suficientes para este dia</p>
       <p className="max-w-sm text-muted-foreground text-sm">
-        Não encontrei reuniões, commits, pull requests ou padrões para propor um
-        plano. Conecte o Outlook e o Azure DevOps para turbinar a reconstrução.
+        Não encontrei reuniões, documentos, commits ou padrões suficientes para
+        propor um plano. Conecte suas fontes e tente novamente.
       </p>
+      {getMissingMicrosoftSources(plan).length > 0 ? (
+        <MicrosoftConsentNotice plan={plan} date={plan.date} />
+      ) : null}
       {plan.warnings.map((warning) => (
         <p key={warning} className="text-amber-500 text-xs">
           {warning}
@@ -422,6 +556,8 @@ export function ReconstructDayDialog({
       };
 
   const hasPlanItems = plan !== null && items.length > 0;
+  const needsMicrosoftConsent =
+    plan !== null && getMissingMicrosoftSources(plan).length > 0;
 
   return (
     <>
@@ -562,6 +698,12 @@ export function ReconstructDayDialog({
                     {warning}
                   </motion.li>
                 ))}
+
+                {needsMicrosoftConsent ? (
+                  <motion.li variants={rowVariants}>
+                    <MicrosoftConsentNotice plan={plan} date={date} />
+                  </motion.li>
+                ) : null}
 
                 <AnimatePresence initial={false}>
                   {items.map((item) => (

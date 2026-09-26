@@ -21,6 +21,8 @@ export const applyDayPlanSchema = z.object({
         azureWorkItemTitle: z.string().max(500).nullable().optional(),
         source: z.enum([
           "calendar",
+          "teams_attendance",
+          "document",
           "pull_request",
           "commits",
           "work_item",
