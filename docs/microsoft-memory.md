@@ -1,8 +1,9 @@
 # Memória do dia no Microsoft 365
 
-O botão **Preencher meu dia** combina a agenda existente com três pistas opcionais:
-arquivos modificados pelo próprio profissional, presença real em reuniões do
-Teams que ele organizou e uma descrição curta baseada na transcrição disponível.
+O botão **Preencher meu dia** combina a agenda existente com arquivos modificados
+pelo próprio profissional, presença em reuniões quando há relatório autorizado
+e participação em chamadas do Teams. Chamadas também aparecem nas sugestões
+inteligentes, no painel diário e em **Meu tempo**.
 Todas entram como propostas editáveis. Nenhuma gravação, transcrição completa ou
 lista de participantes é persistida no banco.
 
@@ -11,20 +12,27 @@ lista de participantes é persistida no banco.
 O login padrão continua com os escopos atuais. No diálogo de reconstrução, o
 profissional pode conectar as fontes adicionais via autorização incremental do
 Better Auth. Antes de usar em produção, o administrador do tenant precisa
-conceder estas permissões **delegadas** ao App Registration no Microsoft Entra:
+configurar as permissões correspondentes no App Registration no Microsoft Entra:
 
-| Permissão | Uso |
-| --- | --- |
-| `Files.Read.All` | Microsoft Search nos arquivos SharePoint/OneDrive aos quais o usuário tem acesso |
-| `OnlineMeetings.Read` | Resolver a reunião pelo `joinWebUrl` do convite |
-| `OnlineMeetingArtifact.Read.All` | Ler o relatório de presença após a reunião |
-| `OnlineMeetingTranscript.Read.All` | Ler a transcrição disponível para resumir |
+| Permissão | Tipo | Uso |
+| --- | --- | --- |
+| `Sites.Read.All` ou `Files.Read.All` | Delegada | Microsoft Search nos arquivos acessíveis ao usuário |
+| `OnlineMeetings.Read` | Delegada | Resolver a reunião pelo `joinWebUrl` do convite |
+| `OnlineMeetingArtifact.Read.All` | Delegada | Opcional: relatório de presença após a reunião; não faz parte das permissões informadas para esta entrega |
+| `CallRecords.Read.All` | Aplicação | Sessões de chamadas do Teams, com consentimento administrativo |
 
 Depois da concessão administrativa, o profissional usa **Conectar memória
 Microsoft 365** no diálogo. O fluxo `linkSocial` amplia os escopos apenas daquela
 conta. Uma autorização anterior não ganha novos escopos por simples refresh do
 token. Se o tenant negar a autorização, as fontes opcionais não impedem o
 lançamento manual nem as fontes já conectadas.
+
+Chamadas usam as credenciais de servidor já existentes: `MICROSOFT_TENANT_ID`,
+`MICROSOFT_CLIENT_ID` e `MICROSOFT_CLIENT_SECRET`. Tenant e cliente devem ser GUIDs.
+O token delegado identifica o usuário via `/me`; a consulta de aplicação filtra
+por esse ID e confere novamente a identidade em cada sessão. Sem identidade
+verificável, nenhuma chamada é retornada. Não é preciso reconectar o usuário
+para conceder `CallRecords.Read.All` ao aplicativo.
 
 ## Limites exibidos ao profissional
 
@@ -38,11 +46,24 @@ lançamento manual nem as fontes já conectadas.
   profissional, com sobreposições eliminadas. Sem relatório, vale a proposta
   baseada na agenda, identificada como tal. O relatório de uma ocorrência
   recorrente não pode ser aplicado a outra ocorrência.
-- **Transcrições:** disponíveis apenas se a reunião tiver transcrição e se a
-  política do tenant permitir o acesso. O texto é lido sob demanda ao reconstruir
-  o dia, limitado e sanitizado antes de ir ao provedor de IA já configurado. Só
-  a frase gerada segue para o plano, para revisão antes de salvar. Reuniões sem
-  transcrição mantêm a descrição vinda da agenda.
+- **Chamadas do Teams:** chamadas diretas ou em grupo sem convite de agenda
+  entram por `CallRecords.Read.All` como permissão **Application** aprovada pelo
+  administrador do tenant, não por reconexão individual do usuário. A UI mostra
+  apenas a participação medida do profissional, com sobreposição de agenda
+  removida, e exige revisão + escolha de projeto antes de salvar. O Graph não
+  retorna call records com mais de 30 dias; portanto chamadas antigas ficam fora
+  da reconstrução. Este fluxo não busca nem persiste gravações ou transcrições
+  de chamadas.
+- **Transcrições e gravações:** a reconstrução atual não consulta essas fontes.
+  `CallRecordings.Read.All` não é necessário para sugerir tempo a partir de sessões.
+- Chamadas são consultadas com paginação limitada e prazo total de 15 segundos.
+  Histórico parcial, falta de configuração e acesso negado aparecem como estado
+  da fonte. Sobreposições com a agenda são removidas conservadoramente, inclusive
+  quando não é possível confirmar que uma chamada e um convite são o mesmo evento.
+- A aplicação guarda a identificação da chamada no feedback existente, junto com
+  o lançamento, para não reapresentá-la após editar sua descrição. Excluir esse
+  lançamento não desfaz a aceitação da sugestão; ele pode ser recriado manualmente.
+  O fluxo de revisão verifica duplicidade sob bloqueio transacional por usuário/dia.
 - A busca limita a 50 arquivos e enriquece até 3 reuniões por abertura para
   manter tempo de resposta e uso do Graph previsíveis.
 
@@ -57,5 +78,7 @@ Search não reconstrói sessões contínuas de edição nem eventos de mera aber
 - [Reunião online por joinWebUrl](https://learn.microsoft.com/en-us/graph/api/onlinemeeting-get?view=graph-rest-1.0)
 - [Relatórios de presença](https://learn.microsoft.com/en-us/graph/api/meetingattendancereport-list?view=graph-rest-1.0)
 - [Transcrições de reuniões](https://learn.microsoft.com/en-us/graph/api/onlinemeeting-list-transcripts?view=graph-rest-1.0)
+- [Call records API FAQ](https://learn.microsoft.com/en-us/graph/callrecords-api-faq)
+- [Permissão CallRecords.Read.All](https://learn.microsoft.com/en-us/graph/permissions-reference#callrecordsreadall)
 - [Recent depreciado](https://learn.microsoft.com/en-us/graph/api/drive-recent?view=graph-rest-1.0)
 - [Used depreciado](https://learn.microsoft.com/en-us/graph/api/insights-list-used?view=graph-rest-1.0)

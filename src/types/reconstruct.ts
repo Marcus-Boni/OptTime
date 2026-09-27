@@ -6,6 +6,7 @@
 export type ReconstructSourceKind =
   | "calendar"
   | "teams_attendance"
+  | "teams_call"
   | "document"
   | "pull_request"
   | "commits"
@@ -15,6 +16,7 @@ export type ReconstructSourceKind =
 export type ReconstructConfidence = "high" | "medium" | "low";
 
 export interface DayPlanItem {
+  sourceId?: string;
   /** Stable key for UI editing and the AI refinement round-trip. */
   id: string;
   projectId: string;
@@ -52,6 +54,7 @@ export interface DayPlan {
   narrative: string | null;
   sources: {
     calendar: boolean;
+    calls?: boolean;
     documents: boolean;
     attendance: boolean;
     transcripts: boolean;

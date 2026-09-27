@@ -196,7 +196,12 @@ export interface DailyTarget {
 
 // ─── Source health ────────────────────────────────────────────────────
 
-export type SourceId = "calendar" | "portrait" | "mailbox" | "azure_devops";
+export type SourceId =
+  | "calendar"
+  | "portrait"
+  | "mailbox"
+  | "azure_devops"
+  | "teams_calls";
 
 export type SourceHealth =
   /** Answered normally. */
@@ -229,6 +234,7 @@ export interface SourceStatus {
 }
 
 export interface CollaborationSources {
+  calls?: boolean;
   calendar: boolean;
   portrait: boolean;
   /** Working hours and out-of-office came from the mailbox, not a default. */
@@ -237,6 +243,8 @@ export interface CollaborationSources {
 
 export interface CollaborationDay {
   date: string;
+  calls?: TeamCallSignal[];
+  callStatus?: SourceStatus;
   meetings: MeetingSignal[];
   exclusions: MeetingExclusion[];
   portrait: DayPortrait | null;
@@ -491,6 +499,12 @@ export interface CollaborationPeriod {
 
 export interface TeamCallSignal {
   id: string;
+  description?: string;
+  date?: string;
+  intervals?: Array<{ startIso: string; endIso: string }>;
+  joinWebUrl?: string | null;
+  alreadyLogged?: boolean;
+  wasClipped?: boolean;
   startIso: string;
   endIso: string;
   minutes: number;

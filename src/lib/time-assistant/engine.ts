@@ -1,4 +1,6 @@
 import { addMinutes, differenceInMinutes, max, min } from "date-fns";
+import { describeTeamCall } from "@/lib/collaboration/calls";
+import type { TeamCallSignal } from "@/types/collaboration";
 import type {
   SuggestionConfidence,
   TimeSuggestion,
@@ -49,6 +51,7 @@ interface BuildSuggestionsInput {
   date: string;
   commits: NormalizedCommitActivity[];
   meetings: NormalizedOutlookActivity[];
+  calls?: TeamCallSignal[];
   projects: InternalProject[];
   recentEntries: RecentEntryActivity[];
   existingEntries: RecentEntryActivity[];
@@ -284,6 +287,7 @@ export function buildDeterministicSuggestions({
   date,
   commits,
   meetings,
+  calls = [],
   projects,
   recentEntries,
   existingEntries,
@@ -298,6 +302,50 @@ export function buildDeterministicSuggestions({
   const recencyBoost = weights?.recencyBoost ?? 0;
 
   const candidates: CandidateSuggestion[] = [];
+
+  for (const call of calls) {
+    if (call.alreadyLogged || call.minutes < 1) continue;
+
+    const description = describeTeamCall(call);
+    const suggestion = {
+      projectId: null,
+      azureWorkItemId: null,
+      description,
+      duration: call.minutes,
+      date,
+    };
+
+    if (hasVerySimilarEntry(existingEntries, suggestion)) {
+      continue;
+    }
+
+    candidates.push({
+      fingerprint: `teams_call:${call.id}`,
+      projectId: null,
+      projectName: null,
+      description,
+      date,
+      duration: call.minutes,
+      billable: true,
+      azureWorkItemId: null,
+      azureWorkItemTitle: null,
+      azureWorkItemUrl: null,
+      score: 0.82,
+      confidence: "high",
+      reasons: [
+        `Participação medida no Teams por ${call.minutes} minuto${call.minutes === 1 ? "" : "s"}.`,
+        "Escolha o projeto antes de lançar; o sistema não infere projeto pela outra pessoa da chamada.",
+      ],
+      sourceBreakdown: {
+        commits: 0,
+        meetings: 0,
+        calls: 1,
+        recency: 0,
+      },
+      activitySummary: null,
+      payload: null,
+    });
+  }
 
   for (const meeting of meetings) {
     const start = new Date(meeting.startDateTime);
@@ -544,12 +592,15 @@ export function buildDeterministicSuggestions({
   const deduped = new Map<string, CandidateSuggestion>();
 
   for (const candidate of candidates) {
-    const dedupeKey = buildFingerprint([
-      candidate.date,
-      candidate.projectId,
-      candidate.azureWorkItemId,
-      candidate.description.slice(0, 80),
-    ]);
+    const dedupeKey =
+      (candidate.sourceBreakdown.calls ?? 0) > 0
+        ? candidate.fingerprint
+        : buildFingerprint([
+            candidate.date,
+            candidate.projectId,
+            candidate.azureWorkItemId,
+            candidate.description.slice(0, 80),
+          ]);
 
     const current = deduped.get(dedupeKey);
     if (!current || current.score < candidate.score) {

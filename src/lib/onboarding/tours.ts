@@ -178,7 +178,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "collaboration",
         title: "O que você fez hoje",
         description:
-          "Suas reuniões do dia já chegam prontas: com quem foi, quanto durou e o resumo do seu tempo no Microsoft 365. Marque as que quer lançar, escolha o projeto e confirme — é o caminho de quem trabalha em reunião, não em código.",
+          "Suas reuniões do dia e chamadas do Teams já chegam prontas para revisão: agenda é estimativa do convite; chamada é participação medida. Marque o que quer lançar, escolha o projeto e confirme — é o caminho de quem trabalha em reunião, ligação e conversa, não só em código.",
         target: '[data-tour="time-collaboration"]',
         placement: "top",
         hint: "Convites recusados, reuniões canceladas e horários sobrepostos ficam de fora sozinhos.",
@@ -286,6 +286,14 @@ export const TOURS: readonly TourDefinition[] = [
           "Projetos & Entregas responde o que saiu do seu tempo. Agenda & Foco mostra o que aconteceu com cada convite. Pessoas & Rituais mostra com quem o tempo foi dividido e quanto custa cada recorrente.",
         target: '[data-tour="my-time-tabs"]',
         placement: "bottom",
+      },
+      {
+        id: "activity",
+        title: "Revisar chamadas antes de apontar",
+        description:
+          "A linha do tempo mistura reuniões, chamadas, PRs, commits e work items. Chamadas do Teams aparecem como participação medida e têm ação de revisar antes de virar apontamento, para você escolher o projeto sem duplicar o que já foi lançado.",
+        target: '[data-tour="my-time-activity"]',
+        placement: "left",
       },
       {
         id: "portrait",

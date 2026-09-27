@@ -14,6 +14,7 @@ export const createSuggestionFeedbackSchema = z.object({
     .object({
       commits: z.number().int().min(0).max(100).default(0),
       meetings: z.number().int().min(0).max(100).default(0),
+      calls: z.number().int().min(0).max(100).optional(),
       recency: z.number().int().min(0).max(1000).default(0),
     })
     .optional(),

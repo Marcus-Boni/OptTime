@@ -15,6 +15,7 @@
  * function the page renders.
  */
 
+import type { CallRecordsHealth } from "@/lib/collaboration/call-records";
 import type {
   MailboxAvailability,
   PortraitAvailability,
@@ -23,6 +24,43 @@ import type {
 
 /** How the calendar read ended, resolved by the caller from the Graph error. */
 export type CalendarOutcome = "ok" | "no_token" | "auth_failed" | "unavailable";
+
+export function buildCallRecordsStatus(
+  outcome: CallRecordsHealth,
+): SourceStatus {
+  const base = {
+    id: "teams_calls" as const,
+    label: "Chamadas do Teams",
+    action: null,
+  };
+  if (outcome === "ok")
+    return {
+      ...base,
+      health: "ok",
+      detail:
+        "Chamadas encerradas dos últimos 30 dias. Os registros podem levar algum tempo para aparecer.",
+    };
+  if (outcome === "needs_admin_consent")
+    return {
+      ...base,
+      health: "unavailable",
+      detail:
+        "O Microsoft 365 não autorizou a leitura das chamadas. O administrador precisa verificar a permissão de aplicação e o consentimento no Entra.",
+    };
+  if (outcome === "not_configured")
+    return {
+      ...base,
+      health: "not_connected",
+      detail:
+        "A leitura das chamadas precisa ser configurada pelo administrador da integração Microsoft 365.",
+    };
+  return {
+    ...base,
+    health: "unavailable",
+    detail:
+      "Não foi possível obter todas as chamadas deste período. Somente participações verificadas são exibidas; o histórico disponível cobre os últimos 30 dias.",
+  };
+}
 
 export function buildCalendarStatus(outcome: CalendarOutcome): SourceStatus {
   const base = { id: "calendar" as const, label: "Agenda do Outlook" };

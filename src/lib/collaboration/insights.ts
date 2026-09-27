@@ -456,7 +456,9 @@ export function buildPeriodInsights({
       rank: 26,
       title: `${formatDuration(callMinutes)} em chamadas no Teams`,
       description:
-        "Tempo em ligações diretas fora dos convites formais de agenda. Lembre-se de auditar se essas conversas foram apontadas.",
+        (period.calls?.length ?? 0) > 0
+          ? "Participação registrada fora dos intervalos da agenda. Revise as chamadas e escolha o projeto antes de lançar horas."
+          : "Resumo de chamadas informado pelo Viva Insights. Esse total não identifica chamadas individuais nem equivale a horas já lançadas.",
       actionLabel: null,
       actionHref: null,
       quickAction: null,

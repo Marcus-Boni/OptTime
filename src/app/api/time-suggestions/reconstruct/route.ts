@@ -581,6 +581,7 @@ export async function POST(req: Request): Promise<Response> {
         path: document.webUrl,
         modifiedAt: document.lastModifiedDateTime,
       })),
+      calls: collaboration.calls ?? [],
       commitSessions,
       pullRequests,
       workItemProposals,
@@ -591,6 +592,7 @@ export async function POST(req: Request): Promise<Response> {
       warnings,
       sources: {
         calendar: calendarAvailable,
+        calls: collaboration.sources.calls,
         documents: memory.sources.documents,
         attendance: memory.sources.attendance,
         transcripts: memory.sources.transcripts,
@@ -612,6 +614,7 @@ export async function POST(req: Request): Promise<Response> {
       pullRequests: pullRequests.length,
       workItemProposals: workItemProposals.length,
       commits: commits.length,
+      calls: collaboration.calls?.length ?? 0,
       commitSessions: commitSessions.length,
       patterns: patterns.length,
       items: plan.items.length,

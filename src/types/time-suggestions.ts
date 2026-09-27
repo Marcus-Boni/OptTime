@@ -37,6 +37,7 @@ export interface TimeSuggestion {
   sourceBreakdown: {
     commits: number;
     meetings: number;
+    calls?: number;
     recency: number;
   };
   activitySummary: TimeSuggestionActivitySummary | null;

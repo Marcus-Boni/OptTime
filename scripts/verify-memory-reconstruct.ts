@@ -2,6 +2,7 @@ import {
   type BuildDayPlanInput,
   buildDeterministicDayPlan,
 } from "../src/lib/time-assistant/reconstruct";
+import { applyDayPlanSchema } from "../src/lib/validations/reconstruct.schema";
 
 const base: BuildDayPlanInput = {
   date: "2026-09-22",
@@ -11,6 +12,7 @@ const base: BuildDayPlanInput = {
   existingWorkItemIds: [],
   events: [],
   documents: [],
+  calls: [],
   commitSessions: [],
   pullRequests: [],
   workItemProposals: [],
@@ -31,6 +33,7 @@ const base: BuildDayPlanInput = {
   warnings: [],
   sources: {
     calendar: true,
+    calls: true,
     documents: true,
     attendance: true,
     transcripts: true,
@@ -102,6 +105,140 @@ if (!meeting || meeting.minutes !== 20) {
 }
 if (meeting.description !== "Alinhamento sobre a migração do banco de dados") {
   throw new Error("Transcript summary must become the editable description");
+}
+
+const callPlan = buildDeterministicDayPlan({
+  ...base,
+  targetMinutes: 360,
+  calls: [
+    {
+      id: "call-1",
+      startIso: "2026-09-22T10:00:00.000Z",
+      endIso: "2026-09-22T10:02:00.000Z",
+      minutes: 2,
+      otherParticipantName: "Ana Silva",
+      callerName: "Mario",
+      calleeName: "Ana Silva",
+      callType: "peerToPeer",
+      mediaTypes: ["audio"],
+    },
+    {
+      id: "call-2",
+      startIso: "2026-09-22T11:00:00.000Z",
+      endIso: "2026-09-22T11:07:00.000Z",
+      minutes: 7,
+      otherParticipantName: "Time de Produto",
+      callerName: "Mario",
+      calleeName: null,
+      callType: "groupCall",
+      mediaTypes: ["audio", "video"],
+    },
+    {
+      id: "call-long",
+      startIso: "2026-09-22T13:00:00.000Z",
+      endIso: "2026-09-22T18:05:00.000Z",
+      minutes: 305,
+      otherParticipantName: "Comitê Executivo",
+      callerName: "Mario",
+      calleeName: null,
+      callType: "groupCall",
+      mediaTypes: ["audio", "video"],
+    },
+  ],
+  documents: [
+    {
+      id: "doc-3",
+      name: "Relatorio_Tecnico_ClienteX.xlsx",
+      path: null,
+      modifiedAt: "2026-09-22T12:30:00.000Z",
+    },
+  ],
+});
+const calls = callPlan.items.filter((item) => item.source === "teams_call");
+if (calls.length !== 3) {
+  throw new Error("Teams calls must become their own reconstruction source");
+}
+if (calls[0]?.minutes !== 2 || calls[1]?.minutes !== 7) {
+  throw new Error(
+    "Teams call minutes must remain exact, with no quarter-hour inflation",
+  );
+}
+if (calls[2]?.minutes !== 305) {
+  throw new Error("Measured Teams calls above 240 minutes must be preserved");
+}
+if ((calls[0] as { sourceId?: string }).sourceId !== "call-1") {
+  throw new Error("Teams calls must keep the original source id");
+}
+if (
+  calls.some(
+    (item) =>
+      !item.description.startsWith("Chamada Teams:") ||
+      !item.evidence.includes("Projeto sugerido"),
+  )
+) {
+  throw new Error(
+    "Teams calls must show measured participation and suggested project evidence",
+  );
+}
+if (callPlan.items.find((item) => item.source === "document")?.minutes !== 15) {
+  throw new Error(
+    "Estimated sources must absorb fitting without inflating measured calls",
+  );
+}
+
+const loggedCallPlan = buildDeterministicDayPlan({
+  ...base,
+  existingDescriptions: [calls[0]?.description ?? ""],
+  calls: [
+    {
+      id: "call-1",
+      startIso: "2026-09-22T10:00:00.000Z",
+      endIso: "2026-09-22T10:02:00.000Z",
+      minutes: 2,
+      otherParticipantName: "Ana Silva",
+      callerName: "Mario",
+      calleeName: "Ana Silva",
+      callType: "peerToPeer",
+      mediaTypes: ["audio"],
+    },
+  ],
+});
+if (loggedCallPlan.items.some((item) => item.source === "teams_call")) {
+  throw new Error(
+    "Already logged Teams calls must be skipped by stable description",
+  );
+}
+
+const shortCallApply = applyDayPlanSchema.safeParse({
+  date: "2026-09-22",
+  items: [
+    {
+      projectId: "project-1",
+      description: calls[0]?.description ?? "Chamada Teams: Ana Silva",
+      minutes: 1,
+      billable: true,
+      source: "teams_call",
+    },
+  ],
+});
+if (!shortCallApply.success) {
+  throw new Error("Applying a measured Teams call must accept 1 minute");
+}
+
+const shortDocumentApply = applyDayPlanSchema.safeParse({
+  date: "2026-09-22",
+  items: [
+    {
+      projectId: "project-1",
+      description: "Trabalho no documento curto",
+      minutes: 1,
+      billable: true,
+      source: "document",
+    },
+  ],
+});
+if (shortDocumentApply.success) {
+  throw new Error("Only Teams calls may be applied below 5 minutes");
 }
 
 console.log("microsoft memory reconstruction rules OK");

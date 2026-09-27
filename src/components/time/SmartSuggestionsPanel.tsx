@@ -509,6 +509,14 @@ export function SmartSuggestionsPanel({
                           Uso recente {suggestion.sourceBreakdown.recency}x
                         </Badge>
                       ) : null}
+                      {(suggestion.sourceBreakdown.calls ?? 0) > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full bg-sky-500/10 text-[11px] text-sky-700 dark:text-sky-300"
+                        >
+                          Teams · participação registrada
+                        </Badge>
+                      ) : null}
                       {commitWindow ? (
                         <Badge
                           variant="secondary"

@@ -30,6 +30,7 @@ import {
 import { WeekView } from "@/components/time/WeekView";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useQuickLog } from "@/hooks/use-quick-log";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
 import {
   type TimeSuggestion,
@@ -186,6 +187,7 @@ function estimateCommitDuration(suggestion: TimeSuggestion) {
 }
 
 export function TimeClient() {
+  const { apply: applyCallSuggestion } = useQuickLog();
   const { preferences, updatePreferences, user } = useUserTimePreferences();
   const weeklyCapacityHours = user?.weeklyCapacity ?? 40;
 
@@ -517,13 +519,33 @@ export function TimeClient() {
       endTime?: string;
     }) => {
       try {
-        await createEntry(data);
+        const suggestion = pendingSuggestionSubmission?.suggestion;
+        const isCall = (suggestion?.sourceBreakdown.calls ?? 0) > 0;
+        if (isCall && suggestion?.fingerprint.startsWith("teams_call:")) {
+          const result = await applyCallSuggestion(
+            [
+              {
+                date: data.date,
+                description: data.description,
+                minutes: data.duration,
+                source: "teams_call",
+                sourceId: suggestion.fingerprint.slice("teams_call:".length),
+              },
+            ],
+            { projectId: data.projectId, billable: data.billable },
+          );
+          if (result.failures.length > 0)
+            throw new Error(result.failures[0].reason);
+        } else {
+          await createEntry(data);
+        }
 
         if (pendingSuggestionSubmission) {
-          await sendFeedback(
-            pendingSuggestionSubmission.suggestion,
-            pendingSuggestionSubmission.action,
-          );
+          if (!isCall)
+            await sendFeedback(
+              pendingSuggestionSubmission.suggestion,
+              pendingSuggestionSubmission.action,
+            );
 
           if (pendingSuggestionSubmission.hideSuggestionOnSuccess) {
             setIgnoredSuggestionFingerprints((current) => {
@@ -582,7 +604,12 @@ export function TimeClient() {
         throw error;
       }
     },
-    [createEntry, pendingSuggestionSubmission, sendFeedback],
+    [
+      applyCallSuggestion,
+      createEntry,
+      pendingSuggestionSubmission,
+      sendFeedback,
+    ],
   );
 
   const handleApplySuggestionCommit = useCallback(

@@ -73,6 +73,12 @@ export function buildFactSheet({
   const lines: string[] = [];
 
   lines.push(`Período: ${period.label}`);
+  const recordedCalls = period.calls ?? [];
+  if (recordedCalls.length > 0) {
+    lines.push(
+      `Participação registrada em chamadas do Teams fora dos intervalos da agenda: ${formatDuration(recordedCalls.reduce((sum, call) => sum + call.minutes, 0))}. Não equivale a horas já lançadas nem comprova trabalho em um projeto.`,
+    );
+  }
   lines.push(
     `Horas registradas: ${formatDuration(totals.loggedMinutes)} de uma meta de ${formatDuration(totals.targetMinutes)}`,
   );

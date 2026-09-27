@@ -24,6 +24,7 @@ import {
   type LucideIcon,
   Minus,
   PartyPopper,
+  PhoneCall,
   Plus,
   Repeat2,
   Scale,
@@ -59,7 +60,9 @@ import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 import type { DayPlan, ReconstructSourceKind } from "@/types/reconstruct";
 
 const MIN_ITEM_MINUTES = 15;
+const MIN_CALL_MINUTES = 1;
 const STEP_MINUTES = 15;
+const CALL_STEP_MINUTES = 1;
 const MICROSOFT_MEMORY_SCOPES = [
   "Sites.Read.All",
   "OnlineMeetings.Read",
@@ -78,6 +81,11 @@ const SOURCE_META: Record<
     label: "Teams real",
     icon: UsersRound,
     evidenceLabel: "presença real no Teams",
+  },
+  teams_call: {
+    label: "Chamada Teams",
+    icon: PhoneCall,
+    evidenceLabel: "chamada direta no Teams",
   },
   document: {
     label: "Documento",
@@ -110,6 +118,7 @@ const SOURCE_META: Record<
 const SOURCE_ORDER: ReconstructSourceKind[] = [
   "calendar",
   "teams_attendance",
+  "teams_call",
   "document",
   "pull_request",
   "commits",
@@ -120,6 +129,7 @@ const SOURCE_ORDER: ReconstructSourceKind[] = [
 const LOADING_STEPS = [
   "Lendo reuniões no calendário Outlook…",
   "Conferindo presença real nas salas do Teams…",
+  "Verificando chamadas diretas no Teams…",
   "Procurando documentos recentes no SharePoint e OneDrive…",
   "Cruzando pull requests do Azure DevOps…",
   "Compondo descrições profissionais com IA…",
@@ -294,15 +304,19 @@ interface PlanItemRowProps {
 function PlanItemRow({ item, onChange }: PlanItemRowProps) {
   const meta = SOURCE_META[item.source];
   const SourceIcon = meta.icon;
+  const minMinutes =
+    item.source === "teams_call" ? MIN_CALL_MINUTES : MIN_ITEM_MINUTES;
+  const stepMinutes =
+    item.source === "teams_call" ? CALL_STEP_MINUTES : STEP_MINUTES;
 
   function handleDecrease() {
     onChange(item.id, {
-      minutes: Math.max(MIN_ITEM_MINUTES, item.minutes - STEP_MINUTES),
+      minutes: Math.max(minMinutes, item.minutes - stepMinutes),
     });
   }
 
   function handleIncrease() {
-    onChange(item.id, { minutes: item.minutes + STEP_MINUTES });
+    onChange(item.id, { minutes: item.minutes + stepMinutes });
   }
 
   return (
@@ -344,8 +358,8 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={`Reduzir 15 minutos em ${item.projectName}`}
-              disabled={!item.included || item.minutes <= MIN_ITEM_MINUTES}
+              aria-label={`Reduzir ${stepMinutes} minuto${stepMinutes === 1 ? "" : "s"} em ${item.projectName}`}
+              disabled={!item.included || item.minutes <= minMinutes}
               onClick={handleDecrease}
             >
               <Minus className="size-3" aria-hidden="true" />
@@ -356,7 +370,7 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
             <Button
               variant="ghost"
               size="icon-xs"
-              aria-label={`Aumentar 15 minutos em ${item.projectName}`}
+              aria-label={`Aumentar ${stepMinutes} minuto${stepMinutes === 1 ? "" : "s"} em ${item.projectName}`}
               disabled={!item.included}
               onClick={handleIncrease}
             >

@@ -22,10 +22,12 @@
 
 import { z } from "zod";
 import { completeText } from "@/lib/ai/completion";
+import { describeTeamCall } from "@/lib/collaboration/calls";
 import { getAppTimeZone } from "@/lib/timezone";
 import { formatDuration } from "@/lib/utils";
 import type { AutofillProposal } from "@/types/autofill";
 import type { AzureDevOpsPullRequest } from "@/types/azure-devops";
+import type { TeamCallSignal } from "@/types/collaboration";
 import type {
   DayPlan,
   DayPlanItem,
@@ -93,6 +95,8 @@ export interface BuildDayPlanInput {
   existingWorkItemIds: number[];
   events: CalendarEventInput[];
   documents: DocumentEventInput[];
+  /** Teams calls without a matching calendar event, already clipped to participation. */
+  calls?: TeamCallSignal[];
   /** Commit clusters for the day, longest first. */
   commitSessions: CommitSession[];
   /** Pull requests touched that day, used to label the sessions. */
@@ -115,6 +119,7 @@ export interface BuildDayPlanInput {
 
 const MIN_ITEM_MINUTES = 15;
 const MAX_MEETING_MINUTES = 240;
+const MAX_MEASURED_CALL_MINUTES = 24 * 60;
 const MAX_PLAN_ITEMS = 10;
 /** Beyond this a day of commits reads as noise rather than as a plan. */
 const MAX_COMMIT_SESSIONS = 6;
@@ -128,6 +133,12 @@ const CONFIDENCE_RANK: Record<ReconstructConfidence, number> = {
   medium: 1,
   low: 2,
 };
+
+const MEASURED_SOURCES = new Set<DayPlanItem["source"]>([
+  "calendar",
+  "teams_attendance",
+  "teams_call",
+]);
 
 function roundToQuarter(minutes: number): number {
   return Math.max(
@@ -223,6 +234,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     existingWorkItemIds,
     events,
     documents,
+    calls = [],
     commitSessions,
     pullRequests,
     workItemProposals,
@@ -322,6 +334,50 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       evidence: event.evidence
         ? `${actualAttendance && actualAttendance > 0 ? `Presença real no Teams: ${formatDuration(minutes)}. ` : ""}${event.evidence} ${event.summary ? "Descrição sugerida a partir da transcrição. " : ""}${matched ? `Associado a ${project.name}.` : "Projeto sugerido — confira."}`
         : baseEvidence,
+    });
+  }
+
+  // ── 1b. Teams calls: exact participation, no calendar inflation ──
+  for (const call of calls) {
+    const start = new Date(call.startIso).getTime();
+    const end = new Date(call.endIso).getTime();
+    if (
+      Number.isNaN(start) ||
+      Number.isNaN(end) ||
+      end <= start ||
+      call.minutes < 1
+    ) {
+      continue;
+    }
+
+    const description = truncateDescription(describeTeamCall(call));
+    if (alreadyLogged.has(normalize(description))) continue;
+
+    const project = defaultProject;
+    if (!project) continue;
+
+    const minutes = Math.min(call.minutes, MAX_MEASURED_CALL_MINUTES);
+    const participant =
+      call.callType === "groupCall"
+        ? "chamada em grupo"
+        : call.otherParticipantName.trim();
+
+    items.push({
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      projectName: project.name,
+      projectColor: project.color,
+      description,
+      minutes,
+      estimatedMinutes: minutes,
+      startsAt: call.startIso,
+      billable: project.billable && defaultBillable,
+      azureWorkItemId: null,
+      azureWorkItemTitle: null,
+      source: "teams_call",
+      sourceId: call.id,
+      confidence: "high",
+      evidence: `Participação registrada no Teams: ${formatDuration(minutes)} com ${participant}. Projeto sugerido — confira.`,
     });
   }
 
@@ -680,12 +736,8 @@ function scaleToBudget(items: DayPlanItem[], budget: number): DayPlanItem[] {
  * hide real work — exactly what this plan exists to surface.
  */
 function fitToGap(items: DayPlanItem[], gapMinutes: number): DayPlanItem[] {
-  const measured = items.filter(
-    (item) => item.source === "calendar" || item.source === "teams_attendance",
-  );
-  const estimated = items.filter(
-    (item) => item.source !== "calendar" && item.source !== "teams_attendance",
-  );
+  const measured = items.filter((item) => MEASURED_SOURCES.has(item.source));
+  const estimated = items.filter((item) => !MEASURED_SOURCES.has(item.source));
 
   if (estimated.length === 0) return items;
 
@@ -705,8 +757,7 @@ function fitToGap(items: DayPlanItem[], gapMinutes: number): DayPlanItem[] {
   );
 
   return items.flatMap((item) => {
-    if (item.source === "calendar" || item.source === "teams_attendance")
-      return [item];
+    if (MEASURED_SOURCES.has(item.source)) return [item];
 
     const match = scaled.get(item.id);
     return match ? [match] : [];
@@ -732,7 +783,7 @@ const refinementSchema = z.object({
       z.object({
         id: z.string().min(1),
         description: z.string().min(3).max(200),
-        minutes: z.number().int().min(MIN_ITEM_MINUTES).max(480),
+        minutes: z.number().int().min(1).max(480),
       }),
     )
     .max(MAX_PLAN_ITEMS),
@@ -747,10 +798,12 @@ Regras invioláveis:
 - Ajuste apenas "description" (português profissional, específica, máx. 140 caracteres, sem emojis) e "minutes" (múltiplos de 15).
 - A soma de "minutes" não pode ultrapassar o limite informado.
 - Não invente detalhes que não estejam nas evidências.
+- Para "teams_call", mantenha exatamente a descrição e os minutos recebidos.
 
 Como ler o campo "origem":
 - "calendar": reunião real da agenda — descreva o encontro, não a tarefa.
 - "teams_attendance": duração da presença real na sala; não altere os minutos medidos.
+- "teams_call": chamada direta/ad-hoc do Teams; participação medida, projeto apenas sugerido.
 - "document": modificação pontual de arquivo; nunca afirme duração contínua de edição.
 - "pull_request": PR concluído ou em revisão — cite o que foi entregue.
 - "commits": código versionado sem PR (branch de trabalho, correções, spikes) — descreva o que foi implementado.
@@ -811,15 +864,17 @@ export async function refineDayPlanWithAI(plan: DayPlan): Promise<DayPlan> {
       const original = byId.get(refined.id);
       if (!original) return plan;
 
-      const minutes =
-        original.source === "calendar" || original.source === "teams_attendance"
-          ? original.minutes
-          : Math.round(refined.minutes / MIN_ITEM_MINUTES) * MIN_ITEM_MINUTES;
+      const minutes = MEASURED_SOURCES.has(original.source)
+        ? original.minutes
+        : Math.round(refined.minutes / MIN_ITEM_MINUTES) * MIN_ITEM_MINUTES;
       total += minutes;
 
       refinedItems.push({
         ...original,
-        description: refined.description.trim(),
+        description:
+          original.source === "teams_call"
+            ? original.description
+            : refined.description.trim(),
         minutes,
       });
     }

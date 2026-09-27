@@ -18,6 +18,8 @@ import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
 const MAX_ITEMS_PER_CALL = 12;
 
 export interface QuickLogItem {
+  source?: "calendar" | "teams_call";
+  sourceId?: string;
   /** YYYY-MM-DD, in the app timezone. */
   date: string;
   description: string;
@@ -91,7 +93,8 @@ export function useQuickLog(): QuickLogController {
                       billable,
                       azureWorkItemId: null,
                       azureWorkItemTitle: null,
-                      source: "calendar" as const,
+                      source: item.source ?? "calendar",
+                      sourceId: item.sourceId,
                     })),
                   }),
                 },

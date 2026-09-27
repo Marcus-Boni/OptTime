@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatMeetingRange } from "@/hooks/use-collaboration-day";
+import { describeTeamCall } from "@/lib/collaboration/calls";
 import {
   cn,
   formatDateLabel,
@@ -103,23 +104,27 @@ function callToAction(call: TeamCallSignal): PeriodAction {
   return {
     id: `call-${call.id}`,
     kind: "call",
-    title: call.otherParticipantName,
-    date: formatLocalDate(new Date(call.startIso)),
+    title: describeTeamCall(call),
+    date: call.date ?? formatLocalDate(new Date(call.startIso)),
     timestampIso: call.startIso,
     context:
-      call.callType === "groupCall" ? "Chamada em grupo" : "Chamada direta",
-    minutes: call.minutes,
-    url: null,
+      call.alreadyLogged === true
+        ? "Participação medida · já apontada"
+        : "Participação medida no Teams",
+    minutes: Math.max(1, call.minutes),
+    url: call.joinWebUrl ?? null,
   };
 }
 
 function ActionRow({
   action,
   subject,
+  onReview,
 }: {
   action: PeriodAction;
   /** Raw calendar subject, so a shortened meeting title keeps its tooltip. */
   subject?: string;
+  onReview?: () => void;
 }) {
   const meta = KIND_META[action.kind];
   const Icon = meta.icon;
@@ -162,23 +167,32 @@ function ActionRow({
         </p>
       </div>
 
-      {action.url && (
-        <Button
-          asChild
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 hover:opacity-100"
-        >
-          <a
-            href={action.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={`Abrir ${meta.label} no Azure DevOps`}
+      <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+        {onReview && (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="h-7 px-2 text-[11px]"
+            onClick={onReview}
           >
-            <ExternalLink className="size-3.5" aria-hidden="true" />
-          </a>
-        </Button>
-      )}
+            Revisar
+          </Button>
+        )}
+
+        {action.url && (
+          <Button asChild variant="ghost" size="icon" className="size-7">
+            <a
+              href={action.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Abrir ${meta.label}`}
+            >
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+            </a>
+          </Button>
+        )}
+      </div>
     </li>
   );
 }
@@ -190,6 +204,7 @@ export interface ActivityFeedProps {
   isLoadingActions: boolean;
   /** When set, only this day's rows are shown — driven by the day chart. */
   selectedDate?: string | null;
+  onReviewCall?: (call: TeamCallSignal) => void;
 }
 
 /**
@@ -206,6 +221,7 @@ export function ActivityFeed({
   actions,
   isLoadingActions,
   selectedDate = null,
+  onReviewCall,
 }: ActivityFeedProps) {
   const [filter, setFilter] = useState<PeriodActionKind | "all">("all");
   const [expanded, setExpanded] = useState(false);
@@ -225,6 +241,11 @@ export function ActivityFeed({
   const subjectById = useMemo(
     () => new Map(meetings.map((meeting) => [meeting.id, meeting.subject])),
     [meetings],
+  );
+
+  const callByActionId = useMemo(
+    () => new Map(calls.map((call) => [`call-${call.id}`, call])),
+    [calls],
   );
 
   const grouped = useMemo(() => {
@@ -327,19 +348,33 @@ export function ActivityFeed({
                     </div>
 
                     <ul className="space-y-0.5">
-                      {shown.map((action) => (
-                        <ActionRow
-                          key={action.id}
-                          action={action}
-                          subject={
-                            action.kind === "meeting"
-                              ? (subjectById.get(
-                                  action.id.replace("meeting-", ""),
-                                ) ?? action.title)
-                              : undefined
-                          }
-                        />
-                      ))}
+                      {shown.map((action) => {
+                        const call =
+                          action.kind === "call"
+                            ? callByActionId.get(action.id)
+                            : undefined;
+
+                        return (
+                          <ActionRow
+                            key={action.id}
+                            action={action}
+                            onReview={
+                              call &&
+                              call.alreadyLogged !== true &&
+                              onReviewCall
+                                ? () => onReviewCall(call)
+                                : undefined
+                            }
+                            subject={
+                              action.kind === "meeting"
+                                ? (subjectById.get(
+                                    action.id.replace("meeting-", ""),
+                                  ) ?? action.title)
+                                : undefined
+                            }
+                          />
+                        );
+                      })}
                     </ul>
 
                     {(hidden > 0 || dayExpanded) && (

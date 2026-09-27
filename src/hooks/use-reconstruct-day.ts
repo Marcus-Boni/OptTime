@@ -37,10 +37,8 @@ export interface DayPlanDraft {
 
 const planCache = createAiResultCache<DayPlanDraft>({
   namespace: "day-plan",
-  // v3: items gained `estimatedMinutes` and `startsAt`, and the plan now fits
-  // the day by scaling every estimate instead of dropping the smallest ones.
-  // Drafts cached by v1/v2 predate both and must not be restored.
-  version: 3,
+  // v5: Preserve the call evidence identity through review and application.
+  version: 5,
   ttlMs: PLAN_TTL_MS,
   maxEntries: 10,
   storage: "session",
@@ -184,6 +182,7 @@ export function useReconstructDay({
         azureWorkItemId: item.azureWorkItemId,
         azureWorkItemTitle: item.azureWorkItemTitle,
         source: item.source,
+        sourceId: item.sourceId,
       }));
 
     if (payload.length === 0) {

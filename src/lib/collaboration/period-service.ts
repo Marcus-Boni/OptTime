@@ -12,7 +12,9 @@
 import { and, eq, gte, isNull, lte } from "drizzle-orm";
 import { allowedEmailDomain } from "@/lib/auth";
 import { fetchPortraitRange } from "@/lib/collaboration/analytics";
+import { getAcceptedCallIds } from "@/lib/collaboration/call-feedback";
 import { fetchTeamCallRecords } from "@/lib/collaboration/call-records";
+import { buildDayCallSignals } from "@/lib/collaboration/calls";
 import {
   fetchMailboxProfile,
   isAwayOn,
@@ -35,6 +37,7 @@ import {
 } from "@/lib/collaboration/period";
 import {
   buildCalendarStatus,
+  buildCallRecordsStatus,
   buildMailboxStatus,
   buildPortraitStatus,
   type CalendarOutcome,
@@ -48,6 +51,7 @@ import {
   MicrosoftConnectionError,
   type OutlookEvent,
 } from "@/lib/microsoft-graph";
+import { buildMicrosoftMemoryDayWindow } from "@/lib/microsoft-memory/graph-evidence";
 import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
 import { dateOfInstantInTimeZone, shiftDay } from "@/lib/timezone";
 import type {
@@ -58,6 +62,7 @@ import type {
   MeetingSignal,
   PeriodDay,
   ProjectAllocation,
+  TeamCallSignal,
 } from "@/types/collaboration";
 
 /** Historical fallback: a 40h week spread over five days. */
@@ -122,7 +127,7 @@ export async function buildCollaborationPeriod({
   const warnings: string[] = [];
   const dates = enumerateDates(from, to);
 
-  const [entries, profile] = await Promise.all([
+  const [entries, profile, acceptedCallIds] = await Promise.all([
     db
       .select({
         date: timeEntry.date,
@@ -147,6 +152,7 @@ export async function buildCollaborationPeriod({
       where: eq(user.id, userId),
       columns: { weeklyCapacity: true },
     }),
+    getAcceptedCallIds(userId, from, to),
   ]);
 
   const weeklyCapacityHours =
@@ -190,6 +196,17 @@ export async function buildCollaborationPeriod({
   const personalTimeZone = mailbox ? mailboxTimeZone(mailbox) : null;
   const mailboxOk = mailbox?.availability === "ok";
   const workingHours = mailboxOk ? mailbox.workingHours : null;
+  const callsPromise = (async () => {
+    const userAadObjectId = accessToken
+      ? await fetchMicrosoftObjectId(accessToken)
+      : null;
+    return fetchTeamCallRecords({
+      userAadObjectId,
+      from,
+      to,
+      timeZone: personalTimeZone ?? undefined,
+    });
+  })();
 
   if (!accessToken) {
     warnings.push("Reconecte sua conta Microsoft para ver sua agenda.");
@@ -243,19 +260,13 @@ export async function buildCollaborationPeriod({
       : await fetchPortraitRange(accessToken, from, to);
 
   // ── Teams call records (Application permissions with fallback) ──
-  const userAadObjectId = accessToken
-    ? await fetchMicrosoftObjectId(accessToken)
-    : null;
-  const callRecordsResult = await fetchTeamCallRecords({
-    userAadObjectId,
-    from,
-    to,
-  });
+  const callRecordsResult = await callsPromise;
 
   // ── Per-day fold ──
   const days: PeriodDay[] = [];
   const meetings: MeetingSignal[] = [];
   const exclusions: MeetingExclusion[] = [];
+  const calls: TeamCallSignal[] = [];
   const sliceGroups: ActivitySlice[][] = [];
 
   let loggedMeetingMinutes = 0;
@@ -298,15 +309,34 @@ export async function buildCollaborationPeriod({
 
     const callSlice = portrait?.slices.find((slice) => slice.kind === "call");
     const vivaCallMinutes = callSlice ? callSlice.minutes : 0;
-    const dayCallRecords = callRecordsResult.calls.filter(
-      (c) => c.startIso.slice(0, 10) === date,
-    );
+    const dayCallRecords = buildDayCallSignals({
+      calls: callRecordsResult.calls,
+      acceptedCallIds,
+      date,
+      ...buildMicrosoftMemoryDayWindow(date, personalTimeZone ?? undefined),
+      calendar: rawEvents
+        .map(toRawCalendarEvent)
+        .filter(
+          (event) =>
+            !event.isCancelled &&
+            !event.isAllDay &&
+            event.responseStatus !== "declined" &&
+            event.showAs !== "free",
+        ),
+      existingDescriptions: dayEntries.map((entry) => entry.description),
+      keepLogged: true,
+    });
+    calls.push(...dayCallRecords);
     const callRecordsMinutes = dayCallRecords.reduce(
       (sum, c) => sum + c.minutes,
       0,
     );
     const dayCallMinutes =
-      callRecordsMinutes > 0 ? callRecordsMinutes : vivaCallMinutes;
+      callRecordsResult.status === "ok" ||
+      callRecordsResult.status === "partial" ||
+      dayCallRecords.length > 0
+        ? callRecordsMinutes
+        : vivaCallMinutes;
 
     days.push({
       date,
@@ -331,6 +361,7 @@ export async function buildCollaborationPeriod({
   const timeZone = personalTimeZone ?? "America/Sao_Paulo";
 
   const statuses = [
+    buildCallRecordsStatus(callRecordsResult.status),
     buildCalendarStatus(calendarOutcome),
     buildPortraitStatus(
       skipPortrait ? null : (portraits?.availability ?? "no_token"),
@@ -366,7 +397,7 @@ export async function buildCollaborationPeriod({
     },
     ledger: buildMeetingLedger(meetings, exclusions),
     meetings,
-    calls: callRecordsResult.calls,
+    calls,
     collaborators: buildCollaborators(meetings),
     rituals: buildRituals(meetings, cancelledSubjects),
     shape: buildTimeShape({ meetings, days, workingHours, timeZone }),
@@ -374,6 +405,7 @@ export async function buildCollaborationPeriod({
     slices: mergeSlices(sliceGroups),
     portraitsByDate,
     sources: {
+      calls: callRecordsResult.status === "ok",
       calendar: calendarAvailable,
       portrait: portraits?.availability === "ok",
       mailbox: mailboxOk,

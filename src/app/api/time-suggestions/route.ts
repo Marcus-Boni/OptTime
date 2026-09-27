@@ -5,14 +5,13 @@ import {
   getActiveSession,
   getActorContext,
 } from "@/lib/access-control";
-import { auth } from "@/lib/auth";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import { project, timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
-import { fetchOutlookEvents } from "@/lib/microsoft-graph";
 import {
   getCachedSuggestions,
   setCachedSuggestions,
@@ -24,10 +23,7 @@ import {
   type NormalizedOutlookActivity,
 } from "@/lib/time-assistant/engine";
 import { getTimeSuggestionsSchema } from "@/lib/validations/time-suggestion.schema";
-
-type AccessTokenResult = {
-  accessToken?: string;
-};
+import type { TeamCallSignal } from "@/types/collaboration";
 
 function safeParseBreakdown(raw: string | null) {
   if (!raw) return null;
@@ -226,53 +222,34 @@ export async function GET(req: Request): Promise<Response> {
     const weightAdjustments = getWeightAdjustments(recentFeedback);
 
     let meetings: NormalizedOutlookActivity[] = [];
+    let calls: TeamCallSignal[] = [];
     try {
-      const tokenResponse = (await auth.api.getAccessToken({
-        body: {
-          providerId: "microsoft",
-        },
+      const collaboration = await buildCollaborationDay({
         headers: req.headers,
-      })) as AccessTokenResult;
+        userId: session.user.id,
+        userEmail: session.user.email ?? null,
+        date,
+        skipPortrait: true,
+      });
 
-      if (tokenResponse.accessToken) {
-        const dayBounds = toIsoDayBounds(date);
-        const events = await fetchOutlookEvents(
-          tokenResponse.accessToken,
-          dayBounds.start,
-          dayBounds.end,
-        );
-
-        meetings = events.map((event) => {
-          const start = new Date(
-            event.start.dateTime.endsWith("Z")
-              ? event.start.dateTime
-              : `${event.start.dateTime}Z`,
-          );
-          const end = new Date(
-            event.end.dateTime.endsWith("Z")
-              ? event.end.dateTime
-              : `${event.end.dateTime}Z`,
-          );
-
-          return {
-            id: event.id,
-            subject: event.subject,
-            startDateTime: start.toISOString(),
-            endDateTime: end.toISOString(),
-            durationMinutes: Math.max(
-              1,
-              Math.round((end.getTime() - start.getTime()) / 60000),
-            ),
-          };
-        });
-      }
+      meetings = collaboration.meetings
+        .filter((meeting) => !meeting.alreadyLogged)
+        .map((meeting) => ({
+          id: meeting.id,
+          subject: meeting.subject || meeting.title,
+          startDateTime: meeting.startIso,
+          endDateTime: meeting.endIso,
+          durationMinutes: meeting.minutes,
+        }));
+      calls = collaboration.calls?.filter((call) => !call.alreadyLogged) ?? [];
     } catch (error) {
-      console.warn("[time_suggestions][outlook_fetch_failed]", {
+      console.warn("[time_suggestions][collaboration_fetch_failed]", {
         userId: session.user.id,
         date,
         error: error instanceof Error ? error.message : "unknown",
       });
       meetings = [];
+      calls = [];
     }
 
     let commits: NormalizedCommitActivity[] = [];
@@ -345,6 +322,7 @@ export async function GET(req: Request): Promise<Response> {
       date,
       commits,
       meetings,
+      calls,
       projects,
       organizationUrl: config?.organizationUrl,
       recentEntries: recentEntries.map((entry) => ({
@@ -378,6 +356,7 @@ export async function GET(req: Request): Promise<Response> {
       date,
       commits: commits.length,
       meetings: meetings.length,
+      calls: calls.length,
       suggestions: suggestions.length,
     });
 

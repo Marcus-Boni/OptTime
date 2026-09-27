@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, Check, Loader2 } from "lucide-react";
+import { CalendarClock, Check, Loader2, PhoneCall } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MeetingTitle } from "@/components/collaboration/MeetingTitle";
@@ -17,8 +17,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatMeetingRange } from "@/hooks/use-collaboration-day";
 import { useQuickLog } from "@/hooks/use-quick-log";
+import { describeTeamCall } from "@/lib/collaboration/calls";
 import { cn, formatDateLabel, formatDuration } from "@/lib/utils";
-import type { MeetingSignal } from "@/types/collaboration";
+import type { MeetingSignal, TeamCallSignal } from "@/types/collaboration";
 
 interface ProjectOption {
   id: string;
@@ -33,6 +34,8 @@ export interface QuickLogDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Meetings the period found without a matching time entry. */
   meetings: MeetingSignal[];
+  /** Teams calls measured from call records, without a calendar invite. */
+  calls?: TeamCallSignal[];
   /** Refreshes the page once entries exist. */
   onLogged: () => void;
 }
@@ -45,6 +48,42 @@ function meetingDate(meeting: MeetingSignal): string {
   const day = String(instant.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+function callDate(call: TeamCallSignal): string {
+  if (call.date) return call.date;
+
+  const instant = new Date(call.startIso);
+  const year = instant.getFullYear();
+  const month = String(instant.getMonth() + 1).padStart(2, "0");
+  const day = String(instant.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function callRange(call: TeamCallSignal): string {
+  const format = (iso: string): string =>
+    new Date(iso).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  return `${format(call.startIso)} - ${format(call.endIso)}`;
+}
+
+type ReviewItem =
+  | {
+      kind: "meeting";
+      id: string;
+      date: string;
+      minutes: number;
+      meeting: MeetingSignal;
+    }
+  | {
+      kind: "call";
+      id: string;
+      date: string;
+      minutes: number;
+      call: TeamCallSignal;
+    };
 
 /**
  * "Apontar em 1 clique" — the batch that closes the gap between the calendar
@@ -59,6 +98,7 @@ export function QuickLogDialog({
   open,
   onOpenChange,
   meetings,
+  calls = [],
   onLogged,
 }: QuickLogDialogProps) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -90,26 +130,42 @@ export function QuickLogDialog({
     };
   }, [open]);
 
+  const reviewItems = useMemo<ReviewItem[]>(
+    () => [
+      ...meetings.map((meeting) => ({
+        kind: "meeting" as const,
+        id: `meeting:${meeting.id}`,
+        date: meetingDate(meeting),
+        minutes: meeting.minutes,
+        meeting,
+      })),
+      ...calls.map((call) => ({
+        kind: "call" as const,
+        id: `call:${call.id}`,
+        date: callDate(call),
+        minutes: Math.max(1, call.minutes),
+        call,
+      })),
+    ],
+    [meetings, calls],
+  );
+
   const selected = useMemo(
-    () => meetings.filter((meeting) => !skipped.has(meeting.id)),
-    [meetings, skipped],
+    () => reviewItems.filter((item) => !skipped.has(item.id)),
+    [reviewItems, skipped],
   );
 
   const grouped = useMemo(() => {
-    const byDate = new Map<string, MeetingSignal[]>();
-    for (const meeting of meetings) {
-      const date = meetingDate(meeting);
-      const bucket = byDate.get(date);
-      if (bucket) bucket.push(meeting);
-      else byDate.set(date, [meeting]);
+    const byDate = new Map<string, ReviewItem[]>();
+    for (const item of reviewItems) {
+      const bucket = byDate.get(item.date);
+      if (bucket) bucket.push(item);
+      else byDate.set(item.date, [item]);
     }
     return [...byDate.entries()].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [meetings]);
+  }, [reviewItems]);
 
-  const totalMinutes = selected.reduce(
-    (sum, meeting) => sum + meeting.minutes,
-    0,
-  );
+  const totalMinutes = selected.reduce((sum, item) => sum + item.minutes, 0);
 
   function toggle(id: string): void {
     setSkipped((current) => {
@@ -126,17 +182,22 @@ export function QuickLogDialog({
     const project = projects.find((item) => item.id === projectId);
 
     const { created, failures } = await apply(
-      selected.map((meeting) => ({
-        date: meetingDate(meeting),
-        description: meeting.title,
-        minutes: meeting.minutes,
+      selected.map((item) => ({
+        date: item.date,
+        source: item.kind === "call" ? "teams_call" : "calendar",
+        sourceId: item.kind === "call" ? item.call.id : undefined,
+        description:
+          item.kind === "meeting"
+            ? item.meeting.title
+            : describeTeamCall(item.call),
+        minutes: item.minutes,
       })),
       { projectId, billable: project?.billable ?? true },
     );
 
     if (created > 0) {
       toast.success(
-        `${created} reunião(ões) lançada(s) · ${formatDuration(totalMinutes)}`,
+        `${created} item(ns) lançado(s) · ${formatDuration(totalMinutes)}`,
       );
       onLogged();
     }
@@ -165,11 +226,11 @@ export function QuickLogDialog({
               className="size-4 text-brand-500"
               aria-hidden="true"
             />
-            Apontar reuniões do período
+            Apontar atividades do período
           </DialogTitle>
           <DialogDescription>
-            Título, duração e data vêm da sua agenda. Só falta dizer em qual
-            projeto elas entram.
+            Reuniões vêm da agenda. Chamadas vêm da sua participação medida no
+            Teams. Revise tudo antes de escolher o projeto.
           </DialogDescription>
         </DialogHeader>
 
@@ -184,18 +245,18 @@ export function QuickLogDialog({
 
           <ScrollArea className="-mr-4 h-[42vh] overflow-hidden pr-4">
             <div className="space-y-4">
-              {grouped.map(([date, dayMeetings]) => (
+              {grouped.map(([date, dayItems]) => (
                 <div key={date}>
                   <p className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     {formatDateLabel(date)}
                   </p>
 
                   <ul className="space-y-1">
-                    {dayMeetings.map((meeting) => {
-                      const isSelected = !skipped.has(meeting.id);
+                    {dayItems.map((item) => {
+                      const isSelected = !skipped.has(item.id);
 
                       return (
-                        <li key={meeting.id}>
+                        <li key={item.id}>
                           <label
                             className={cn(
                               "flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 transition-colors",
@@ -209,7 +270,7 @@ export function QuickLogDialog({
                                 type="checkbox"
                                 checked={isSelected}
                                 disabled={isApplying}
-                                onChange={() => toggle(meeting.id)}
+                                onChange={() => toggle(item.id)}
                                 className="peer size-4 cursor-pointer appearance-none rounded border border-border bg-background transition-colors checked:border-brand-500 checked:bg-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
                               />
                               <Check
@@ -220,18 +281,36 @@ export function QuickLogDialog({
 
                             <span className="min-w-0 flex-1">
                               <span className="block text-sm text-foreground">
-                                <MeetingTitle
-                                  title={meeting.title}
-                                  subject={meeting.subject}
-                                />
+                                {item.kind === "meeting" ? (
+                                  <MeetingTitle
+                                    title={item.meeting.title}
+                                    subject={item.meeting.subject}
+                                  />
+                                ) : (
+                                  <span className="line-clamp-2">
+                                    {describeTeamCall(item.call)}
+                                  </span>
+                                )}
                               </span>
-                              <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                {formatMeetingRange(meeting)}
+                              <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                {item.kind === "meeting" ? (
+                                  formatMeetingRange(item.meeting)
+                                ) : (
+                                  <>
+                                    <PhoneCall
+                                      className="size-3"
+                                      aria-hidden="true"
+                                    />
+                                    <span>{callRange(item.call)}</span>
+                                    <span aria-hidden="true">·</span>
+                                    <span>participação medida</span>
+                                  </>
+                                )}
                               </span>
                             </span>
 
                             <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                              {formatDuration(meeting.minutes)}
+                              {formatDuration(item.minutes)}
                             </span>
                           </label>
                         </li>

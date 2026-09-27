@@ -45,7 +45,11 @@ import {
 } from "@/lib/collaboration/insights";
 import { formatClock } from "@/lib/collaboration/period";
 import { formatDateLabel, formatDuration } from "@/lib/utils";
-import type { DayPortrait, MeetingSignal } from "@/types/collaboration";
+import type {
+  DayPortrait,
+  MeetingSignal,
+  TeamCallSignal,
+} from "@/types/collaboration";
 
 const ENTRY_EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -126,6 +130,7 @@ export function MyTimeClient() {
   );
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [quickLogOpen, setQuickLogOpen] = useState(false);
+  const [quickLogCalls, setQuickLogCalls] = useState<TeamCallSignal[]>([]);
 
   const {
     period,
@@ -163,6 +168,11 @@ export function MyTimeClient() {
     [period],
   );
 
+  const unloggedCalls = useMemo<TeamCallSignal[]>(
+    () => period?.calls?.filter((call) => call.alreadyLogged !== true) ?? [],
+    [period],
+  );
+
   const handlePresetChange = useCallback(
     (next: PeriodPreset) => {
       setPreset(next);
@@ -182,6 +192,12 @@ export function MyTimeClient() {
   }, [reload]);
 
   const handleQuickAction = useCallback(() => {
+    setQuickLogCalls([]);
+    setQuickLogOpen(true);
+  }, []);
+
+  const handleReviewCall = useCallback((call: TeamCallSignal) => {
+    setQuickLogCalls([call]);
     setQuickLogOpen(true);
   }, []);
 
@@ -421,6 +437,7 @@ export function MyTimeClient() {
                         actions={actions}
                         isLoadingActions={isLoadingActions}
                         selectedDate={selectedDate}
+                        onReviewCall={handleReviewCall}
                       />
                     </div>
                   </div>
@@ -477,8 +494,18 @@ export function MyTimeClient() {
 
             <QuickLogDialog
               open={quickLogOpen}
-              onOpenChange={setQuickLogOpen}
+              onOpenChange={(open) => {
+                setQuickLogOpen(open);
+                if (!open) setQuickLogCalls([]);
+              }}
               meetings={quickLogMeetings}
+              calls={
+                quickLogCalls.length > 0
+                  ? quickLogCalls
+                  : selectedDate
+                    ? unloggedCalls.filter((call) => call.date === selectedDate)
+                    : unloggedCalls
+              }
               onLogged={handleLogged}
             />
           </>

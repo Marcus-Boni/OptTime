@@ -193,6 +193,7 @@ export async function fetchMicrosoftObjectId(
 ): Promise<string | null> {
   try {
     const response = await fetch(`${GRAPH_BASE}/me?$select=id`, {
+      signal: AbortSignal.timeout(8_000),
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",

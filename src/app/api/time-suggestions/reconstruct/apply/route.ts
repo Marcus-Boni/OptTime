@@ -1,4 +1,4 @@
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   canAccessProject,
   getActiveSession,
@@ -7,12 +7,15 @@ import {
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
+import { clearCachedSuggestionsByPrefix } from "@/lib/time-assistant/cache";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { applyDayPlanSchema } from "@/lib/validations/reconstruct.schema";
 
 const MAX_DAY_MINUTES = 24 * 60;
 const MAX_BACKFILL_DAYS = 30;
+class CallAlreadyAppliedError extends Error {}
+class DayLimitError extends Error {}
 
 /**
  * POST - Applies an edited "Preencher meu dia" plan: creates every accepted
@@ -81,29 +84,55 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
 
-    const [existingTotals] = await db
-      .select({
-        minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
-      })
-      .from(timeEntry)
-      .where(
-        and(
-          eq(timeEntry.userId, session.user.id),
-          eq(timeEntry.date, date),
-          isNull(timeEntry.deletedAt),
-        ),
-      );
-
     const newMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
-    if (Number(existingTotals?.minutes ?? 0) + newMinutes > MAX_DAY_MINUTES) {
-      return Response.json(
-        { error: "O total do dia ultrapassaria 24 horas." },
-        { status: 400 },
-      );
-    }
 
     const createdIds = await db.transaction(async (tx) => {
       const ids: string[] = [];
+      // Serialize this review flow across tabs before checking evidence or totals.
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext(${session.user.id}), hashtext(${date}))`,
+      );
+      const [existingTotals] = await tx
+        .select({
+          minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
+        })
+        .from(timeEntry)
+        .where(
+          and(
+            eq(timeEntry.userId, session.user.id),
+            eq(timeEntry.date, date),
+            isNull(timeEntry.deletedAt),
+          ),
+        );
+      if (Number(existingTotals?.minutes ?? 0) + newMinutes > MAX_DAY_MINUTES)
+        throw new DayLimitError();
+      const callFingerprints = items.flatMap((item) =>
+        item.source === "teams_call" && item.sourceId
+          ? [`teams_call:${item.sourceId}`]
+          : [],
+      );
+      if (callFingerprints.length > 0) {
+        const existing = await tx
+          .select({ id: timeSuggestionFeedback.id })
+          .from(timeSuggestionFeedback)
+          .where(
+            and(
+              eq(timeSuggestionFeedback.userId, session.user.id),
+              eq(timeSuggestionFeedback.date, date),
+              inArray(timeSuggestionFeedback.action, ["accepted", "edited"]),
+              inArray(
+                timeSuggestionFeedback.suggestionFingerprint,
+                callFingerprints,
+              ),
+            ),
+          )
+          .limit(1);
+        if (
+          existing.length > 0 ||
+          new Set(callFingerprints).size !== callFingerprints.length
+        )
+          throw new CallAlreadyAppliedError();
+      }
 
       for (const item of items) {
         const id = crypto.randomUUID();
@@ -126,11 +155,16 @@ export async function POST(req: Request): Promise<Response> {
           id: crypto.randomUUID(),
           userId: session.user.id,
           date,
-          suggestionFingerprint: `reconstruct:${date}:${item.projectId}:${item.source}`,
+          suggestionFingerprint:
+            item.source === "teams_call" && item.sourceId
+              ? `teams_call:${item.sourceId}`
+              : `reconstruct:${date}:${item.projectId}:${item.source}`,
           action: "accepted",
           editedFields: null,
           sourceBreakdown: JSON.stringify({
             source: item.source,
+            sourceId: item.sourceId,
+            timeEntryId: id,
             minutes: item.minutes,
             reconstruct: true,
           }),
@@ -140,6 +174,7 @@ export async function POST(req: Request): Promise<Response> {
 
       return ids;
     });
+    clearCachedSuggestionsByPrefix(`${session.user.id}:`);
 
     const workItemIds = [
       ...new Set(
@@ -169,6 +204,20 @@ export async function POST(req: Request): Promise<Response> {
       { status: 201 },
     );
   } catch (error) {
+    if (error instanceof DayLimitError)
+      return Response.json(
+        { error: "O total do dia ultrapassaria 24 horas." },
+        { status: 400 },
+      );
+    if (error instanceof CallAlreadyAppliedError) {
+      return Response.json(
+        {
+          error:
+            "Uma chamada deste plano já foi registrada. Atualize as sugestões antes de continuar.",
+        },
+        { status: 409 },
+      );
+    }
     console.error("[POST /api/time-suggestions/reconstruct/apply]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
