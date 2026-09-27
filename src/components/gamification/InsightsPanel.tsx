@@ -92,6 +92,52 @@ function InsightCard({ insight }: { insight: PersonalInsight }) {
   );
 }
 
+interface ChartPointPayload extends WeeklyTrendPoint {
+  hours: number;
+  closed: boolean;
+}
+
+interface InsightsTooltipPayloadItem {
+  value?: number;
+  payload?: ChartPointPayload;
+}
+
+export interface InsightsChartTooltipProps {
+  active?: boolean;
+  payload?: InsightsTooltipPayloadItem[];
+  label?: string;
+}
+
+function InsightsChartTooltip({ active, payload }: InsightsChartTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const point = payload[0];
+  const data = point?.payload;
+  if (!data) return null;
+
+  return (
+    <div className="min-w-[190px] rounded-xl border border-border/80 bg-popover/95 p-3 text-xs shadow-xl backdrop-blur dark:border-white/10 dark:bg-neutral-900/95">
+      <p className="font-semibold text-foreground dark:text-neutral-100">
+        {data.label}
+      </p>
+      <div className="mt-2 flex items-center justify-between gap-3 text-xs">
+        <span className="flex items-center gap-1.5 text-muted-foreground dark:text-neutral-400">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              data.closed ? "bg-brand-500" : "bg-brand-500/35",
+            )}
+            aria-hidden="true"
+          />
+          Registrado:
+        </span>
+        <span className="font-mono font-medium text-foreground dark:text-white">
+          {formatDuration(data.minutes)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Personal insights: descriptive read of the user's own rhythm plus the
  * week-by-week trend that puts each figure in context.
@@ -155,7 +201,7 @@ export function InsightsPanel({
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartData}
-                  margin={{ top: 4, right: 4, bottom: 0, left: -20 }}
+                  margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
                 >
                   <XAxis
                     dataKey="shortLabel"
@@ -167,29 +213,13 @@ export function InsightsPanel({
                     tick={{ fill: colors.tickFill, fontSize: 11 }}
                     axisLine={false}
                     tickLine={false}
-                    width={40}
+                    width={44}
+                    tickMargin={6}
                     tickFormatter={(value: number) => `${value}h`}
                   />
                   <RechartsTooltip
                     cursor={{ fill: colors.cursorFill }}
-                    contentStyle={{
-                      backgroundColor: colors.tooltipBg,
-                      border: `1px solid ${colors.tooltipBorder}`,
-                      borderRadius: 12,
-                      color: colors.tooltipColor,
-                      fontSize: 12,
-                    }}
-                    labelStyle={{ color: colors.tooltipLabelColor }}
-                    formatter={(value: number | undefined) => [
-                      formatDuration(Math.round((value ?? 0) * 60)),
-                      "Registrado",
-                    ]}
-                    labelFormatter={(label: unknown, payload) => {
-                      const point = payload?.[0]?.payload as
-                        | { label?: string }
-                        | undefined;
-                      return point?.label ?? String(label ?? "");
-                    }}
+                    content={<InsightsChartTooltip />}
                   />
                   <Bar dataKey="hours" radius={[6, 6, 0, 0]} maxBarSize={44}>
                     {chartData.map((point) => (
