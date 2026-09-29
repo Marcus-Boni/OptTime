@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, Github, Sparkles } from "lucide-react";
+import { ArrowRight, Lock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSmoothScroll } from "./smooth-scroll";
@@ -33,11 +33,6 @@ export function Footer() {
                 Time
               </span>
             </Link>
-
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 font-mono text-xs text-white/70">
-              <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
-              v1.8 Produção
-            </span>
           </div>
 
           <p className="max-w-md text-xs leading-relaxed text-white/50 md:text-right">
@@ -142,35 +137,39 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Col 3: Autoria & Concepção */}
+          {/* Col 3: Ambiente Corporativo & Governança */}
           <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-5">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-brand-400" />
-              <h4 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
-                Desenvolvimento
-              </h4>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                <h4 className="font-display text-xs font-semibold uppercase tracking-wider text-white">
+                  Ambiente Corporativo
+                </h4>
+              </div>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-0.5 text-[10px] font-medium text-emerald-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Operacional
+              </span>
             </div>
 
             <p className="mt-3 text-xs leading-relaxed text-white/60">
-              Desenvolvido por{" "}
-              <strong className="text-white">Marcus Boni</strong> para apoiar a
-              rotina de trabalho e governança de horas da{" "}
-              <strong className="text-white">OptSolv</strong>.
+              Plataforma interna com autenticação via{" "}
+              <strong className="text-white">Microsoft Entra ID</strong>,
+              auditoria de horas e integração contínua com o{" "}
+              <strong className="text-white">Azure DevOps</strong>.
             </p>
 
             <div className="mt-4 pt-4 border-t border-white/5">
-              <a
-                href="https://github.com/Marcus-Boni"
-                target="_blank"
-                rel="noreferrer"
+              <Link
+                href="/login"
                 className="group flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white transition-all hover:border-brand-500/40 hover:bg-brand-500/10"
               >
                 <span className="flex items-center gap-2">
-                  <Github className="h-3.5 w-3.5 text-white/80" />
-                  <span>Marcus-Boni no GitHub</span>
+                  <Lock className="h-3.5 w-3.5 text-white/70" />
+                  <span>Acesso Corporativo Seguro</span>
                 </span>
-                <ArrowUpRight className="h-3.5 w-3.5 text-white/50 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-400" />
-              </a>
+                <ArrowRight className="h-3.5 w-3.5 text-white/50 transition-transform group-hover:translate-x-0.5 group-hover:text-brand-400" />
+              </Link>
             </div>
           </div>
         </div>
