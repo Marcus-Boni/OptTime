@@ -9,6 +9,7 @@ import {
   ComposedChart,
   Line,
   Tooltip as RechartsTooltip,
+  ReferenceLine,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -126,6 +127,20 @@ export function TimeFlowChart({
     (point) => point.logged > 0 || point.meetings > 0,
   );
 
+  const barSize = useMemo(() => {
+    if (data.length <= 3) return 20;
+    if (data.length <= 7) return 16;
+    if (data.length <= 14) return 10;
+    if (data.length <= 31) return 5;
+    return 4;
+  }, [data.length]);
+
+  const barGap = useMemo(() => {
+    if (data.length <= 7) return 4;
+    if (data.length <= 14) return 2;
+    return 1;
+  }, [data.length]);
+
   function selectDay(date: string): void {
     onSelectDay(date === selectedDate ? null : date);
   }
@@ -208,6 +223,7 @@ export function TimeFlowChart({
               data={data}
               onClick={handleChartClick}
               margin={{ top: 8, right: 8, bottom: 0, left: -22 }}
+              barGap={barGap}
             >
               <CartesianGrid
                 vertical={false}
@@ -263,7 +279,7 @@ export function TimeFlowChart({
                 }}
               />
 
-              <Bar dataKey="logged" radius={[5, 5, 0, 0]} maxBarSize={30}>
+              <Bar dataKey="logged" radius={[5, 5, 0, 0]} barSize={barSize}>
                 {data.map((point) => (
                   <Cell
                     key={point.date}
@@ -274,7 +290,7 @@ export function TimeFlowChart({
               </Bar>
 
               {hasCalendar && (
-                <Bar dataKey="meetings" radius={[5, 5, 0, 0]} maxBarSize={30}>
+                <Bar dataKey="meetings" radius={[5, 5, 0, 0]} barSize={barSize}>
                   {data.map((point) => (
                     <Cell
                       key={point.date}
@@ -285,15 +301,33 @@ export function TimeFlowChart({
                 </Bar>
               )}
 
-              <Line
-                dataKey="target"
-                type="stepAfter"
-                stroke={TARGET_STROKE}
-                strokeWidth={1.5}
-                strokeDasharray="4 4"
-                dot={false}
-                activeDot={false}
-              />
+              {data.length === 1 ? (
+                <>
+                  <ReferenceLine
+                    y={data[0]?.target}
+                    stroke={TARGET_STROKE}
+                    strokeWidth={1.5}
+                    strokeDasharray="4 4"
+                  />
+                  <Line
+                    dataKey="target"
+                    stroke="transparent"
+                    dot={false}
+                    activeDot={false}
+                    isAnimationActive={false}
+                  />
+                </>
+              ) : (
+                <Line
+                  dataKey="target"
+                  type="stepAfter"
+                  stroke={TARGET_STROKE}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 4"
+                  dot={false}
+                  activeDot={false}
+                />
+              )}
             </ComposedChart>
           </ResponsiveContainer>
         </div>
