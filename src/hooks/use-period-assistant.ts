@@ -25,7 +25,7 @@ const ASSISTANT_STALE_AFTER_MS = 3 * 60 * 60 * 1000;
 
 const assistantCache = createAiResultCache<PeriodAssistantResult>({
   namespace: "period-assistant",
-  version: 1,
+  version: 2,
   ttlMs: ASSISTANT_TTL_MS,
   maxEntries: 8,
   storage: "local",

@@ -3,6 +3,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
+  Briefcase,
   Building2,
   CalendarClock,
   CalendarPlus,
@@ -35,6 +36,7 @@ import type { InsightTone, PeriodInsight } from "@/types/collaboration";
  * and a typo in a new insight fails visibly here rather than rendering a hole.
  */
 const ICONS: Record<string, LucideIcon> = {
+  Briefcase,
   Building2,
   CalendarClock,
   CalendarPlus,

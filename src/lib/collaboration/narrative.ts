@@ -102,13 +102,17 @@ export function buildFactSheet({
   lines.push(`Carga de reuniões no expediente: ${shape.meetingLoadPercent}%`);
   lines.push(`Reuniões emendadas sem intervalo: ${shape.backToBackCount}`);
 
-  if (shape.longestFocusBlockMinutes > 0) {
-    lines.push(
-      `Maior bloco livre no expediente: ${formatDuration(shape.longestFocusBlockMinutes)}`,
-    );
-  } else {
-    lines.push("Maior bloco livre no expediente: nenhum acima de 30 minutos");
-  }
+  const loggedFromMeetings = Math.min(
+    totals.loggedMeetingMinutes,
+    totals.loggedMinutes,
+  );
+  const executionMinutes = Math.max(
+    0,
+    totals.loggedMinutes - loggedFromMeetings,
+  );
+  lines.push(
+    `Trabalho registrado em projetos fora de reuniões: ${formatDuration(executionMinutes)}`,
+  );
 
   if (shape.afterHoursMinutes > 0) {
     lines.push(
@@ -183,15 +187,30 @@ export function buildDeterministicNarrative({
   insights,
 }: BuildPeriodNarrativeInput): string {
   const { totals, ledger } = period;
+  const recordedCalls = period.calls ?? [];
+  const callMinutes = recordedCalls.reduce(
+    (sum, call) => sum + call.minutes,
+    0,
+  );
 
-  if (ledger.attended.count === 0 && totals.loggedMinutes === 0) {
+  if (
+    ledger.attended.count === 0 &&
+    totals.loggedMinutes === 0 &&
+    callMinutes === 0
+  ) {
     return `Não encontramos reuniões nem horas registradas em ${period.label}. Se você trabalhou nesse período, vale conferir se a conta Microsoft está conectada e lançar as horas na tela de registro.`;
   }
 
-  const first =
-    ledger.attended.count > 0
-      ? `Em ${period.label} você participou de ${ledger.attended.count} reunião(ões), somando ${formatDuration(ledger.attended.minutes)}, e registrou ${formatDuration(totals.loggedMinutes)}.`
-      : `Em ${period.label} você registrou ${formatDuration(totals.loggedMinutes)}, sem reuniões detectadas na agenda.`;
+  let first: string;
+  if (ledger.attended.count > 0 && callMinutes > 0) {
+    first = `Em ${period.label} você participou de ${ledger.attended.count} reunião(ões) (${formatDuration(ledger.attended.minutes)}) e ${recordedCalls.length} chamada(s) Teams (${formatDuration(callMinutes)}), e registrou ${formatDuration(totals.loggedMinutes)}.`;
+  } else if (ledger.attended.count > 0) {
+    first = `Em ${period.label} você participou de ${ledger.attended.count} reunião(ões), somando ${formatDuration(ledger.attended.minutes)}, e registrou ${formatDuration(totals.loggedMinutes)}.`;
+  } else if (callMinutes > 0) {
+    first = `Em ${period.label} você participou de ${recordedCalls.length} chamada(s) Teams (${formatDuration(callMinutes)}) e registrou ${formatDuration(totals.loggedMinutes)}.`;
+  } else {
+    first = `Em ${period.label} você registrou ${formatDuration(totals.loggedMinutes)}, sem reuniões detectadas na agenda.`;
+  }
 
   // Only an action or a routine-health finding earns the second sentence:
   // the opening never turns into a reminder that hours are missing.

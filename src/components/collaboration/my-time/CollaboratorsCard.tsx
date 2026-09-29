@@ -93,7 +93,10 @@ export function CollaboratorsCard({ collaborators }: CollaboratorsCardProps) {
                             )}
                           </span>
                           <span className="block text-[11px] text-muted-foreground">
-                            {person.meetings} reunião(ões)
+                            {person.meetings}{" "}
+                            {person.meetings === 1
+                              ? "reunião ou chamada"
+                              : "reuniões / chamadas"}
                             {person.oneOnOnes > 0
                               ? ` · ${person.oneOnOnes} individual(is)`
                               : ""}

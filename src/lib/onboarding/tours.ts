@@ -257,7 +257,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "kpis",
         title: "Quatro números, um quadro",
         description:
-          "Horas registradas, carga de reuniões, a maior janela seguida sem reunião que você conseguiu e o que ainda não virou apontamento. A terceira é a única que melhora quando a semana é bem arranjada, e não quando ela é mais longa.",
+          "Horas registradas, reuniões e chamadas, o trabalho efetivo dedicado a projetos e o que ainda não virou apontamento. Números claros que refletem exatamente onde o seu tempo foi investido.",
         target: '[data-tour="my-time-kpis"]',
         placement: "bottom",
         hint: "Passe o mouse em qualquer célula para ver de onde o número sai.",

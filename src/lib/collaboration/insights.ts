@@ -64,12 +64,6 @@ function percent(part: number, whole: number): number {
   return Math.round((part / whole) * 100);
 }
 
-/** "2026-09-15" → "15/09". */
-function shortDate(date: string): string {
-  const [, month, day] = date.split("-");
-  return `${day}/${month}`;
-}
-
 // ─── Rhythm ───────────────────────────────────────────────────────────
 
 /**
@@ -172,23 +166,44 @@ export function buildPeriodInsights({
   const unloggedMeetings = period.meetings.filter(
     (meeting) => !meeting.alreadyLogged,
   );
-  const unloggedMinutes = unloggedMeetings.reduce(
+  const unloggedMeetingMinutes = unloggedMeetings.reduce(
     (sum, meeting) => sum + meeting.minutes,
     0,
   );
+  const unloggedCalls = (period.calls ?? []).filter(
+    (call) => call.alreadyLogged !== true,
+  );
+  const unloggedCallMinutes = unloggedCalls.reduce(
+    (sum, call) => sum + (call.minutes || 0),
+    0,
+  );
+
+  const totalUnloggedCount = unloggedMeetings.length + unloggedCalls.length;
+  const totalUnloggedMinutes = unloggedMeetingMinutes + unloggedCallMinutes;
 
   // ── The one thing this page can do for you ──
   if (
-    unloggedMeetings.length > 0 &&
-    unloggedMinutes >= MIN_UNLOGGED_GAP_MINUTES
+    totalUnloggedCount > 0 &&
+    totalUnloggedMinutes >= MIN_UNLOGGED_GAP_MINUTES
   ) {
+    let title = `${unloggedMeetings.length} reunião(ões) ainda sem apontamento`;
+    let description = `São ${formatDuration(unloggedMeetingMinutes)} que já aconteceram na sua agenda. Escolha o projeto e lance todas de uma vez.`;
+
+    if (unloggedMeetings.length > 0 && unloggedCalls.length > 0) {
+      title = `${totalUnloggedCount} compromissos ainda sem apontamento`;
+      description = `São ${formatDuration(totalUnloggedMinutes)} que já aconteceram (${formatDuration(unloggedMeetingMinutes)} em reuniões e ${formatDuration(unloggedCallMinutes)} em chamadas Teams). Escolha o projeto e lance de uma vez.`;
+    } else if (unloggedCalls.length > 0) {
+      title = `${unloggedCalls.length} chamada(s) Teams ainda sem apontamento`;
+      description = `São ${formatDuration(unloggedCallMinutes)} em chamadas no Teams que já aconteceram e ainda não viraram apontamento. Escolha o projeto e lance de uma vez.`;
+    }
+
     drafts.push({
       id: "unlogged-meetings",
       tone: "action",
       icon: "CalendarClock",
       rank: 0,
-      title: `${unloggedMeetings.length} reunião(ões) ainda sem apontamento`,
-      description: `São ${formatDuration(unloggedMinutes)} que já aconteceram na sua agenda. Escolha o projeto e lance todas de uma vez.`,
+      title,
+      description,
       actionLabel: "Apontar em 1 clique",
       actionHref: null,
       quickAction: "log-meetings",
@@ -291,16 +306,24 @@ export function buildPeriodInsights({
   }
 
   // ── What went well ──
-  if (shape.longestFocusBlockMinutes >= PROTECTED_FOCUS_MINUTES) {
+  const loggedFromMeetings = Math.min(
+    totals.loggedMeetingMinutes,
+    totals.loggedMinutes,
+  );
+  const executionMinutes = Math.max(
+    0,
+    totals.loggedMinutes - loggedFromMeetings,
+  );
+  const executionShare = percent(executionMinutes, totals.loggedMinutes);
+
+  if (executionMinutes >= 60) {
     drafts.push({
-      id: "focus-block",
+      id: "project-work",
       tone: "positive",
-      icon: "Focus",
+      icon: "Briefcase",
       rank: 10,
-      title: `${formatDuration(shape.longestFocusBlockMinutes)} seguidos sem reunião`,
-      description: shape.longestFocusBlockDate
-        ? `Sua maior janela livre do período foi em ${shortDate(shape.longestFocusBlockDate)}.`
-        : "Sua maior janela livre do período, dentro do horário de trabalho.",
+      title: `${formatDuration(executionMinutes)} dedicados a projetos`,
+      description: `${executionShare}% do seu tempo registrado no período foi investido em tarefas e entregas práticas fora de reuniões.`,
       actionLabel: null,
       actionHref: null,
       quickAction: null,

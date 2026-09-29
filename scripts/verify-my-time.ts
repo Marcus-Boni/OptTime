@@ -343,6 +343,42 @@ function verifyCollaborators(): void {
       meeting({ id: "solo", startIso: "2026-09-14T12:00:00.000Z" }),
     ]).length === 0,
   );
+
+  const peopleWithCalls = buildCollaborators(MEETINGS, [
+    {
+      id: "call-1",
+      startIso: "2026-09-15T14:00:00.000Z",
+      endIso: "2026-09-15T14:30:00.000Z",
+      minutes: 30,
+      otherParticipantName: "Bruno Sá",
+      callerName: null,
+      calleeName: null,
+      callType: "peerToPeer",
+      mediaTypes: ["audio"],
+    },
+    {
+      id: "call-2",
+      startIso: "2026-09-16T10:00:00.000Z",
+      endIso: "2026-09-16T10:45:00.000Z",
+      minutes: 45,
+      otherParticipantName: "Júnio Bicalho",
+      callerName: null,
+      calleeName: null,
+      callType: "peerToPeer",
+      mediaTypes: ["audio"],
+    },
+  ]);
+  const brunoWithCall = peopleWithCalls.find((p) => p.name === "Bruno Sá");
+  const junio = peopleWithCalls.find((p) => p.name === "Júnio Bicalho");
+
+  check(
+    "calls attribute additional minutes to existing participant",
+    brunoWithCall?.minutes === 150,
+  );
+  check(
+    "calls create rows for new participants",
+    junio?.minutes === 45 && junio?.oneOnOnes === 1,
+  );
 }
 
 // ─── Rituals ──────────────────────────────────────────────────────────
@@ -765,6 +801,31 @@ function verifyInsights(): void {
   // Cancelled 30 + declined 60 + overlapped 45 = 135 against 270 attended.
   check("agenda churn is reported", ids.includes("agenda-churn"));
 
+  const periodWithCalls = buildPeriod({
+    calls: [
+      {
+        id: "call-unlogged",
+        startIso: "2026-09-15T14:00:00.000Z",
+        endIso: "2026-09-15T14:45:00.000Z",
+        minutes: 45,
+        otherParticipantName: "Júnio Bicalho",
+        callerName: null,
+        calleeName: null,
+        callType: "peerToPeer",
+        mediaTypes: ["audio"],
+        alreadyLogged: false,
+      },
+    ],
+  });
+  const insightsWithCalls = buildPeriodInsights({ period: periodWithCalls });
+  const unloggedInsight = insightsWithCalls.find(
+    (insight) => insight.id === "unlogged-meetings",
+  );
+  check(
+    "unlogged insight combines meetings and calls",
+    Boolean(unloggedInsight?.description.includes("chamadas Teams")),
+  );
+
   const delivery = buildPeriodInsights({
     period,
     delivery: { pullRequests: 3, commits: 12, workItems: 2 },
@@ -940,6 +1001,31 @@ function verifyNarrative(): void {
   check(
     "an empty period is stated plainly instead of invented",
     empty.includes("Não encontramos"),
+  );
+
+  const periodWithCallNarrative = buildPeriod({
+    calls: [
+      {
+        id: "call-narrative",
+        startIso: "2026-09-15T14:00:00.000Z",
+        endIso: "2026-09-15T14:45:00.000Z",
+        minutes: 45,
+        otherParticipantName: "Júnio Bicalho",
+        callerName: null,
+        calleeName: null,
+        callType: "peerToPeer",
+        mediaTypes: ["audio"],
+        alreadyLogged: false,
+      },
+    ],
+  });
+  const narrativeWithCalls = buildDeterministicNarrative({
+    period: periodWithCallNarrative,
+    insights: [],
+  });
+  check(
+    "narrative mentions Teams calls when present",
+    narrativeWithCalls.includes("chamada(s) Teams"),
   );
 
   // The model is only ever allowed to rephrase this sheet, so anything absent

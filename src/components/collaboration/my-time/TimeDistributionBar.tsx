@@ -66,8 +66,11 @@ export function TimeDistributionBar({
       0,
       totals.meetingMinutes - totals.loggedMeetingMinutes,
     );
+    const unloggedCalls = (period.calls ?? [])
+      .filter((call) => call.alreadyLogged !== true)
+      .reduce((sum, call) => sum + (call.minutes || 0), 0);
 
-    return [
+    const baseSegments: Segment[] = [
       {
         key: "work",
         label: "Trabalho apontado",
@@ -93,8 +96,22 @@ export function TimeDistributionBar({
         hint: "Aconteceram na agenda e ainda não têm apontamento correspondente.",
         needsAction: true,
       },
-    ].filter((segment) => segment.minutes > 0);
-  }, [totals]);
+    ];
+
+    if (unloggedCalls > 0) {
+      baseSegments.push({
+        key: "calls_pending",
+        label: "Chamadas sem registro",
+        minutes: unloggedCalls,
+        bar: "bg-sky-500",
+        dot: "bg-sky-500",
+        hint: "Chamadas medidas no Teams que ainda não têm apontamento correspondente.",
+        needsAction: true,
+      });
+    }
+
+    return baseSegments.filter((segment) => segment.minutes > 0);
+  }, [totals, period.calls]);
 
   const total = segments.reduce((sum, segment) => sum + segment.minutes, 0);
 

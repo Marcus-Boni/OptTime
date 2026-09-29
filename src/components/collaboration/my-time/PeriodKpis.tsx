@@ -1,9 +1,9 @@
 "use client";
 
 import {
+  Briefcase,
   CalendarClock,
   Clock,
-  Focus,
   type LucideIcon,
   Users,
 } from "lucide-react";
@@ -145,10 +145,34 @@ export function PeriodKpis({ period, onLogMeetings }: PeriodKpisProps) {
   // every meeting is logged when we could not read a single one.
   const hasCalendar = period.sources.calendar;
 
-  const unloggedMinutes = Math.max(
+  const unloggedMeetings = Math.max(
     0,
     totals.meetingMinutes - totals.loggedMeetingMinutes,
   );
+  const unloggedCalls = (period.calls ?? [])
+    .filter((call) => call.alreadyLogged !== true)
+    .reduce((sum, call) => sum + (call.minutes || 0), 0);
+  const totalUnlogged = unloggedMeetings + unloggedCalls;
+
+  const callMinutes = (period.calls ?? []).reduce(
+    (sum, call) => sum + (call.minutes || 0),
+    0,
+  );
+  const totalCommunicationMinutes = totals.meetingMinutes + callMinutes;
+
+  const loggedFromMeetings = Math.min(
+    totals.loggedMeetingMinutes,
+    totals.loggedMinutes,
+  );
+  const executionMinutes = Math.max(
+    0,
+    totals.loggedMinutes - loggedFromMeetings,
+  );
+  const executionSharePercent =
+    totals.loggedMinutes > 0
+      ? Math.round((executionMinutes / totals.loggedMinutes) * 100)
+      : 0;
+
   const targetProgress =
     totals.targetMinutes > 0
       ? (totals.loggedMinutes / totals.targetMinutes) * 100
@@ -185,67 +209,84 @@ export function PeriodKpis({ period, onLogMeetings }: PeriodKpisProps) {
         tone={
           hasCalendar && shape.meetingLoadPercent >= 50 ? "action" : "default"
         }
-        label="Carga de reuniões"
-        value={hasCalendar ? formatDuration(totals.meetingMinutes) : "—"}
+        label={callMinutes > 0 ? "Reuniões & Chamadas" : "Carga de reuniões"}
+        value={
+          hasCalendar || callMinutes > 0
+            ? formatDuration(totalCommunicationMinutes)
+            : "—"
+        }
         progress={hasCalendar ? shape.meetingLoadPercent : undefined}
         hint={
-          !hasCalendar
+          !hasCalendar && callMinutes === 0
             ? "agenda indisponível neste período"
-            : shape.contractedMinutes === 0
-              ? `${period.ledger.attended.count} reunião(ões) no período`
-              : outsideWindowMinutes > 0
-                ? `${formatDuration(shape.meetingMinutesInWindow)} dentro da jornada de ${formatDuration(shape.contractedMinutes)} (${shape.meetingLoadPercent}%) · ${formatDuration(outsideWindowMinutes)} fora do expediente`
-                : `${shape.meetingLoadPercent}% da sua jornada de ${formatDuration(shape.contractedMinutes)}, em ${period.ledger.attended.count} reunião(ões)`
+            : callMinutes > 0
+              ? `${formatDuration(totals.meetingMinutes)} em reuniões + ${formatDuration(callMinutes)} em chamadas · ${shape.meetingLoadPercent}% da jornada`
+              : shape.contractedMinutes === 0
+                ? `${period.ledger.attended.count} reunião(ões) no período`
+                : outsideWindowMinutes > 0
+                  ? `${formatDuration(shape.meetingMinutesInWindow)} dentro da jornada de ${formatDuration(shape.contractedMinutes)} (${shape.meetingLoadPercent}%) · ${formatDuration(outsideWindowMinutes)} fora do expediente`
+                  : `${shape.meetingLoadPercent}% da sua jornada de ${formatDuration(shape.contractedMinutes)}, em ${period.ledger.attended.count} reunião(ões)`
         }
-        tooltip={`Duração já normalizada: reuniões sobrepostas são recortadas para que a mesma hora não conte duas vezes. A porcentagem é sobre a sua jornada de trabalho (${formatDuration(shape.contractedMinutes)} no período), e não sobre a janela ${formatClock(shape.windowStartMinute)}–${formatClock(shape.windowEndMinute)} do Outlook, que é maior porque inclui o almoço.`}
+        tooltip={
+          callMinutes > 0
+            ? `Tempo total em reuniões da agenda (${formatDuration(totals.meetingMinutes)}) e chamadas medidas no Teams (${formatDuration(callMinutes)}). A porcentagem (${shape.meetingLoadPercent}%) mede a carga de reuniões sobre a sua jornada de trabalho (${formatDuration(shape.contractedMinutes)}).`
+            : `Duração já normalizada: reuniões sobrepostas são recortadas para que a mesma hora não conte duas vezes. A porcentagem é sobre a sua jornada de trabalho (${formatDuration(shape.contractedMinutes)} no período), e não sobre a janela ${formatClock(shape.windowStartMinute)}–${formatClock(shape.windowEndMinute)} do Outlook, que é maior porque inclui o almoço.`
+        }
       />
 
       <Metric
-        icon={Focus}
+        icon={Briefcase}
         tone={
-          hasCalendar && shape.longestFocusBlockMinutes >= 240
+          totals.loggedMinutes > 0 && executionSharePercent >= 60
             ? "positive"
             : "default"
         }
-        label="Maior janela sem reunião"
+        label="Trabalho em projetos"
         value={
-          hasCalendar && shape.longestFocusBlockMinutes > 0
-            ? formatDuration(shape.longestFocusBlockMinutes)
-            : "—"
+          totals.loggedMinutes > 0 ? formatDuration(executionMinutes) : "—"
         }
+        progress={totals.loggedMinutes > 0 ? executionSharePercent : undefined}
         hint={
-          !hasCalendar
-            ? "agenda indisponível neste período"
-            : shape.longestFocusBlockDate
-              ? `o intervalo seguido mais longo, em ${shape.longestFocusBlockDate.split("-").reverse().join("/")}`
-              : "nenhum intervalo livre de 30min no expediente"
+          totals.loggedMinutes === 0
+            ? "nenhum registro de horas no período"
+            : `${executionSharePercent}% do seu tempo apontado foi dedicado a entregas práticas`
         }
-        tooltip="UM intervalo: o mais longo do período sem nenhuma reunião, dentro do seu horário de trabalho. Não confunda com o 'espaço livre na agenda' do Microsoft 365, que soma TODAS as janelas livres da semana e por isso é muito maior."
+        tooltip="Horas que você registrou e que não vieram de uma reunião da agenda. Mede o tempo efetivamente dedicado a tarefas, desenvolvimento e entregas de projetos."
       />
 
       <Metric
         icon={CalendarClock}
         tone={
-          !hasCalendar ? "default" : unloggedMinutes > 0 ? "action" : "positive"
+          !hasCalendar && (period.calls?.length ?? 0) === 0
+            ? "default"
+            : totalUnlogged > 0
+              ? "action"
+              : "positive"
         }
         label="Sem registro"
         value={
-          !hasCalendar
+          !hasCalendar && (period.calls?.length ?? 0) === 0
             ? "—"
-            : unloggedMinutes > 0
-              ? formatDuration(unloggedMinutes)
+            : totalUnlogged > 0
+              ? formatDuration(totalUnlogged)
               : "em dia"
         }
         hint={
-          !hasCalendar
+          !hasCalendar && (period.calls?.length ?? 0) === 0
             ? "sem a agenda não dá para dizer o que falta apontar"
-            : unloggedMinutes > 0
-              ? "reuniões que aconteceram e ainda não viraram apontamento"
-              : "toda reunião da agenda já está apontada"
+            : totalUnlogged > 0
+              ? unloggedMeetings > 0 && unloggedCalls > 0
+                ? `${formatDuration(unloggedMeetings)} em reuniões + ${formatDuration(unloggedCalls)} em chamadas`
+                : unloggedCalls > 0
+                  ? `${formatDuration(unloggedCalls)} em chamadas Teams sem apontamento`
+                  : "reuniões que aconteceram e ainda não viraram apontamento"
+              : "todos os compromissos e chamadas já estão apontados"
         }
-        tooltip="Comparação entre as reuniões detectadas na agenda e as descrições já lançadas no seu registro de horas."
+        tooltip="Comparação entre as reuniões da agenda e chamadas no Teams detectadas contra as horas já lançadas no seu registro de horas."
         onAction={
-          hasCalendar && unloggedMinutes > 0 ? onLogMeetings : undefined
+          (hasCalendar || (period.calls?.length ?? 0) > 0) && totalUnlogged > 0
+            ? onLogMeetings
+            : undefined
         }
         actionLabel="Apontar em 1 clique"
       />
