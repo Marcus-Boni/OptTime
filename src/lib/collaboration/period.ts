@@ -20,6 +20,7 @@ import type {
   MeetingSignal,
   PeriodDay,
   RitualTime,
+  TeamCallSignal,
   TimeShape,
   WorkingHours,
 } from "@/types/collaboration";
@@ -189,16 +190,36 @@ function collaboratorKey(name: string, email: string | null): string {
  */
 export function buildCollaborators(
   meetings: MeetingSignal[],
+  calls: TeamCallSignal[] = [],
 ): CollaboratorTime[] {
   const byKey = new Map<string, CollaboratorTime>();
+  const byName = new Map<string, CollaboratorTime>();
+
+  function register(entry: CollaboratorTime, name: string) {
+    byKey.set(entry.key, entry);
+    const cleanName = name.trim().toLowerCase();
+    if (cleanName) {
+      byName.set(cleanName, entry);
+    }
+  }
+
+  function find(
+    name: string,
+    email: string | null,
+  ): CollaboratorTime | undefined {
+    const key = collaboratorKey(name, email);
+    if (byKey.has(key)) return byKey.get(key);
+    const cleanName = name.trim().toLowerCase();
+    if (cleanName && byName.has(cleanName)) return byName.get(cleanName);
+    return undefined;
+  }
 
   for (const meeting of meetings) {
     for (const person of meeting.participants) {
       const name = person.name.trim();
       if (!name && !person.email) continue;
 
-      const key = collaboratorKey(name, person.email);
-      const current = byKey.get(key);
+      const current = find(name, person.email);
 
       if (current) {
         current.minutes += meeting.minutes;
@@ -210,7 +231,8 @@ export function buildCollaborators(
         continue;
       }
 
-      byKey.set(key, {
+      const key = collaboratorKey(name, person.email);
+      const newEntry: CollaboratorTime = {
         key,
         name: name || (person.email ?? "").split("@")[0] || "Sem nome",
         email: person.email,
@@ -219,8 +241,46 @@ export function buildCollaborators(
         meetings: 1,
         oneOnOnes: meeting.shape === "one_on_one" ? 1 : 0,
         lastMeetingIso: meeting.startIso,
-      });
+      };
+      register(newEntry, name);
     }
+  }
+
+  for (const call of calls) {
+    const participantName = call.otherParticipantName?.trim();
+    if (
+      !participantName ||
+      participantName.toLowerCase() === "chamada em grupo" ||
+      participantName.toLowerCase() === "em grupo" ||
+      participantName.toLowerCase() === "desconhecido"
+    ) {
+      continue;
+    }
+
+    const current = find(participantName, null);
+
+    if (current) {
+      current.minutes += call.minutes;
+      current.meetings += 1;
+      if (call.callType === "peerToPeer") current.oneOnOnes += 1;
+      if (call.startIso > current.lastMeetingIso) {
+        current.lastMeetingIso = call.startIso;
+      }
+      continue;
+    }
+
+    const key = collaboratorKey(participantName, null);
+    const newEntry: CollaboratorTime = {
+      key,
+      name: participantName,
+      email: null,
+      isExternal: false,
+      minutes: call.minutes,
+      meetings: 1,
+      oneOnOnes: call.callType === "peerToPeer" ? 1 : 0,
+      lastMeetingIso: call.startIso,
+    };
+    register(newEntry, participantName);
   }
 
   return [...byKey.values()]

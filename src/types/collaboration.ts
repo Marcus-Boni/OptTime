@@ -68,6 +68,8 @@ export interface MeetingSignal {
   isOnline: boolean;
   /** Server-side meeting lookup only; never include in a persisted time entry. */
   joinWebUrl?: string | null;
+  /** Actual duration measured via Teams call session or attendance report. */
+  measuredMinutes?: number | null;
   isOrganizer: boolean;
   /** Part of a recurring series. */
   isRecurring: boolean;

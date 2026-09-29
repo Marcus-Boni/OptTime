@@ -17,6 +17,7 @@ import { fetchDayPortrait } from "@/lib/collaboration/analytics";
 import { getAcceptedCallIds } from "@/lib/collaboration/call-feedback";
 import { fetchTeamCallRecords } from "@/lib/collaboration/call-records";
 import { buildDayCallSignals } from "@/lib/collaboration/calls";
+import { fuseMeetingsAndCalls } from "@/lib/collaboration/fusion";
 import {
   fetchMailboxProfile,
   isAwayOn,
@@ -233,21 +234,30 @@ export async function buildCollaborationDay({
   const callRecords = await callsPromise;
   const callStatus = buildCallRecordsStatus(callRecords.status);
   if (callRecords.status !== "ok") warnings.push(callStatus.detail);
-  const calls = buildDayCallSignals({
+
+  const { meetings: fusedMeetings, remainingCalls } = fuseMeetingsAndCalls({
+    meetings,
     calls: callRecords.calls,
+  });
+
+  const calls = buildDayCallSignals({
+    calls: remainingCalls,
     acceptedCallIds,
     date,
     ...buildMicrosoftMemoryDayWindow(date, personalTimeZone ?? undefined),
-    // Include logged/private calendar events too, preventing hidden meetings from resurfacing as calls.
-    calendar: rawEvents
-      .map(toRawCalendarEvent)
-      .filter(
-        (event) =>
-          !event.isCancelled &&
-          !event.isAllDay &&
-          event.responseStatus !== "declined" &&
-          event.showAs !== "free",
-      ),
+    // Include logged/private calendar events and fused meetings, preventing hidden or fused meetings from resurfacing as calls.
+    calendar: [
+      ...fusedMeetings.map((m) => ({ startIso: m.startIso, endIso: m.endIso })),
+      ...rawEvents
+        .map(toRawCalendarEvent)
+        .filter(
+          (event) =>
+            !event.isCancelled &&
+            !event.isAllDay &&
+            event.responseStatus !== "declined" &&
+            event.showAs !== "free",
+        ),
+    ],
     existingDescriptions,
     keepLogged,
   });
@@ -278,7 +288,7 @@ export async function buildCollaborationDay({
     date,
     calls,
     callStatus,
-    meetings,
+    meetings: fusedMeetings,
     exclusions,
     portrait,
     loggedMinutes,
@@ -287,7 +297,7 @@ export async function buildCollaborationDay({
         (sum, call) => (call.alreadyLogged ? sum : sum + call.minutes),
         0,
       ) +
-      meetings.reduce(
+      fusedMeetings.reduce(
         (sum, meeting) => (meeting.alreadyLogged ? sum : sum + meeting.minutes),
         0,
       ),

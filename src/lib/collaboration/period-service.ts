@@ -15,6 +15,7 @@ import { fetchPortraitRange } from "@/lib/collaboration/analytics";
 import { getAcceptedCallIds } from "@/lib/collaboration/call-feedback";
 import { fetchTeamCallRecords } from "@/lib/collaboration/call-records";
 import { buildDayCallSignals } from "@/lib/collaboration/calls";
+import { fuseMeetingsAndCalls } from "@/lib/collaboration/fusion";
 import {
   fetchMailboxProfile,
   isAwayOn,
@@ -292,14 +293,20 @@ export async function buildCollaborationPeriod({
         keepLogged: true,
       });
 
-    meetings.push(...dayMeetings);
+    const { meetings: fusedDayMeetings, remainingCalls: dayRemainingCalls } =
+      fuseMeetingsAndCalls({
+        meetings: dayMeetings,
+        calls: callRecordsResult.calls,
+      });
+
+    meetings.push(...fusedDayMeetings);
     exclusions.push(...dayExclusions);
 
-    const meetingMinutes = dayMeetings.reduce(
+    const meetingMinutes = fusedDayMeetings.reduce(
       (sum, meeting) => sum + meeting.minutes,
       0,
     );
-    loggedMeetingMinutes += dayMeetings.reduce(
+    loggedMeetingMinutes += fusedDayMeetings.reduce(
       (sum, meeting) => (meeting.alreadyLogged ? sum + meeting.minutes : sum),
       0,
     );
@@ -310,19 +317,25 @@ export async function buildCollaborationPeriod({
     const callSlice = portrait?.slices.find((slice) => slice.kind === "call");
     const vivaCallMinutes = callSlice ? callSlice.minutes : 0;
     const dayCallRecords = buildDayCallSignals({
-      calls: callRecordsResult.calls,
+      calls: dayRemainingCalls,
       acceptedCallIds,
       date,
       ...buildMicrosoftMemoryDayWindow(date, personalTimeZone ?? undefined),
-      calendar: rawEvents
-        .map(toRawCalendarEvent)
-        .filter(
-          (event) =>
-            !event.isCancelled &&
-            !event.isAllDay &&
-            event.responseStatus !== "declined" &&
-            event.showAs !== "free",
-        ),
+      calendar: [
+        ...fusedDayMeetings.map((m) => ({
+          startIso: m.startIso,
+          endIso: m.endIso,
+        })),
+        ...rawEvents
+          .map(toRawCalendarEvent)
+          .filter(
+            (event) =>
+              !event.isCancelled &&
+              !event.isAllDay &&
+              event.responseStatus !== "declined" &&
+              event.showAs !== "free",
+          ),
+      ],
       existingDescriptions: dayEntries.map((entry) => entry.description),
       keepLogged: true,
     });
@@ -398,7 +411,7 @@ export async function buildCollaborationPeriod({
     ledger: buildMeetingLedger(meetings, exclusions),
     meetings,
     calls,
-    collaborators: buildCollaborators(meetings),
+    collaborators: buildCollaborators(meetings, calls),
     rituals: buildRituals(meetings, cancelledSubjects),
     shape: buildTimeShape({ meetings, days, workingHours, timeZone }),
     allocations,
