@@ -117,12 +117,16 @@ function buildHeadline(input: {
   } = input;
 
   if (budgetMinutes === null) {
-    return "Projeto sem orçamento de horas definido — defina um budget para habilitar a previsão.";
+    return "Projeto sem orçamento de horas definido — defina o limite de horas para habilitar a previsão.";
   }
 
   const remaining = budgetMinutes - consumedMinutes;
 
-  if (remaining <= 0) {
+  if (remaining === 0) {
+    return `Orçamento esgotado — ${formatHours(consumedMinutes)} consumidas de ${formatHours(budgetMinutes)} contratadas.`;
+  }
+
+  if (remaining < 0) {
     return `Orçamento estourado em ${formatHours(Math.abs(remaining))} — ${formatHours(consumedMinutes)} consumidas de ${formatHours(budgetMinutes)} contratadas.`;
   }
 
@@ -211,6 +215,7 @@ export function buildProjectForecast(
   if (budgetMinutes === null) {
     risk = "no_budget";
   } else if (
+    consumedMinutes >= budgetMinutes ||
     (budgetUsageRatio !== null && budgetUsageRatio >= 1) ||
     (scheduleDeltaDays !== null && scheduleDeltaDays < 0)
   ) {

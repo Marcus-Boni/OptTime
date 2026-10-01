@@ -12,17 +12,26 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import { motion, useReducedMotion } from "framer-motion";
 import {
+  Activity,
   AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
   GripVertical,
+  type LucideIcon,
   Moon,
   Plus,
   RefreshCw,
+  Search,
+  TrendingUp,
+  Users,
   X,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -50,6 +59,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useHqWorkload } from "@/hooks/use-hq";
+import {
+  buildCapacitySummary,
+  type CapacityAttentionKind,
+  type CapacitySummaryCard,
+} from "@/lib/hq/capacity-summary";
 import { cn, formatDuration } from "@/lib/utils";
 import type {
   UtilizationLevel,
@@ -68,11 +82,46 @@ const LEVEL_STYLES: Record<UtilizationLevel, string> = {
 
 const LEVEL_LABELS: Record<UtilizationLevel, string> = {
   empty: "Sem horas",
-  low: "Ociosidade",
+  low: "Baixa utilização",
   ok: "Saudável",
   full: "Alocação cheia",
   over: "Sobrecarga",
 };
+
+const ATTENTION_LABELS: Record<CapacityAttentionKind, string> = {
+  capacity_unset: "Capacidade não definida",
+  overloaded: "Sobrecarga",
+  idle: "Capacidade livre",
+  unplanned: "Sem plano",
+};
+
+const ATTENTION_FILTER_OPTIONS: Array<{
+  value: AttentionFilter;
+  label: string;
+}> = [
+  { value: "all", label: "Todos" },
+  { value: "attention", label: "Atenção" },
+  { value: "overloaded", label: "Sobrecarga" },
+  { value: "free", label: "Livre" },
+];
+
+const CARD_ICONS = [Users, TrendingUp, CheckCircle2, Activity] as const;
+
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.05 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 12 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.28, ease: [0.16, 1, 0.3, 1] as const },
+  },
+};
+
+type AttentionFilter = "all" | "attention" | "overloaded" | "free";
 
 interface PlannerProject {
   id: string;
@@ -87,6 +136,111 @@ interface DialogState {
   week: string;
   weekLabel: string;
   projectId: string | null;
+}
+
+function utilizationPct(minutes: number, capacityMinutes: number): number {
+  if (capacityMinutes <= 0) return 0;
+  return Math.round((minutes / capacityMinutes) * 100);
+}
+
+function balanceLabel(minutes: number, capacityMinutes: number): string {
+  if (capacityMinutes <= 0) return "capacidade não definida";
+  const balance = capacityMinutes - minutes;
+  if (minutes <= 0) return "sem alocação";
+  if (balance < 0) return `${formatDuration(Math.abs(balance))} acima`;
+  if (balance === 0) return "sem saldo";
+  return `${formatDuration(balance)} livres`;
+}
+
+function plannedMetricLabel(minutes: number, capacityMinutes: number): string {
+  if (capacityMinutes <= 0) return "capacidade não definida";
+  return `${utilizationPct(minutes, capacityMinutes)}% · ${balanceLabel(minutes, capacityMinutes)}`;
+}
+
+function actualMetricLabel(minutes: number, capacityMinutes: number): string {
+  if (capacityMinutes <= 0) return "capacidade não definida";
+  const missingMinutes = capacityMinutes - minutes;
+  if (minutes <= 0) return "sem registros";
+  if (missingMinutes < 0) {
+    return `${utilizationPct(minutes, capacityMinutes)}% · ${formatDuration(Math.abs(missingMinutes))} acima`;
+  }
+  if (missingMinutes === 0) {
+    return `${utilizationPct(minutes, capacityMinutes)}% · na capacidade`;
+  }
+  return `${utilizationPct(minutes, capacityMinutes)}% · ${formatDuration(missingMinutes)} não registradas`;
+}
+
+function cardToneClass(tone: CapacitySummaryCard["tone"]): string {
+  if (tone === "danger") return "bg-red-500/10 text-red-500 dark:text-red-400";
+  if (tone === "warning") {
+    return "bg-amber-500/10 text-amber-600 dark:text-amber-400";
+  }
+  if (tone === "good") {
+    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400";
+  }
+  return "bg-brand-500/10 text-brand-500";
+}
+
+function matchesAttentionFilter(
+  row: WorkloadRow,
+  nextWeek: WorkloadWeekDescriptor | null,
+  filter: AttentionFilter,
+): boolean {
+  if (filter === "all" || !nextWeek) return true;
+
+  const cell = row.cells.find((item) => item.week === nextWeek.week);
+  const plannedMinutes = cell?.plannedMinutes ?? 0;
+  const balance = row.capacityMinutes - plannedMinutes;
+  const hasCapacity = row.capacityMinutes > 0;
+  const isIdle =
+    hasCapacity && (cell?.level === "low" || cell?.level === "empty");
+
+  if (filter === "overloaded") return hasCapacity && balance < 0;
+  if (filter === "free") return isIdle;
+  return !hasCapacity || balance < 0 || isIdle || plannedMinutes <= 0;
+}
+
+function CapacityKpiCard({
+  card,
+  icon: Icon,
+}: {
+  card: CapacitySummaryCard;
+  icon: LucideIcon;
+}) {
+  return (
+    <Card className="gap-0 py-4">
+      <CardContent className="flex items-start gap-3 px-4">
+        <div className={cn("rounded-lg p-2", cardToneClass(card.tone))}>
+          <Icon className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">
+            {card.label}
+          </p>
+          <p className="font-mono text-2xl font-semibold tracking-tight">
+            {card.value}
+          </p>
+          <p className="truncate text-xs text-muted-foreground">
+            {card.detail}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function utilizationCoverageLabel(
+  percentage: number,
+  summary: {
+    peopleWithoutCapacity: number;
+    totalCapacityMinutes: number;
+  },
+  suffix: string,
+): string {
+  if (summary.totalCapacityMinutes <= 0) return "capacidade total não definida";
+  const base = `${percentage}% ${suffix}`;
+  if (summary.peopleWithoutCapacity <= 0) return base;
+  return `${base} · % sem capacidade indefinida`;
 }
 
 // ─── Draggable project chip ───────────────────────────────────────────
@@ -164,6 +318,10 @@ function MatrixCell({
   });
 
   const minutes = week.isFuture ? cell.plannedMinutes : cell.actualMinutes;
+  const pctUsed = utilizationPct(minutes, row.capacityMinutes);
+  const metricLabel = week.isFuture
+    ? plannedMetricLabel(minutes, row.capacityMinutes)
+    : actualMetricLabel(minutes, row.capacityMinutes);
 
   if (!week.isFuture) {
     return (
@@ -171,13 +329,19 @@ function MatrixCell({
         <TooltipTrigger asChild>
           <div
             className={cn(
-              "flex h-14 flex-col items-center justify-center rounded-lg text-xs transition-colors",
+              "flex h-20 flex-col items-center justify-center rounded-lg px-2 text-xs transition-colors",
               LEVEL_STYLES[cell.level],
               week.isCurrent && "ring-1 ring-brand-500/50",
             )}
           >
+            <span className="text-[10px] font-medium uppercase tracking-wide opacity-75">
+              Real
+            </span>
             <span className="font-mono text-sm font-semibold">
               {minutes > 0 ? formatDuration(minutes) : "—"}
+            </span>
+            <span className="font-mono text-[10px] opacity-75">
+              {metricLabel}
             </span>
           </div>
         </TooltipTrigger>
@@ -187,7 +351,9 @@ function MatrixCell({
             <br />
             {LEVEL_LABELS[cell.level]}
             {minutes > 0
-              ? ` · ${formatDuration(minutes)} de ${formatDuration(row.capacityMinutes)}`
+              ? row.capacityMinutes > 0
+                ? ` · ${formatDuration(minutes)} de ${formatDuration(row.capacityMinutes)} (${pctUsed}%)`
+                : ` · ${formatDuration(minutes)} · capacidade não definida`
               : ""}
           </p>
         </TooltipContent>
@@ -199,7 +365,7 @@ function MatrixCell({
     <div
       ref={setNodeRef}
       className={cn(
-        "group/cell flex h-14 flex-col justify-center gap-0.5 rounded-lg border border-dashed border-border/60 px-1.5 text-xs transition-colors",
+        "group/cell flex h-20 flex-col justify-center gap-1 rounded-lg border border-dashed border-border/60 px-2 text-xs transition-colors",
         cell.plannedMinutes > 0 && LEVEL_STYLES[cell.level],
         isOver && "border-brand-500 bg-brand-500/10",
       )}
@@ -224,9 +390,14 @@ function MatrixCell({
       ) : (
         <>
           <div className="flex items-center justify-between gap-1">
-            <span className="font-mono text-[11px] font-semibold">
-              {formatDuration(cell.plannedMinutes)}
-            </span>
+            <div className="min-w-0">
+              <span className="block text-[10px] font-medium uppercase tracking-wide opacity-75">
+                Plano
+              </span>
+              <span className="block font-mono text-[11px] font-semibold">
+                {formatDuration(cell.plannedMinutes)}
+              </span>
+            </div>
             <button
               type="button"
               onClick={() =>
@@ -244,6 +415,7 @@ function MatrixCell({
               <Plus className="size-3" aria-hidden="true" />
             </button>
           </div>
+          <div className="font-mono text-[10px] opacity-75">{metricLabel}</div>
           <div className="flex flex-wrap items-center gap-0.5 overflow-hidden">
             {cell.allocations.slice(0, 3).map((slice) => (
               <Tooltip key={slice.allocationId}>
@@ -379,25 +551,15 @@ function AllocationDialog({
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="allocation-project">Projeto</Label>
-            <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger id="allocation-project" className="w-full">
-                <SelectValue placeholder="Selecione o projeto" />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    <span className="flex items-center gap-2">
-                      <span
-                        className="size-2 rounded-full"
-                        style={{ backgroundColor: project.color }}
-                        aria-hidden="true"
-                      />
-                      {project.name}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ProjectCombobox
+              id="allocation-project"
+              projects={projects}
+              value={projectId}
+              onChange={setProjectId}
+              placeholder="Buscar ou selecionar projeto..."
+              byPassMemberFilter
+              disabled={saving}
+            />
           </div>
 
           <div className="space-y-2">
@@ -448,10 +610,14 @@ function AllocationDialog({
 
 export function WorkloadMatrixTab() {
   const workload = useHqWorkload(4, 4);
+  const shouldReduceMotion = useReducedMotion();
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const [activeProject, setActiveProject] = useState<PlannerProject | null>(
     null,
   );
+  const [search, setSearch] = useState("");
+  const [attentionFilter, setAttentionFilter] =
+    useState<AttentionFilter>("all");
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -467,6 +633,31 @@ export function WorkloadMatrixTab() {
     }
     return map;
   }, [workload.data]);
+
+  const capacitySummary = useMemo(
+    () => (workload.data ? buildCapacitySummary(workload.data) : null),
+    [workload.data],
+  );
+
+  const filteredRows = useMemo(() => {
+    const rows = workload.data?.rows ?? [];
+    const term = search.trim().toLowerCase();
+
+    return rows.filter((row) => {
+      const matchesSearch =
+        term === "" ||
+        row.name.toLowerCase().includes(term) ||
+        row.role.toLowerCase().includes(term);
+      return (
+        matchesSearch &&
+        matchesAttentionFilter(
+          row,
+          capacitySummary?.nextWeek ?? null,
+          attentionFilter,
+        )
+      );
+    });
+  }, [workload.data, search, capacitySummary, attentionFilter]);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -525,6 +716,11 @@ export function WorkloadMatrixTab() {
     [workload],
   );
 
+  const handleClearFilters = useCallback(() => {
+    setSearch("");
+    setAttentionFilter("all");
+  }, []);
+
   if (workload.isLoading) {
     return (
       <output
@@ -568,6 +764,10 @@ export function WorkloadMatrixTab() {
     );
   }
 
+  if (!capacitySummary) return null;
+
+  const hasActiveFilters = search.trim() !== "" || attentionFilter !== "all";
+
   return (
     <TooltipProvider delayDuration={150}>
       <DndContext
@@ -576,128 +776,374 @@ export function WorkloadMatrixTab() {
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveProject(null)}
       >
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              {(
-                ["over", "full", "ok", "low", "empty"] as UtilizationLevel[]
-              ).map((level) => (
-                <span key={level} className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "size-2.5 rounded-sm",
-                      LEVEL_STYLES[level].split(" ")[0],
-                    )}
-                    aria-hidden="true"
-                  />
-                  {LEVEL_LABELS[level]}
-                </span>
-              ))}
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              {data.totals.overloadedThisWeek > 0 ? (
-                <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-500 dark:text-red-400">
-                  {data.totals.overloadedThisWeek} em sobrecarga
-                </span>
-              ) : null}
-              {data.totals.idleThisWeek > 0 ? (
-                <span className="rounded-full bg-sky-500/10 px-2.5 py-1 font-medium text-sky-600 dark:text-sky-400">
-                  {data.totals.idleThisWeek} com capacidade livre
-                </span>
-              ) : null}
-            </div>
-          </div>
+        <motion.div
+          variants={containerVariants}
+          initial={shouldReduceMotion ? false : "hidden"}
+          animate="visible"
+          className="space-y-5"
+        >
+          <motion.div
+            variants={shouldReduceMotion ? undefined : itemVariants}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            data-tour="hq-capacity-summary"
+          >
+            {capacitySummary.cards.map((card, index) => {
+              const Icon = CARD_ICONS[index] ?? Activity;
+              return (
+                <CapacityKpiCard key={card.label} card={card} icon={Icon} />
+              );
+            })}
+          </motion.div>
 
-          {data.projects.length > 0 ? (
-            <Card className="gap-0 py-3">
-              <CardContent className="flex flex-wrap items-center gap-2 px-4">
-                <p className="mr-1 text-xs font-medium text-muted-foreground">
-                  Arraste um projeto para uma semana futura:
-                </p>
-                {data.projects.map((project) => (
-                  <DraggableProjectChip key={project.id} project={project} />
-                ))}
+          <motion.div
+            variants={shouldReduceMotion ? undefined : itemVariants}
+            className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]"
+          >
+            <Card className="gap-0 py-4">
+              <CardContent className="space-y-4 px-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium">
+                      Planejamento executivo
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Próxima semana:{" "}
+                      {capacitySummary.nextWeek?.label ?? "sem janela futura"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {capacitySummary.overloadedPeople > 0 ? (
+                      <span className="rounded-full bg-red-500/10 px-2.5 py-1 font-medium text-red-500 dark:text-red-400">
+                        {capacitySummary.overloadedPeople} em sobrecarga
+                      </span>
+                    ) : null}
+                    {capacitySummary.unplannedPeople > 0 ? (
+                      <span className="rounded-full bg-amber-500/10 px-2.5 py-1 font-medium text-amber-600 dark:text-amber-400">
+                        {capacitySummary.unplannedPeople} sem plano
+                      </span>
+                    ) : null}
+                    {capacitySummary.idlePeople > 0 ? (
+                      <span className="rounded-full bg-sky-500/10 px-2.5 py-1 font-medium text-sky-600 dark:text-sky-400">
+                        {capacitySummary.idlePeople} com folga
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Demanda planejada
+                    </p>
+                    <p className="font-mono text-lg font-semibold">
+                      {formatDuration(capacitySummary.nextPlannedMinutes)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {utilizationCoverageLabel(
+                        capacitySummary.nextUtilizationPct,
+                        capacitySummary,
+                        "da capacidade",
+                      )}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Saldo disponível
+                    </p>
+                    <p className="font-mono text-lg font-semibold">
+                      {formatDuration(capacitySummary.freeMinutes)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      antes de redistribuir prioridades
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+                    <p className="text-xs text-muted-foreground">
+                      Sinal real atual
+                    </p>
+                    <p className="font-mono text-lg font-semibold">
+                      {formatDuration(capacitySummary.currentActualMinutes)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {utilizationCoverageLabel(
+                        capacitySummary.currentUtilizationPct,
+                        capacitySummary,
+                        "registrado nesta semana",
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {capacitySummary.attentionPeople.length > 0 ? (
+                  <div className="rounded-lg border border-border/60 bg-background/50 p-3">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Pessoas em atenção
+                      </p>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {capacitySummary.attentionPeople.length}
+                      </span>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {capacitySummary.attentionPeople
+                        .slice(0, 3)
+                        .map((person) => (
+                          <div
+                            key={person.userId}
+                            className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2"
+                          >
+                            <div className="flex min-w-0 items-center gap-2">
+                              <UserAvatar
+                                name={person.name}
+                                image={person.image}
+                                size="sm"
+                              />
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-medium">
+                                  {person.name}
+                                </p>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {ATTENTION_LABELS[person.kind]}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                              {person.capacityMinutes > 0
+                                ? `${person.balanceMinutes < 0 ? "+" : ""}${formatDuration(Math.abs(person.balanceMinutes))}`
+                                : "—"}
+                            </span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
-          ) : null}
 
-          <Card className="gap-0 overflow-hidden py-0">
-            <div className="overflow-x-auto">
-              <div className="min-w-[900px] p-4">
-                <div
-                  className="grid gap-1.5"
-                  style={{
-                    gridTemplateColumns: `220px repeat(${data.weeks.length}, minmax(84px, 1fr))`,
-                  }}
-                >
-                  <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                    Pessoa
+            <Card className="gap-0 py-4">
+              <CardContent className="space-y-3 px-4">
+                <div className="flex items-center gap-2">
+                  <CalendarClock
+                    className="size-4 text-brand-500"
+                    aria-hidden="true"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">Projetos na fila</p>
+                    <p className="text-xs text-muted-foreground">
+                      horas planejadas para a próxima semana
+                    </p>
                   </div>
-                  {data.weeks.map((week) => (
+                </div>
+                <div className="space-y-2">
+                  {capacitySummary.projectDemand.slice(0, 4).map((project) => (
                     <div
-                      key={week.week}
-                      className={cn(
-                        "px-1 py-1 text-center text-[11px] font-medium",
-                        week.isCurrent
-                          ? "text-brand-500"
-                          : week.isFuture
-                            ? "text-muted-foreground"
-                            : "text-muted-foreground/70",
-                      )}
+                      key={project.projectId}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 px-3 py-2"
                     >
-                      {week.isCurrent
-                        ? "Atual · "
-                        : week.isFuture
-                          ? "Plano · "
-                          : ""}
-                      {week.label}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span
+                          className="size-2.5 shrink-0 rounded-full"
+                          style={{ backgroundColor: project.projectColor }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate text-xs font-medium">
+                          {project.projectName}
+                        </span>
+                      </div>
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                        {formatDuration(project.plannedMinutes)} ·{" "}
+                        {project.people} pessoas
+                      </span>
                     </div>
                   ))}
+                  {capacitySummary.projectDemand.length === 0 ? (
+                    <p className="rounded-lg bg-muted/30 px-3 py-4 text-center text-xs text-muted-foreground">
+                      Nenhum projeto planejado para a próxima semana.
+                    </p>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
 
-                  {data.rows.map((row) => {
-                    return (
-                      <div key={row.userId} className="contents">
-                        <div className="flex items-center gap-2.5 rounded-lg bg-muted/30 px-2 py-1.5">
-                          <UserAvatar
-                            name={row.name}
-                            image={row.image}
-                            size="sm"
-                          />
-                          <div className="min-w-0">
-                            <p className="truncate text-xs font-medium">
-                              {row.name}
-                            </p>
-                            <p className="font-mono text-[10px] text-muted-foreground">
-                              {formatDuration(row.capacityMinutes)}/sem
-                            </p>
-                          </div>
-                        </div>
+          <motion.div
+            variants={shouldReduceMotion ? undefined : itemVariants}
+            className="flex flex-wrap items-center justify-between gap-3"
+          >
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                {(
+                  ["over", "full", "ok", "low", "empty"] as UtilizationLevel[]
+                ).map((level) => (
+                  <span key={level} className="flex items-center gap-1.5">
+                    <span
+                      className={cn(
+                        "size-2.5 rounded-sm",
+                        LEVEL_STYLES[level].split(" ")[0],
+                      )}
+                      aria-hidden="true"
+                    />
+                    {LEVEL_LABELS[level]}
+                  </span>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Em semanas reais, baixa utilização indica registros abaixo da
+                referência; disponibilidade só é inferida em semanas planejadas.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-56">
+                <Search
+                  className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                  aria-hidden="true"
+                />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar pessoa…"
+                  aria-label="Buscar pessoa na matriz de capacidade"
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <Select
+                value={attentionFilter}
+                onValueChange={(value) =>
+                  setAttentionFilter(value as AttentionFilter)
+                }
+              >
+                <SelectTrigger className="h-8 w-[138px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ATTENTION_FILTER_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {hasActiveFilters ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClearFilters}
+                  className="h-8 text-xs"
+                >
+                  <X className="size-3.5" aria-hidden="true" />
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
+          </motion.div>
 
-                        {data.weeks.map((week) => {
-                          const cell = row.cells.find(
-                            (item) => item.week === week.week,
-                          );
-                          if (!cell) return <div key={week.week} />;
+          {data.projects.length > 0 ? (
+            <motion.div
+              variants={shouldReduceMotion ? undefined : itemVariants}
+            >
+              <Card className="gap-0 py-3">
+                <CardContent className="flex flex-wrap items-center gap-2 px-4">
+                  <p className="mr-1 text-xs font-medium text-muted-foreground">
+                    Arraste um projeto para uma semana futura:
+                  </p>
+                  {data.projects.map((project) => (
+                    <DraggableProjectChip key={project.id} project={project} />
+                  ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          ) : null}
 
-                          return (
-                            <MatrixCell
-                              key={week.week}
-                              row={row}
-                              cell={cell}
-                              week={week}
-                              onPlan={setDialogState}
-                              onRemoveAllocation={handleRemoveAllocation}
-                            />
-                          );
-                        })}
+          <motion.div variants={shouldReduceMotion ? undefined : itemVariants}>
+            <Card
+              className="gap-0 overflow-hidden py-0"
+              data-tour="hq-capacity-matrix"
+            >
+              <div className="overflow-x-auto">
+                <div className="min-w-[900px] p-4">
+                  <div
+                    className="grid gap-1.5"
+                    style={{
+                      gridTemplateColumns: `220px repeat(${data.weeks.length}, minmax(84px, 1fr))`,
+                    }}
+                  >
+                    <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
+                      Pessoa
+                    </div>
+                    {data.weeks.map((week) => (
+                      <div
+                        key={week.week}
+                        className={cn(
+                          "px-1 py-1 text-center text-[11px] font-medium",
+                          week.isCurrent
+                            ? "text-brand-500"
+                            : week.isFuture
+                              ? "text-muted-foreground"
+                              : "text-muted-foreground/70",
+                        )}
+                      >
+                        {week.isCurrent
+                          ? "Atual · "
+                          : week.isFuture
+                            ? "Plano · "
+                            : ""}
+                        {week.label}
                       </div>
-                    );
-                  })}
+                    ))}
+
+                    {filteredRows.map((row) => {
+                      return (
+                        <div key={row.userId} className="contents">
+                          <div className="flex items-center gap-2.5 rounded-lg bg-muted/30 px-2 py-1.5">
+                            <UserAvatar
+                              name={row.name}
+                              image={row.image}
+                              size="sm"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate text-xs font-medium">
+                                {row.name}
+                              </p>
+                              <p className="font-mono text-[10px] text-muted-foreground">
+                                {row.capacityMinutes > 0
+                                  ? `${formatDuration(row.capacityMinutes)}/sem`
+                                  : "Capacidade não definida"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {data.weeks.map((week) => {
+                            const cell = row.cells.find(
+                              (item) => item.week === week.week,
+                            );
+                            if (!cell) return <div key={week.week} />;
+
+                            return (
+                              <MatrixCell
+                                key={week.week}
+                                row={row}
+                                cell={cell}
+                                week={week}
+                                onPlan={setDialogState}
+                                onRemoveAllocation={handleRemoveAllocation}
+                              />
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                    {filteredRows.length === 0 ? (
+                      <div className="col-span-full rounded-lg bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+                        Nenhuma pessoa corresponde aos filtros atuais.
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Card>
-        </div>
+            </Card>
+          </motion.div>
+        </motion.div>
 
         <DragOverlay>
           {activeProject ? (

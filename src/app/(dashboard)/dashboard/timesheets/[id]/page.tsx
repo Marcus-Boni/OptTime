@@ -201,9 +201,11 @@ export default function TimesheetDetailPage() {
   const fromParam = searchParams.get("from");
 
   const backHref = fromParam || "/dashboard/timesheets";
-  const backLabel = fromParam?.includes("approvals")
-    ? "Aprovação de Timesheets"
-    : "Timesheets";
+  const backLabel = fromParam?.startsWith("/dashboard/hq")
+    ? "Central de Gestão"
+    : fromParam?.includes("approvals")
+      ? "Aprovação de Timesheets"
+      : "Timesheets";
 
   const { data: session } = useSession();
   const {

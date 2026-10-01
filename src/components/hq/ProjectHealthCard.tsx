@@ -2,6 +2,7 @@
 
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useReducedMotion } from "framer-motion";
 import {
   CalendarClock,
   ChevronDown,
@@ -11,6 +12,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   Bar,
@@ -24,6 +26,7 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   Collapsible,
@@ -62,7 +65,7 @@ const RISK_META: Record<
       "bg-red-500/10 text-red-500 dark:text-red-400 border-transparent",
   },
   no_budget: {
-    label: "Sem budget",
+    label: "Sem orçamento",
     className: "bg-muted text-muted-foreground border-transparent",
   },
 };
@@ -179,6 +182,7 @@ export function ProjectHealthCard({
   currentWeek,
 }: ProjectHealthCardProps) {
   const chartColors = useChartColors();
+  const reducedMotion = useReducedMotion();
   const risk = RISK_META[project.forecast.risk];
 
   const chartData = useMemo(
@@ -196,7 +200,7 @@ export function ProjectHealthCard({
 
   const usagePct =
     project.forecast.budgetUsageRatio !== null
-      ? Math.min(Math.round(project.forecast.budgetUsageRatio * 100), 999)
+      ? Math.round(project.forecast.budgetUsageRatio * 100)
       : null;
 
   const trend = project.forecast.trendPct;
@@ -253,87 +257,161 @@ export function ProjectHealthCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="h-[136px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart
-              data={chartData}
-              margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
-              barSize={chartData.length > 8 ? 14 : 22}
-            >
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                stroke={chartColors.gridStroke}
-              />
-              <XAxis
-                dataKey="label"
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 10, fill: chartColors.tickFill }}
-              />
-              <YAxis
-                axisLine={false}
-                tickLine={false}
-                tick={{ fontSize: 10, fill: chartColors.tickFill }}
-                unit="h"
-                width={44}
-              />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: chartColors.tooltipBg,
-                  border: `1px solid ${chartColors.tooltipBorder}`,
-                  borderRadius: "12px",
-                  color: chartColors.tooltipColor,
-                  fontSize: 12,
-                }}
-                itemStyle={{ color: chartColors.tooltipColor }}
-                cursor={{ fill: chartColors.cursorFill }}
-                formatter={(value) => [`${value ?? 0}h`, "Horas"]}
-                labelStyle={{ color: chartColors.tooltipLabelColor }}
-              />
-              {burnRateHours > 0 ? (
-                <ReferenceLine
-                  y={burnRateHours}
-                  stroke="#f97316"
-                  strokeDasharray="4 4"
-                  strokeOpacity={0.6}
-                />
-              ) : null}
-              <Bar dataKey="hours" name="Horas" radius={[5, 5, 0, 0]}>
-                {chartData.map((point) => (
-                  <Cell
-                    key={point.label}
-                    fill={point.isCurrent ? "#f97316" : "rgba(249,115,22,0.45)"}
-                  />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-
-        {project.budgetMinutes !== null ? (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Consumo do budget</span>
-              <span className="font-mono font-medium">
-                {formatDuration(project.consumedMinutes)} /{" "}
-                {formatDuration(project.budgetMinutes)}
-                {usagePct !== null ? ` · ${usagePct}%` : ""}
-              </span>
+        <section
+          className="rounded-xl border border-brand-500/20 bg-brand-500/5 p-4"
+          aria-label={`Orçamento de horas de ${project.name}`}
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Orçamento de horas
+            </p>
+            <Badge variant="outline" className={risk.className}>
+              {usagePct !== null
+                ? `${usagePct}% utilizado`
+                : project.budgetMinutes === 0
+                  ? "Limite de 0h"
+                  : "Não definido"}
+            </Badge>
+          </div>
+          <dl className="grid grid-cols-3 gap-3">
+            <div>
+              <dt className="text-xs text-muted-foreground">Contratado</dt>
+              <dd className="mt-1 font-mono text-lg font-semibold sm:text-xl">
+                {project.budgetMinutes !== null
+                  ? formatDuration(project.budgetMinutes)
+                  : "—"}
+              </dd>
             </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Consumido</dt>
+              <dd className="mt-1 font-mono text-lg font-semibold sm:text-xl">
+                {formatDuration(project.consumedMinutes)}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">
+                {project.budgetMinutes !== null &&
+                project.consumedMinutes > project.budgetMinutes
+                  ? "Excedente"
+                  : "Saldo"}
+              </dt>
+              <dd
+                className={cn(
+                  "mt-1 font-mono text-lg font-semibold sm:text-xl",
+                  project.budgetMinutes !== null &&
+                    project.consumedMinutes >= project.budgetMinutes
+                    ? "text-red-600 dark:text-red-400"
+                    : "text-emerald-700 dark:text-emerald-400",
+                )}
+              >
+                {project.budgetMinutes !== null
+                  ? formatDuration(
+                      Math.abs(project.budgetMinutes - project.consumedMinutes),
+                    )
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
+          {project.budgetMinutes !== null ? (
             <Progress
-              value={usagePct !== null ? Math.min(usagePct, 100) : 0}
-              aria-label={`Consumo do budget: ${usagePct ?? 0}%`}
+              value={
+                usagePct !== null
+                  ? Math.min(usagePct, 100)
+                  : project.consumedMinutes > 0
+                    ? 100
+                    : 0
+              }
+              aria-label={`Orçamento de ${project.name}`}
+              aria-valuetext={`${formatDuration(project.consumedMinutes)} consumidas de ${formatDuration(project.budgetMinutes)}`}
               className={cn(
-                usagePct !== null && usagePct >= 100
+                "mt-4 [&>[data-slot=progress-indicator]]:motion-reduce:transition-none",
+                project.consumedMinutes >= project.budgetMinutes
                   ? "[&>[data-slot=progress-indicator]]:bg-red-500"
                   : usagePct !== null && usagePct >= 80
                     ? "[&>[data-slot=progress-indicator]]:bg-amber-500"
                     : "[&>[data-slot=progress-indicator]]:bg-brand-500",
               )}
             />
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Defina o orçamento no projeto para acompanhar saldo e prever
+              esgotamento.
+            </p>
+          )}
+        </section>
+        <div>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">
+            Consumo semanal · semana atual parcial
+          </p>
+          <div
+            className="h-[136px]"
+            role="img"
+            aria-label={`Consumo semanal de ${project.name}. ${formatDuration(project.currentWeekMinutes)} nesta semana. Média ponderada: ${burnRateHours} horas por semana.`}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={chartData}
+                margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
+                barSize={chartData.length > 8 ? 14 : 22}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke={chartColors.gridStroke}
+                />
+                <XAxis
+                  dataKey="label"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: chartColors.tickFill }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: chartColors.tickFill }}
+                  unit="h"
+                  width={44}
+                />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: chartColors.tooltipBg,
+                    border: `1px solid ${chartColors.tooltipBorder}`,
+                    borderRadius: "12px",
+                    color: chartColors.tooltipColor,
+                    fontSize: 12,
+                  }}
+                  itemStyle={{ color: chartColors.tooltipColor }}
+                  cursor={{ fill: chartColors.cursorFill }}
+                  formatter={(value) => [`${value ?? 0}h`, "Horas"]}
+                  labelStyle={{ color: chartColors.tooltipLabelColor }}
+                />
+                {burnRateHours > 0 ? (
+                  <ReferenceLine
+                    y={burnRateHours}
+                    stroke="#f97316"
+                    strokeDasharray="4 4"
+                    strokeOpacity={0.6}
+                  />
+                ) : null}
+                <Bar
+                  dataKey="hours"
+                  name="Horas"
+                  radius={[5, 5, 0, 0]}
+                  isAnimationActive={!reducedMotion}
+                >
+                  {chartData.map((point) => (
+                    <Cell
+                      key={point.label}
+                      fill={
+                        point.isCurrent ? "#f97316" : "rgba(249,115,22,0.45)"
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        ) : null}
+        </div>
 
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
@@ -353,6 +431,31 @@ export function ProjectHealthCard({
               })}
             </span>
           ) : null}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-border/60 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-muted-foreground">
+            <p className="font-medium text-foreground">
+              {project.forecast.risk === "critical"
+                ? "Revise escopo, prazo e orçamento"
+                : project.forecast.risk === "warning"
+                  ? "Acompanhe o ritmo e revise as estimativas"
+                  : project.forecast.risk === "no_budget"
+                    ? "Complete o planejamento do projeto"
+                    : "Continue acompanhando o consumo"}
+            </p>
+            <p className="mt-1">
+              {project.forecast.projectedExhaustionDate
+                ? `Esgotamento estimado: ${format(parseLocalDate(project.forecast.projectedExhaustionDate), "dd/MM/yyyy")}`
+                : "Previsão indisponível sem saldo ou ritmo recente."}
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href={`/dashboard/projects/${project.projectId}`}>
+              Abrir projeto{" "}
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+            </Link>
+          </Button>
         </div>
 
         {project.hasAzureIntegration ? (

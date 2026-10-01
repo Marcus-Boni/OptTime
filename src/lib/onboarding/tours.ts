@@ -507,9 +507,29 @@ export const TOURS: readonly TourDefinition[] = [
         id: "radar",
         title: "Radar de Projetos",
         description:
-          "Cada projeto recebe um nível de risco a partir de consumo de budget, desvio de cronograma e escopo. Filtre por risco para atacar o que dói.",
+          "Compare orçamento contratado, horas consumidas, saldo e excedente. Projetos sem orçamento aparecem separados para não distorcer o percentual. Abra o projeto para revisar o planejamento.",
         target: '[data-tour="hq-tab-radar"]',
         placement: "bottom",
+      },
+      {
+        id: "budget-overview",
+        title: "Orçamento em primeiro plano",
+        description:
+          "Saldo soma as horas ainda disponíveis em cada projeto. Excedente soma os estouros individuais: a folga de um projeto não esconde o excesso de outro. As previsões usam semanas completas e são estimativas.",
+        target: '[data-tour="hq-budget-overview"]',
+        placement: "bottom",
+        route: "/dashboard/hq?tab=radar",
+        roles: LEADERSHIP,
+      },
+      {
+        id: "radar-filters",
+        title: "Encontre onde agir",
+        description:
+          "Busque projeto ou cliente, filtre o risco e ordene por prioridade, consumo ou nome. Revise os projetos sem orçamento para habilitar suas previsões.",
+        target: '[data-tour="hq-radar-filters"]',
+        placement: "bottom",
+        route: "/dashboard/hq?tab=radar",
+        roles: LEADERSHIP,
       },
       {
         id: "capacity",
@@ -520,12 +540,52 @@ export const TOURS: readonly TourDefinition[] = [
         placement: "bottom",
       },
       {
+        id: "capacity-summary",
+        title: "Planeje com a capacidade real",
+        description:
+          "Confira a capacidade semanal configurada, as horas planejadas e os conflitos de alocação. Histórico registrado não é previsão de disponibilidade. Busque uma pessoa e ajuste suas semanas futuras na matriz.",
+        target: '[data-tour="hq-capacity-summary"]',
+        placement: "bottom",
+        route: "/dashboard/hq?tab=capacity",
+        roles: LEADERSHIP,
+      },
+      {
+        id: "capacity-matrix",
+        title: "Do diagnóstico à alocação",
+        description:
+          "As semanas passadas e a atual mostram registros; as futuras mostram planejamento. Selecione uma célula futura para distribuir horas por projeto e revisar sobrecargas.",
+        target: '[data-tour="hq-capacity-matrix"]',
+        placement: "top",
+        route: "/dashboard/hq?tab=capacity",
+        roles: LEADERSHIP,
+      },
+      {
         id: "approvals",
         title: "Aprovações inteligentes",
         description:
           "Timesheets conformes podem ser aprovados em lote; os que têm exceção ficam separados para revisão individual. Rejeição sempre exige motivo.",
         target: '[data-tour="hq-tab-approvals"]',
         placement: "bottom",
+      },
+      {
+        id: "approval-summary",
+        title: "Uma fila com contexto",
+        description:
+          "Veja o volume pendente e os alertas antes de decidir. Ausência de alertas não garante a correção: revise os lançamentos quando necessário e confirme quais timesheets entrarão no lote.",
+        target: '[data-tour="hq-approvals-summary"]',
+        placement: "bottom",
+        route: "/dashboard/hq?tab=approvals",
+        roles: LEADERSHIP,
+      },
+      {
+        id: "approval-queue",
+        title: "Revise antes de aprovar",
+        description:
+          "Busque pessoa, projeto ou período e priorize a fila. Confira os lançamentos e os detalhes dos alertas; devolva para ajuste com uma orientação clara quando necessário.",
+        target: '[data-tour="hq-approvals-queue"]',
+        placement: "top",
+        route: "/dashboard/hq?tab=approvals",
+        roles: LEADERSHIP,
       },
       {
         id: "portal",
