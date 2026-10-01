@@ -1,4 +1,5 @@
 import { Composition, Folder } from "remotion";
+import { ReleaseShowcaseV19 } from "@/remotion/ReleaseShowcaseV19";
 import { ProductDemo } from "./ProductDemo";
 import { ReleaseShowcaseV16 } from "./ReleaseShowcaseV16";
 import { ReleaseShowcaseV17 } from "./ReleaseShowcaseV17";
@@ -10,6 +11,14 @@ import { ReleaseShowcaseV18 } from "./ReleaseShowcaseV18";
 export const RemotionRoot = () => {
   return (
     <Folder name="OptSolv-Showcases">
+      <Composition
+        id="ReleaseShowcaseV19"
+        component={ReleaseShowcaseV19}
+        durationInFrames={2100}
+        fps={30}
+        width={1920}
+        height={1080}
+      />
       {/* Original Product Demo — 90s = 2700 frames @ 30fps */}
       <Composition
         id="ProductDemo"

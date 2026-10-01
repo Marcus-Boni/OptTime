@@ -88,7 +88,7 @@ export default function ReleaseFormDialog({
         versionTag: "",
         title: "",
         description: "",
-        videoUrl: "remotion:ReleaseShowcaseV18",
+        videoUrl: "remotion:ReleaseShowcaseV19",
       });
     }
   }, [form, isOpen, release]);
@@ -117,6 +117,7 @@ export default function ReleaseFormDialog({
         <DialogTrigger asChild>
           <Button
             size="sm"
+            data-tour="release-create"
             className="gap-2 bg-brand-500 hover:bg-brand-600 text-white"
           >
             <Plus className="h-4 w-4" />
@@ -268,7 +269,25 @@ export default function ReleaseFormDialog({
                     </div>
 
                     {/* Quick Preset Buttons */}
-                    <div className="flex flex-wrap gap-1.5 py-1">
+                    <div
+                      className="flex flex-wrap gap-1.5 py-1"
+                      data-tour="release-video-presets"
+                    >
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          field.value === "remotion:ReleaseShowcaseV19"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          field.onChange("remotion:ReleaseShowcaseV19")
+                        }
+                        className={`h-7 text-xs ${field.value === "remotion:ReleaseShowcaseV19" ? "bg-brand-500 text-white" : ""}`}
+                      >
+                        🎬 Showcase v1.9.0
+                      </Button>
                       <Button
                         type="button"
                         size="sm"
@@ -348,7 +367,7 @@ export default function ReleaseFormDialog({
                     <FormControl>
                       <Input
                         id="release-video-url"
-                        placeholder="remotion:ReleaseShowcaseV17 ou URL do YouTube/Loom/MP4"
+                        placeholder="remotion:ReleaseShowcaseV19 ou URL do YouTube/Loom/MP4"
                         className="font-mono text-xs"
                         value={field.value ?? ""}
                         onChange={field.onChange}

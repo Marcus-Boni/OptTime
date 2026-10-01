@@ -16,7 +16,7 @@ const navLinks = [
   { label: "Integrações", href: "#social-proof" },
 ];
 
-export function Navbar() {
+export function Navbar({ versionTag }: { versionTag: string | null }) {
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { scrollTo } = useSmoothScroll();
@@ -74,9 +74,11 @@ export function Navbar() {
             </span>
           </Link>
 
-          <span className="hidden sm:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-mono font-medium text-white/60">
-            v1.8
-          </span>
+          {versionTag ? (
+            <span className="hidden sm:inline-flex items-center rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[10px] font-mono font-medium text-white/60">
+              {versionTag}
+            </span>
+          ) : null}
         </div>
 
         {/* Desktop nav */}

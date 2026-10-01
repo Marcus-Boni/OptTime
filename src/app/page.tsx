@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactElement } from "react";
 import { CtaFinal } from "@/components/landing/cta-final";
 import { FeaturesBento } from "@/components/landing/features-bento";
 import { Footer } from "@/components/landing/footer";
@@ -10,6 +11,10 @@ import { SocialProof } from "@/components/landing/social-proof";
 import { StatsBar } from "@/components/landing/stats-bar";
 import { Testimonial } from "@/components/landing/testimonial";
 import { VideoDemo } from "@/components/landing/video-demo";
+import { getLatestPublicRelease } from "@/lib/releases/public-release.server";
+
+// Resolve the published release on every visit, including immediately after publication.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "OptSolv Time Tracker - Gestão Inteligente de Horas",
@@ -17,14 +22,15 @@ export const metadata: Metadata = {
     "Sistema de registro e gestão de horas integrado ao Azure DevOps. Acompanhe a produtividade real da sua equipe.",
 };
 
-export default function LandingPage() {
+export default async function LandingPage(): Promise<ReactElement> {
+  const release = await getLatestPublicRelease();
   return (
     <SmoothScroll>
       <div className="relative min-h-screen bg-[#0a0a0a] text-white">
-        <Navbar />
+        <Navbar versionTag={release?.versionTag ?? null} />
         <Hero />
         <SocialProof />
-        <VideoDemo />
+        <VideoDemo release={release} />
         <FeaturesBento />
         <HowItWorks />
         <StatsBar />

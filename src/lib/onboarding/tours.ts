@@ -701,6 +701,17 @@ export const TOURS: readonly TourDefinition[] = [
         placement: "bottom",
       },
       {
+        id: "release-video",
+        title: "Notas e vídeo da versão",
+        description:
+          "Em Nova Versão, registre as notas e escolha o showcase Remotion correspondente. O preset v1.9.0 já está disponível. Revise o rascunho antes de publicar para a equipe.",
+        target: '[data-tour="release-create"]',
+        placement: "bottom",
+        route: "/dashboard/releases",
+        roles: ADMIN_ONLY,
+        allowInteraction: true,
+      },
+      {
         id: "outro",
         title: "Antes de liberar para todos",
         description:

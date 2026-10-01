@@ -217,7 +217,7 @@ export function FeaturesBento() {
                 trabalho e identificação precoce de gargalos operacionais.
               </p>
               <div className="mt-auto pt-6 flex items-center gap-2 text-xs text-amber-400 font-medium">
-                <span>Executive & Manager HQ v1.8</span>
+                <span>Orçamento, capacidade e aprovações</span>
               </div>
             </div>
           </motion.div>

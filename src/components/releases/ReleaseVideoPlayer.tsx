@@ -13,10 +13,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { findRemotionComposition } from "@/lib/releases/public-release";
 import { ProductDemo } from "@/remotion/ProductDemo";
 import { ReleaseShowcaseV16 } from "@/remotion/ReleaseShowcaseV16";
 import { ReleaseShowcaseV17 } from "@/remotion/ReleaseShowcaseV17";
 import { ReleaseShowcaseV18 } from "@/remotion/ReleaseShowcaseV18";
+import { ReleaseShowcaseV19 } from "@/remotion/ReleaseShowcaseV19";
 
 /**
  * Remotion compositions a release can point at, newest first.
@@ -25,6 +27,14 @@ import { ReleaseShowcaseV18 } from "@/remotion/ReleaseShowcaseV18";
  * and the duration all follow from it.
  */
 const REMOTION_COMPOSITIONS = [
+  {
+    id: "ReleaseShowcaseV19",
+    component: ReleaseShowcaseV19,
+    durationInFrames: 2100,
+    aliases: ["v1.9", "v19"],
+    label: (versionTag: string) =>
+      `Demonstração Oficial ${versionTag} (Remotion)`,
+  },
   {
     id: "ReleaseShowcaseV18",
     component: ReleaseShowcaseV18,
@@ -76,17 +86,7 @@ export function ReleaseVideoPlayer({
   // Identify video type
   const videoConfig = useMemo(() => {
     const trimmed = videoUrl.trim();
-    const lowered = trimmed.toLowerCase();
-
-    // Exact composition ids win before any fuzzy matching. The loose aliases
-    // below exist for hand-typed values, and "showcase"/"demo" would otherwise
-    // swallow every future release — v1.8 must not resolve to the v1.7 video.
-    const composition = REMOTION_COMPOSITIONS.find(
-      (entry) =>
-        trimmed === `remotion:${entry.id}` ||
-        trimmed === entry.id ||
-        entry.aliases.some((alias) => lowered.includes(alias)),
-    );
+    const composition = findRemotionComposition(trimmed, REMOTION_COMPOSITIONS);
 
     if (composition) {
       return {
@@ -95,6 +95,13 @@ export function ReleaseVideoPlayer({
         durationInFrames: composition.durationInFrames,
         fps: 30,
         label: composition.label(versionTag),
+      };
+    }
+
+    if (trimmed.startsWith("remotion:")) {
+      return {
+        type: "unavailable" as const,
+        label: "Vídeo desta versão ainda indisponível nesta instalação",
       };
     }
 
@@ -287,6 +294,12 @@ export function ReleaseVideoPlayer({
                 className="h-full w-full"
               />
             )}
+
+            {videoConfig.type === "unavailable" ? (
+              <p className="flex h-full items-center justify-center p-6 text-center text-sm text-neutral-300">
+                {videoConfig.label}
+              </p>
+            ) : null}
 
             {/* Remotion Overlay Controls */}
             {videoConfig.type === "remotion" && (

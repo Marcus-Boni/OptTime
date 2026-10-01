@@ -1,6 +1,6 @@
 {
   "name": "opt-time",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
@@ -13,6 +13,7 @@
     "format": "biome format --write",
     "video:studio": "remotion studio remotion/index.ts",
     "video:render": "remotion render remotion/index.ts ProductDemo public/product-demo.mp4",
+    "video:release:1.9": "remotion render remotion/index.ts ReleaseShowcaseV19 public/release-v1.9.0.mp4 --codec=h264 --crf=18 --pixel-format=yuv420p --concurrency=4",
     "verify:mcp": "tsx --env-file=.env.local scripts/mcp-e2e/run.ts",
     "verify:mcp:package": "tsx --env-file=.env.local scripts/mcp-e2e/package-e2e.ts",
     "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts",
