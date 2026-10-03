@@ -151,18 +151,12 @@ function getDerivedRemainingHours(item: AzureDevOpsAssignedWorkItem): number {
   return 0;
 }
 
-function computeHealthStatus(
-  integrationStatus: PeoplePerformanceUserRow["integration"]["status"],
-  score: number,
-): PeoplePerformanceHealth {
-  if (integrationStatus !== "connected") {
-    return "offline";
-  }
-
+function computeHealthStatus(score: number): PeoplePerformanceHealth {
   if (score >= 85) return "excellent";
   if (score >= 70) return "stable";
   if (score >= 50) return "attention";
-  return "critical";
+  if (score > 0) return "critical";
+  return "offline";
 }
 
 /**
@@ -219,8 +213,12 @@ function computePerformanceScore(input: {
     utilizationScore + planningScore + freshnessScore + flowScore;
 
   if (input.integrationStatus !== "connected") {
-    // Sem Azure: só a utilização + fração do planejamento são observáveis.
-    return Math.round(clamp(utilizationScore + planningScore * 0.25, 0, 55));
+    // Integração Azure é opcional:
+    // Sem ela, o score avalia a capacidade semanal e a cadência de apontamentos (até 95%),
+    // sem impor teto punitivo. A conexão com o Azure permite sincronizar backlog e atingir 100%.
+    const timeTrackingScore = adjustedUtilization * 0.85;
+    const consistencyScore = (adjustedUtilization / 100) * 10;
+    return Math.round(clamp(timeTrackingScore + consistencyScore, 0, 95));
   }
 
   return Math.round(clamp(baseScore, 0, 100));
@@ -509,9 +507,9 @@ export async function getPeoplePerformance(
         alerts.push(
           buildAlert(
             "missing-config",
-            "warning",
-            "Integração Azure não configurada",
-            "Este colaborador ainda não conectou a conta do Azure DevOps na plataforma.",
+            "info",
+            "Integração Azure opcional",
+            "Azure DevOps não conectado. Recomendado para sincronizar tarefas e backlog, mas opcional.",
           ),
         );
       } else {
@@ -809,7 +807,7 @@ export async function getPeoplePerformance(
           })
         : 0;
       const health = person.isActive
-        ? computeHealthStatus(integrationStatus, performanceScore)
+        ? computeHealthStatus(performanceScore)
         : "offline";
       const highlights = buildHighlights({
         utilizationPercent,

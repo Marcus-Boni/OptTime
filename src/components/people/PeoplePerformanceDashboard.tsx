@@ -121,7 +121,7 @@ const HEALTH_STYLES: Record<PeoplePerformanceHealth, string> = {
 
 const INTEGRATION_LABELS = {
   connected: "Azure Conectado",
-  missing: "Sem integração",
+  missing: "Azure opcional",
   invalid: "PAT inválido",
 } as const;
 
@@ -129,7 +129,7 @@ const INTEGRATION_STYLES = {
   connected:
     "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
   missing:
-    "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    "border-slate-500/20 bg-slate-500/10 text-slate-600 dark:text-slate-400",
   invalid: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
 } as const;
 
@@ -1117,7 +1117,11 @@ export default function PeoplePerformanceDashboard({
         return false;
       }
 
-      if (alertsOnly && row.alerts.length === 0) {
+      const hasActionableAlerts = row.alerts.some(
+        (alert) => alert.level === "warning" || alert.level === "critical",
+      );
+
+      if (alertsOnly && !hasActionableAlerts) {
         return false;
       }
 
@@ -1459,15 +1463,19 @@ export default function PeoplePerformanceDashboard({
               </div>
             );
           }
+          const actionableAlerts = row.original.alerts.filter(
+            (alert) => alert.level === "warning" || alert.level === "critical",
+          );
+
           return (
             <div className="space-y-1 text-right">
-              {row.original.alerts.length > 0 ? (
+              {actionableAlerts.length > 0 ? (
                 <>
                   <p className="text-sm font-semibold text-foreground">
-                    {row.original.alerts.length}
+                    {actionableAlerts.length}
                   </p>
-                  <p className="max-w-40 text-[11px] text-muted-foreground">
-                    {row.original.alerts[0]?.label}
+                  <p className="max-w-40 text-[11px] text-muted-foreground truncate">
+                    {actionableAlerts[0]?.label}
                   </p>
                 </>
               ) : (
@@ -1569,7 +1577,7 @@ export default function PeoplePerformanceDashboard({
             {/* Table card */}
             <div>
               <Card className="overflow-hidden border-border/50 bg-card/80 shadow-sm">
-                <CardHeader className="border-b border-border/50 px-5 py-3.5">
+                <CardHeader className="border-b border-border/50 px-5 py-2">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle className="font-display text-lg font-bold">
@@ -1604,7 +1612,7 @@ export default function PeoplePerformanceDashboard({
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-3.5 p-5 pt-4">
+                <CardContent className="space-y-3.5 p-5 pt-0">
                   {/* Filters toolbar — single responsive row with identical h-9 heights */}
                   <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
                     {/* Status tabs */}
@@ -1821,8 +1829,25 @@ export default function PeoplePerformanceDashboard({
                                       <p className="text-xs text-muted-foreground">
                                         Alertas
                                       </p>
-                                      <p className="font-semibold text-foreground">
-                                        {row.original.alerts.length}
+                                      <p
+                                        className={cn(
+                                          "font-semibold",
+                                          row.original.alerts.some(
+                                            (a) =>
+                                              a.level === "warning" ||
+                                              a.level === "critical",
+                                          )
+                                            ? "text-rose-600 dark:text-rose-400"
+                                            : "text-foreground",
+                                        )}
+                                      >
+                                        {
+                                          row.original.alerts.filter(
+                                            (a) =>
+                                              a.level === "warning" ||
+                                              a.level === "critical",
+                                          ).length
+                                        }
                                       </p>
                                     </div>
                                   </div>

@@ -29,8 +29,8 @@ export default function ScoreExplanationDialog() {
           <DialogTitle>Como o score é calculado?</DialogTitle>
           <DialogDescription>
             O score de performance é uma métrica consolidada (0 a 100) que
-            engloba engajamento operacional e boas práticas de gestão no Azure
-            DevOps.
+            engloba engajamento operacional, cumprimento de horas e,
+            opcionalmente, boas práticas de gestão no Azure DevOps.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-5 py-2 text-sm text-foreground">
@@ -78,10 +78,12 @@ export default function ScoreExplanationDialog() {
             </p>
           </div>
 
-          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-[13px] text-amber-700 dark:text-amber-400">
-            <strong>Importante:</strong> colaboradores sem integração com o
-            Azure DevOps têm score calculado parcialmente (teto de 55%), com
-            base apenas nas horas lançadas e estimativas visíveis.
+          <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-3 text-[13px] text-sky-800 dark:text-sky-300">
+            <strong>Integração Azure opcional:</strong> a conexão com o Azure
+            DevOps é recomendada para sincronizar itens e estimativas de backlog
+            (permitindo alcançar até 100%). Para colaboradores sem integração, o
+            score avalia o cumprimento de horas e cadência operacional (até
+            95%), sem penalização forçada.
           </div>
         </div>
       </DialogContent>
