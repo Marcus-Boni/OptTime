@@ -9,6 +9,12 @@ import PeoplePerformanceDashboard from "@/components/people/PeoplePerformanceDas
 import ReminderBulkModal from "@/components/people/ReminderBulkModal";
 import ReminderScheduleDrawer from "@/components/people/ReminderScheduleDrawer";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { usePeoplePerformance } from "@/hooks/use-people-performance";
 import { useSession } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
@@ -53,7 +59,7 @@ export function PeopleClient() {
         );
       }
 
-      toast.success("Equipe sincronizada com o Microsoft 365!", {
+      toast.success("Cargos sincronizados com o Microsoft 365!", {
         description: `${result.matchedUsers ?? 0} colaboradores localizados no Entra ID (${result.updatedUsers ?? 0} cargos/departamentos atualizados).`,
       });
 
@@ -63,7 +69,7 @@ export function PeopleClient() {
       toast.error(
         err instanceof Error
           ? err.message
-          : "Erro ao sincronizar equipe com o Microsoft 365.",
+          : "Erro ao sincronizar cargos com o Microsoft 365.",
       );
     } finally {
       setIsSyncingTeam(false);
@@ -99,18 +105,11 @@ export function PeopleClient() {
               <Button
                 variant="outline"
                 size="sm"
-                className="gap-1.5 border-sky-500/30 bg-sky-500/10 text-xs font-medium text-sky-400 hover:bg-sky-500/20 hover:text-sky-300 dark:border-sky-500/40 dark:bg-sky-500/20 dark:text-sky-300"
-                onClick={() => void handleSyncMicrosoftTeam()}
-                disabled={isSyncingTeam}
-                data-tour="people-microsoft-sync"
-                title="Sincronizar cargos e departamentos de toda a equipe usando Microsoft Graph (User.Read.All)"
+                className="gap-1.5"
+                onClick={() => setIsReminderBulkOpen(true)}
               >
-                <RefreshCw
-                  className={cn("h-3.5 w-3.5", isSyncingTeam && "animate-spin")}
-                />
-                {isSyncingTeam
-                  ? "Sincronizando..."
-                  : "Sincronizar com Microsoft 365"}
+                <Bell className="h-4 w-4" />
+                Lembrar equipe
               </Button>
               <Button
                 variant="outline"
@@ -123,20 +122,37 @@ export function PeopleClient() {
                 <Calendar className="h-4 w-4" />
                 Agendamento
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => setIsReminderBulkOpen(true)}
-              >
-                <Bell className="h-4 w-4" />
-                Lembrar equipe
-              </Button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => void handleSyncMicrosoftTeam()}
+                      disabled={isSyncingTeam}
+                      data-tour="people-microsoft-sync"
+                      aria-label="Sincronizar cargos e departamentos com Microsoft 365"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          isSyncingTeam && "animate-spin",
+                        )}
+                      />
+                      {isSyncingTeam
+                        ? "Sincronizando..."
+                        : "Sincronizar cargos (M365)"}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs text-xs">
+                    Opcional: atualiza cargos e departamentos dos colaboradores
+                    a partir do Microsoft 365 (Entra ID).
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <InviteUserDialog sessionRole={sessionRole} />
             </div>
-            <span className="text-xs text-muted-foreground mr-1">
-              Notificações pausadas temporariamente.
-            </span>
           </div>
         ) : null}
       </motion.div>
