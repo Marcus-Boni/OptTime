@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { dispatchTimeEntriesUpdated } from "@/lib/time-events";
+import {
+  dispatchTimeEntriesUpdated,
+  TIME_ENTRIES_UPDATED_EVENT,
+} from "@/lib/time-events";
 import type { CollaborationDay, MeetingSignal } from "@/types/collaboration";
 
 export interface LogMeetingsItem {
@@ -68,28 +71,43 @@ export function useCollaborationDay({
           error?: string;
         };
 
+        if (signal?.aborted) return;
+
         if (!res.ok || !body.day) {
           throw new Error(body.error ?? "Não foi possível ler o seu dia.");
         }
 
         setDay(body.day);
       } catch (err: unknown) {
+        if (signal?.aborted) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         console.error("[useCollaborationDay] load:", err);
         setError(err instanceof Error ? err.message : "Erro desconhecido.");
         setDay(null);
       } finally {
-        setIsLoading(false);
+        if (!signal?.aborted) setIsLoading(false);
       }
     },
     [date, enabled, includeLogged],
   );
 
   useEffect(() => {
-    const controller = new AbortController();
+    if (!enabled) return;
+
+    let controller = new AbortController();
+    const handleUpdated = () => {
+      controller.abort();
+      controller = new AbortController();
+      void load(controller.signal);
+    };
+
     void load(controller.signal);
-    return () => controller.abort();
-  }, [load]);
+    window.addEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
+    return () => {
+      window.removeEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
+      controller.abort();
+    };
+  }, [enabled, load]);
 
   const reload = useCallback(async () => {
     await load();

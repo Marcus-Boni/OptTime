@@ -24,6 +24,8 @@ export interface TimeSuggestion {
   fingerprint: string;
   projectId: string | null;
   projectName: string | null;
+  /** Display title for an evidence group; the entry description stays editable. */
+  title?: string;
   description: string;
   date: string;
   duration: number;

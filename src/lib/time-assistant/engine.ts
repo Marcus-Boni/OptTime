@@ -548,6 +548,10 @@ export function buildDeterministicSuggestions({
       ]),
       projectId: linkedProject?.id ?? null,
       projectName: linkedProject?.name ?? null,
+      title:
+        group.length > 1
+          ? `Bloco de desenvolvimento — ${linkedProject?.name ?? mainCommit.projectName}`
+          : `Commit: ${description}`,
       description,
       date,
       duration,

@@ -434,7 +434,7 @@ export function SmartSuggestionsPanel({
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm font-semibold text-foreground">
-                        {suggestion.description}
+                        {suggestion.title ?? suggestion.description}
                       </p>
                       <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="inline-flex items-center gap-1">
@@ -475,6 +475,18 @@ export function SmartSuggestionsPanel({
                       >
                         Score {(suggestion.score * 100).toFixed(0)}%
                       </Badge>
+                      {suggestion.sourceBreakdown.meetings > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className="rounded-full bg-muted/50 text-[11px] text-foreground/80"
+                        >
+                          {formatCompactCount(
+                            suggestion.sourceBreakdown.meetings,
+                            "reunião",
+                            "reuniões",
+                          )}
+                        </Badge>
+                      ) : null}
                       {hasCommitDetails ? (
                         <Badge
                           variant="secondary"

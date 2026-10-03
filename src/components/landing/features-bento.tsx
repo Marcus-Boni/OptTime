@@ -2,11 +2,9 @@
 
 import { motion } from "framer-motion";
 import {
-  ArrowUpRight,
   BarChart3,
   CheckCircle2,
   Clock,
-  Code2,
   Link2,
   ShieldCheck,
   Sparkles,
@@ -218,73 +216,6 @@ export function FeaturesBento() {
               </p>
               <div className="mt-auto pt-6 flex items-center gap-2 text-xs text-amber-400 font-medium">
                 <span>Orçamento, capacidade e aprovações</span>
-              </div>
-            </div>
-          </motion.div>
-
-          {/* Card 6 (Full Width): Engenharia de Ponta & Arquitetura por Marcus Boni */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-r from-neutral-900/90 via-neutral-900/50 to-neutral-950 p-8 backdrop-blur-xl transition-all hover:border-brand-500/40 md:col-span-3"
-          >
-            <div className="pointer-events-none absolute -inset-px rounded-2xl bg-gradient-to-r from-brand-500/15 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-
-            <div className="relative z-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-center">
-              <div className="max-w-3xl">
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-400 ring-1 ring-brand-500/20">
-                    <Code2 className="h-4 w-4" />
-                  </div>
-                  <span className="rounded-full border border-brand-500/30 bg-brand-500/10 px-3 py-0.5 font-mono text-xs font-medium text-brand-400">
-                    Arquitetura & Integração
-                  </span>
-                </div>
-
-                <h3 className="mt-4 font-display text-2xl font-bold text-white">
-                  Construído sob Medida para a OptSolv
-                </h3>
-                <p className="mt-2 text-sm leading-relaxed text-white/60">
-                  Desenvolvido por{" "}
-                  <strong className="text-white">Marcus Boni</strong> para
-                  apoiar o dia a dia da equipe{" "}
-                  <strong className="text-white">OptSolv</strong>, integrando
-                  apontamentos de horas e tarefas do Azure DevOps com
-                  simplicidade e agilidade.
-                </p>
-
-                {/* Tech Pills */}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {[
-                    "Next.js 16 App Router",
-                    "TypeScript Strict",
-                    "Azure DevOps REST API",
-                    "Drizzle ORM & PostgreSQL",
-                    "Better Auth",
-                  ].map((tech) => (
-                    <span
-                      key={tech}
-                      className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[11px] text-white/70"
-                    >
-                      {tech}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Creator credit button */}
-              <div className="shrink-0">
-                <a
-                  href="https://github.com/Marcus-Boni"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group/btn inline-flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white backdrop-blur-md transition-all hover:border-brand-500/40 hover:bg-brand-500/10 active:scale-95"
-                >
-                  <span>Desenvolvido por Marcus Boni</span>
-                  <ArrowUpRight className="h-4 w-4 text-white/60 transition-transform group-hover/btn:translate-x-0.5 group-hover/btn:-translate-y-0.5 group-hover/btn:text-brand-400" />
-                </a>
               </div>
             </div>
           </motion.div>

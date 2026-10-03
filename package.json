@@ -19,6 +19,7 @@
     "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts",
     "verify:onboarding": "tsx scripts/verify-onboarding.ts",
     "verify:collaboration": "tsx scripts/verify-collaboration.ts && tsx scripts/verify-collaboration-fusion.ts",
+    "verify:time-registration": "tsx scripts/verify-collaboration-day-refresh.ts && tsx scripts/verify-time-suggestion-titles.ts",
     "verify:teams-calls": "tsx scripts/verify-call-records.ts && tsx scripts/verify-call-signals.ts && tsx scripts/verify-call-suggestions.ts",
     "verify:memory": "tsx scripts/verify-memory-evidence.ts && tsx scripts/verify-memory-reconstruct.ts",
     "verify:my-time": "tsx scripts/verify-my-time.ts",
