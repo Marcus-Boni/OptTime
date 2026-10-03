@@ -331,6 +331,8 @@ export async function getPeoplePerformance(
       },
       summary: {
         monitoredUsers: 0,
+        activeUsers: 0,
+        inactiveUsers: 0,
         connectedUsers: 0,
         usersWithAlerts: 0,
         usersWithoutAzure: 0,
@@ -717,65 +719,65 @@ export async function getPeoplePerformance(
             "O colaborador está desativado na plataforma, então os indicadores servem apenas como histórico.",
           ),
         );
-      }
+      } else {
+        if (loggedThisWeekMinutes === 0 && weekProgressRatio >= 0.4) {
+          alerts.push(
+            buildAlert(
+              "no-hours-week",
+              "warning",
+              "Sem horas lançadas na semana",
+              "Nenhum apontamento foi registrado no período semanal atual.",
+            ),
+          );
+        }
 
-      if (loggedThisWeekMinutes === 0 && weekProgressRatio >= 0.4) {
-        alerts.push(
-          buildAlert(
-            "no-hours-week",
-            "warning",
-            "Sem horas lançadas na semana",
-            "Nenhum apontamento foi registrado no período semanal atual.",
-          ),
-        );
-      }
+        if (
+          timesheetStatus &&
+          timesheetStatus !== "approved" &&
+          timesheetStatus !== "submitted"
+        ) {
+          alerts.push(
+            buildAlert(
+              "timesheet-open",
+              "warning",
+              "Timesheet ainda não enviado",
+              "A folha semanal continua aberta e precisa ser submetida para aprovação.",
+            ),
+          );
+        }
 
-      if (
-        timesheetStatus &&
-        timesheetStatus !== "approved" &&
-        timesheetStatus !== "submitted"
-      ) {
-        alerts.push(
-          buildAlert(
-            "timesheet-open",
-            "warning",
-            "Timesheet ainda não enviado",
-            "A folha semanal continua aberta e precisa ser submetida para aprovação.",
-          ),
-        );
-      }
+        if (itemsWithoutEstimate > 0) {
+          alerts.push(
+            buildAlert(
+              "unestimated-items",
+              "warning",
+              "Itens sem estimativa",
+              `${itemsWithoutEstimate} item(ns) ativo(s) não possuem estimativa clara de esforço.`,
+            ),
+          );
+        }
 
-      if (itemsWithoutEstimate > 0) {
-        alerts.push(
-          buildAlert(
-            "unestimated-items",
-            "warning",
-            "Itens sem estimativa",
-            `${itemsWithoutEstimate} item(ns) ativo(s) não possuem estimativa clara de esforço.`,
-          ),
-        );
-      }
+        if (staleItems > 0) {
+          alerts.push(
+            buildAlert(
+              "stale-items",
+              staleItems >= 3 ? "critical" : "warning",
+              "Itens sem atualização recente",
+              `${staleItems} item(ns) estão há ${STALE_ITEM_DAYS}+ dias sem mudança visível.`,
+            ),
+          );
+        }
 
-      if (staleItems > 0) {
-        alerts.push(
-          buildAlert(
-            "stale-items",
-            staleItems >= 3 ? "critical" : "warning",
-            "Itens sem atualização recente",
-            `${staleItems} item(ns) estão há ${STALE_ITEM_DAYS}+ dias sem mudança visível.`,
-          ),
-        );
-      }
-
-      if (blockedItems > 0) {
-        alerts.push(
-          buildAlert(
-            "blocked-items",
-            "critical",
-            "Itens bloqueados",
-            `${blockedItems} item(ns) sinalizam bloqueio ou impedimento no Azure DevOps.`,
-          ),
-        );
+        if (blockedItems > 0) {
+          alerts.push(
+            buildAlert(
+              "blocked-items",
+              "critical",
+              "Itens bloqueados",
+              `${blockedItems} item(ns) sinalizam bloqueio ou impedimento no Azure DevOps.`,
+            ),
+          );
+        }
       }
 
       topWorkItems.sort((left, right) => {
@@ -795,16 +797,20 @@ export async function getPeoplePerformance(
         return right.loggedMinutes30d - left.loggedMinutes30d;
       });
 
-      const performanceScore = computePerformanceScore({
-        integrationStatus,
-        utilizationPercent,
-        weekProgressRatio,
-        activeItems,
-        itemsWithoutEstimate,
-        staleItems,
-        blockedItems,
-      });
-      const health = computeHealthStatus(integrationStatus, performanceScore);
+      const performanceScore = person.isActive
+        ? computePerformanceScore({
+            integrationStatus,
+            utilizationPercent,
+            weekProgressRatio,
+            activeItems,
+            itemsWithoutEstimate,
+            staleItems,
+            blockedItems,
+          })
+        : 0;
+      const health = person.isActive
+        ? computeHealthStatus(integrationStatus, performanceScore)
+        : "offline";
       const highlights = buildHighlights({
         utilizationPercent,
         activeItems,
@@ -856,6 +862,11 @@ export async function getPeoplePerformance(
   );
 
   rows.sort((left, right) => {
+    // 1. Usuários ativos sempre vêm primeiro; inativos vão para baixo
+    if (left.user.isActive !== right.user.isActive) {
+      return left.user.isActive ? -1 : 1;
+    }
+
     if (right.metrics.performanceScore !== left.metrics.performanceScore) {
       return right.metrics.performanceScore - left.metrics.performanceScore;
     }
@@ -866,23 +877,34 @@ export async function getPeoplePerformance(
   const summary = rows.reduce(
     (acc, row) => {
       acc.monitoredUsers += 1;
-      acc.connectedUsers += row.integration.status === "connected" ? 1 : 0;
-      acc.usersWithoutAzure += row.integration.status !== "connected" ? 1 : 0;
-      acc.usersWithAlerts += row.alerts.length > 0 ? 1 : 0;
-      acc.activeItems += row.metrics.activeItems;
-      acc.remainingHours += row.metrics.remainingHours;
-      acc.loggedThisWeekMinutes += row.metrics.loggedThisWeekMinutes;
-      acc.pendingTimesheets +=
-        row.metrics.timesheetStatus &&
-        row.metrics.timesheetStatus !== "approved" &&
-        row.metrics.timesheetStatus !== "submitted"
+      if (row.user.isActive) {
+        acc.activeUsers += 1;
+        acc.connectedUsers += row.integration.status === "connected" ? 1 : 0;
+        acc.usersWithoutAzure += row.integration.status !== "connected" ? 1 : 0;
+        acc.usersWithAlerts += row.alerts.some(
+          (alert) => alert.level === "warning" || alert.level === "critical",
+        )
           ? 1
           : 0;
-      acc.averagePerformanceScore += row.metrics.performanceScore;
+        acc.activeItems += row.metrics.activeItems;
+        acc.remainingHours += row.metrics.remainingHours;
+        acc.loggedThisWeekMinutes += row.metrics.loggedThisWeekMinutes;
+        acc.pendingTimesheets +=
+          row.metrics.timesheetStatus &&
+          row.metrics.timesheetStatus !== "approved" &&
+          row.metrics.timesheetStatus !== "submitted"
+            ? 1
+            : 0;
+        acc.averagePerformanceScore += row.metrics.performanceScore;
+      } else {
+        acc.inactiveUsers += 1;
+      }
       return acc;
     },
     {
       monitoredUsers: 0,
+      activeUsers: 0,
+      inactiveUsers: 0,
       connectedUsers: 0,
       usersWithAlerts: 0,
       usersWithoutAzure: 0,
@@ -896,9 +918,11 @@ export async function getPeoplePerformance(
 
   summary.remainingHours = normalizeNumber(summary.remainingHours);
   summary.averagePerformanceScore =
-    summary.monitoredUsers > 0
-      ? Math.round(summary.averagePerformanceScore / summary.monitoredUsers)
-      : 0;
+    summary.activeUsers > 0
+      ? Math.round(summary.averagePerformanceScore / summary.activeUsers)
+      : summary.monitoredUsers > 0
+        ? Math.round(summary.averagePerformanceScore / summary.monitoredUsers)
+        : 0;
 
   return {
     generatedAt: new Date().toISOString(),

@@ -97,6 +97,8 @@ export interface PeoplePerformanceUserRow {
 
 export interface PeoplePerformanceSummary {
   monitoredUsers: number;
+  activeUsers: number;
+  inactiveUsers: number;
   connectedUsers: number;
   usersWithAlerts: number;
   usersWithoutAzure: number;

@@ -15,6 +15,8 @@ import {
   ArrowUpDown,
   Bell,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock3,
   ExternalLink,
   Filter,
@@ -81,6 +83,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -613,10 +616,6 @@ function UserPerformanceSheet({
         row.user.weeklyCapacity - row.metrics.loggedThisWeekMinutes / 60,
       )
     : 0;
-  const availabilityPercent =
-    row && row.user.weeklyCapacity > 0
-      ? Math.round((availableHours / row.user.weeklyCapacity) * 100)
-      : 0;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -630,17 +629,33 @@ function UserPerformanceSheet({
             <SheetHeader className="border-b border-border/60 px-6 py-5">
               {/* Row 1: avatar + identity info */}
               <div className="flex items-start gap-4">
-                <UserAvatar
-                  name={row.user.name}
-                  image={row.user.image}
-                  size="lg"
-                />
+                <div
+                  className={cn(
+                    "shrink-0",
+                    !row.user.isActive && "grayscale contrast-75 opacity-70",
+                  )}
+                >
+                  <UserAvatar
+                    name={row.user.name}
+                    image={row.user.image}
+                    size="lg"
+                  />
+                </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2 pr-8">
                     <SheetTitle className="text-2xl font-semibold">
                       {row.user.name}
                     </SheetTitle>
-                    <HealthBadge health={row.metrics.health} />
+                    {row.user.isActive ? (
+                      <HealthBadge health={row.metrics.health} />
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-border/60 bg-muted/50 text-muted-foreground"
+                      >
+                        Inativo
+                      </Badge>
+                    )}
                     <Badge
                       variant="outline"
                       className={cn(
@@ -664,9 +679,9 @@ function UserPerformanceSheet({
                     {!row.user.isActive ? (
                       <Badge
                         variant="outline"
-                        className="border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                        className="border-border/60 bg-muted/60 text-muted-foreground"
                       >
-                        Usuário inativo
+                        Acesso inativo
                       </Badge>
                     ) : null}
                   </div>
@@ -685,6 +700,18 @@ function UserPerformanceSheet({
                 />
               </div>
             </SheetHeader>
+
+            {!row.user.isActive && (
+              <div className="mx-6 mt-4 flex items-center justify-between rounded-2xl border border-amber-500/20 bg-amber-500/10 p-3.5 text-xs text-amber-700 dark:text-amber-300">
+                <div className="flex items-center gap-2">
+                  <UserX className="h-4 w-4 shrink-0" />
+                  <span>
+                    Colaborador inativo na plataforma. Indicadores mantidos para
+                    histórico e auditoria.
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-6 px-6 py-6">
               {/* KPIs */}
@@ -1017,6 +1044,7 @@ function UserPerformanceSheet({
 
 type HealthFilterValue = "all" | PeoplePerformanceHealth;
 type IntegrationFilterValue = "all" | "connected" | "missing" | "invalid";
+type StatusFilterValue = "all" | "active" | "inactive";
 
 interface PeoplePerformanceDashboardProps {
   data: PeoplePerformanceResponse | null;
@@ -1039,20 +1067,45 @@ export default function PeoplePerformanceDashboard({
     { id: "score", desc: true },
   ]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilterValue>("all");
   const [healthFilter, setHealthFilter] = useState<HealthFilterValue>("all");
-  const [integrationFilter, setIntegrationFilter] =
+  const [integrationFilter, _setIntegrationFilter] =
     useState<IntegrationFilterValue>("all");
   const [alertsOnly, setAlertsOnly] = useState(false);
+  const [isInactiveExpanded, setIsInactiveExpanded] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const deferredSearch = useDeferredValue(search);
 
   const normalizedSearch = deferredSearch.trim().toLowerCase();
 
+  const { activeCount, inactiveCount, totalCount } = useMemo(() => {
+    if (!data) return { activeCount: 0, inactiveCount: 0, totalCount: 0 };
+    let active = 0;
+    let inactive = 0;
+    for (const u of data.users) {
+      if (u.user.isActive) active++;
+      else inactive++;
+    }
+    return {
+      activeCount: active,
+      inactiveCount: inactive,
+      totalCount: data.users.length,
+    };
+  }, [data]);
+
   const filteredUsers = useMemo(() => {
     if (!data) return [];
 
     return data.users.filter((row) => {
+      if (statusFilter === "active" && !row.user.isActive) {
+        return false;
+      }
+
+      if (statusFilter === "inactive" && row.user.isActive) {
+        return false;
+      }
+
       if (healthFilter !== "all" && row.metrics.health !== healthFilter) {
         return false;
       }
@@ -1087,7 +1140,14 @@ export default function PeoplePerformanceDashboard({
 
       return searchableText.includes(normalizedSearch);
     });
-  }, [alertsOnly, data, healthFilter, integrationFilter, normalizedSearch]);
+  }, [
+    alertsOnly,
+    data,
+    healthFilter,
+    integrationFilter,
+    normalizedSearch,
+    statusFilter,
+  ]);
 
   const selectedUser = useMemo(
     () => data?.users.find((row) => row.user.id === selectedUserId) ?? null,
@@ -1110,26 +1170,67 @@ export default function PeoplePerformanceDashboard({
             <SortIcon sorted={column.getIsSorted()} />
           </Button>
         ),
-        cell: ({ row }) => (
-          <div className="flex min-w-0 items-center gap-3">
-            <UserAvatar
-              name={row.original.user.name}
-              image={row.original.user.image}
-              size="sm"
-            />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">
-                {row.original.user.name}
-              </p>
-              <p className="truncate text-xs text-muted-foreground">
-                {row.original.user.email}
-              </p>
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                <HealthBadge health={row.original.metrics.health} />
+        cell: ({ row }) => {
+          const isUserActive = row.original.user.isActive;
+          return (
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-3",
+                !isUserActive && "opacity-75",
+              )}
+            >
+              <div
+                className={cn(
+                  "shrink-0",
+                  !isUserActive && "grayscale contrast-75 opacity-70",
+                )}
+              >
+                <UserAvatar
+                  name={row.original.user.name}
+                  image={row.original.user.image}
+                  size="sm"
+                />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p
+                    className={cn(
+                      "truncate text-sm font-semibold",
+                      isUserActive
+                        ? "text-foreground"
+                        : "text-muted-foreground font-normal",
+                    )}
+                  >
+                    {row.original.user.name}
+                  </p>
+                  {!isUserActive && (
+                    <Badge
+                      variant="outline"
+                      className="border-border/70 bg-muted/60 text-muted-foreground text-[10px] px-1.5 py-0 font-normal shrink-0"
+                    >
+                      Inativo
+                    </Badge>
+                  )}
+                </div>
+                <p className="truncate text-xs text-muted-foreground">
+                  {row.original.user.email}
+                </p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {isUserActive ? (
+                    <HealthBadge health={row.original.metrics.health} />
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="border-border/60 bg-muted/40 text-muted-foreground text-[10px] rounded-full"
+                    >
+                      Acesso inativo
+                    </Badge>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ),
+          );
+        },
       },
       {
         id: "score",
@@ -1145,16 +1246,26 @@ export default function PeoplePerformanceDashboard({
             <SortIcon sorted={column.getIsSorted()} />
           </Button>
         ),
-        cell: ({ row }) => (
-          <div className="min-w-[140px] space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-lg font-semibold text-foreground">
-                {row.original.metrics.performanceScore}
-              </span>
+        cell: ({ row }) => {
+          const isUserActive = row.original.user.isActive;
+          if (!isUserActive) {
+            return (
+              <div className="min-w-[140px] text-xs text-muted-foreground italic">
+                Sem cálculo (Inativo)
+              </div>
+            );
+          }
+          return (
+            <div className="min-w-[140px] space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-lg font-semibold text-foreground">
+                  {row.original.metrics.performanceScore}
+                </span>
+              </div>
+              <Progress value={row.original.metrics.performanceScore} />
             </div>
-            <Progress value={row.original.metrics.performanceScore} />
-          </div>
-        ),
+          );
+        },
       },
       {
         id: "workload",
@@ -1170,21 +1281,37 @@ export default function PeoplePerformanceDashboard({
             <SortIcon sorted={column.getIsSorted()} />
           </Button>
         ),
-        cell: ({ row }) => (
-          <div className="space-y-1 text-sm">
-            <p className="font-medium text-foreground">
-              {row.original.metrics.activeItems} tarefa(s)
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {formatHours(row.original.metrics.remainingHours)} restantes
-            </p>
-            {row.original.metrics.blockedItems > 0 && (
-              <p className="text-xs text-rose-600 dark:text-rose-400">
-                {row.original.metrics.blockedItems} bloqueada(s)
+        cell: ({ row }) => {
+          const isUserActive = row.original.user.isActive;
+          if (!isUserActive) {
+            return (
+              <div className="space-y-1 text-sm text-muted-foreground">
+                {row.original.metrics.activeItems > 0 ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 font-medium">
+                    {row.original.metrics.activeItems} item(ns) pendente(s)
+                  </p>
+                ) : (
+                  <p className="text-xs italic">Sem tarefas ativas</p>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div className="space-y-1 text-sm">
+              <p className="font-medium text-foreground">
+                {row.original.metrics.activeItems} tarefa(s)
               </p>
-            )}
-          </div>
-        ),
+              <p className="text-xs text-muted-foreground">
+                {formatHours(row.original.metrics.remainingHours)} restantes
+              </p>
+              {row.original.metrics.blockedItems > 0 && (
+                <p className="text-xs text-rose-600 dark:text-rose-400">
+                  {row.original.metrics.blockedItems} bloqueada(s)
+                </p>
+              )}
+            </div>
+          );
+        },
       },
       {
         id: "availability",
@@ -1202,6 +1329,14 @@ export default function PeoplePerformanceDashboard({
           </Button>
         ),
         cell: ({ row }) => {
+          const isUserActive = row.original.user.isActive;
+          if (!isUserActive) {
+            return (
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p className="text-xs italic">Indisponível (Inativo)</p>
+              </div>
+            );
+          }
           const logged = row.original.metrics.loggedThisWeekMinutes / 60;
           const available = Math.max(
             0,
@@ -1313,24 +1448,36 @@ export default function PeoplePerformanceDashboard({
             </Button>
           </div>
         ),
-        cell: ({ row }) => (
-          <div className="space-y-1 text-right">
-            {row.original.alerts.length > 0 ? (
-              <>
-                <p className="text-sm font-semibold text-foreground">
-                  {row.original.alerts.length}
+        cell: ({ row }) => {
+          const isUserActive = row.original.user.isActive;
+          if (!isUserActive) {
+            return (
+              <div className="space-y-1 text-right">
+                <p className="text-[11px] text-muted-foreground italic">
+                  Inativo
                 </p>
-                <p className="max-w-40 text-[11px] text-muted-foreground">
-                  {row.original.alerts[0]?.label}
+              </div>
+            );
+          }
+          return (
+            <div className="space-y-1 text-right">
+              {row.original.alerts.length > 0 ? (
+                <>
+                  <p className="text-sm font-semibold text-foreground">
+                    {row.original.alerts.length}
+                  </p>
+                  <p className="max-w-40 text-[11px] text-muted-foreground">
+                    {row.original.alerts[0]?.label}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
+                  Sem alertas
                 </p>
-              </>
-            ) : (
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-400">
-                Sem alertas
-              </p>
-            )}
-          </div>
-        ),
+              )}
+            </div>
+          );
+        },
       },
     ],
     [],
@@ -1344,6 +1491,10 @@ export default function PeoplePerformanceDashboard({
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
+
+  const allRows = table.getRowModel().rows;
+  const activeRows = allRows.filter((r) => r.original.user.isActive);
+  const inactiveRows = allRows.filter((r) => !r.original.user.isActive);
 
   return (
     <>
@@ -1375,8 +1526,12 @@ export default function PeoplePerformanceDashboard({
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <SummaryCard
                 title="Colaboradores"
-                value={String(data.summary.monitoredUsers)}
-                detail={`${data.summary.connectedUsers} com Azure ativo`}
+                value={`${data.summary.activeUsers ?? activeCount} ativos`}
+                detail={
+                  (data.summary.inactiveUsers ?? inactiveCount) > 0
+                    ? `${data.summary.inactiveUsers ?? inactiveCount} inativo(s) · ${data.summary.connectedUsers} no Azure`
+                    : `${data.summary.connectedUsers} com Azure ativo`
+                }
                 icon={<UserCog className="h-5 w-5" />}
                 accent="bg-[linear-gradient(135deg,#0f766e,#14b8a6)]"
               />
@@ -1397,14 +1552,14 @@ export default function PeoplePerformanceDashboard({
               <SummaryCard
                 title="Em atenção"
                 value={String(data.summary.usersWithAlerts)}
-                detail={`${data.summary.usersWithoutAzure} sem leitura Azure completa`}
+                detail="Colaboradores ativos com alertas operacionais"
                 icon={<AlertTriangle className="h-5 w-5" />}
                 accent="bg-[linear-gradient(135deg,#b45309,#f59e0b)]"
               />
               <SummaryCard
                 title="Score médio"
                 value={String(data.summary.averagePerformanceScore)}
-                detail={`Atualizado ${getRelativeTime(data.generatedAt)}`}
+                detail={`Média da equipe ativa · Atualizado ${getRelativeTime(data.generatedAt)}`}
                 icon={<TrendingUp className="h-5 w-5" />}
                 accent="bg-[linear-gradient(135deg,#166534,#4ade80)]"
                 actionNode={<ScoreExplanationDialog />}
@@ -1414,41 +1569,98 @@ export default function PeoplePerformanceDashboard({
             {/* Table card */}
             <div>
               <Card className="overflow-hidden border-border/50 bg-card/80 shadow-sm">
-                <CardHeader className="border-b border-border/50 pb-4">
-                  <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <CardHeader className="border-b border-border/50 px-5 py-3.5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <CardTitle className="font-display text-xl">
+                      <CardTitle className="font-display text-lg font-bold">
                         Equipe — capacidade e backlog por colaborador
                       </CardTitle>
-                      <p className="mt-1 text-sm text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         Visão de disponibilidade semanal, tarefas ativas no
-                        Azure DevOps e riscos operacionais. Itens concluídos,
-                        cancelados e removidos são excluídos automaticamente.
+                        Azure DevOps e riscos operacionais.
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <span className="hidden md:inline-block text-xs text-muted-foreground mr-1">
+                        Semana: {formatDate(data.period.weekStart)} →{" "}
+                        {formatDate(data.period.weekEnd)}
+                      </span>
                       <Badge
                         variant="outline"
-                        className="rounded-full px-3 py-1"
+                        className="rounded-full px-2.5 py-0.5 text-xs text-muted-foreground font-normal"
                       >
-                        <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                        <ShieldCheck className="mr-1 h-3.5 w-3.5 text-emerald-500" />
                         Atualizado {getRelativeTime(data.generatedAt)}
                       </Badge>
                       <Button
                         variant="outline"
-                        className="gap-2"
+                        size="sm"
+                        className="h-8 gap-1.5 text-xs"
                         onClick={onRetry}
                       >
-                        <RefreshCw className="h-4 w-4" />
+                        <RefreshCw className="h-3.5 w-3.5" />
                         Atualizar
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-5 p-5">
-                  {/* Filters */}
-                  <div className="flex flex-col gap-3 md:flex-row">
-                    <div className="relative flex-1">
+                <CardContent className="space-y-3.5 p-5 pt-4">
+                  {/* Filters toolbar — single responsive row with identical h-9 heights */}
+                  <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center">
+                    {/* Status tabs */}
+                    <Tabs
+                      value={statusFilter}
+                      onValueChange={(val) =>
+                        startTransition(() =>
+                          setStatusFilter(val as StatusFilterValue),
+                        )
+                      }
+                      className="shrink-0"
+                    >
+                      <TabsList className="h-9 bg-muted/60 p-1">
+                        <TabsTrigger
+                          value="all"
+                          className="gap-1.5 text-xs px-2.5"
+                        >
+                          Todos
+                          <Badge
+                            variant="secondary"
+                            className="h-4 px-1.5 text-[10px]"
+                          >
+                            {totalCount}
+                          </Badge>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="active"
+                          className="gap-1.5 text-xs px-2.5"
+                        >
+                          Ativos
+                          <Badge
+                            variant="secondary"
+                            className="h-4 px-1.5 text-[10px]"
+                          >
+                            {activeCount}
+                          </Badge>
+                        </TabsTrigger>
+                        {inactiveCount > 0 && (
+                          <TabsTrigger
+                            value="inactive"
+                            className="gap-1.5 text-xs px-2.5 text-muted-foreground data-[state=active]:text-foreground"
+                          >
+                            Inativos
+                            <Badge
+                              variant="outline"
+                              className="h-4 px-1.5 text-[10px] text-muted-foreground"
+                            >
+                              {inactiveCount}
+                            </Badge>
+                          </TabsTrigger>
+                        )}
+                      </TabsList>
+                    </Tabs>
+
+                    {/* Search input */}
+                    <div className="relative min-w-0 flex-1">
                       <Search className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
                         value={search}
@@ -1456,60 +1668,77 @@ export default function PeoplePerformanceDashboard({
                           const nextValue = event.target.value;
                           startTransition(() => setSearch(nextValue));
                         }}
-                        placeholder="Buscar por nome, projeto ou tarefa"
-                        className="h-11 pl-10"
+                        placeholder="Buscar por nome, projeto ou tarefa..."
+                        className="h-9 pl-9 text-xs"
                         aria-label="Buscar colaboradores"
                       />
                     </div>
-                    <Select
-                      value={healthFilter}
-                      onValueChange={(value) =>
-                        startTransition(() =>
-                          setHealthFilter(value as HealthFilterValue),
-                        )
-                      }
-                    >
-                      <SelectTrigger
-                        className="h-11 w-full md:w-44"
-                        aria-label="Filtrar por saúde"
+
+                    {/* Filter controls */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Select
+                        value={healthFilter}
+                        onValueChange={(value) =>
+                          startTransition(() =>
+                            setHealthFilter(value as HealthFilterValue),
+                          )
+                        }
                       >
-                        <SelectValue placeholder="Saúde" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Toda saúde</SelectItem>
-                        <SelectItem value="excellent">Excelente</SelectItem>
-                        <SelectItem value="stable">Estável</SelectItem>
-                        <SelectItem value="attention">Atenção</SelectItem>
-                        <SelectItem value="critical">Crítico</SelectItem>
-                        <SelectItem value="offline">Offline</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant={alertsOnly ? "default" : "outline"}
-                      className="h-11 gap-2 md:w-36"
-                      onClick={() =>
-                        startTransition(() =>
-                          setAlertsOnly((current) => !current),
-                        )
-                      }
-                      aria-pressed={alertsOnly}
-                    >
-                      <Filter className="h-4 w-4" />
-                      Só alertas
-                    </Button>
+                        <SelectTrigger
+                          className="h-9 w-36 text-xs"
+                          aria-label="Filtrar por saúde"
+                        >
+                          <SelectValue placeholder="Saúde" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all" className="text-xs">
+                            Toda saúde
+                          </SelectItem>
+                          <SelectItem value="excellent" className="text-xs">
+                            Excelente
+                          </SelectItem>
+                          <SelectItem value="stable" className="text-xs">
+                            Estável
+                          </SelectItem>
+                          <SelectItem value="attention" className="text-xs">
+                            Atenção
+                          </SelectItem>
+                          <SelectItem value="critical" className="text-xs">
+                            Crítico
+                          </SelectItem>
+                          <SelectItem value="offline" className="text-xs">
+                            Offline
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant={alertsOnly ? "default" : "outline"}
+                        size="sm"
+                        className="h-9 gap-1.5 px-3 text-xs"
+                        onClick={() =>
+                          startTransition(() =>
+                            setAlertsOnly((current) => !current),
+                          )
+                        }
+                        aria-pressed={alertsOnly}
+                      >
+                        <Filter className="h-3.5 w-3.5" />
+                        Só alertas
+                      </Button>
+                    </div>
                   </div>
 
-                  {/* Row count + period */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-muted-foreground">
-                      {filteredUsers.length} colaborador(es) no recorte atual.
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <p>
+                      {filteredUsers.length} colaborador(es) no recorte atual
+                      {statusFilter === "all" && inactiveCount > 0
+                        ? ` (${activeRows.length} ativo(s), ${inactiveRows.length} inativo(s))`
+                        : ""}
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>
-                        Semana: {formatDate(data.period.weekStart)} →{" "}
-                        {formatDate(data.period.weekEnd)}
-                      </span>
-                    </div>
+                    <span className="md:hidden">
+                      {formatDate(data.period.weekStart)} →{" "}
+                      {formatDate(data.period.weekEnd)}
+                    </span>
                   </div>
 
                   {/* Mobile cards */}
@@ -1524,82 +1753,154 @@ export default function PeoplePerformanceDashboard({
                         </p>
                       </div>
                     ) : (
-                      table.getRowModel().rows.map((row) => {
-                        const logged =
-                          row.original.metrics.loggedThisWeekMinutes / 60;
-                        const available = Math.max(
-                          0,
-                          row.original.user.weeklyCapacity - logged,
-                        );
-                        return (
-                          <button
-                            key={row.original.user.id}
-                            type="button"
-                            onClick={() =>
-                              setSelectedUserId(row.original.user.id)
-                            }
-                            className="w-full rounded-3xl border border-border/60 bg-background/80 p-4 text-left transition-colors hover:border-brand-500/30"
-                          >
-                            <div className="flex items-start gap-3">
-                              <UserAvatar
-                                name={row.original.user.name}
-                                image={row.original.user.image}
-                                size="sm"
-                              />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="font-semibold text-foreground">
-                                    {row.original.user.name}
+                      <>
+                        {/* Active mobile cards */}
+                        {activeRows.map((row) => {
+                          const logged =
+                            row.original.metrics.loggedThisWeekMinutes / 60;
+                          const available = Math.max(
+                            0,
+                            row.original.user.weeklyCapacity - logged,
+                          );
+                          return (
+                            <button
+                              key={row.original.user.id}
+                              type="button"
+                              onClick={() =>
+                                setSelectedUserId(row.original.user.id)
+                              }
+                              className="w-full rounded-3xl border border-border/60 bg-background/80 p-4 text-left transition-colors hover:border-brand-500/30"
+                            >
+                              <div className="flex items-start gap-3">
+                                <UserAvatar
+                                  name={row.original.user.name}
+                                  image={row.original.user.image}
+                                  size="sm"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-semibold text-foreground">
+                                      {row.original.user.name}
+                                    </p>
+                                    <HealthBadge
+                                      health={row.original.metrics.health}
+                                    />
+                                  </div>
+                                  <p className="truncate text-sm text-muted-foreground">
+                                    {row.original.user.email}
                                   </p>
-                                  <HealthBadge
-                                    health={row.original.metrics.health}
-                                  />
-                                </div>
-                                <p className="truncate text-sm text-muted-foreground">
-                                  {row.original.user.email}
-                                </p>
-                                <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">
-                                      Tarefas ativas
-                                    </p>
-                                    <p className="font-semibold text-foreground">
-                                      {row.original.metrics.activeItems}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">
-                                      Disponível
-                                    </p>
-                                    <p className="font-semibold text-foreground">
-                                      {formatHours(available)}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">
-                                      Horas semana
-                                    </p>
-                                    <p className="font-semibold text-foreground">
-                                      {formatDuration(
-                                        row.original.metrics
-                                          .loggedThisWeekMinutes,
-                                      )}
-                                    </p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground">
-                                      Alertas
-                                    </p>
-                                    <p className="font-semibold text-foreground">
-                                      {row.original.alerts.length}
-                                    </p>
+                                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">
+                                        Tarefas ativas
+                                      </p>
+                                      <p className="font-semibold text-foreground">
+                                        {row.original.metrics.activeItems}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">
+                                        Disponível
+                                      </p>
+                                      <p className="font-semibold text-foreground">
+                                        {formatHours(available)}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">
+                                        Horas semana
+                                      </p>
+                                      <p className="font-semibold text-foreground">
+                                        {formatDuration(
+                                          row.original.metrics
+                                            .loggedThisWeekMinutes,
+                                        )}
+                                      </p>
+                                    </div>
+                                    <div>
+                                      <p className="text-xs text-muted-foreground">
+                                        Alertas
+                                      </p>
+                                      <p className="font-semibold text-foreground">
+                                        {row.original.alerts.length}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
+                            </button>
+                          );
+                        })}
+
+                        {/* Inactive mobile cards section */}
+                        {inactiveRows.length > 0 && statusFilter === "all" && (
+                          <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <UserX className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Inativos ({inactiveRows.length})
+                                </span>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() =>
+                                  setIsInactiveExpanded((prev) => !prev)
+                                }
+                              >
+                                {isInactiveExpanded
+                                  ? "Ocultar"
+                                  : `Exibir (${inactiveRows.length})`}
+                              </Button>
                             </div>
-                          </button>
-                        );
-                      })
+                          </div>
+                        )}
+
+                        {(statusFilter === "inactive" ||
+                          (statusFilter === "all" && isInactiveExpanded)) &&
+                          inactiveRows.map((row) => (
+                            <button
+                              key={row.original.user.id}
+                              type="button"
+                              onClick={() =>
+                                setSelectedUserId(row.original.user.id)
+                              }
+                              className="w-full rounded-3xl border border-dashed border-border/60 bg-muted/20 p-4 text-left opacity-70 hover:opacity-100 transition-all"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="grayscale contrast-75 opacity-70">
+                                  <UserAvatar
+                                    name={row.original.user.name}
+                                    image={row.original.user.image}
+                                    size="sm"
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="font-medium text-muted-foreground">
+                                      {row.original.user.name}
+                                    </p>
+                                    <Badge
+                                      variant="outline"
+                                      className="border-border/60 bg-muted/60 text-[10px] text-muted-foreground font-normal"
+                                    >
+                                      Inativo
+                                    </Badge>
+                                  </div>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {row.original.user.email}
+                                  </p>
+                                  <p className="mt-2 text-xs italic text-muted-foreground">
+                                    Histórico preservado. Clique para ver
+                                    detalhes ou gerenciar acesso.
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                      </>
                     )}
                   </div>
 
@@ -1660,31 +1961,116 @@ export default function PeoplePerformanceDashboard({
                               </TableCell>
                             </TableRow>
                           ) : (
-                            table.getRowModel().rows.map((row) => (
-                              <TableRow
-                                key={row.original.user.id}
-                                className="cursor-pointer"
-                                onClick={() =>
-                                  setSelectedUserId(row.original.user.id)
-                                }
-                              >
-                                {row.getVisibleCells().map((cell) => (
-                                  <TableCell
-                                    key={cell.id}
-                                    className={cn(
-                                      "px-4 align-top py-4",
-                                      cell.column.id === "alerts" &&
-                                        "text-right",
-                                    )}
+                            <>
+                              {/* Active rows */}
+                              {activeRows.map((row) => (
+                                <TableRow
+                                  key={row.original.user.id}
+                                  className="cursor-pointer hover:bg-muted/40 transition-colors"
+                                  onClick={() =>
+                                    setSelectedUserId(row.original.user.id)
+                                  }
+                                >
+                                  {row.getVisibleCells().map((cell) => (
+                                    <TableCell
+                                      key={cell.id}
+                                      className={cn(
+                                        "px-4 align-top py-4",
+                                        cell.column.id === "alerts" &&
+                                          "text-right",
+                                      )}
+                                    >
+                                      {flexRender(
+                                        cell.column.columnDef.cell,
+                                        cell.getContext(),
+                                      )}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))}
+
+                              {/* Inactive section divider (when there are inactive rows and viewing all) */}
+                              {inactiveRows.length > 0 &&
+                                statusFilter === "all" && (
+                                  <TableRow className="border-t-2 border-border/80 bg-muted/40 hover:bg-muted/40">
+                                    <TableCell
+                                      colSpan={columns.length}
+                                      className="px-4 py-3"
+                                    >
+                                      <div className="flex flex-wrap items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2">
+                                          <UserX className="h-4 w-4 text-muted-foreground" />
+                                          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                            Colaboradores Inativos (
+                                            {inactiveRows.length})
+                                          </span>
+                                          <Badge
+                                            variant="outline"
+                                            className="border-border/60 bg-muted/50 text-[10px] text-muted-foreground font-normal"
+                                          >
+                                            Ex-integrantes ou contas desativadas
+                                          </Badge>
+                                        </div>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 gap-1 px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/70"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsInactiveExpanded(
+                                              (prev) => !prev,
+                                            );
+                                          }}
+                                          aria-expanded={isInactiveExpanded}
+                                        >
+                                          {isInactiveExpanded ? (
+                                            <>
+                                              Ocultar inativos{" "}
+                                              <ChevronUp className="h-3.5 w-3.5" />
+                                            </>
+                                          ) : (
+                                            <>
+                                              Exibir inativos (
+                                              {inactiveRows.length}){" "}
+                                              <ChevronDown className="h-3.5 w-3.5" />
+                                            </>
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )}
+
+                              {/* Inactive rows: displayed if statusFilter === "inactive" OR (statusFilter === "all" && isInactiveExpanded) */}
+                              {(statusFilter === "inactive" ||
+                                (statusFilter === "all" &&
+                                  isInactiveExpanded)) &&
+                                inactiveRows.map((row) => (
+                                  <TableRow
+                                    key={row.original.user.id}
+                                    className="cursor-pointer bg-muted/10 opacity-70 hover:opacity-100 hover:bg-muted/30 transition-all border-dashed"
+                                    onClick={() =>
+                                      setSelectedUserId(row.original.user.id)
+                                    }
                                   >
-                                    {flexRender(
-                                      cell.column.columnDef.cell,
-                                      cell.getContext(),
-                                    )}
-                                  </TableCell>
+                                    {row.getVisibleCells().map((cell) => (
+                                      <TableCell
+                                        key={cell.id}
+                                        className={cn(
+                                          "px-4 align-top py-3.5",
+                                          cell.column.id === "alerts" &&
+                                            "text-right",
+                                        )}
+                                      >
+                                        {flexRender(
+                                          cell.column.columnDef.cell,
+                                          cell.getContext(),
+                                        )}
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
                                 ))}
-                              </TableRow>
-                            ))
+                            </>
                           )}
                         </TableBody>
                       </Table>
