@@ -11,11 +11,11 @@ import {
   Building2,
   CalendarClock,
   Camera,
-  CheckCircle2,
-  type Clock3,
+  Clock3,
   Copy,
   KeyRound,
   Loader2,
+  Mail,
   MapPin,
   MonitorCog,
   RefreshCw,
@@ -23,11 +23,13 @@ import {
   ShieldCheck,
   TimerReset,
   Trash2,
+  User,
 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import OfficeLocationInput from "@/components/profile/OfficeLocationInput";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,23 +92,27 @@ function OverviewMetric({
   description,
 }: {
   className?: string;
-  icon: typeof Clock3;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   value: string;
   description: string;
 }) {
   return (
-    <div
-      className={`rounded-2xl border border-border/60 bg-background/82 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-sm dark:border-white/8 dark:bg-black/28 dark:shadow-none`}
-    >
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <Icon className="h-4 w-4 text-brand-500" />
-        <span className="text-xs font-medium uppercase tracking-wide">
+    <div className="rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 transition-all hover:border-brand-500/30 hover:bg-muted/35">
+      <div className="flex items-center gap-2">
+        <div className="flex h-5 w-5 items-center justify-center rounded-md border border-brand-500/20 bg-brand-500/10 text-brand-400">
+          <Icon className="h-3 w-3" />
+        </div>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
       </div>
-      <p className="mt-3 text-xl font-semibold text-foreground">{value}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      <p className="mt-1 font-display text-base font-bold text-foreground sm:text-lg">
+        {value}
+      </p>
+      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+        {description}
+      </p>
     </div>
   );
 }
@@ -142,6 +148,8 @@ export default function ProfilePage() {
     register,
     handleSubmit,
     reset,
+    setValue,
+    watch,
     formState: { errors, isDirty },
   } = useForm<UpdateProfileFormInput, unknown, UpdateProfileInput>({
     resolver: zodResolver(updateProfileSchema),
@@ -153,6 +161,8 @@ export default function ProfilePage() {
       weeklyCapacity: 40,
     },
   });
+
+  const officeLocationValue = watch("officeLocation") ?? "";
 
   useEffect(() => {
     if (!user) {
@@ -400,137 +410,139 @@ export default function ProfilePage() {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <Card className="overflow-hidden border-border/50 bg-transparent py-0 backdrop-blur gap-0">
-          <CardContent className="p-0">
-            <div className="bg-gradient-to-r from-brand-500/18 via-brand-500/8 to-card px-6 py-6 dark:from-brand-500/22 dark:via-brand-500/10">
-              <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
-                <div className="relative h-24 w-24 shrink-0">
-                  <Avatar
-                    className={`h-24 w-24 border-2 border-white/10 shadow-sm transition-opacity ${isUploading ? "opacity-60" : ""}`}
+        <Card className="relative overflow-hidden border border-border/70 bg-card/85 shadow-sm backdrop-blur-md">
+          {/* Linha de brilho sutil no topo com a cor da marca */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-[1.5px] bg-gradient-to-r from-transparent via-brand-500/50 to-transparent" />
+          {/* Glow de iluminação ambiente no canto superior esquerdo */}
+          <div className="pointer-events-none absolute -top-16 -left-16 h-36 w-36 rounded-full bg-brand-500/6 blur-3xl" />
+
+          <CardContent className="px-5 py-4 sm:px-6 sm:py-4.5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center">
+              <div className="relative h-20 w-20 shrink-0 sm:h-22 sm:w-22">
+                <Avatar
+                  className={`h-20 w-20 border-2 border-border/80 shadow-md ring-2 ring-brand-500/20 transition-all sm:h-22 sm:w-22 ${isUploading ? "opacity-60" : ""}`}
+                >
+                  {avatarSrc !== null && isBase64Image(avatarSrc) ? (
+                    // biome-ignore lint/performance/noImgElement: base64 avatar is not supported by next/image
+                    <img
+                      src={avatarSrc}
+                      alt={`Foto de perfil de ${user.name}`}
+                      className="aspect-square size-full rounded-full object-cover"
+                    />
+                  ) : avatarSrc !== null ? (
+                    <AvatarImage
+                      src={avatarSrc}
+                      alt={`Foto de perfil de ${user.name}`}
+                    />
+                  ) : null}
+                  <AvatarFallback className="bg-brand-500/10 text-xl font-bold text-brand-400">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
+                  disabled={isUploading}
+                  className="absolute inset-0 flex items-center justify-center rounded-full bg-black/55 opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
+                  aria-label="Alterar foto de perfil"
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-5 w-5 animate-spin text-white" />
+                  ) : (
+                    <Camera className="h-5 w-5 text-white" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  tabIndex={-1}
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+                    {user.name}
+                  </h2>
+                  <Badge
+                    variant="outline"
+                    className="border-brand-500/30 bg-brand-500/10 text-xs font-medium text-brand-400"
                   >
-                    {avatarSrc !== null && isBase64Image(avatarSrc) ? (
-                      // biome-ignore lint/performance/noImgElement: base64 avatar is not supported by next/image
-                      <img
-                        src={avatarSrc}
-                        alt={`Foto de perfil de ${user.name}`}
-                        className="aspect-square size-full rounded-full object-cover"
-                      />
-                    ) : avatarSrc !== null ? (
-                      <AvatarImage
-                        src={avatarSrc}
-                        alt={`Foto de perfil de ${user.name}`}
-                      />
-                    ) : null}
-                    <AvatarFallback className="bg-brand-500/10 text-2xl font-semibold text-brand-500">
-                      {initials}
-                    </AvatarFallback>
-                  </Avatar>
-                  <button
-                    type="button"
-                    onClick={handleAvatarClick}
-                    disabled={isUploading}
-                    className="absolute inset-0 flex items-center justify-center rounded-full bg-black/45 opacity-0 transition-opacity hover:opacity-100 focus:opacity-100 disabled:cursor-not-allowed disabled:opacity-0"
-                    aria-label="Alterar foto de perfil"
-                  >
-                    {isUploading ? (
-                      <Loader2 className="h-6 w-6 animate-spin text-white" />
-                    ) : (
-                      <Camera className="h-6 w-6 text-white" />
-                    )}
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    onChange={handleFileChange}
-                    className="hidden"
-                    tabIndex={-1}
-                  />
+                    <ShieldCheck className="mr-1 h-3 w-3 text-brand-400" />
+                    {roleLabel[user.role] ?? user.role}
+                  </Badge>
+                  {user.microsoftSyncedAt ? (
+                    <TooltipProvider delayDuration={200}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge
+                            variant="outline"
+                            className="border-border/70 bg-muted/40 text-xs font-normal text-muted-foreground hover:bg-muted/70 cursor-help"
+                          >
+                            <RefreshCw className="mr-1 h-3 w-3 text-muted-foreground" />
+                            Microsoft 365
+                          </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Última sincronização:{" "}
+                          {format(
+                            new Date(user.microsoftSyncedAt),
+                            "dd/MM/yyyy 'às' HH:mm",
+                            { locale: ptBR },
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  ) : null}
                 </div>
 
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="font-display text-2xl font-bold text-foreground">
-                      {user.name}
-                    </h2>
-                    <Badge className="bg-brand-500/10 text-brand-400">
-                      <ShieldCheck className="mr-1 h-3 w-3" />
-                      {roleLabel[user.role] ?? user.role}
-                    </Badge>
-                    <Badge className="bg-emerald-500/10 text-emerald-400">
-                      <CheckCircle2 className="mr-1 h-3 w-3" />
-                      Conta ativa
-                    </Badge>
-                    {user.microsoftSyncedAt ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Badge
-                              variant="outline"
-                              className="border-sky-500/30 bg-sky-500/10 text-sky-400 dark:border-sky-500/40 dark:bg-sky-500/20"
-                            >
-                              <RefreshCw className="mr-1 h-3 w-3" />
-                              Microsoft 365
-                            </Badge>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Última sincronização:{" "}
-                            {format(
-                              new Date(user.microsoftSyncedAt),
-                              "dd/MM/yyyy 'às' HH:mm",
-                              { locale: ptBR },
-                            )}
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : null}
-                  </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground sm:text-sm">
+                  <span className="inline-flex items-center gap-1.5">
+                    <AtSign className="h-3.5 w-3.5 text-muted-foreground" />
+                    {user.email}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                    <Briefcase className="h-3.5 w-3.5 text-brand-400" />
+                    {user.jobTitle || "Cargo não informado"}
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    {user.department || "Departamento não informado"}
+                  </span>
+                  {user.officeLocation ? (
+                    <span className="inline-flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                      {user.officeLocation}
+                    </span>
+                  ) : null}
+                </div>
 
-                  <div className="mt-2 flex flex-wrap gap-4 text-sm text-muted-foreground">
-                    <span className="inline-flex items-center gap-2">
-                      <AtSign className="h-4 w-4" />
-                      {user.email}
-                    </span>
-                    <span className="inline-flex items-center gap-2 font-medium text-foreground">
-                      <Briefcase className="h-4 w-4 text-brand-500" />
-                      {user.jobTitle || "Cargo não informado"}
-                    </span>
-                    <span className="inline-flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-sky-400" />
-                      {user.department || "Departamento não informado"}
-                    </span>
-                    {user.officeLocation ? (
-                      <span className="inline-flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-emerald-400" />
-                        {user.officeLocation}
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="mt-4 grid gap-3 md:grid-cols-3">
-                    <OverviewMetric
-                      icon={CalendarClock}
-                      label="Capacidade"
-                      value={`${user.weeklyCapacity}h / semana`}
-                      description="Base usada para metas e comparação de carga."
-                    />
-                    <OverviewMetric
-                      icon={TimerReset}
-                      label="Entrada padrão"
-                      value={`${user.timeDefaultDuration} min`}
-                      description={`${viewLabel[user.timeDefaultView]} como visão inicial`}
-                    />
-                    <OverviewMetric
-                      icon={MonitorCog}
-                      label="Modo de envio"
-                      value={submitModeLabel[user.timeSubmitMode]}
-                      description={
-                        user.timeDefaultBillable
-                          ? "Novos lançamentos começam faturáveis."
-                          : "Novos lançamentos começam não faturáveis."
-                      }
-                    />
-                  </div>
+                <div className="mt-3.5 grid gap-2.5 sm:grid-cols-3">
+                  <OverviewMetric
+                    icon={CalendarClock}
+                    label="Capacidade"
+                    value={`${user.weeklyCapacity}h / semana`}
+                    description="Base usada para metas e comparação de carga."
+                  />
+                  <OverviewMetric
+                    icon={TimerReset}
+                    label="Entrada padrão"
+                    value={`${user.timeDefaultDuration} min`}
+                    description={`${viewLabel[user.timeDefaultView]} como visão inicial`}
+                  />
+                  <OverviewMetric
+                    icon={MonitorCog}
+                    label="Modo de envio"
+                    value={submitModeLabel[user.timeSubmitMode]}
+                    description={
+                      user.timeDefaultBillable
+                        ? "Novos lançamentos começam faturáveis."
+                        : "Novos lançamentos começam não faturáveis."
+                    }
+                  />
                 </div>
               </div>
             </div>
@@ -558,7 +570,15 @@ export default function ProfilePage() {
                 <div className="space-y-5">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="profile-name">Nome completo</Label>
+                      <div className="flex h-5 items-center">
+                        <Label
+                          htmlFor="profile-name"
+                          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
+                        >
+                          <User className="h-3.5 w-3.5 text-muted-foreground" />
+                          Nome completo
+                        </Label>
+                      </div>
                       <Input
                         id="profile-name"
                         placeholder="Seu nome"
@@ -572,7 +592,15 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="profile-email">Email corporativo</Label>
+                      <div className="flex h-5 items-center">
+                        <Label
+                          htmlFor="profile-email"
+                          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
+                        >
+                          <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                          Email corporativo
+                        </Label>
+                      </div>
                       <Input
                         id="profile-email"
                         value={user.email}
@@ -585,12 +613,12 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <div className="flex items-center justify-between">
+                      <div className="flex h-5 items-center justify-between">
                         <Label
                           htmlFor="profile-job-title"
-                          className="flex items-center gap-1.5"
+                          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
                         >
-                          <Briefcase className="h-3.5 w-3.5 text-brand-500" />
+                          <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
                           Cargo corporativo
                         </Label>
                         <span className="text-[11px] text-muted-foreground">
@@ -610,13 +638,15 @@ export default function ProfilePage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label
-                        htmlFor="profile-department"
-                        className="flex items-center gap-1.5"
-                      >
-                        <Building2 className="h-3.5 w-3.5 text-sky-400" />
-                        Departamento
-                      </Label>
+                      <div className="flex h-5 items-center">
+                        <Label
+                          htmlFor="profile-department"
+                          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
+                        >
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          Departamento
+                        </Label>
+                      </div>
                       <Input
                         id="profile-department"
                         placeholder="Ex: Engenharia, Produto, Operações"
@@ -629,30 +659,29 @@ export default function ProfilePage() {
                       ) : null}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="profile-office"
-                        className="flex items-center gap-1.5"
-                      >
-                        <MapPin className="h-3.5 w-3.5 text-emerald-400" />
-                        Localização / Escritório
-                      </Label>
-                      <Input
-                        id="profile-office"
-                        placeholder="Ex: São Paulo, Sede, Remoto"
-                        {...register("officeLocation")}
-                      />
-                      {errors.officeLocation ? (
-                        <p className="text-xs text-red-400">
-                          {errors.officeLocation.message}
-                        </p>
-                      ) : null}
-                    </div>
+                    <OfficeLocationInput
+                      id="profile-office"
+                      value={officeLocationValue}
+                      onChange={(val) =>
+                        setValue("officeLocation", val, {
+                          shouldDirty: true,
+                          shouldValidate: true,
+                        })
+                      }
+                      placeholder="Ex: São Paulo, Sede, Remoto"
+                      error={errors.officeLocation?.message}
+                    />
 
                     <div className="space-y-2">
-                      <Label htmlFor="profile-capacity">
-                        Capacidade semanal (h)
-                      </Label>
+                      <div className="flex h-5 items-center">
+                        <Label
+                          htmlFor="profile-capacity"
+                          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
+                        >
+                          <Clock3 className="h-3.5 w-3.5 text-muted-foreground" />
+                          Capacidade semanal (h)
+                        </Label>
+                      </div>
                       <Input
                         id="profile-capacity"
                         type="number"
@@ -668,9 +697,9 @@ export default function ProfilePage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-sky-500/30 dark:bg-sky-500/10">
+                  <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-muted/50 text-muted-foreground">
                         <RefreshCw
                           className={cn(
                             "h-4 w-4",
@@ -695,7 +724,7 @@ export default function ProfilePage() {
                       onClick={() => void handleSyncMicrosoft()}
                       disabled={isSyncingMicrosoft}
                       data-tour="profile-microsoft-sync-form"
-                      className="h-8 shrink-0 gap-1.5 border-sky-500/30 text-xs text-sky-400 hover:bg-sky-500/15 hover:text-sky-300 dark:border-sky-500/40 dark:text-sky-300"
+                      className="h-8 shrink-0 gap-1.5 border-border/70 text-xs text-foreground hover:bg-muted"
                     >
                       {isSyncingMicrosoft ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -815,7 +844,7 @@ export default function ProfilePage() {
         <Card className="border-border/50 bg-card/80 backdrop-blur">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-display text-base">
-              <KeyRound className="h-4 w-4 text-brand-500" />
+              <KeyRound className="h-4 w-4 text-muted-foreground" />
               Token da extensão
             </CardTitle>
           </CardHeader>
