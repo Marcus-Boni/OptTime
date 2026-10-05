@@ -42,13 +42,13 @@ const OUR_TERMS: Entry[] = [
   {
     term: "Jornada",
     definition:
-      "As suas 8 horas por dia, multiplicadas pelos dias úteis do período. É o denominador da carga de reuniões e da meta. Tudo acima disso é hora extra, e esta tela nunca trata hora extra como algo a perseguir.",
+      "A sua capacidade semanal distribuída pelos dias úteis do período. É o denominador da carga de reuniões e da meta. Tudo acima disso é hora extra, e esta tela nunca trata hora extra como algo a perseguir.",
     source: "Sua capacidade semanal + dias úteis do Outlook",
   },
   {
     term: "Janela do Outlook",
     definition:
-      "O intervalo configurado no seu Teams/Outlook, por exemplo 08:00–17:00. É MAIOR que a jornada porque inclui o almoço — nove horas de janela para oito de trabalho. Serve só para saber onde reunião cabe e o que é fora de hora; nunca para medir quanto você trabalhou.",
+      "O intervalo configurado no seu Teams/Outlook, por exemplo 08:00–17:00. Pode ser maior que a jornada porque inclui almoço ou pausas. Serve só para saber onde reunião cabe e o que é fora de hora; nunca para medir quanto você trabalhou.",
     source: "Horário de trabalho do Outlook",
   },
   {

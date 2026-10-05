@@ -8,6 +8,7 @@ import {
 } from "@/lib/access-control";
 import { resolvePeriod } from "@/lib/ai/periods";
 import type { AgentUserContext } from "@/lib/ai/types";
+import { incompleteDayThresholdMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import {
   activeTimer,
@@ -36,8 +37,9 @@ export interface AssistantSnapshot {
   };
   topProjects: Array<{ id: string; name: string; code: string }>;
   pendingApprovals: number;
-  /** Days of the current week (up to today) still below 6h. */
+  /** Days of the current week (up to today) still below the warning threshold. */
   incompleteDays: Array<{ date: string; weekday: string; minutes: number }>;
+  incompleteDayThresholdMinutes: number;
 }
 
 /**
@@ -125,13 +127,16 @@ export async function buildAssistantSnapshot(
   const previousSheet = sheets.find((s) => s.period === previousWeekPeriod);
 
   const incompleteDays: AssistantSnapshot["incompleteDays"] = [];
+  const incompleteThreshold = incompleteDayThresholdMinutes(
+    user.weeklyCapacityHours,
+  );
   for (const date of eachWeekdayUpToToday(
     thisWeek.from,
     thisWeek.to,
     user.today,
   )) {
     const minutes = minutesByDate.get(date) ?? 0;
-    if (minutes < 360) {
+    if (minutes < incompleteThreshold) {
       incompleteDays.push({
         date,
         weekday: format(parseLocalDate(date), "EEEE", { locale: ptBR }),
@@ -162,6 +167,7 @@ export async function buildAssistantSnapshot(
     previousWeekPeriod,
     previousWeekStatus: previousSheet?.status ?? "open",
     previousWeekMinutes,
+    incompleteDayThresholdMinutes: incompleteThreshold,
     rejectionReason:
       currentSheet?.rejectionReason ?? previousSheet?.rejectionReason ?? null,
     timer: {
@@ -279,7 +285,7 @@ export function renderSnapshotForPrompt(
 
   if (snapshot.incompleteDays.length > 0) {
     lines.push(
-      `- Dias úteis desta semana abaixo de 6h: ${snapshot.incompleteDays
+      `- Dias úteis desta semana abaixo de ${formatDuration(snapshot.incompleteDayThresholdMinutes)}: ${snapshot.incompleteDays
         .map((day) => `${day.weekday} (${formatDuration(day.minutes)})`)
         .join(", ")}`,
     );

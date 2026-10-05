@@ -240,9 +240,10 @@ folha silenciosamente. Textos (`"2h30"`, `"90m"`) são aceitos por conveniência
 mas a documentação da ferramenta insiste no número.
 
 **Submissão exige confirmação.** `opt_time_submit_timesheet` recusa semanas com
-dias abaixo de 6h e devolve as pendências. Só um `force=true` explícito — que o
-prompt embutido instrui a pedir ao usuário — segue adiante. Submeter bloqueia a
-semana e só um gestor reabre.
+dias abaixo do patamar mínimo calculado pela capacidade semanal do perfil e
+devolve as pendências. Só um `force=true` explícito — que o prompt embutido
+instrui a pedir ao usuário — segue adiante. Submeter bloqueia a semana e só um
+gestor reabre.
 
 **Escrever sempre confirma.** Os prompts nativos param antes de qualquer
 gravação e pedem aprovação item a item. Um agente que preenche a semana sozinho

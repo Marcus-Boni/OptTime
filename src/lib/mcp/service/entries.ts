@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
+import { dailyTargetMinutes, weeklyCapacityMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
@@ -395,9 +396,12 @@ export async function getDaySummary(
   const { start, end } = getPeriodRange(period, "weekly");
   const weekTotalMinutes = await sumMinutes(principal.userId, start, end);
 
-  const weeklyCapacityMinutes = (profile?.weeklyCapacity ?? 40) * 60;
-  const dailyCapacityMinutes = Math.round(
-    weeklyCapacityMinutes / WORKING_DAYS_PER_WEEK,
+  const profileWeeklyCapacityMinutes = weeklyCapacityMinutes(
+    profile?.weeklyCapacity,
+  );
+  const dailyCapacityMinutes = dailyTargetMinutes(
+    profile?.weeklyCapacity,
+    WORKING_DAYS_PER_WEEK,
   );
 
   const totalMinutes = rows.reduce((total, row) => total + row.duration, 0);
@@ -441,7 +445,7 @@ export async function getDaySummary(
     activeTimer,
     weekTotalMinutes,
     weekTotalLabel: humanizeMinutes(weekTotalMinutes),
-    weeklyCapacityMinutes,
+    weeklyCapacityMinutes: profileWeeklyCapacityMinutes,
   };
 }
 

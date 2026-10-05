@@ -430,9 +430,9 @@ Você pode confirmar o registro abaixo com 1-clique:
   if (lower.includes("timesheet") || lower.includes("aprova")) {
     return `### 📅 Como funciona o fluxo de Timesheets no OptSolv Time Tracker:
 
-1. **Registro**: Insira suas horas diariamente via Timer ou formulário (meta de **40h/semana**).
+1. **Registro**: Insira suas horas diariamente via Timer ou formulário (a meta vem da capacidade semanal do perfil).
 2. **Submissão**: Clique no botão **"Submeter Semana"** ao final do período.
-   > ⚠️ *Importante:* Se houver algum dia útil com menos de 6h, o sistema emitirá um alerta.
+   > ⚠️ *Importante:* Se houver algum dia útil abaixo do patamar mínimo calculado pela sua capacidade, o sistema emitirá um alerta.
 3. **Aprovação**: O seu gestor direto receberá uma notificação para **Aprovar** ou **Rejeitar**.
 4. **Status**:
    - \`DRAFT\` (Rascunho)

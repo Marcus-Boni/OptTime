@@ -73,7 +73,7 @@ export function AgendaShapeCard({ shape, hasMailbox }: AgendaShapeCardProps) {
       icon: Activity,
       label: "Carga de reuniões",
       value: `${shape.meetingLoadPercent}%`,
-      hint: "Fatia da sua jornada de trabalho ocupada por reuniões. A conta é sobre as suas 8h por dia, não sobre a janela do Outlook — que é maior porque inclui o almoço.",
+      hint: "Fatia da sua jornada configurada ocupada por reuniões. A conta usa a sua meta diária, não a janela do Outlook — que pode ser maior porque inclui almoço.",
       tone: shape.meetingLoadPercent >= 50 ? "warn" : "neutral",
     },
     {

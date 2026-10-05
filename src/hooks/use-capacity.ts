@@ -2,6 +2,11 @@
 
 import { endOfISOWeek, format, startOfISOWeek } from "date-fns";
 import { useCallback, useEffect, useState } from "react";
+import {
+  capacityPercentage,
+  dailyTargetMinutes,
+  weeklyCapacityMinutes,
+} from "@/lib/capacity";
 import { TIME_ENTRIES_UPDATED_EVENT } from "@/lib/time-events";
 
 interface DaySummary {
@@ -28,13 +33,13 @@ interface UseCapacityOptions {
   weeklyCapacityHours?: number;
 }
 
-function buildCapacityData(
+export function buildCapacityData(
   summaries: DaySummary[],
   referenceDate: Date,
   weeklyCapacityHours: number,
 ): CapacityData {
-  const weeklyCapacityMinutes = weeklyCapacityHours * 60;
-  const dailyTargetMinutes = Math.round(weeklyCapacityMinutes / 5);
+  const weekTargetMinutes = weeklyCapacityMinutes(weeklyCapacityHours);
+  const dayTargetMinutes = dailyTargetMinutes(weeklyCapacityHours);
   const todayStr = format(referenceDate, "yyyy-MM-dd");
 
   const weeklyLoggedMinutes = summaries.reduce(
@@ -50,19 +55,16 @@ function buildCapacityData(
 
   return {
     weeklyLoggedMinutes,
-    weeklyCapacityMinutes,
-    weeklyPercentage:
-      weeklyCapacityMinutes > 0
-        ? Math.round((weeklyLoggedMinutes / weeklyCapacityMinutes) * 100)
-        : 0,
+    weeklyCapacityMinutes: weekTargetMinutes,
+    weeklyPercentage: capacityPercentage(
+      weeklyLoggedMinutes,
+      weekTargetMinutes,
+    ),
     dailyLoggedMinutes,
-    dailyTargetMinutes,
-    dailyPercentage:
-      dailyTargetMinutes > 0
-        ? Math.round((dailyLoggedMinutes / dailyTargetMinutes) * 100)
-        : 0,
-    weeklyRemainingMinutes: weeklyCapacityMinutes - weeklyLoggedMinutes,
-    dailyRemainingMinutes: dailyTargetMinutes - dailyLoggedMinutes,
+    dailyTargetMinutes: dayTargetMinutes,
+    dailyPercentage: capacityPercentage(dailyLoggedMinutes, dayTargetMinutes),
+    weeklyRemainingMinutes: weekTargetMinutes - weeklyLoggedMinutes,
+    dailyRemainingMinutes: dayTargetMinutes - dailyLoggedMinutes,
     daySummaries: summaries,
   };
 }

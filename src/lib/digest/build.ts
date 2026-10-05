@@ -19,6 +19,10 @@ import {
   isWeekend,
   resolvePeriod,
 } from "@/lib/ai/periods";
+import {
+  incompleteDayThresholdMinutes,
+  weeklyCapacityMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { projectMember, timeEntry, timesheet, user } from "@/lib/db/schema";
 import { getWeekPeriod } from "@/lib/utils";
@@ -34,8 +38,6 @@ import type {
   WorkCategory,
 } from "./types";
 
-/** A weekday below this is flagged as incomplete, matching the submit rule. */
-const INCOMPLETE_DAY_THRESHOLD_MINUTES = 360;
 const UNDERLOAD_RATIO = 0.6;
 const OVERLOAD_RATIO = 1.1;
 
@@ -229,6 +231,10 @@ export async function buildMemberDigest(
 
   const days = buildDaySlices(entries, period.from, period.to);
   const businessDays = days.filter((day) => !day.isWeekend);
+  const targetMinutes = weeklyCapacityMinutes(target.weeklyCapacity);
+  const incompleteThreshold = incompleteDayThresholdMinutes(
+    target.weeklyCapacity,
+  );
 
   const mostProductive = days.reduce<DigestDaySlice | null>(
     (best, day) => (day.minutes > (best?.minutes ?? 0) ? day : best),
@@ -255,7 +261,7 @@ export async function buildMemberDigest(
     billableMinutes: entries
       .filter((entry) => entry.billable)
       .reduce((sum, entry) => sum + entry.duration, 0),
-    targetMinutes: target.weeklyCapacity * 60,
+    targetMinutes,
     entryCount: entries.length,
     projects: buildProjectSlices(entries, totalMinutes),
     days,
@@ -270,8 +276,9 @@ export async function buildMemberDigest(
         : null,
     timesheetStatus: normalizeStatus(sheet?.status),
     incompleteDays: businessDays.filter(
-      (day) => day.minutes < INCOMPLETE_DAY_THRESHOLD_MINUTES,
+      (day) => day.minutes < incompleteThreshold,
     ).length,
+    incompleteDayThresholdMinutes: incompleteThreshold,
   };
 }
 
@@ -356,7 +363,7 @@ export async function buildManagerDigest(
       userId: member.id,
       name: member.name,
       minutes: minutesByUser.get(member.id) ?? 0,
-      targetMinutes: member.weeklyCapacity * 60,
+      targetMinutes: weeklyCapacityMinutes(member.weeklyCapacity),
       timesheetStatus: statusByUser.get(member.id) ?? "open",
     }))
     .sort((a, b) => b.minutes - a.minutes);

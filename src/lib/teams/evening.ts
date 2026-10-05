@@ -12,6 +12,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { and, eq, gte, inArray, isNull, lte, sql } from "drizzle-orm";
 import { getServerAppUrl } from "@/lib/app-url";
+import { dailyTargetMinutes } from "@/lib/capacity";
 import { getBackgroundMicrosoftToken } from "@/lib/collaboration/background-token";
 import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
@@ -33,7 +34,6 @@ import { getTeamsSettings } from "./settings";
 const DELIVERY_CONCURRENCY = 4;
 /** Below this gap the day counts as closed — no nudge. */
 const MIN_GAP_MINUTES = 20;
-const WORKING_DAYS_PER_WEEK = 5;
 
 export interface EveningRunResult {
   status: "completed" | "skipped";
@@ -372,10 +372,7 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
         // Mailbox working hours know how many days the week is spread across;
         // the fallback is the historical five.
         const targetMinutes =
-          context.targetMinutes ??
-          Math.round(
-            ((candidate.weeklyCapacity ?? 40) * 60) / WORKING_DAYS_PER_WEEK,
-          );
+          context.targetMinutes ?? dailyTargetMinutes(candidate.weeklyCapacity);
         const gap = targetMinutes - stats.minutes;
 
         if (gap < MIN_GAP_MINUTES) {

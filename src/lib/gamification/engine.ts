@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import {
   gamificationEvent,
   timeEntry,
+  user,
   userAchievement,
   userGamification,
 } from "@/lib/db/schema";
@@ -92,23 +93,35 @@ async function loadWeekSignals(
 ): Promise<WeekSignals> {
   const { start, end } = getPeriodRange(period, periodType);
 
-  const entries = await executor
-    .select({
-      date: timeEntry.date,
-      duration: timeEntry.duration,
-      description: timeEntry.description,
-    })
-    .from(timeEntry)
-    .where(
-      and(
-        eq(timeEntry.userId, userId),
-        sql`${timeEntry.date} >= ${start}`,
-        sql`${timeEntry.date} <= ${end}`,
-        isNull(timeEntry.deletedAt),
+  const [entries, profile] = await Promise.all([
+    executor
+      .select({
+        date: timeEntry.date,
+        duration: timeEntry.duration,
+        description: timeEntry.description,
+      })
+      .from(timeEntry)
+      .where(
+        and(
+          eq(timeEntry.userId, userId),
+          sql`${timeEntry.date} >= ${start}`,
+          sql`${timeEntry.date} <= ${end}`,
+          isNull(timeEntry.deletedAt),
+        ),
       ),
-    );
+    executor.query.user.findFirst({
+      where: eq(user.id, userId),
+      columns: { weeklyCapacity: true },
+    }),
+  ]);
 
-  return computeWeekSignals(period, start, end, entries);
+  return computeWeekSignals(
+    period,
+    start,
+    end,
+    entries,
+    profile?.weeklyCapacity,
+  );
 }
 
 interface UnlockResult {

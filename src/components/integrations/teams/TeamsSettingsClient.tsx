@@ -344,8 +344,8 @@ export function TeamsSettingsClient() {
                     Lembrete vespertino (17h30, dias úteis)
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    “Você registrou 6h hoje — deseja fechar o dia?” com ações em
-                    1 clique. Chega no Teams (webhook pessoal) ou por e-mail.
+                    “Confira se sua meta diária está fechada” com ações em 1
+                    clique. Chega no Teams (webhook pessoal) ou por e-mail.
                   </p>
                 </div>
                 <Switch

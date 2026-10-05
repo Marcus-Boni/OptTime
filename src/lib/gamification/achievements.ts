@@ -111,7 +111,7 @@ export const ACHIEVEMENTS: readonly AchievementDefinition[] = [
     key: "balance",
     name: "Equilíbrio",
     description:
-      "Semanas sem dia acima de 10h, sem fim de semana e dentro de um total saudável.",
+      "Semanas sem dia acima do limite proporcional à sua jornada, sem fim de semana e dentro de um total saudável.",
     rationale:
       "Ritmo sustentável é resultado, não sorte. Esta conquista existe para deixar isso explícito.",
     icon: "HeartPulse",

@@ -124,7 +124,7 @@ DRAFT → SUBMITTED → APPROVED
 
 - Visão semanal/mensal agrupando entradas por dia, com totais por projeto
 - Botão "Submeter Semana" — submete todas as entries do período ao manager direto
-- Validação pré-submit: alerta se algum dia da semana tem menos de 6h registradas
+- Validação pré-submit: alerta se algum dia útil tem menos de 75% da meta derivada da capacidade semanal do perfil
 - Manager recebe badge de notificação com lista de timesheets pendentes
 - Aprovação/rejeição por timesheet com comentário obrigatório em caso de rejeição
 - Em caso de rejeição: colaborador visualiza motivo destacado e pode editar e resubmeter
@@ -132,9 +132,9 @@ DRAFT → SUBMITTED → APPROVED
 
 ### Módulo 5 — Calendário
 
-- Visualização mensal com **heatmap de intensidade** (escala laranja: 0h=cinza, 8h+=laranja escuro)
+- Visualização mensal com **heatmap de intensidade** (intensidade proporcional à meta diária derivada da capacidade semanal do perfil)
 - Click no dia: painel lateral deslizante com lista de entradas
-- Indicadores visuais: ✅ completo (≥8h verde) · ⚠️ parcial (4-7h amarelo) · ❌ mínimo (<4h vermelho) · ○ vazio (cinza)
+- Indicadores visuais: progresso e conclusão proporcionais à meta diária individual · vazio (cinza)
 - Mini-formulário de entrada rápida acessível diretamente do calendário
 - Navegação entre meses com animação de slide
 - Toggle Mês | Semana — a visão semanal exibe barras de horas por dia
@@ -431,7 +431,7 @@ export const users = pgTable("users", {
   department: varchar("department", { length: 255 }),
   managerId: uuid("manager_id").references((): AnyPgColumn => users.id),
   hourlyRate: numeric("hourly_rate", { precision: 10, scale: 2 }),
-  weeklyCapacity: integer("weekly_capacity").notNull().default(2400), // minutos = 40h
+  weeklyCapacity: integer("weekly_capacity").notNull().default(40), // horas semanais
   azureId: varchar("azure_id", { length: 255 }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -939,7 +939,7 @@ approved                  rejected → entries voltam a draft
 ```
 1. Sexta-feira: badge "Submeter semana" aparece na sidebar
 2. Usuário acessa /timesheets → confere entradas agrupadas por dia
-3. Validação: dias com < 6h exibem alerta amarelo
+3. Validação: dias úteis abaixo de 75% da meta diária individual exibem alerta
 4. Clica "Submeter Semana" → modal de confirmação (total horas + projetos)
 5. Confirma → entries: draft → submitted; timesheet: open → submitted
 6. Manager recebe badge "Aprovações (N)" no menu

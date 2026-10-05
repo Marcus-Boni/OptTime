@@ -18,6 +18,7 @@ import {
 } from "@/lib/ai/operator/ui-commands";
 import { formatDayLabel, resolvePeriod } from "@/lib/ai/periods";
 import type { NavigateAction, UiCommandPayload } from "@/lib/ai/types";
+import { incompleteDayThresholdMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry, timesheet } from "@/lib/db/schema";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
@@ -417,14 +418,16 @@ export const prepareTimesheetSubmitTool: AgentTool<
       );
     }
 
-    const dailyTarget = Math.round((ctx.user.weeklyCapacityHours / 5) * 60);
+    const incompleteThreshold = incompleteDayThresholdMinutes(
+      ctx.user.weeklyCapacityHours,
+    );
     const lowDays = [...minutesByDate.entries()].filter(
-      ([, minutes]) => minutes < Math.min(360, dailyTarget),
+      ([, minutes]) => minutes < incompleteThreshold,
     ).length;
 
     const warning =
       lowDays > 0
-        ? `${lowDays} dia(s) da semana estão abaixo de 6h registradas.`
+        ? `${lowDays} dia(s) da semana estão abaixo de ${formatDuration(incompleteThreshold)} registradas.`
         : null;
 
     ctx.emitAction({

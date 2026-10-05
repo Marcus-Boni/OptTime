@@ -35,9 +35,9 @@ export interface TimeDistributionBarProps {
  * meeting, and meetings that happened but were never logged. Nothing is
  * counted twice, so the bar's total is a real number.
  *
- * The total is framed against the **contracted day**, not against the Outlook
- * window: "17h de 40h de jornada" is a sentence anyone can check, while the
- * window spans lunch and belongs to a different question.
+ * The total is framed against the **configured capacity**, not against the
+ * Outlook window. A working window can span lunch and belongs to a different
+ * question.
  *
  * Microsoft's "espaço livre na agenda" used to sit here as a highlighted box
  * and was removed. It is the complement of the meeting load — a week with few

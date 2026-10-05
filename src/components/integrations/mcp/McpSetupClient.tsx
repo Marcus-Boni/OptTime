@@ -61,7 +61,7 @@ const EXAMPLE_CONVERSATION = [
   },
   {
     role: "Agente",
-    text: "✅ 2h30 registradas em Harvest (OPT-014), Work Item #890.\nTotal acumulado hoje: 7h30 de 8h.",
+    text: "✅ 2h30 registradas em Harvest (OPT-014), Work Item #890.\nTotal acumulado hoje: 5h30 de 6h configuradas.",
   },
   {
     role: "Você",
@@ -69,7 +69,7 @@ const EXAMPLE_CONVERSATION = [
   },
   {
     role: "Agente",
-    text: "Timesheet 2026-W33 — status: aberta. Total 34h de 40h.\n⚠️ quarta (2026-08-19) tem apenas 4h. Quer que eu sugira lançamentos com base nos seus commits?",
+    text: "Timesheet 2026-W33 — status: aberta. Total 24h de 30h configuradas.\n⚠️ quarta (2026-08-19) ficou abaixo da meta diária. Quer que eu sugira lançamentos com base nos seus commits?",
   },
 ] as const;
 

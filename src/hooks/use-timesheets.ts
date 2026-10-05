@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { weeklyCapacityMinutes } from "@/lib/capacity";
 import {
   dispatchCelebration,
   readCelebration,
@@ -72,6 +73,14 @@ export interface TimesheetEntry {
 
 export interface TimesheetDetail extends Timesheet {
   entries: TimesheetEntry[];
+}
+
+export function getTimesheetWeeklyTargetMinutes(
+  timesheet: Pick<Timesheet, "periodType" | "weeklyCapacity">,
+): number | null {
+  if (timesheet.periodType !== "weekly") return null;
+
+  return weeklyCapacityMinutes(timesheet.weeklyCapacity);
 }
 
 export function useTimesheets(

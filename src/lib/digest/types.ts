@@ -71,8 +71,9 @@ export interface MemberDigest {
   mostProductiveDay: { date: string; weekday: string; minutes: number } | null;
   /** Weekly timesheet state at generation time. */
   timesheetStatus: "open" | "submitted" | "approved" | "rejected";
-  /** Business days below 6h. */
+  /** Business days below the submission-warning threshold. */
   incompleteDays: number;
+  incompleteDayThresholdMinutes: number;
 }
 
 export interface DigestTeamMember {

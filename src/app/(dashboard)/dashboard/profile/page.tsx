@@ -672,7 +672,7 @@ export default function ProfilePage() {
                       error={errors.officeLocation?.message}
                     />
 
-                    <div className="space-y-2">
+                    <div className="space-y-2" data-tour="profile-capacity">
                       <div className="flex h-5 items-center">
                         <Label
                           htmlFor="profile-capacity"
@@ -687,8 +687,18 @@ export default function ProfilePage() {
                         type="number"
                         min={1}
                         max={168}
+                        aria-describedby="profile-capacity-help"
+                        aria-invalid={Boolean(errors.weeklyCapacity)}
                         {...register("weeklyCapacity", { valueAsNumber: true })}
                       />
+                      <p
+                        id="profile-capacity-help"
+                        className="text-xs text-muted-foreground"
+                      >
+                        Informe sua carga horária semanal. Em cinco dias úteis:
+                        20h = 4h/dia, 30h = 6h/dia e 40h = 8h/dia. Metas e
+                        indicadores acompanham essa capacidade.
+                      </p>
                       {errors.weeklyCapacity ? (
                         <p className="text-xs text-red-400">
                           {errors.weeklyCapacity.message}

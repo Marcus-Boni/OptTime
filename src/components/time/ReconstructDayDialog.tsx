@@ -55,9 +55,11 @@ import {
   type DayPlanDraftItem,
   useReconstructDay,
 } from "@/hooks/use-reconstruct-day";
-import { authClient } from "@/lib/auth-client";
+import { authClient, useSession } from "@/lib/auth-client";
+import { dailyTargetMinutes } from "@/lib/capacity";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
 import type { DayPlan, ReconstructSourceKind } from "@/types/reconstruct";
+import type { User } from "@/types/user";
 
 const MIN_ITEM_MINUTES = 15;
 const MIN_CALL_MINUTES = 1;
@@ -478,7 +480,13 @@ export function ReconstructDayDialog({
   date,
 }: ReconstructDayDialogProps) {
   const prefersReducedMotion = useReducedMotion();
-  const day = useReconstructDay({ date, enabled: open });
+  const { data: session } = useSession();
+  const user = session?.user as User | undefined;
+  const day = useReconstructDay({
+    date,
+    enabled: open && Boolean(user),
+    weeklyCapacityHours: user?.weeklyCapacity,
+  });
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
   const {
@@ -508,7 +516,8 @@ export function ReconstructDayDialog({
   );
 
   const projectedMinutes = (plan?.existingMinutes ?? 0) + selectedMinutes;
-  const targetMinutes = plan?.targetMinutes ?? 480;
+  const targetMinutes =
+    plan?.targetMinutes ?? dailyTargetMinutes(user?.weeklyCapacity);
   const projectedPct = Math.min(
     Math.round((projectedMinutes / Math.max(targetMinutes, 1)) * 100),
     100,

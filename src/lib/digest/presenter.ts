@@ -154,7 +154,7 @@ function presentMember(digest: MemberDigest): DigestPresentation {
     attention =
       "O timesheet dessa semana ainda não foi submetido para aprovação.";
   } else if (digest.incompleteDays > 0) {
-    attention = `${digest.incompleteDays} dia(s) útil(eis) ficaram abaixo de 6h registradas.`;
+    attention = `${digest.incompleteDays} dia(s) útil(eis) ficaram abaixo de ${formatDuration(digest.incompleteDayThresholdMinutes)} registradas.`;
   }
 
   const formattedPeriodRange = formatDigestPeriodRange(

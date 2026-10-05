@@ -23,6 +23,7 @@
     "verify:teams-calls": "tsx scripts/verify-call-records.ts && tsx scripts/verify-call-signals.ts && tsx scripts/verify-call-suggestions.ts",
     "verify:memory": "tsx scripts/verify-memory-evidence.ts && tsx scripts/verify-memory-reconstruct.ts",
     "verify:my-time": "tsx scripts/verify-my-time.ts",
+    "verify:capacity": "tsx scripts/verify-capacity.ts && tsx scripts/verify-capacity-ui.ts && tsx scripts/verify-capacity-day-view.ts",
     "verify:hq": "tsx scripts/verify-hq-budget.ts && tsx scripts/verify-hq-capacity.ts"
   },
   "dependencies": {

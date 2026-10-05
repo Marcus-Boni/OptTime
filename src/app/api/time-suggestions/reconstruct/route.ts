@@ -17,6 +17,7 @@ import {
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import { dailyTargetMinutes } from "@/lib/capacity";
 import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import {
@@ -491,9 +492,9 @@ export async function POST(req: Request): Promise<Response> {
       limit: 200,
     });
 
-    const weeklyCapacityMinutes = (profile?.weeklyCapacity ?? 40) * 60;
-    const targetMinutes = Math.round(
-      weeklyCapacityMinutes / WORKING_DAYS_PER_WEEK,
+    const targetMinutes = dailyTargetMinutes(
+      profile?.weeklyCapacity,
+      WORKING_DAYS_PER_WEEK,
     );
     const existingMinutes = existingEntries.reduce(
       (sum, entry) => sum + entry.duration,

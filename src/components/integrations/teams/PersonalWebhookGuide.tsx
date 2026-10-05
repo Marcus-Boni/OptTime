@@ -61,7 +61,7 @@ const TROUBLESHOOTING: Array<{ symptom: string; cause: string }> = [
  * `Invoke-RestMethod` swallows the response body and reports only the status.
  */
 function buildTestCommand(origin: string): string {
-  const card = `{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","version":"1.4","msteams":{"width":"Full"},"body":[{"type":"TextBlock","text":"🌆 Fim de dia — teste","weight":"Bolder","size":"Large","wrap":true},{"type":"TextBlock","text":"Você registrou **6h** hoje. Faltam **2h** para fechar o dia.","wrap":true}],"actions":[{"type":"Action.OpenUrl","title":"✨ Preencher meu dia com IA","url":"${origin}/dashboard/time?reconstruct=1"}]}}]}`;
+  const card = `{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","version":"1.4","msteams":{"width":"Full"},"body":[{"type":"TextBlock","text":"🌆 Fim de dia — teste","weight":"Bolder","size":"Large","wrap":true},{"type":"TextBlock","text":"Você registrou **6h** hoje. Confira se isso fecha sua meta diária.","wrap":true}],"actions":[{"type":"Action.OpenUrl","title":"✨ Preencher meu dia com IA","url":"${origin}/dashboard/time?reconstruct=1"}]}}]}`;
 
   return [
     "$url = 'COLE_AQUI_A_URL_DO_FLUXO'",

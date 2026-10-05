@@ -1,4 +1,8 @@
 import { eachDayOfInterval, isWeekend } from "date-fns";
+import {
+  overworkDayThresholdMinutes,
+  sustainableWeeklyThresholdMinutes,
+} from "@/lib/capacity";
 import { parseLocalDate } from "@/lib/utils";
 import { QUALITY_THRESHOLDS } from "./constants";
 import type { WeekSignals } from "./types";
@@ -32,6 +36,7 @@ export function computeWeekSignals(
   start: string,
   end: string,
   entries: WeekSignalEntry[],
+  weeklyCapacityHours?: number | null,
 ): WeekSignals {
   const minutesByDay = new Map<string, number>();
   let totalMinutes = 0;
@@ -61,9 +66,10 @@ export function computeWeekSignals(
   let overworkedDays = 0;
   let businessDaysCovered = 0;
 
+  const overworkThreshold = overworkDayThresholdMinutes(weeklyCapacityHours);
   for (const [date, minutes] of minutesByDay) {
     if (minutes > maxDayMinutes) maxDayMinutes = minutes;
-    if (minutes > QUALITY_THRESHOLDS.overworkDayMinutes) overworkedDays += 1;
+    if (minutes > overworkThreshold) overworkedDays += 1;
     if (minutes > 0 && !isWeekend(parseLocalDate(date))) {
       businessDaysCovered += 1;
     }
@@ -95,7 +101,7 @@ export function computeWeekSignals(
       entryCount > 0 &&
       overworkedDays === 0 &&
       weekendMinutes === 0 &&
-      totalMinutes <= QUALITY_THRESHOLDS.sustainableWeeklyMinutes,
+      totalMinutes <= sustainableWeeklyThresholdMinutes(weeklyCapacityHours),
     isDetailed:
       entryCount > 0 &&
       richDescriptionRatio >= QUALITY_THRESHOLDS.richDescriptionRatio,

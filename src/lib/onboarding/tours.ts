@@ -58,6 +58,15 @@ export const TOURS: readonly TourDefinition[] = [
         hint: "Atalho: G depois T.",
       },
       {
+        id: "profile-capacity",
+        title: "A plataforma acompanha sua jornada",
+        description:
+          "No perfil, informe sua capacidade semanal: 20h para uma jornada de 4h por dia, 30h para 6h ou 40h para 8h, em cinco dias úteis. Metas, progresso e alertas usam sua capacidade, inclusive em jornadas de estágio.",
+        target: '[data-tour="profile-capacity"]',
+        route: "/dashboard/profile",
+        placement: "bottom",
+      },
+      {
         id: "nav-journey",
         title: "Minha Jornada",
         description:
@@ -249,7 +258,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "distribution",
         title: "O seu tempo comprometido, numa barra só",
         description:
-          "Três fatias que não se sobrepõem: o que você apontou fora de reunião, as reuniões que já viraram apontamento e as que ainda não viraram. O total é lido contra a sua jornada — as 8h por dia que você trabalha —, nunca contra a janela do Outlook, que é maior porque inclui o almoço.",
+          "Três fatias que não se sobrepõem: o que você apontou fora de reunião, as reuniões que já viraram apontamento e as que ainda não viraram. O total é lido contra a jornada configurada no seu perfil, nunca contra a janela do Outlook, que pode incluir almoço.",
         target: '[data-tour="my-time-distribution"]',
         placement: "bottom",
       },
@@ -345,7 +354,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "list",
         title: "Semana a semana",
         description:
-          "Cada cartão mostra o período, o total apontado e alertas — como dias com menos de 6 horas registradas.",
+          "Cada cartão mostra o período, o total apontado e alertas proporcionais à capacidade semanal da pessoa, inclusive em jornadas menores.",
         target: '[data-tour="timesheets-list"]',
         placement: "top",
       },

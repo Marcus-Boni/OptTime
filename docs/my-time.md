@@ -223,11 +223,12 @@ como se fossem.
 
 | | O que é | Exemplo típico na OptSolv |
 |---|---|---|
-| **Jornada** | as 8h/dia contratadas | 8h × 5 = **40h** |
+| **Jornada** | a capacidade semanal definida no perfil | 4h × 5 = **20h**, 6h × 5 = **30h** ou 8h × 5 = **40h** |
 | **Janela do Outlook** | o intervalo configurado no Teams | 08:00–17:00 = 9h × 5 = **45h** |
 
-A janela é maior **porque inclui o almoço**. Todo mundo aqui trabalha 8h por
-dia; acima disso é hora extra.
+A janela pode ser maior porque inclui o almoço. A jornada usa a capacidade
+individual do perfil, inclusive para pessoas estagiárias. Os valores de 40h
+abaixo são exemplos para o perfil padrão.
 
 `TimeShape` publica os dois, e cada número usa o denominador certo:
 

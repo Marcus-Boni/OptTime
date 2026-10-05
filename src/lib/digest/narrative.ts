@@ -103,7 +103,7 @@ function buildMemberFacts(digest: MemberDigest): string {
   }
 
   lines.push(
-    `Dias úteis abaixo de 6h: ${digest.incompleteDays}`,
+    `Dias úteis abaixo de ${formatDuration(digest.incompleteDayThresholdMinutes)}: ${digest.incompleteDays}`,
     `Status do timesheet da semana: ${digest.timesheetStatus}`,
   );
 
@@ -301,7 +301,7 @@ function writeMemberFallback(digest: MemberDigest): string {
     );
   } else if (digest.incompleteDays > 0) {
     parts.push(
-      `${digest.incompleteDays} dia(s) útil(eis) ficaram abaixo de 6h registradas.`,
+      `${digest.incompleteDays} dia(s) útil(eis) ficaram abaixo de ${formatDuration(digest.incompleteDayThresholdMinutes)} registradas.`,
     );
   }
 

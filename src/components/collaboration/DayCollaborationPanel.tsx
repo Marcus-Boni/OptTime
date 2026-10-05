@@ -533,7 +533,7 @@ export function DayCollaborationPanel({
           )}
 
           {/* Only shown when the mailbox is the source: a target that differs
-              from the familiar 8h has to explain where it came from. */}
+              from the profile's usual daily capacity has to explain where it came from. */}
           {day.sources.mailbox && day.target.isWorkingDay && (
             <p className="text-xs text-muted-foreground">
               Meta de hoje:{" "}

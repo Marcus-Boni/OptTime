@@ -24,6 +24,10 @@ import {
   createAzureDevOpsClient,
 } from "@/lib/azure-devops/client";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import {
+  dailyTargetMinutes,
+  incompleteDayThresholdMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import {
   activeTimer,
@@ -121,11 +125,6 @@ async function fetchEntries(
     timesheetStatus: row.timesheet?.status ?? null,
     project: row.project ?? null,
   }));
-}
-
-/** Daily target in minutes derived from the user's weekly capacity. */
-function dailyTargetMinutes(weeklyCapacityHours: number): number {
-  return Math.round((weeklyCapacityHours / 5) * 60);
 }
 
 function buildProjectSlices(
@@ -484,13 +483,17 @@ export const getTimesheetStatusTool: AgentTool<
       | "submitted"
       | "approved"
       | "rejected";
-    const target = dailyTargetMinutes(ctx.user.weeklyCapacityHours);
+    const incompleteThreshold = incompleteDayThresholdMinutes(
+      ctx.user.weeklyCapacityHours,
+    );
     const days = buildDaySlices(entries, range.from, range.to);
 
     const incompleteDays = days
       .filter(
         (day) =>
-          !day.isWeekend && day.date <= ctx.user.today && day.minutes < target,
+          !day.isWeekend &&
+          day.date <= ctx.user.today &&
+          day.minutes < incompleteThreshold,
       )
       .map((day) => ({
         date: day.date,
@@ -833,7 +836,7 @@ export const getTeamOverviewTool: AgentTool<PeriodArgs> = {
         name: member.name,
         minutes: minutesByUser.get(member.id) ?? 0,
         targetMinutes:
-          range.businessDays * dailyTargetMinutes(member.weeklyCapacity ?? 40),
+          range.businessDays * dailyTargetMinutes(member.weeklyCapacity),
         timesheetStatus: statusByUser.get(member.id) ?? "open",
       }))
       .sort((a, b) => b.minutes - a.minutes);

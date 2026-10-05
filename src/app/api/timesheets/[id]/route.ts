@@ -38,6 +38,7 @@ export async function GET(
             email: true,
             image: true,
             department: true,
+            weeklyCapacity: true,
           },
         },
         approver: { columns: { id: true, name: true } },
@@ -113,7 +114,9 @@ export async function GET(
       });
     }
 
-    return Response.json({ timesheet: ts });
+    return Response.json({
+      timesheet: { ...ts, weeklyCapacity: ts.user?.weeklyCapacity ?? 40 },
+    });
   } catch (error) {
     console.error("[GET /api/timesheets/:id]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

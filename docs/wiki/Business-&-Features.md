@@ -32,7 +32,7 @@ stateDiagram-v2
 
 ### Regras Críticas do Ciclo de Vida:
 1.  **Bloqueio de Edição:** Uma vez que um Timesheet entra no estado **SUBMITTED** ou **APPROVED**, as entradas de tempo vinculadas a ele são travadas contra edições ou exclusões para assegurar a integridade dos dados auditados.
-2.  **Validação de Envio:** O sistema exibe um alerta preventivo se o colaborador tentar submeter uma semana contendo menos de 6 horas por dia útil (totalizando menos de 30h/semana), embora não impeça o envio caso haja justificativa legítima (como férias ou folgas).
+2.  **Validação de Envio:** O sistema exibe um alerta preventivo se o colaborador tentar submeter uma semana com dias úteis abaixo do patamar mínimo proporcional à capacidade semanal do perfil, embora não impeça o envio caso haja justificativa legítima (como férias ou folgas).
 3.  **Fluxo de Correção:** Em caso de rejeição por parte do gestor, a folha inteira retorna ao estado de **DRAFT**. O colaborador visualiza o comentário do gestor em destaque no dashboard, podendo corrigir os apontamentos incorretos e submetê-la novamente.
 
 ---
@@ -48,7 +48,7 @@ stateDiagram-v2
 *   **Sugestões Inteligentes (Time Copilot):** Um motor inteligente que lê os commits mais recentes do Git (do dia) e as reuniões do calendário corporativo (Outlook) para montar uma proposta de timesheet preenchida no final do dia.
 
 ### 2. Visão de Calendário e Heatmap
-*   **Mapa de Calor:** Visualização mensal inspirada no GitHub, utilizando cores de intensidade baseadas nas horas registradas. Dias com horas normais (≥8h) ficam verdes ou laranjas escuros; dias parciais (4h-7h) ficam amarelos; e dias vazios ou insuficientes ficam cinzas ou vermelhos.
+*   **Mapa de Calor:** Visualização mensal com intensidade e conclusão proporcionais à meta diária derivada da capacidade semanal do perfil, incluindo jornadas de 4h e 6h. Dias vazios permanecem sem progresso.
 *   **Painel Deslizante:** Clicar em qualquer dia do calendário abre uma aba deslizante lateral (Drawer/Sheet) contendo o detalhe das entradas e permitindo lançar novos blocos rapidamente por um formulário compacto.
 
 ### 3. Cockpit de Relatórios & Analytics

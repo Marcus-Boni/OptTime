@@ -67,7 +67,7 @@ export const PROMPTS: PromptDefinition[] = [
     name: "audit_weekly_timesheet",
     title: "Auditar timesheet da semana",
     description:
-      "Verifica se todos os dias da semana somam ao menos 8 horas, identifica os dias incompletos e sugere como preenchê-los antes de submeter.",
+      "Verifica a semana contra a capacidade configurada no perfil, identifica os dias incompletos e sugere como preenchê-los antes de submeter.",
     arguments: [PERIOD_ARGUMENT],
     build: (args) => {
       const period =
@@ -79,7 +79,7 @@ export const PROMPTS: PromptDefinition[] = [
         "Siga estes passos:",
         "",
         `1. Chame \`opt_time_get_timesheet_status\` com period="${period}".`,
-        "2. Liste dia a dia quanto foi registrado e destaque todo dia útil abaixo de 8 horas (dias futuros não contam como pendência).",
+        "2. Liste dia a dia quanto foi registrado e destaque todo dia útil abaixo da meta diária calculada pela capacidade semanal do perfil (dias futuros não contam como pendência).",
         "3. Para cada dia incompleto, chame `opt_time_suggest_daily_entries` naquela data e proponha lançamentos concretos com projeto, duração e descrição.",
         "4. Apresente um resumo: total da semana, quanto falta para a capacidade, e a lista de lançamentos propostos.",
         "5. **Pare aqui.** Só registre algo depois que eu aprovar cada item.",
@@ -112,7 +112,7 @@ export const PROMPTS: PromptDefinition[] = [
         "",
         "Siga estes passos:",
         "",
-        `1. Para cada uma das últimas ${safeWeeks} semanas, chame \`opt_time_get_timesheet_status\` e identifique os dias úteis com menos de 6 horas.`,
+        `1. Para cada uma das últimas ${safeWeeks} semanas, chame \`opt_time_get_timesheet_status\` e identifique os dias úteis abaixo do patamar mínimo calculado pela capacidade semanal do perfil.`,
         "2. Ignore semanas já submetidas ou aprovadas — elas estão bloqueadas e não podem ser alteradas. Apenas me avise quais são.",
         "3. Para cada dia em aberto que precisa de horas, chame `opt_time_suggest_daily_entries` naquela data.",
         "4. Monte uma tabela: data, dia da semana, horas atuais, horas faltantes e o lançamento sugerido (projeto, duração, descrição).",

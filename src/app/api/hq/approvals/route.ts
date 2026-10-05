@@ -6,6 +6,7 @@ import {
   getActorContext,
   getScopedUserIds,
 } from "@/lib/access-control";
+import { weeklyCapacityMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
 import {
@@ -133,7 +134,7 @@ export async function GET(req: Request): Promise<Response> {
 
       const anomalies = detectTimesheetAnomalies({
         entries: anomalyEntries,
-        weeklyCapacityMinutes: (ts.user?.weeklyCapacity ?? 40) * 60,
+        weeklyCapacityMinutes: weeklyCapacityMinutes(ts.user?.weeklyCapacity),
       });
 
       const minutesByProject = new Map<

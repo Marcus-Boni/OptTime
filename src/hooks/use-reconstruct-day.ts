@@ -68,6 +68,23 @@ export interface UseReconstructDayOptions {
   date: string;
   /** Generate on first bind. Keep false while the surface is closed. */
   enabled: boolean;
+  /** Included in the cache key so 20h, 30h and 40h profiles keep separate drafts. */
+  weeklyCapacityHours?: number | null;
+}
+
+export function getReconstructDayCacheKey(
+  date: string,
+  weeklyCapacityHours?: number | null,
+): string {
+  if (weeklyCapacityHours === undefined || weeklyCapacityHours === null) {
+    return `plan:${date}`;
+  }
+
+  const capacity = Number.isFinite(weeklyCapacityHours)
+    ? Math.max(0, weeklyCapacityHours)
+    : 0;
+
+  return `plan:${date}:capacity:${capacity}`;
 }
 
 async function fetchDayPlan(
@@ -100,6 +117,7 @@ async function fetchDayPlan(
 export function useReconstructDay({
   date,
   enabled,
+  weeklyCapacityHours,
 }: UseReconstructDayOptions): ReconstructDayController {
   const [isApplying, setIsApplying] = useState(false);
   /** Mirrors `isApplying` for listeners that must not re-subscribe. */
@@ -112,7 +130,7 @@ export function useReconstructDay({
 
   const result = useCachedAiResult<DayPlanDraft>({
     cache: planCache,
-    key: `plan:${date}`,
+    key: getReconstructDayCacheKey(date, weeklyCapacityHours),
     fetcher,
     enabled,
     staleAfterMs: PLAN_STALE_AFTER_MS,

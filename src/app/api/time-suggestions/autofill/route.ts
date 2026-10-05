@@ -9,6 +9,7 @@ import { resolveTodayInTimeZone } from "@/lib/ai/context";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
+import { dailyTargetMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import {
   project,
@@ -301,8 +302,8 @@ export async function GET(req: Request): Promise<Response> {
       }
     }
 
-    const dailyTargetMinutes = Math.round(
-      ((profile?.weeklyCapacity ?? 40) / 5) * 60,
+    const profileDailyTargetMinutes = dailyTargetMinutes(
+      profile?.weeklyCapacity,
     );
 
     const proposals = buildAutofillProposals({
@@ -318,7 +319,7 @@ export async function GET(req: Request): Promise<Response> {
       defaults: {
         durationMinutes: profile?.timeDefaultDuration ?? 60,
         billable: profile?.timeDefaultBillable ?? true,
-        dailyTargetMinutes,
+        dailyTargetMinutes: profileDailyTargetMinutes,
       },
     });
 

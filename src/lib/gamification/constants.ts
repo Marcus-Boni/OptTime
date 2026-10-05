@@ -46,8 +46,6 @@ export const TIER_ORDER: readonly AchievementTier[] = [
 ];
 
 export const QUALITY_THRESHOLDS = {
-  /** A single day above this counts as overwork. */
-  overworkDayMinutes: 10 * 60,
   /** Descriptions shorter than this are treated as placeholders. */
   richDescriptionChars: 15,
   /** Share of entries that must be descriptive for the detail bonus. */
@@ -57,8 +55,6 @@ export const QUALITY_THRESHOLDS = {
    * full five on purpose: a day off must not cost the badge.
    */
   consistencyMinDays: 4,
-  /** Weekly total above this is unsustainable, even if spread out. */
-  sustainableWeeklyMinutes: 45 * 60,
   /** Hour of Monday (local) by which the previous week must be closed. */
   deadlineHour: 12,
 } as const;

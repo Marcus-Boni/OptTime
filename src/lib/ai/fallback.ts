@@ -254,7 +254,7 @@ function buildBriefing(snapshot: AssistantSnapshot): string {
 
   if (snapshot.incompleteDays.length > 0) {
     lines.push(
-      `Atenção: ${snapshot.incompleteDays.map((day) => day.weekday).join(", ")} ainda estão abaixo de 6h.`,
+      `Atenção: ${snapshot.incompleteDays.map((day) => day.weekday).join(", ")} ainda estão abaixo de ${formatDuration(snapshot.incompleteDayThresholdMinutes)}.`,
     );
   }
 

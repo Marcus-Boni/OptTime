@@ -5,6 +5,7 @@ import {
   getManagedProjectIds,
   getScopedUserIds,
 } from "@/lib/access-control";
+import { weeklyCapacityMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { allocation, project, timeEntry, user } from "@/lib/db/schema";
 import { buildWeekWindow, classifyUtilization } from "@/lib/hq/workload";
@@ -167,7 +168,7 @@ export async function GET(req: Request): Promise<Response> {
     let idleThisWeek = 0;
 
     const rows: WorkloadRow[] = people.map((person) => {
-      const capacityMinutes = (person.weeklyCapacity ?? 40) * 60;
+      const capacityMinutes = weeklyCapacityMinutes(person.weeklyCapacity);
       let pastUtilizationSum = 0;
       let pastWeekCount = 0;
 

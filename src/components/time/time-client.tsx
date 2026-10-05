@@ -40,6 +40,7 @@ import {
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useTimesheets } from "@/hooks/use-timesheets";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
+import { dailyTargetMinutes as getDailyTargetMinutes } from "@/lib/capacity";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { getWeekPeriod, parseLocalDate } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
@@ -373,7 +374,7 @@ export function TimeClient() {
     [ignoredSuggestionFingerprints, suggestions],
   );
 
-  const dailyTargetMinutes = Math.round((weeklyCapacityHours * 60) / 5);
+  const dailyTargetMinutes = getDailyTargetMinutes(weeklyCapacityHours);
   const weekEntryCount = entries.length;
   const weekTotalMinutes = entries.reduce(
     (sum, entry) => sum + entry.duration,
@@ -991,6 +992,7 @@ export function TimeClient() {
         ) : activeView === "day" ? (
           <DayView
             entries={entries}
+            dailyTargetMinutes={dailyTargetMinutes}
             selectedDate={selectedDate}
             selectedDateLocked={selectedDateLocked}
             selectedDateLockStatus={selectedDateTimesheetStatus.status}

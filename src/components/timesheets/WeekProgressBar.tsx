@@ -6,7 +6,7 @@ import { cn, formatDuration } from "@/lib/utils";
 
 interface WeekProgressBarProps {
   totalMinutes: number;
-  /** Em horas (ex: 40) */
+  /** Em horas, conforme a capacidade semanal do perfil. */
   weeklyCapacity: number;
   className?: string;
 }

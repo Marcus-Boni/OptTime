@@ -767,7 +767,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_submit_timesheet",
     title: "Submeter timesheet",
     description:
-      "Submete a semana para aprovação do gestor. Após submeter, os lançamentos ficam bloqueados para edição. Se houver dias abaixo de 6h a chamada falha listando as pendências — mostre-as ao usuário e só repita com force=true após a confirmação dele.",
+      "Submete a semana para aprovação do gestor. Após submeter, os lançamentos ficam bloqueados para edição. Se houver dias abaixo do patamar mínimo da capacidade semanal, a chamada falha listando as pendências — mostre-as ao usuário e só repita com force=true após a confirmação dele.",
     scope: "timesheets:submit",
     annotations: MUTATING,
     inputSchema: {

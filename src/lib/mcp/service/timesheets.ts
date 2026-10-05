@@ -1,5 +1,9 @@
 import { format, getISOWeek } from "date-fns";
 import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import {
+  incompleteDayThresholdMinutes,
+  weeklyCapacityMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet, user } from "@/lib/db/schema";
 import { awardWeekSubmission } from "@/lib/gamification";
@@ -20,9 +24,6 @@ import { humanizeMinutes, weekdayLabel } from "../format";
  * transaction, same totals, same gamification hook — because an agent closing
  * the week must produce a record indistinguishable from one closed in the UI.
  */
-
-/** A day below this is flagged to the user before submitting. */
-const MIN_DAILY_MINUTES = 6 * 60;
 
 export interface TimesheetDay {
   date: string;
@@ -91,6 +92,12 @@ export async function getTimesheetStatus(
 
   const status = (record?.status ?? "open") as TimesheetStatusView["status"];
   const totalMinutes = entries.reduce((total, row) => total + row.duration, 0);
+  const profileWeeklyCapacityMinutes = weeklyCapacityMinutes(
+    profile?.weeklyCapacity,
+  );
+  const incompleteThreshold = incompleteDayThresholdMinutes(
+    profile?.weeklyCapacity,
+  );
   const billableMinutes = entries
     .filter((row) => row.billable)
     .reduce((total, row) => total + row.duration, 0);
@@ -121,7 +128,7 @@ export async function getTimesheetStatus(
       isWeekend: weekend,
       // Only past and current days can be "missing" — a Friday in the future is
       // not a gap, and flagging it would train users to ignore the warnings.
-      isBelowTarget: !weekend && date <= today && minutes < MIN_DAILY_MINUTES,
+      isBelowTarget: !weekend && date <= today && minutes < incompleteThreshold,
     });
 
     cursor.setDate(cursor.getDate() + 1);
@@ -132,7 +139,7 @@ export async function getTimesheetStatus(
     warnings.push(
       day.minutes === 0
         ? `${day.weekday} (${day.date}) está sem lançamentos.`
-        : `${day.weekday} (${day.date}) tem apenas ${day.label} — abaixo das 6h.`,
+        : `${day.weekday} (${day.date}) tem apenas ${day.label} — abaixo de ${humanizeMinutes(incompleteThreshold)}.`,
     );
   }
 
@@ -159,7 +166,7 @@ export async function getTimesheetStatus(
         : totalMinutes,
     ),
     billableMinutes,
-    weeklyCapacityMinutes: (profile?.weeklyCapacity ?? 40) * 60,
+    weeklyCapacityMinutes: profileWeeklyCapacityMinutes,
     entryCount: entries.length,
     submittedAt: record?.submittedAt?.toISOString() ?? null,
     approvedAt: record?.approvedAt?.toISOString() ?? null,
@@ -231,7 +238,7 @@ export interface SubmitTimesheetResult {
 /**
  * Submits a week for approval.
  *
- * `force` is required whenever the week has days below the 6h target: agents
+ * `force` is required whenever the week has days below the warning threshold: agents
  * must surface the gap to the user and get an explicit go-ahead, rather than
  * silently closing an incomplete week on their behalf.
  */

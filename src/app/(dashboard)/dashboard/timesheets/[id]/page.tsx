@@ -61,7 +61,10 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { useTimesheetDetail } from "@/hooks/use-timesheets";
+import {
+  getTimesheetWeeklyTargetMinutes,
+  useTimesheetDetail,
+} from "@/hooks/use-timesheets";
 import { useSession } from "@/lib/auth-client";
 import { isTimesheetSubmittableStatus } from "@/lib/timesheet-status";
 import { formatDuration, getPeriodRange, parseLocalDate } from "@/lib/utils";
@@ -353,13 +356,15 @@ export default function TimesheetDetailPage() {
     0,
   );
   const workedDays = days.filter((day) => day.totalMinutes > 0).length;
-  const weeklyTargetMinutes =
-    timesheet.periodType === "weekly" ? 40 * 60 : null;
+  const weeklyTargetMinutes = getTimesheetWeeklyTargetMinutes(timesheet);
   const utilization = weeklyTargetMinutes
     ? Math.min((timesheet.totalMinutes / weeklyTargetMinutes) * 100, 100)
     : null;
   const remainingMinutes = weeklyTargetMinutes
     ? Math.max(weeklyTargetMinutes - timesheet.totalMinutes, 0)
+    : null;
+  const weeklyTargetLabel = weeklyTargetMinutes
+    ? formatDuration(weeklyTargetMinutes)
     : null;
   const currentWeek = `${format(new Date(), "yyyy")}-W${getISOWeek(new Date()).toString().padStart(2, "0")}`;
   const isCurrentWeek = timesheet.period === currentWeek;
@@ -636,7 +641,7 @@ export default function TimesheetDetailPage() {
           <CardHeader className="gap-1">
             <CardDescription>Meta semanal</CardDescription>
             <CardTitle className="font-mono text-2xl">
-              {weeklyTargetMinutes ? formatDuration(weeklyTargetMinutes) : "-"}
+              {weeklyTargetLabel ?? "-"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -646,7 +651,7 @@ export default function TimesheetDetailPage() {
                 <p className="text-sm text-muted-foreground">
                   {remainingMinutes === 0
                     ? "Meta atingida para a semana."
-                    : `${formatDuration(remainingMinutes ?? 0)} restantes para 40h.`}
+                    : `${formatDuration(remainingMinutes ?? 0)} restantes para ${weeklyTargetLabel}.`}
                 </p>
               </>
             ) : (

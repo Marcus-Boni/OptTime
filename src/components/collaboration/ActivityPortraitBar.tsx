@@ -44,9 +44,9 @@ export interface ActivityPortraitBarProps {
   /**
    * Minutes of working window in the period.
    *
-   * Without it "43h30 livres" is an impossible-looking number for someone who
-   * contracts 40h a week. With it, the sentence becomes "43h30 de 50h de
-   * expediente" and the arithmetic explains itself.
+   * Without it "43h30 livres" is an impossible-looking number. With it, the
+   * sentence becomes "43h30 de 50h de expediente" and the arithmetic explains
+   * itself.
    */
   capacityMinutes?: number;
   /** The Outlook window as a wall clock, e.g. "08:00–17:00". */
@@ -236,7 +236,7 @@ export function ActivityPortraitBar({
               ? `${ACTIVITY_DESCRIPTIONS.focus} ${FOCUS_DISCLAIMER}`
               : FOCUS_DISCLAIMER}
             {capacityMinutes && windowLabel
-              ? ` A referência é a janela ${windowLabel} do Outlook, que inclui o almoço e por isso é maior que a jornada de 8h.`
+              ? ` A referência é a janela ${windowLabel} do Outlook, que pode incluir almoço e por isso pode ser maior que a sua meta diária.`
               : ""}
           </p>
         </div>

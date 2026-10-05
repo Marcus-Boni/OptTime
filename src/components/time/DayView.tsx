@@ -50,6 +50,7 @@ import type { MeetingSignal } from "@/types/collaboration";
 
 interface DayViewProps {
   entries: TimeEntry[];
+  dailyTargetMinutes: number;
   selectedDate: Date;
   selectedDateLocked: boolean;
   selectedDateLockStatus?: string | null;
@@ -78,8 +79,6 @@ interface DayViewProps {
   showWeekends?: boolean;
   onShowWeekendsChange?: (show: boolean) => void;
 }
-
-const dailyTarget = 8 * 60;
 
 function MiniMonthCalendar({
   referenceDate,
@@ -219,6 +218,7 @@ function MiniMonthCalendar({
 
 export function DayView({
   entries,
+  dailyTargetMinutes: dailyTarget,
   selectedDate,
   selectedDateLocked,
   selectedDateLockStatus,

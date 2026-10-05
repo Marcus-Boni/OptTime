@@ -361,9 +361,8 @@ export interface TimeShape {
    * Share of the **contracted** working day consumed by meetings, 0–100.
    *
    * Measured against `contractedMinutes`, not against the Outlook window.
-   * Everyone here works 8h a day; the Outlook window is wider because it
-   * spans lunch, and dividing by it made every agenda look emptier than it
-   * felt.
+   * The profile defines the contracted capacity. The Outlook window can span
+   * lunch, so dividing by it may understate the meeting load.
    */
   meetingLoadPercent: number;
   /**
@@ -384,7 +383,7 @@ export interface TimeShape {
   /** `windowMinutes` × working days. The denominator of the Viva free space. */
   windowCapacityMinutes: number;
   /**
-   * The actual working day, summed over the period: 8h × working days.
+   * The profile-based daily targets, summed over the period.
    *
    * Taken from each day's own target, so a part-time contract or a
    * four-day week produces the right number without a special case.

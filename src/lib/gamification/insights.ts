@@ -8,15 +8,19 @@ import {
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
+import {
+  overworkDayThresholdMinutes,
+  sustainableWeeklyThresholdMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
-import { project, timeEntry, timesheet } from "@/lib/db/schema";
+import { project, timeEntry, timesheet, user } from "@/lib/db/schema";
 import {
   formatDuration,
   getPeriodRange,
   getWeekPeriod,
   parseLocalDate,
 } from "@/lib/utils";
-import { INSIGHT_WINDOW_WEEKS, QUALITY_THRESHOLDS } from "./constants";
+import { INSIGHT_WINDOW_WEEKS } from "./constants";
 import { submissionDeadline } from "./engine";
 import { formatPeriodLabel, formatPeriodShort } from "./format";
 import type {
@@ -62,6 +66,7 @@ function buildWindowPeriods(reference: Date, weeks: number): string[] {
 function buildBalanceReport(
   entries: InsightEntry[],
   periods: string[],
+  weeklyCapacityHours?: number | null,
 ): BalanceReport {
   const minutesByDay = new Map<string, number>();
   for (const entry of entries) {
@@ -73,9 +78,9 @@ function buildBalanceReport(
 
   const overworkDays: string[] = [];
   const weekendDays: string[] = [];
+  const overworkThreshold = overworkDayThresholdMinutes(weeklyCapacityHours);
   for (const [date, minutes] of minutesByDay) {
-    if (minutes > QUALITY_THRESHOLDS.overworkDayMinutes)
-      overworkDays.push(date);
+    if (minutes > overworkThreshold) overworkDays.push(date);
     if (minutes > 0 && isWeekend(parseLocalDate(date))) weekendDays.push(date);
   }
 
@@ -85,7 +90,7 @@ function buildBalanceReport(
     for (const [date, minutes] of minutesByDay) {
       if (date >= start && date <= end) total += minutes;
     }
-    return total > QUALITY_THRESHOLDS.sustainableWeeklyMinutes;
+    return total > sustainableWeeklyThresholdMinutes(weeklyCapacityHours);
   });
 
   // Longest run of consecutive logged days, weekends included.
@@ -114,7 +119,7 @@ function buildBalanceReport(
   const overworkPenalty = Math.min(30, overworkDays.length * 8);
   breakdown.push({
     key: "overwork",
-    label: "Dias acima de 10h",
+    label: `Dias acima de ${formatDuration(overworkThreshold)}`,
     detail:
       overworkDays.length === 0
         ? "Nenhum dia extenuante no período."
@@ -138,7 +143,7 @@ function buildBalanceReport(
   const heavyPenalty = Math.min(30, heavyWeeks.length * 10);
   breakdown.push({
     key: "weekly_load",
-    label: "Semanas acima de 45h",
+    label: "Semanas acima do patamar saudável",
     detail:
       heavyWeeks.length === 0
         ? "Carga semanal dentro de um patamar sustentável."
@@ -205,7 +210,7 @@ export async function buildPersonalInsights(
   const windowStart = getPeriodRange(firstPeriod, "weekly").start;
   const windowEnd = getPeriodRange(lastPeriod, "weekly").end;
 
-  const [rows, timesheets] = await Promise.all([
+  const [rows, timesheets, profile] = await Promise.all([
     db
       .select({
         date: timeEntry.date,
@@ -236,6 +241,10 @@ export async function buildPersonalInsights(
         status: true,
         submittedAt: true,
       },
+    }),
+    db.query.user.findFirst({
+      where: eq(user.id, userId),
+      columns: { weeklyCapacity: true },
     }),
   ]);
 
@@ -466,7 +475,7 @@ export async function buildPersonalInsights(
   return {
     windowWeeks: periods.length,
     insights,
-    balance: buildBalanceReport(entries, periods),
+    balance: buildBalanceReport(entries, periods, profile?.weeklyCapacity),
     trend,
   };
 }
