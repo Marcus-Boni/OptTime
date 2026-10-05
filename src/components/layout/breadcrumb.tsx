@@ -21,6 +21,7 @@ const segmentLabels: Record<string, string> = {
   integrations: "Integrações",
   "azure-devops": "Azure DevOps",
   profile: "Perfil",
+  onboarding: "Central de Ajuda",
   settings: "Configurações",
   new: "Novo",
   "team-hours": "Horas da Equipe",
