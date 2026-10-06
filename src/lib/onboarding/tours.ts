@@ -484,6 +484,16 @@ export const TOURS: readonly TourDefinition[] = [
         hint: "Gerado uma vez por semana e reaproveitado — use Gerar novamente quando quiser refazer.",
       },
       {
+        id: "teams-app",
+        title: "Registre horas pelo Teams",
+        description:
+          "Escreva “registre 1h de reunião com meu líder” no chat do app OptSolv Time, mencione o app em um grupo, ou use + → Registrar horas em qualquer conversa — inclusive no chat consigo mesmo. Um card pede sua confirmação antes de lançar.",
+        target: '[data-tour="teams-app"]',
+        placement: "bottom",
+        route: "/dashboard/settings/integrations/teams",
+        hint: "Suas horas só aparecem no seu chat privado com o app, nunca em grupos.",
+      },
+      {
         id: "settings",
         title: "Você define os limites",
         description:
@@ -702,6 +712,16 @@ export const TOURS: readonly TourDefinition[] = [
           "Conecte o Azure DevOps para vincular work items, a extensão do editor para o cronômetro no rodapé do VS Code, o Teams para notificações e digests, e o MCP para operar o tracker conversando com seu agente de IA.",
         target: '[data-tour="settings-integrations"]',
         placement: "top",
+      },
+      {
+        id: "teams-app-admin",
+        title: "Publicar o app do Teams",
+        description:
+          "Registre um Azure Bot (plano gratuito), cole App ID e segredo, teste as credenciais e baixe o pacote do app para publicar no Teams admin center. A partir daí, todos registram horas por chat.",
+        target: '[data-tour="teams-app-admin"]',
+        placement: "top",
+        route: "/dashboard/settings/integrations/teams",
+        roles: ADMIN_ONLY,
       },
       {
         id: "people",
