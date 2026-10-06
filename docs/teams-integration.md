@@ -8,15 +8,20 @@
 
 ## 1. O que existe
 
-São **quatro recursos independentes**. Cada um pode ser ligado sozinho — não é
+São **cinco recursos independentes**. Cada um pode ser ligado sozinho — não é
 preciso configurar tudo para começar a usar.
 
 | # | Recurso | O que faz | Quem configura |
 |---|---------|-----------|----------------|
 | 1 | **Standup do time** | Card no canal às 08h15 com as horas de ontem, por pessoa | Admin, uma vez |
 | 2 | **Lembrete vespertino** | Nudge individual às 17h30: "você registrou 6h, faltam 2h" com botão de 1 clique | Admin liga; cada pessoa escolhe o canal |
-| 3 | **Comandos no chat** | `@OptSolv timer start`, `hoje`, `semana`… direto no Teams | Admin, uma vez |
+| 3 | **Comandos no chat** *(legado)* | `@OptSolv timer start`, `hoje`, `semana`… em canais, via webhook de saída | Admin, uma vez |
 | 4 | **Status sincronizado** | Timer rodando vira `⏱️ Focado: OPT-101` no seu status | Consentimento do tenant + toggle de cada pessoa |
+| 5 | **App OptSolv Time** | “registre 1h de reunião com meu líder” em **qualquer** chat, grupo ou canal — inclusive o chat consigo mesmo | Admin, uma vez (Azure Bot + publicação do app) |
+
+> O recurso #5 é o sucessor do #3: faz tudo o que o webhook de saída faz, em
+> todos os tipos de conversa, com linguagem natural e confirmação por card.
+> Veja a seção 8.
 
 > O recurso #2 também lista **as reuniões que você teve e ainda não lançou**.
 > Essa detecção é do módulo Registro por Colaboração — veja
@@ -301,7 +306,126 @@ Se não aparecer, confira nesta ordem:
 
 ---
 
-## 8. Resolução de problemas
+## 8. Recurso 5 — App OptSolv Time (bot + extensão de mensagem)
+
+### 8.1 Por que um app, e não o webhook de saída
+
+O webhook de saída (§6) só existe em **canais de equipe**: não funciona em chats
+1:1, em grupos nem no chat consigo mesmo, e só entende a sintaxe fixa
+`timer start …`. É o mesmo limite que levou Slack, Jira e Asana a publicar
+**apps** no Teams em vez de webhooks. O app combina duas superfícies sobre o
+mesmo Azure Bot:
+
+| Superfície | Onde aparece | Como se usa |
+|---|---|---|
+| **Bot** | Chat privado com o app, grupos e canais onde ele foi adicionado | “registre 1h de reunião com meu líder” · `@OptSolv Time 45min de daily` |
+| **Extensão de mensagem** (ação *Registrar horas*) | Compositor de **qualquer** chat, grupo, canal ou reunião — inclusive o chat consigo mesmo — e o menu **⋯ → Mais ações** de qualquer mensagem | **+ → OptSolv Time → Registrar horas**, descreve em texto livre e confirma |
+
+> **Sobre “/opt-time”:** o Teams não permite que apps registrem comandos de
+> barra em conversas arbitrárias, como o Slack faz. O equivalente nativo é a
+> extensão de mensagem (+ no compositor) e a menção `@OptSolv Time`. Ainda
+> assim, o texto pode começar com `/opt-time` ou `opt-time` — o prefixo é
+> ignorado.
+
+### 8.2 Como funciona
+
+```
+Teams ──JWT──▶ POST /api/teams/bot ──▶ valida o token do Bot Connector (JWKS)
+                     │
+                     ├─ invoke (botão de card, diálogo) ─▶ responde no corpo HTTP
+                     └─ mensagem / instalação ─▶ 200 imediato + after():
+                            identidade (oid → usuário, ou e-mail → vínculo automático)
+                            contexto (projetos, líder direto, mais usados, autonomia)
+                            interpretação: IA (JSON validado) sobre parser de regras
+                            card de proposta ─▶ Registrar ─▶ serviço MCP (logTime)
+```
+
+- **Linguagem natural com rede de segurança.** O modelo lê o pedido e devolve
+  JSON validado com Zod; um parser determinístico roda sempre por baixo. Código
+  de projeto inventado é descartado, data futura cai para a das regras, e um
+  projeto citado literalmente pela pessoa vence qualquer palpite. Com todos os
+  provedores de IA fora do ar, o app continua funcionando só com as regras.
+- **“Meu líder”** vira o nome do gestor direto (`user.manager_id`).
+- **Projeto não citado** é sugerido pelo histórico dos últimos 14 dias, e o
+  card avisa “confira antes de registrar”.
+- **Nada é gravado sem confirmação**, salvo quem escolheu *piloto automático*
+  para “Lançar horas” no Operador IA — e mesmo assim só quando o projeto foi
+  citado, com botão **Desfazer** no card.
+- **Mesmas regras do app**: o clique em *Registrar* passa pelo serviço do MCP
+  (`logTime`), então acesso a projeto, semana travada e sincronização com o
+  Azure DevOps valem igual. Datas: sem futuro, até 30 dias para trás.
+- **Idempotência**: o id da proposta viaja no card e é reservado em
+  `teams_bot_action` antes de gravar — clique duplo ou retry do Teams nunca
+  duplicam o lançamento.
+- **Privacidade**: horas só aparecem no chat privado. Em grupo, `hoje`,
+  `semana` e comandos de timer respondem no privado e deixam só um aviso no
+  grupo; o card de sucesso em grupo omite o total do dia; só quem pediu pode
+  confirmar ou desfazer o card.
+- **Identidade**: o `aadObjectId` do remetente é casado com `user.azure_id`.
+  Sem vínculo ainda, o bot consulta o e-mail do membro no Teams e vincula na
+  hora (nunca sobrescreve um `azure_id` diferente). Contas de outro tenant são
+  recusadas.
+
+### 8.3 Configuração (admin, uma vez — cerca de 15 min)
+
+1. **Azure Bot** — no portal do Azure, crie um recurso **Azure Bot**:
+   - *Tipo de app*: **Single Tenant** (multi-tenant não é mais aceito em bots novos)
+   - *Plano*: **F0 (gratuito)** — o canal do Teams não tem custo
+   - *Criação do App ID*: criar novo
+2. Em **Configuração** do bot, preencha o **Endpoint de mensagens** com o valor
+   mostrado na tela do app (`https://<app>/api/teams/bot`) e copie o
+   **Microsoft App ID** e o **Tenant ID**.
+3. Em **Gerenciar senha** → **Certificados e segredos**, gere um segredo e copie
+   o **Valor** (aparece uma vez só).
+4. Em **Canais**, adicione **Microsoft Teams**.
+5. No OptSolv Time: **Configurações → Integrações → Microsoft Teams → App do
+   Teams — bot e extensão**. Cole App ID, Tenant ID (vazio usa o
+   `MICROSOFT_TENANT_ID` do login) e segredo → **Salvar bot** →
+   **Testar credenciais** (pede um token real à Microsoft).
+6. **Baixar pacote do app** gera o `.zip` (manifest + ícones) a partir do App
+   ID salvo. Publique em **Teams admin center → Aplicativos do Teams →
+   Gerenciar aplicativos → Carregar novo aplicativo** e libere na política de
+   permissões. Opcional: fixe o app na barra lateral via *Políticas de
+   configuração*.
+7. Garanta que a **chave-geral** da integração (§3) está ligada.
+
+> **Migração:** o recurso usa as tabelas da migração `0028_teams_bot`
+> (`teams_bot_conversation`, `teams_bot_action`). Rode `pnpm db:migrate` antes
+> do primeiro uso; em produção ela entra no pipeline como as demais.
+
+> **Atualizando o app:** ao mudar o manifest
+> (`src/lib/teams/app-package/manifest.ts`), incremente `TEAMS_APP_VERSION`,
+> baixe o pacote de novo e reenvie no admin center. Mudanças só no servidor
+> (handlers, cards, IA) não exigem republicar.
+
+### 8.4 Testando
+
+| Teste | Comando |
+|---|---|
+| Parser, cards, pacote e segurança (offline) | `pnpm verify:teams-bot` |
+| Handlers ponta a ponta no banco de dev, com Bot Connector falso | `pnpm verify:teams-bot:e2e` |
+
+O E2E usa `TEAMS_BOT_DEV_SKIP_AUTH=true`, que desliga a validação de JWT
+**apenas fora de produção** (`NODE_ENV !== "production"`). Nunca defina essa
+variável no App Service.
+
+### 8.5 Problemas comuns
+
+| Sintoma | Causa provável |
+|---|---|
+| Bot não responde nada | Endpoint de mensagens errado no Azure Bot, canal Teams não adicionado, ou chave-geral desligada |
+| `[POST /api/teams/bot] unauthorized` nos logs | App ID salvo diferente do App ID do Azure Bot |
+| `503 Bot não configurado` | Falta App ID, segredo ou Tenant ID |
+| "Testar credenciais" falha com `AADSTS7000215` | Segredo inválido — copie o **Valor**, não o *ID do segredo* |
+| "Testar credenciais" falha com `AADSTS700016` | Tenant ID não é o do registro do bot |
+| "Não encontrei sua conta" | E-mail do Teams não existe no OptSolv Time — a pessoa precisa entrar uma vez com o login Microsoft |
+| "Registrar horas" não aparece no + | App não publicado/permitido na política do tenant, ou cliente do Teams sem recarregar |
+| Respostas pedidas em grupo não chegam no privado | A pessoa ainda não instalou o app no escopo pessoal (abra o app uma vez pela barra lateral) |
+| Interpretação "dura" (descrição literal) | Provedores de IA indisponíveis — o parser de regras assumiu. Veja `[completeText]` nos logs |
+
+---
+
+## 9. Resolução de problemas
 
 | Sintoma | Causa provável |
 |---------|----------------|
@@ -319,12 +443,14 @@ Se não aparecer, confira nesta ordem:
 
 ---
 
-## 9. Onde as coisas ficam
+## 10. Onde as coisas ficam
 
 | Item | Local |
 |------|-------|
-| Config da organização | `system_setting`, chave `teams_config` (webhooks criptografados AES-256-GCM) |
+| Config da organização | `system_setting`, chave `teams_config` (webhooks e segredo do bot criptografados AES-256-GCM) |
 | Preferências pessoais | Colunas `teams_*` e `evening_digest_enabled` em `user` |
 | Histórico de envios | `teams_notification_log` (garante idempotência por dia) |
 | Código | `src/lib/teams/`, `src/app/api/teams/`, `src/app/api/cron/teams-*` |
+| App do Teams | `src/lib/teams/bot/` (protocolo, IA, cards, handlers), `src/lib/teams/app-package/` (manifest + ícones), `src/app/api/teams/bot/route.ts` |
+| Conversas e ações do bot | `teams_bot_conversation` (chat privado de cada pessoa), `teams_bot_action` (idempotência e desfazer) |
 | Detecção de reuniões do digest | `src/lib/collaboration/` — ver [`docs/collaboration.md`](collaboration.md) |
