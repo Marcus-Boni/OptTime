@@ -23,6 +23,7 @@ export interface BotProject {
   name: string;
   code: string;
   billable: boolean;
+  clientName: string | null;
 }
 
 export interface BotParseContext {
@@ -148,30 +149,165 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findMentionedProject(
-  text: string,
-  projects: BotProject[],
-): BotProject | null {
-  const haystack = ` ${text.toLowerCase()} `;
-
-  const byCode = projects.find((project) =>
-    new RegExp(
-      `[\\s#(]${escapeRegExp(project.code.toLowerCase())}[\\s,.;:)]`,
-    ).test(haystack),
-  );
-  if (byCode) return byCode;
-
-  // Longest names first, so "Portal Cliente" wins over "Portal".
-  return (
-    [...projects]
-      .sort((a, b) => b.name.length - a.name.length)
-      .find(
-        (project) =>
-          project.name.length >= 3 &&
-          haystack.includes(` ${project.name.toLowerCase()}`),
-      ) ?? null
-  );
+/** Lowercase, accent-free, punctuation as spaces: "Vitória-ES" ≈ "vitoria es". */
+export function normalizeText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
+
+/**
+ * Name segments too generic to pin a project on their own — "suporte" in a
+ * sentence is a topic, not a reference to "GAB - Suporte".
+ */
+const GENERIC_SEGMENTS = new Set([
+  "atendimento",
+  "comercial",
+  "desenvolvimento",
+  "geral",
+  "gestao",
+  "interno",
+  "plano",
+  "projeto",
+  "projetos",
+  "reuniao",
+  "reunioes",
+  "suporte",
+  "sustentacao",
+]);
+
+/** Ways a project is referred to, most specific first. */
+function projectPhrases(
+  project: BotProject,
+): Array<{ phrase: string; weight: number }> {
+  const raw = [
+    { text: project.code, weight: 1000 },
+    { text: project.name, weight: 900 },
+    ...(project.clientName ? [{ text: project.clientName, weight: 500 }] : []),
+    // "SHOPPING VIX - Atendimento Lojista" → "SHOPPING VIX", "Atendimento Lojista"
+    ...project.name
+      .split(/\s+[-–—|:]\s+/)
+      .map((text) => ({ text, weight: 500 })),
+  ];
+
+  const seen = new Set<string>();
+  return raw
+    .map((item) => ({ phrase: normalizeText(item.text), weight: item.weight }))
+    .filter((item) => {
+      if (item.phrase.length < 3 || seen.has(item.phrase)) return false;
+      seen.add(item.phrase);
+      return true;
+    });
+}
+
+export interface ProjectMention {
+  project: BotProject;
+  /**
+   * Normalized phrases of the project found in the text, cut from the
+   * description. Empty when the match was a generic word.
+   */
+  phrases: string[];
+  /**
+   * False when the reference is generic or shared by several projects (a
+   * client with many projects) — the card then asks for a second look.
+   */
+  certain: boolean;
+}
+
+/**
+ * Finds the project the person named, by code, full name, client or any
+ * " - " segment of the name, ignoring accents and case. Several projects
+ * tied on the same reference (same client) resolve to the most used lately.
+ */
+export function findMentionedProject(
+  text: string,
+  context: Pick<BotParseContext, "projects" | "recentProjectIds">,
+): ProjectMention | null {
+  const haystack = ` ${normalizeText(text)} `;
+  const scored: Array<{
+    project: BotProject;
+    score: number;
+    phrases: string[];
+    generic: boolean;
+  }> = [];
+
+  for (const project of context.projects) {
+    let best: { score: number; phrase: string } | null = null;
+    const phrases: string[] = [];
+
+    for (const { phrase, weight } of projectPhrases(project)) {
+      if (!haystack.includes(` ${phrase} `)) continue;
+      phrases.push(phrase);
+      const score = weight + phrase.length;
+      if (!best || score > best.score) best = { score, phrase };
+    }
+
+    if (best) {
+      scored.push({
+        project,
+        score: best.score,
+        phrases,
+        generic: GENERIC_SEGMENTS.has(best.phrase),
+      });
+    }
+  }
+
+  if (scored.length === 0) return null;
+
+  const top = Math.max(...scored.map((item) => item.score));
+  const tied = scored.filter((item) => item.score === top);
+  const recentRank = (id: string): number => {
+    const index = context.recentProjectIds.indexOf(id);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  tied.sort((a, b) => recentRank(a.project.id) - recentRank(b.project.id));
+
+  const winner = tied[0];
+  if (!winner) return null;
+
+  return {
+    project: winner.project,
+    // A generic word is the topic of the sentence — it stays in the text.
+    phrases: winner.generic ? [] : winner.phrases,
+    certain: tied.length === 1 && !winner.generic,
+  };
+}
+
+const ACCENT_CLASSES: Record<string, string> = {
+  a: "[aàáâãä]",
+  e: "[eèéêë]",
+  i: "[iìíîï]",
+  o: "[oòóôõö]",
+  u: "[uùúûü]",
+  c: "[cç]",
+  n: "[nñ]",
+};
+
+/** Regex source matching a normalized phrase back in the original text. */
+function phrasePattern(phrase: string): string {
+  return phrase
+    .split(" ")
+    .map((word) =>
+      [...word]
+        .map((char) => ACCENT_CLASSES[char] ?? escapeRegExp(char))
+        .join(""),
+    )
+    .join("[^\\p{L}\\p{N}]+");
+}
+
+/** "tive uma reunião…" → "reunião…"; "estava fazendo X" → "X". */
+const NARRATIVE_PREFIX =
+  /^(?:eu\s+)?(?:tive|tivemos|fiz|fizemos|participei(?:\s+(?:de|da|do|em|na|no))?|estive(?:\s+(?:em|na|no))?|estava|estou|passei|trabalhei(?:\s+(?:em|no|na))?)\s+(?:(?:fazendo|trabalhando(?:\s+(?:em|no|na))?|uma|um|umas|uns)\s+)*/i;
+
+/** Connectors left hanging after the duration or project was cut out. */
+const STRAY_CONNECTOR =
+  /\b(?:de|do|da|dos|das)\s+(?=(?:com|sobre|para|pra|e|em|no|na|ao|à)\b)/gi;
+const TRAILING_CONNECTOR =
+  /\s+(?:sobre|com|de|do|da|dos|das|no|na|em|para|pra|pro|e|o|a|ao)$/i;
+const LEADING_CONNECTOR = /^(?:de|do|da|em|no|na|para|pra|pro|e)\s+/i;
 
 function capitalize(value: string): string {
   return value.charAt(0).toLocaleUpperCase("pt-BR") + value.slice(1);
@@ -181,7 +317,7 @@ function capitalize(value: string): string {
 export function cleanDescription(
   text: string,
   context: Pick<BotParseContext, "managerName">,
-  mentionedProject: BotProject | null,
+  projectPhrasesFound: string[],
 ): string {
   let value = ` ${stripInvocation(text).replace(LOG_VERBS, "")} `;
 
@@ -199,14 +335,14 @@ export function cleanDescription(
     value = value.replace(pattern, " ");
   }
 
-  if (mentionedProject) {
-    const names = [mentionedProject.code, mentionedProject.name].map(
-      escapeRegExp,
-    );
+  // Longest first, so "shopping vix atendimento" goes before "shopping vix".
+  for (const phrase of [...projectPhrasesFound].sort(
+    (a, b) => b.length - a.length,
+  )) {
     value = value.replace(
       new RegExp(
-        `(?:\\b(?:no|na|em|pro|pelo|para\\s+o)\\s+)?(?:\\bprojeto\\s+)?(?:${names.join("|")})(?=\\s|$|[,.;:!?])`,
-        "gi",
+        `(?:(?<![\\p{L}\\p{N}])(?:no|na|em|pro|pra|pelo|pela|para\\s+o|para\\s+a|do|da|de)\\s+)?(?:(?<![\\p{L}\\p{N}])projeto\\s+(?:(?:da|do|de)\\s+)?)?(?<![\\p{L}\\p{N}])${phrasePattern(phrase)}(?![\\p{L}\\p{N}])`,
+        "giu",
       ),
       " ",
     );
@@ -216,12 +352,22 @@ export function cleanDescription(
     value = value.replace(LEADER_PATTERN, context.managerName);
   }
 
-  value = value
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^(?:de|do|da|em|no|na|para|pra|pro|e)\s+/i, "")
-    .replace(/[\s,.;:-]+$/, "")
-    .trim();
+  value = value.replace(/\s+/g, " ").replace(/\s+([,.;:])/g, "$1");
+
+  // Peel the sentence down to its subject, repeating until nothing changes.
+  let previous = "";
+  while (previous !== value) {
+    previous = value;
+    value = value
+      .trim()
+      .replace(/^[\s,.;:-]+/, "")
+      .replace(LEADING_CONNECTOR, "")
+      .replace(NARRATIVE_PREFIX, "")
+      .replace(STRAY_CONNECTOR, "")
+      .replace(/[\s,.;:-]+$/, "")
+      .replace(TRAILING_CONNECTOR, "")
+      .replace(/\s+/g, " ");
+  }
 
   return value ? capitalize(value).slice(0, 500) : "";
 }
@@ -252,16 +398,16 @@ export function parseWithRules(
   context: BotParseContext,
 ): TimeDraft {
   const clean = stripInvocation(text);
-  const mentioned = findMentionedProject(clean, context.projects);
+  const mentioned = findMentionedProject(clean, context);
   const fallback = mentioned ? null : pickFallbackProject(context);
   const workItem = clean.match(/#(\d{1,7})\b/);
 
   return {
     durationMinutes: findDurationInSentence(clean),
     date: parseDateText(clean, context.today) ?? context.today,
-    description: cleanDescription(clean, context, mentioned),
-    projectId: mentioned?.id ?? fallback?.id ?? null,
-    projectGuessed: !mentioned,
+    description: cleanDescription(clean, context, mentioned?.phrases ?? []),
+    projectId: mentioned?.project.id ?? fallback?.id ?? null,
+    projectGuessed: !mentioned?.certain,
     azureWorkItemId: workItem ? Number(workItem[1]) : null,
     source: "rules",
   };

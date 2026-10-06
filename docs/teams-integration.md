@@ -72,7 +72,14 @@ o gap e um botão **"✨ Preencher meu dia com IA"** que abre o reconstructor.
 > Quem já bateu a meta do dia não recebe nada — o lembrete só existe quando há
 > algo a fazer.
 
-### Pelo Teams (opcional, por pessoa)
+### Pelo app OptSolv Time (automático)
+
+Com o app do Teams publicado (§8), quem abriu o app ao menos uma vez recebe o
+lembrete **no chat privado com o app**, sem configurar nada. A ordem de
+entrega é: chat do app → webhook pessoal (abaixo) → e-mail. Se a pessoa
+desinstalar o app, o próximo envio cai sozinho no canal seguinte.
+
+### Pelo Teams via Power Automate (legado, por pessoa)
 
 > **Este passo a passo também está no app**, no botão **"Como configurar"** ao
 > lado do campo do webhook. Mantenha os dois em sincronia ao editar —
@@ -361,6 +368,13 @@ Teams ──JWT──▶ POST /api/teams/bot ──▶ valida o token do Bot Con
   `semana` e comandos de timer respondem no privado e deixam só um aviso no
   grupo; o card de sucesso em grupo omite o total do dia; só quem pediu pode
   confirmar ou desfazer o card.
+- **Projeto citado de várias formas**: código, nome completo, cliente ou
+  qualquer trecho do nome separado por " - " ("shopping vix" →
+  *SHOPPING VIX - Atendimento Lojista*), sem diferenciar acento ou caixa.
+  Cliente com vários projetos escolhe o mais usado e pede conferência;
+  palavras genéricas ("suporte", "geral") nunca contam como certeza.
+- **Seletor de projetos**: os mais usados primeiro, rotulados pelo nome (o
+  código só aparece para desempatar nomes iguais).
 - **Identidade**: o `aadObjectId` do remetente é casado com `user.azure_id`.
   Sem vínculo ainda, o bot consulta o e-mail do membro no Teams e vincula na
   hora (nunca sobrescreve um `azure_id` diferente). Contas de outro tenant são

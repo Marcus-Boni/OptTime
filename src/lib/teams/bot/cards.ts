@@ -149,6 +149,26 @@ function notice(text: string, tone: "warning" | "attention" | "good"): unknown {
   };
 }
 
+/**
+ * Picker labels: the project name people recognise. The code — often an
+ * auto-generated slug — only shows up to tell apart identical names.
+ */
+export function projectChoices(
+  projects: BotProject[],
+): Array<{ title: string; value: string }> {
+  const nameCount = new Map<string, number>();
+  for (const project of projects) {
+    nameCount.set(project.name, (nameCount.get(project.name) ?? 0) + 1);
+  }
+  return projects.map((project) => ({
+    title:
+      (nameCount.get(project.name) ?? 0) > 1
+        ? `${project.name} (${project.code})`
+        : project.name,
+    value: project.id,
+  }));
+}
+
 // ─── Proposal ────────────────────────────────────────────────────────
 
 export interface ProposalCardInput {
@@ -181,7 +201,7 @@ export function buildProposalCard(input: ProposalCardInput): AdaptiveCard {
   } else if (draft.projectGuessed) {
     notices.push(
       notice(
-        "Projeto sugerido pelo seu histórico — confira antes de registrar.",
+        "Projeto sugerido automaticamente — confira antes de registrar.",
         "warning",
       ),
     );
@@ -222,10 +242,7 @@ export function buildProposalCard(input: ProposalCardInput): AdaptiveCard {
         projects.length > FILTERED_PICKER_THRESHOLD ? "filtered" : "compact",
       placeholder: "Selecione o projeto",
       value: draft.projectId ?? undefined,
-      choices: projects.map((project) => ({
-        title: `${project.code} · ${project.name}`,
-        value: project.id,
-      })),
+      choices: projectChoices(projects),
     },
     {
       type: "ColumnSet",

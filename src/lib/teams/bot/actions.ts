@@ -110,7 +110,7 @@ export async function confirmProposal(
       status: "logged",
       entry: {
         entryId: result.entry.id,
-        projectLabel: `${result.entry.project.code} · ${result.entry.project.name}`,
+        projectLabel: result.entry.project.name,
         date: result.entry.date,
         durationMinutes: result.entry.durationMinutes,
         description: result.entry.description,

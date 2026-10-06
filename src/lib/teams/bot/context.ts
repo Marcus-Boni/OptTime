@@ -10,7 +10,7 @@ import { db } from "@/lib/db";
 import { timeEntry, user } from "@/lib/db/schema";
 import type { AgentPrincipal } from "@/lib/mcp/auth";
 import { getVisibleProjects } from "@/lib/mcp/service/projects";
-import type { BotParseContext } from "@/lib/teams/bot/intent";
+import type { BotParseContext, BotProject } from "@/lib/teams/bot/intent";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 
 /** Window that defines "projects you have been using". */
@@ -65,6 +65,23 @@ async function loadProfile(userId: string): Promise<{
   };
 }
 
+/**
+ * Most used projects first, the rest alphabetically — the order the card
+ * picker shows, so the likely choice is at the top of a long list.
+ */
+function orderByRecentUse(
+  projects: BotProject[],
+  recentProjectIds: string[],
+): BotProject[] {
+  const rank = (id: string): number => {
+    const index = recentProjectIds.indexOf(id);
+    return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+  };
+  return [...projects].sort(
+    (a, b) => rank(a.id) - rank(b.id) || a.name.localeCompare(b.name, "pt-BR"),
+  );
+}
+
 export async function loadBotUserContext(
   principal: AgentPrincipal,
 ): Promise<BotUserContext> {
@@ -80,12 +97,16 @@ export async function loadBotUserContext(
     parse: {
       today,
       managerName: profile.managerName,
-      projects: projects.map((project) => ({
-        id: project.id,
-        name: project.name,
-        code: project.code,
-        billable: project.billable,
-      })),
+      projects: orderByRecentUse(
+        projects.map((project) => ({
+          id: project.id,
+          name: project.name,
+          code: project.code,
+          billable: project.billable,
+          clientName: project.clientName,
+        })),
+        recentProjectIds,
+      ),
       recentProjectIds,
     },
     operator: profile.operator,
