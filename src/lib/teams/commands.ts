@@ -91,7 +91,7 @@ export function parseTeamsCommand(text: string): TeamsCommand {
 }
 
 /** Full-scope synthetic principal for a Teams-authenticated user. */
-function buildTeamsPrincipal(row: {
+export function buildTeamsPrincipal(row: {
   id: string;
   name: string;
   email: string;
