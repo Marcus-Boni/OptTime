@@ -10,7 +10,11 @@ import { cn } from "@/lib/utils";
 import type { WorkItemSearchResult, WorkItemType } from "@/types/azure-devops";
 
 interface WorkItemComboboxProps {
-  projectName: string | null;
+  /**
+   * Azure DevOps project of the selected project — its id (preferred: stays
+   * valid when the platform project is renamed, e.g. "— Fase 2") or name.
+   */
+  azureProjectRef: string | null;
   value?: { id: number; title: string } | null;
   onChange: (item: { id: number; title: string } | null) => void;
   disabled?: boolean;
@@ -27,7 +31,7 @@ const typeColors: Record<WorkItemType, string> = {
 };
 
 export function WorkItemCombobox({
-  projectName,
+  azureProjectRef,
   value,
   onChange,
   disabled,
@@ -37,7 +41,7 @@ export function WorkItemCombobox({
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { query, results, loading, error, refresh, setQuery } = useWorkItems(
-    !value ? projectName : null,
+    !value ? azureProjectRef : null,
   );
 
   // Acumula os itens já carregados para permitir busca local rápida
@@ -111,7 +115,7 @@ export function WorkItemCombobox({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  if (!projectName) {
+  if (!azureProjectRef) {
     return (
       <div className="flex h-9 items-center rounded-md border border-input bg-muted/50 px-3 text-xs text-muted-foreground">
         {unavailableMessage ?? "Selecione um projeto primeiro"}

@@ -26,6 +26,7 @@ import {
   ProjectCard,
   ProjectEditDialog,
   ProjectFilters,
+  ProjectPhaseBadge,
   ProjectSkeleton,
 } from "@/components/projects";
 import {
@@ -372,6 +373,10 @@ function ProjectsTable({
                             <span className="font-mono text-[11px] text-muted-foreground/70">
                               {proj.code}
                             </span>
+                            <ProjectPhaseBadge
+                              phase={proj.phase}
+                              className="px-1.5 py-0 text-[9px]"
+                            />
                             {proj.clientName && (
                               <>
                                 <span className="text-muted-foreground/30">
@@ -1128,6 +1133,7 @@ export function ProjectsClient() {
             variant="outline"
             className="gap-1.5"
             onClick={openImportDialog}
+            data-tour="projects-import-azure"
           >
             <Cloud className="h-4 w-4" />
             Importar do Azure

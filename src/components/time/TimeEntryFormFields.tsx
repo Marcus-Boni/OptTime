@@ -115,9 +115,7 @@ export function TimeEntryFormFields({
           Work item <span className="text-muted-foreground">(opcional)</span>
         </Label>
         <WorkItemCombobox
-          projectName={
-            selectedProject?.azureProjectId ? selectedProject.name : null
-          }
+          azureProjectRef={selectedProject?.azureProjectId ?? null}
           value={workItem}
           onChange={onWorkItemChange}
           disabled={!selectedProject?.azureProjectId}

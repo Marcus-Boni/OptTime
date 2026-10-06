@@ -100,12 +100,22 @@ async function fetchAzureApi<T>(
   return res.json() as Promise<T>;
 }
 
+/** Start date that scopes Azure progress for later phases; null on phase 1. */
+function getPhaseProgressScope(found: {
+  phase: number;
+  startDate: string | null;
+}): string | null {
+  if (found.phase <= 1 || !found.startDate) return null;
+  return /^\d{4}-\d{2}-\d{2}$/.test(found.startDate) ? found.startDate : null;
+}
+
 // ─── Main data fetcher ────────────────────────────────────────────────────────
 
 async function fetchProjectSchedulingData(
   organizationUrl: string,
   pat: string,
   azureProjectId: string,
+  scopedSince: string | null,
 ): Promise<ProjectProgress> {
   const orgUrl = organizationUrl.replace(/\/$/, "");
   const authHeader = `Basic ${Buffer.from(`:${pat}`).toString("base64")}`;
@@ -122,8 +132,13 @@ async function fetchProjectSchedulingData(
 
   // Step 2: Query work items scoped to the project, using project name in both URL + WIQL filter.
   // [System.TeamProject] accepts the project NAME (not UUID), so this is the correct form.
+  // Later phases share the Azure project with earlier ones: only count work
+  // items created since the phase started.
   const sanitizedName = projectName.replace(/'/g, "''");
-  const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${sanitizedName}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
+  const phaseFilter = scopedSince
+    ? ` AND [System.CreatedDate] >= '${scopedSince}'`
+    : "";
+  const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${sanitizedName}' AND [System.State] <> 'Removed'${phaseFilter} ORDER BY [System.ChangedDate] DESC`;
 
   const wiqlResult = await fetchAzureApi<AzureWiqlResult>(
     `${orgUrl}/${encodeURIComponent(projectName)}/_apis/wit/wiql?$top=200&api-version=7.1`,
@@ -134,7 +149,7 @@ async function fetchProjectSchedulingData(
   const ids = wiqlResult.workItems.slice(0, 200).map((wi) => wi.id);
 
   if (ids.length === 0) {
-    return unconfiguredResponse("no_data");
+    return { ...unconfiguredResponse("no_data"), scopedSince };
   }
 
   // Step 3: Batch-fetch scheduling fields for all IDs
@@ -162,7 +177,7 @@ async function fetchProjectSchedulingData(
   }
 
   if (estimated === 0 && completed === 0 && remaining === 0) {
-    return unconfiguredResponse("no_data");
+    return { ...unconfiguredResponse("no_data"), scopedSince };
   }
 
   const progressPercent =
@@ -179,6 +194,7 @@ async function fetchProjectSchedulingData(
     remaining: Math.round(remaining * 100) / 100,
     progressPercent,
     efficiency,
+    scopedSince,
   };
 }
 
@@ -215,6 +231,8 @@ export async function GET(
         azureProjectId: true,
         azureProjectUrl: true,
         managerId: true,
+        phase: true,
+        startDate: true,
       },
     });
 
@@ -268,6 +286,7 @@ export async function GET(
         azureConf.organizationUrl,
         decryptedPat,
         found.azureProjectId,
+        getPhaseProgressScope(found),
       );
       return Response.json(progress);
     } catch (azureErr) {

@@ -4,6 +4,7 @@ import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
 import { project } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { buildPhaseName } from "@/lib/projects/phases";
 
 interface AzureProjectApiItem {
   id: string;
@@ -84,17 +85,26 @@ export async function PATCH(req: Request): Promise<Response> {
         id: true,
         name: true,
         azureProjectId: true,
+        phase: true,
       },
     });
 
+    // Expected platform name: the Azure name, plus "— Fase N" on later phases
+    // so the phases of one Azure project stay distinguishable.
+    const expectedNameOf = (localProject: (typeof localProjects)[number]) => {
+      const azureName = localProject.azureProjectId
+        ? azureNameByProjectId.get(localProject.azureProjectId)
+        : undefined;
+      return azureName === undefined
+        ? undefined
+        : buildPhaseName(azureName, localProject.phase);
+    };
+
     // Find projects where the name is outdated
     const outdated = localProjects.filter((localProject) => {
-      const azureId = localProject.azureProjectId;
-      if (!azureId) return false;
-
-      const azureName = azureNameByProjectId.get(azureId);
+      const expectedName = expectedNameOf(localProject);
       // Only update if Azure has this project AND the name actually changed
-      return azureName !== undefined && azureName !== localProject.name;
+      return expectedName !== undefined && expectedName !== localProject.name;
     });
 
     if (outdated.length === 0) {
@@ -110,21 +120,18 @@ export async function PATCH(req: Request): Promise<Response> {
 
     await db.transaction(async (tx) => {
       for (const localProject of outdated) {
-        const azureId = localProject.azureProjectId;
-        if (!azureId) continue;
-
-        const azureName = azureNameByProjectId.get(azureId);
-        if (!azureName) continue;
+        const expectedName = expectedNameOf(localProject);
+        if (!expectedName) continue;
 
         await tx
           .update(project)
-          .set({ name: azureName, updatedAt: new Date() })
+          .set({ name: expectedName, updatedAt: new Date() })
           .where(eq(project.id, localProject.id));
 
         updated.push({
           projectId: localProject.id,
           platformName: localProject.name,
-          azureName,
+          azureName: expectedName,
         });
       }
     });

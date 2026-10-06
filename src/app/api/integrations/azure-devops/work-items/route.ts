@@ -9,7 +9,7 @@ import { decrypt } from "@/lib/encryption";
 
 /**
  * GET - Search work items for autocomplete.
- * Query params: project (AzDO project name), q (search query)
+ * Query params: project (AzDO project id or name), q (search query)
  */
 export async function GET(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });

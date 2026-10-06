@@ -1,9 +1,10 @@
-import { eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { getActiveSession, getActorContext } from "@/lib/access-control";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import { db } from "@/lib/db";
 import { project, projectMember } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { LIVE_PROJECT_STATUSES, pickCurrentPhase } from "@/lib/projects/phases";
 
 type AzureImportAction = "create" | "join" | "joined";
 
@@ -91,6 +92,55 @@ function buildImportMessage(summary: {
   return `${parts.join(". ")}.`;
 }
 
+interface LinkedPlatformProject {
+  id: string;
+  name: string;
+  managerId: string | null;
+}
+
+/**
+ * Several phases of a project may share one Azure DevOps project. Importing
+ * always targets the current phase: the live one, otherwise the latest.
+ */
+async function findCurrentPhasesByAzureId(
+  azureProjectIds: string[],
+): Promise<Map<string, LinkedPlatformProject>> {
+  const linked = await db.query.project.findMany({
+    where: inArray(project.azureProjectId, azureProjectIds),
+    columns: {
+      id: true,
+      name: true,
+      azureProjectId: true,
+      managerId: true,
+      status: true,
+      phase: true,
+      createdAt: true,
+    },
+  });
+
+  const phasesByAzureId = new Map<string, typeof linked>();
+  for (const item of linked) {
+    if (!item.azureProjectId) continue;
+    const group = phasesByAzureId.get(item.azureProjectId) ?? [];
+    group.push(item);
+    phasesByAzureId.set(item.azureProjectId, group);
+  }
+
+  const currentByAzureId = new Map<string, LinkedPlatformProject>();
+  for (const [azureProjectId, phases] of phasesByAzureId) {
+    const current = pickCurrentPhase(phases);
+    if (current) {
+      currentByAzureId.set(azureProjectId, {
+        id: current.id,
+        name: current.name,
+        managerId: current.managerId,
+      });
+    }
+  }
+
+  return currentByAzureId;
+}
+
 export async function GET(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
   if (!session) {
@@ -148,16 +198,8 @@ export async function GET(req: Request): Promise<Response> {
     }
 
     const azureProjectIds = data.value.map((item) => item.id);
-    const [existingProjects, memberships] = await Promise.all([
-      db.query.project.findMany({
-        where: inArray(project.azureProjectId, azureProjectIds),
-        columns: {
-          id: true,
-          name: true,
-          azureProjectId: true,
-          managerId: true,
-        },
-      }),
+    const [existingByAzureId, memberships] = await Promise.all([
+      findCurrentPhasesByAzureId(azureProjectIds),
       db.query.projectMember.findMany({
         where: eq(projectMember.userId, actor.userId),
         columns: { projectId: true },
@@ -165,39 +207,6 @@ export async function GET(req: Request): Promise<Response> {
     ]);
 
     const actorProjectIds = new Set(memberships.map((item) => item.projectId));
-    const existingByAzureId = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        managerId: string | null;
-      }
-    >();
-
-    for (const existingProject of existingProjects) {
-      if (!existingProject.azureProjectId) {
-        continue;
-      }
-
-      if (!existingByAzureId.has(existingProject.azureProjectId)) {
-        existingByAzureId.set(existingProject.azureProjectId, {
-          id: existingProject.id,
-          name: existingProject.name,
-          managerId: existingProject.managerId,
-        });
-        continue;
-      }
-
-      console.warn(
-        "[GET /api/integrations/azure-devops/projects][duplicate_azure_project_id]",
-        {
-          azureProjectId: existingProject.azureProjectId,
-          keptProjectId: existingByAzureId.get(existingProject.azureProjectId)
-            ?.id,
-          duplicateProjectId: existingProject.id,
-        },
-      );
-    }
 
     const projects = data.value.map((item) => {
       const existingProject = existingByAzureId.get(item.id);
@@ -263,16 +272,8 @@ export async function POST(req: Request): Promise<Response> {
     );
     const azureProjectIds = dedupedProjects.map((item) => item.id);
 
-    const [existingProjects, memberships] = await Promise.all([
-      db.query.project.findMany({
-        where: inArray(project.azureProjectId, azureProjectIds),
-        columns: {
-          id: true,
-          name: true,
-          azureProjectId: true,
-          managerId: true,
-        },
-      }),
+    const [existingByAzureId, memberships] = await Promise.all([
+      findCurrentPhasesByAzureId(azureProjectIds),
       db.query.projectMember.findMany({
         where: eq(projectMember.userId, actor.userId),
         columns: { projectId: true },
@@ -280,39 +281,6 @@ export async function POST(req: Request): Promise<Response> {
     ]);
 
     const actorProjectIds = new Set(memberships.map((item) => item.projectId));
-    const existingByAzureId = new Map<
-      string,
-      {
-        id: string;
-        name: string;
-        managerId: string | null;
-      }
-    >();
-
-    for (const existingProject of existingProjects) {
-      if (!existingProject.azureProjectId) {
-        continue;
-      }
-
-      if (!existingByAzureId.has(existingProject.azureProjectId)) {
-        existingByAzureId.set(existingProject.azureProjectId, {
-          id: existingProject.id,
-          name: existingProject.name,
-          managerId: existingProject.managerId,
-        });
-        continue;
-      }
-
-      console.warn(
-        "[POST /api/integrations/azure-devops/projects][duplicate_azure_project_id]",
-        {
-          azureProjectId: existingProject.azureProjectId,
-          keptProjectId: existingByAzureId.get(existingProject.azureProjectId)
-            ?.id,
-          duplicateProjectId: existingProject.id,
-        },
-      );
-    }
 
     const colors = [
       "#f97316",
@@ -409,6 +377,8 @@ export async function POST(req: Request): Promise<Response> {
           })
           .onConflictDoNothing({
             target: project.azureProjectId,
+            // Must match the predicate of `project_azure_id_live_unique`.
+            where: sql`status in ('open', 'active')`,
           })
           .returning({
             id: project.id,
@@ -418,7 +388,10 @@ export async function POST(req: Request): Promise<Response> {
         const targetProject =
           newProject ??
           (await tx.query.project.findFirst({
-            where: eq(project.azureProjectId, item.id),
+            where: and(
+              eq(project.azureProjectId, item.id),
+              inArray(project.status, [...LIVE_PROJECT_STATUSES]),
+            ),
             columns: {
               id: true,
               name: true,
