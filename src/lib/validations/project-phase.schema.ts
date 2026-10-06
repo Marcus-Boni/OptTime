@@ -33,6 +33,16 @@ export const createProjectPhaseSchema = z
     startDate: isoDate,
     endDate: isoDate.optional().nullable(),
     description: z.string().max(500).optional().nullable(),
+    /**
+     * Integration key of the new phase, read by external project management
+     * through the v1 API. Never inherited: each phase is a separate project.
+     */
+    integrationKey: z
+      .string()
+      .trim()
+      .max(100, "Máximo de 100 caracteres")
+      .optional()
+      .nullable(),
     /** Copy the current team to the new phase */
     copyMembers: z.boolean().default(true),
   })

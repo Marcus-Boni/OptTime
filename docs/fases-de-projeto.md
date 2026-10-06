@@ -18,6 +18,8 @@ ficam ligadas à primeira fase, que é a raiz da linhagem.
    - orçamento em horas
    - data de início: hoje ou uma data passada
    - se a equipe atual continua alocada
+   - a nova **chave de integração**, sugerida a partir da atual
+     (`MARAM_PORCL_0001` → `MARAM_PORCL_0002`)
 3. A fase anterior é encerrada (status `archived`) e a nova passa a receber os
    lançamentos. O card **Fases do projeto** mostra o consumo de cada fase.
 
@@ -35,12 +37,23 @@ Tudo acontece em uma única transação, em `startNextProjectPhase`
 
 **O que passa para a nova fase:**
 
-- Cliente, cor, faturável, gerente, escopo, imagem, chave de integração e
-  vínculo Azure DevOps são herdados.
+- Cliente, cor, faturável, gerente, escopo, imagem e vínculo Azure DevOps
+  são herdados.
 - Os timers em andamento de quem está na equipe da nova fase.
 - As alocações planejadas a partir da semana de início, também só de quem
   está na equipe da nova fase. Quem ficou de fora mantém o timer e o
   planejamento na fase encerrada.
+
+## Chave de integração
+
+A gestão de projetos puxa as horas pela chave de integração, pela API v1
+(`projectIntegrationKey`). Por isso a chave **não é herdada**: cada fase
+tem a sua, e a gestão enxerga a Fase 2 separada da Fase 1. A fase anterior
+continua com a chave antiga e com todo o histórico.
+
+- Se a fase atual tem chave, a nova fase é obrigada a ter uma chave diferente.
+- Uma chave já usada por outro projeto é recusada com `409`.
+- A API v1 não mudou.
 
 ## Regra do banco
 

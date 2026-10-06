@@ -95,6 +95,26 @@ export function buildPhaseCode(baseCode: string, phase: number): string {
 }
 
 /**
+ * Suggests the integration key of the next phase by bumping its trailing
+ * sequence and keeping its width: "MARAM_PORCL_0001" → "MARAM_PORCL_0002".
+ * Each phase needs its own key so external project management keeps the
+ * phases apart. Returns null when the key has no trailing number to bump.
+ */
+export function suggestNextIntegrationKey(
+  previousKey: string | null | undefined,
+): string | null {
+  const match = previousKey?.trim().match(/^(.*?)(\d+)$/);
+  if (!match) return null;
+
+  const [, prefix = "", digits = ""] = match;
+  const next = String(Number.parseInt(digits, 10) + 1).padStart(
+    digits.length,
+    "0",
+  );
+  return `${prefix}${next}`;
+}
+
+/**
  * Picks a free code given the ones already taken, appending a numeric
  * disambiguator (`-2`, `-3`, …) that still fits the column.
  */

@@ -10,6 +10,7 @@ import {
   PROJECT_CODE_MAX_LENGTH,
   pickCurrentPhase,
   stripPhaseSuffix,
+  suggestNextIntegrationKey,
   summarizePhaseBudget,
 } from "@/lib/projects/phases";
 import { createProjectPhaseSchema } from "@/lib/validations/project-phase.schema";
@@ -50,6 +51,23 @@ assert.equal(
 const fullWidth = "ABCDEFGHIJKLMNOPQ-F2"; // 20 chars
 const disambiguated = ensureUniqueCode(fullWidth, new Set([fullWidth]));
 assert.ok(disambiguated.length <= PROJECT_CODE_MAX_LENGTH, disambiguated);
+
+// ─── Integration key: each phase gets its own ──────────────────────────────────
+
+assert.equal(suggestNextIntegrationKey("MARAM_PORCL_0001"), "MARAM_PORCL_0002");
+assert.equal(suggestNextIntegrationKey("ARCEL_OCRRR_01"), "ARCEL_OCRRR_02");
+assert.equal(suggestNextIntegrationKey("OPTTT-ALESO_0009"), "OPTTT-ALESO_0010");
+assert.equal(
+  suggestNextIntegrationKey("KEY_99"),
+  "KEY_100",
+  "overflow grows instead of wrapping",
+);
+assert.equal(suggestNextIntegrationKey("SEM-NUMERO"), null);
+assert.equal(suggestNextIntegrationKey(null), null);
+assert.equal(
+  suggestNextIntegrationKey("  MARAM_PORCL_0001  "),
+  "MARAM_PORCL_0002",
+);
 
 // ─── Current phase selection ───────────────────────────────────────────────────
 
@@ -130,6 +148,12 @@ const validInput = {
   copyMembers: true,
 };
 assert.ok(createProjectPhaseSchema.safeParse(validInput).success);
+assert.ok(
+  createProjectPhaseSchema.safeParse({
+    ...validInput,
+    integrationKey: "MARAM_PORCL_0002",
+  }).success,
+);
 assert.ok(
   createProjectPhaseSchema.safeParse({
     ...validInput,

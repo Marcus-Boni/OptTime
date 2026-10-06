@@ -26,7 +26,10 @@ export type StartPhaseErrorCode =
   | "PROJECT_NOT_FOUND"
   | "NOT_LATEST_PHASE"
   | "START_DATE_IN_FUTURE"
-  | "CODE_TAKEN";
+  | "CODE_TAKEN"
+  | "INTEGRATION_KEY_REQUIRED"
+  | "INTEGRATION_KEY_REUSED"
+  | "INTEGRATION_KEY_TAKEN";
 
 export class StartPhaseError extends Error {
   constructor(
@@ -201,6 +204,12 @@ export async function startNextProjectPhase(
     }
     const code = ensureUniqueCode(desiredCode, takenSet);
 
+    const integrationKey = await resolvePhaseIntegrationKey(
+      tx,
+      source.integrationKey,
+      input.integrationKey,
+    );
+
     // Close the source phase first: the partial unique index allows a single
     // active project per Azure DevOps project.
     await tx
@@ -233,7 +242,7 @@ export async function startNextProjectPhase(
       commercialName: source.commercialName,
       startDate: input.startDate,
       endDate: input.endDate ?? null,
-      integrationKey: source.integrationKey,
+      integrationKey,
       phase: nextPhase,
       phaseRootId: lineageId,
     });
@@ -289,6 +298,53 @@ export async function startNextProjectPhase(
 
     return { id: newProjectId, phase: nextPhase, previousPhaseId: source.id };
   });
+}
+
+/**
+ * The new phase gets its own integration key so external project management
+ * (v1 API, filtered by key) sees it apart from the previous phase. When the
+ * previous phase was integrated, the new key is mandatory.
+ */
+async function resolvePhaseIntegrationKey(
+  tx: Pick<typeof db, "query">,
+  previousKey: string | null,
+  requestedKey: string | null | undefined,
+): Promise<string | null> {
+  const key = requestedKey?.trim() || null;
+  const previous = previousKey?.trim() || null;
+
+  if (!key) {
+    if (previous) {
+      throw new StartPhaseError(
+        "INTEGRATION_KEY_REQUIRED",
+        `Informe a chave de integração da nova fase. A fase atual usa ${previous}, que continua com ela.`,
+        400,
+      );
+    }
+    return null;
+  }
+
+  if (previous && key.toLowerCase() === previous.toLowerCase()) {
+    throw new StartPhaseError(
+      "INTEGRATION_KEY_REUSED",
+      "A nova fase precisa de uma chave de integração diferente da fase atual.",
+      400,
+    );
+  }
+
+  const holder = await tx.query.project.findFirst({
+    where: sql`lower(${project.integrationKey}) = lower(${key})`,
+    columns: { name: true },
+  });
+  if (holder) {
+    throw new StartPhaseError(
+      "INTEGRATION_KEY_TAKEN",
+      `A chave ${key} já está em uso pelo projeto "${holder.name}".`,
+      409,
+    );
+  }
+
+  return key;
 }
 
 /** The closed phase ends the day before the next one starts, never before it began. */

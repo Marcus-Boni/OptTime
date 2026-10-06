@@ -2,9 +2,17 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { Archive, Cloud, GitBranch, Loader2, Timer, Users } from "lucide-react";
+import {
+  Archive,
+  Cloud,
+  GitBranch,
+  KeyRound,
+  Loader2,
+  Timer,
+  Users,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -27,6 +35,7 @@ import {
   buildPhaseCode,
   buildPhaseName,
   type ProjectPhaseSummary,
+  suggestNextIntegrationKey,
 } from "@/lib/projects/phases";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -44,37 +53,61 @@ export interface ProjectNewPhaseDialogProps {
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-const newPhaseFormSchema = z
-  .object({
-    name: z
-      .string()
-      .trim()
-      .min(2, "Nome deve ter pelo menos 2 caracteres")
-      .max(100, "Máximo de 100 caracteres"),
-    code: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .min(2, "Código deve ter pelo menos 2 caracteres")
-      .max(20, "Máximo de 20 caracteres")
-      .regex(/^[A-Z0-9-]+$/, "Use apenas letras, números e hífens"),
-    budget: z.string().trim().regex(/^\d*$/, "Informe horas inteiras"),
-    startDate: z.string().min(1, "Informe a data de início"),
-    endDate: z.string(),
-    description: z.string().max(500, "Máximo de 500 caracteres"),
-    copyMembers: z.boolean(),
-  })
-  .refine((data) => data.startDate <= format(new Date(), "yyyy-MM-dd"), {
-    message:
-      "A nova fase começa a receber horas agora — use hoje ou uma data passada",
-    path: ["startDate"],
-  })
-  .refine((data) => !data.endDate || data.endDate >= data.startDate, {
-    message: "A data fim deve ser igual ou posterior à data início",
-    path: ["endDate"],
-  });
+/**
+ * The new phase needs its own integration key (external project management
+ * reads hours by key); it is mandatory when the current phase has one.
+ */
+function createNewPhaseFormSchema(previousIntegrationKey: string | null) {
+  return z
+    .object({
+      name: z
+        .string()
+        .trim()
+        .min(2, "Nome deve ter pelo menos 2 caracteres")
+        .max(100, "Máximo de 100 caracteres"),
+      code: z
+        .string()
+        .trim()
+        .toUpperCase()
+        .min(2, "Código deve ter pelo menos 2 caracteres")
+        .max(20, "Máximo de 20 caracteres")
+        .regex(/^[A-Z0-9-]+$/, "Use apenas letras, números e hífens"),
+      budget: z.string().trim().regex(/^\d*$/, "Informe horas inteiras"),
+      startDate: z.string().min(1, "Informe a data de início"),
+      endDate: z.string(),
+      description: z.string().max(500, "Máximo de 500 caracteres"),
+      integrationKey: z.string().trim().max(100, "Máximo de 100 caracteres"),
+      copyMembers: z.boolean(),
+    })
+    .refine((data) => data.startDate <= format(new Date(), "yyyy-MM-dd"), {
+      message:
+        "A nova fase começa a receber horas agora — use hoje ou uma data passada",
+      path: ["startDate"],
+    })
+    .refine((data) => !data.endDate || data.endDate >= data.startDate, {
+      message: "A data fim deve ser igual ou posterior à data início",
+      path: ["endDate"],
+    })
+    .refine(
+      (data) => !previousIntegrationKey || data.integrationKey.length > 0,
+      {
+        message: "Informe a chave de integração da nova fase",
+        path: ["integrationKey"],
+      },
+    )
+    .refine(
+      (data) =>
+        !previousIntegrationKey ||
+        data.integrationKey.toLowerCase() !==
+          previousIntegrationKey.toLowerCase(),
+      {
+        message: "Use uma chave diferente da fase atual",
+        path: ["integrationKey"],
+      },
+    );
+}
 
-type NewPhaseFormValues = z.infer<typeof newPhaseFormSchema>;
+type NewPhaseFormValues = z.infer<ReturnType<typeof createNewPhaseFormSchema>>;
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -89,6 +122,7 @@ function buildDefaults(
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: "",
     description: project.description ?? "",
+    integrationKey: suggestNextIntegrationKey(project.integrationKey) ?? "",
     copyMembers: true,
   };
 }
@@ -121,6 +155,11 @@ export function ProjectNewPhaseDialog({
 }: ProjectNewPhaseDialogProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const previousIntegrationKey = project.integrationKey?.trim() || null;
+  const formSchema = useMemo(
+    () => createNewPhaseFormSchema(previousIntegrationKey),
+    [previousIntegrationKey],
+  );
 
   const {
     control,
@@ -131,7 +170,7 @@ export function ProjectNewPhaseDialog({
     setValue,
     formState: { errors },
   } = useForm<NewPhaseFormValues>({
-    resolver: zodResolver(newPhaseFormSchema),
+    resolver: zodResolver(formSchema),
     defaultValues: buildDefaults(project, nextPhase),
   });
 
@@ -155,6 +194,7 @@ export function ProjectNewPhaseDialog({
           startDate: values.startDate,
           endDate: values.endDate || null,
           description: values.description || null,
+          integrationKey: values.integrationKey || null,
           copyMembers: values.copyMembers,
         }),
       });
@@ -351,6 +391,55 @@ export function ProjectNewPhaseDialog({
                 id="phase-end-date-err"
                 message={errors.endDate?.message}
               />
+            </div>
+
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label
+                htmlFor="phase-integration-key"
+                className="flex items-center gap-1.5"
+              >
+                <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
+                Chave de integração
+                {previousIntegrationKey && (
+                  <span className="text-destructive">*</span>
+                )}
+              </Label>
+              <Input
+                id="phase-integration-key"
+                className="font-mono"
+                placeholder="Ex: MARAM_PORCL_0002"
+                aria-invalid={Boolean(errors.integrationKey)}
+                aria-describedby={
+                  errors.integrationKey
+                    ? "phase-integration-key-err"
+                    : "phase-integration-key-hint"
+                }
+                {...register("integrationKey")}
+              />
+              {errors.integrationKey ? (
+                <FieldError
+                  id="phase-integration-key-err"
+                  message={errors.integrationKey.message}
+                />
+              ) : (
+                <p
+                  id="phase-integration-key-hint"
+                  className="text-xs text-muted-foreground"
+                >
+                  {previousIntegrationKey ? (
+                    <>
+                      Nova chave para a gestão de projetos. A fase atual
+                      continua com{" "}
+                      <span className="font-mono">
+                        {previousIntegrationKey}
+                      </span>{" "}
+                      e o histórico dela.
+                    </>
+                  ) : (
+                    "Usada pela gestão de projetos para puxar as horas (opcional)."
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5 sm:col-span-2">
