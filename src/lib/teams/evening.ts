@@ -27,6 +27,8 @@ import { decrypt } from "@/lib/encryption";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { formatDuration, parseLocalDate } from "@/lib/utils";
+import { getBotConfig } from "./bot/config";
+import { sendPersonalCard } from "./bot/proactive";
 import { buildEveningCard, type EveningMeeting } from "./cards";
 import { postTeamsCard } from "./client";
 import { getTeamsSettings } from "./settings";
@@ -251,6 +253,8 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
     };
   }
 
+  const botConfig = await getBotConfig();
+
   const candidates = (await db.query.user.findMany({
     where: and(eq(user.isActive, true), eq(user.eveningDigestEnabled, true)),
     columns: {
@@ -390,27 +394,41 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
         const firstName = candidate.name.split(" ")[0] ?? candidate.name;
         const detectedMeetings = context.meetings;
 
+        const card = buildEveningCard({
+          firstName,
+          dateLabel,
+          loggedMinutes: stats.minutes,
+          targetMinutes,
+          topProjectName: stats.topProject,
+          detectedMeetings,
+          suggestions: [
+            {
+              label: "✨ Preencher meu dia com IA",
+              url: `${appUrl}/dashboard/time?reconstruct=1`,
+            },
+          ],
+          appUrl,
+        });
+
+        // 1st choice: the private chat with the OptSolv Time app — no setup
+        // needed by the person beyond having the app installed.
+        const viaApp = await sendPersonalCard(
+          candidate.id,
+          card,
+          `Feche seu dia — faltam ${formatDuration(gap)}`,
+          botConfig,
+        );
+        if (viaApp === "sent") {
+          sent += 1;
+          await writeLog(candidate.id, today, "sent", "teams", "app");
+          return;
+        }
+
         const personalWebhook = candidate.teamsWebhookUrl
           ? decrypt(candidate.teamsWebhookUrl) || null
           : null;
 
         if (personalWebhook) {
-          const card = buildEveningCard({
-            firstName,
-            dateLabel,
-            loggedMinutes: stats.minutes,
-            targetMinutes,
-            topProjectName: stats.topProject,
-            detectedMeetings,
-            suggestions: [
-              {
-                label: "✨ Preencher meu dia com IA",
-                url: `${appUrl}/dashboard/time?reconstruct=1`,
-              },
-            ],
-            appUrl,
-          });
-
           const result = await postTeamsCard(personalWebhook, card);
           if (result.ok) {
             sent += 1;

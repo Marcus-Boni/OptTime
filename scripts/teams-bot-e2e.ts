@@ -46,6 +46,7 @@ async function main(): Promise<number> {
     "@/lib/teams/bot/handlers"
   );
   const { shiftDay, todayInAppTimeZone } = await import("@/lib/timezone");
+  const { sendPersonalCard } = await import("@/lib/teams/bot/proactive");
 
   const captured: Captured[] = [];
   const connector = createServer(async (req, res) => {
@@ -317,6 +318,12 @@ async function main(): Promise<number> {
     );
 
     harness.phase("Privacidade em grupo");
+    // Forget the 1:1 stored by the personal phase, so the bot has to open
+    // the private chat from the group activity itself.
+    await db
+      .delete(teamsBotConversation)
+      .where(eq(teamsBotConversation.userId, member.id));
+    takeSent();
     await handleActivity(
       baseActivity({
         text: "<at>OptSolv Time</at> hoje",
@@ -344,6 +351,34 @@ async function main(): Promise<number> {
     harness.check(
       "grupo recebe só o aviso",
       sentTexts(sent).some((text) => text.includes("chat privado")),
+    );
+
+    harness.phase("Lembrete proativo pelo chat do app");
+    const delivered = await sendPersonalCard(
+      member.id,
+      { type: "AdaptiveCard", version: "1.4", body: [] },
+      "Feche seu dia",
+      { enabled: true, credentials },
+    );
+    sent = takeSent();
+    harness.check("entrega no chat privado gravado", delivered === "sent");
+    harness.check(
+      "card vai para a conversa pessoal",
+      sent.some(
+        (item) =>
+          item.path.includes("personal-conv-e2e") &&
+          item.body.summary === "Feche seu dia",
+      ),
+    );
+    const unknownUser = await sendPersonalCard(
+      lead.id,
+      { type: "AdaptiveCard", version: "1.4", body: [] },
+      "Feche seu dia",
+      { enabled: true, credentials },
+    );
+    harness.check(
+      "sem app instalado cai no próximo canal",
+      unknownUser === "unavailable",
     );
 
     await db.delete(teamsBotAction).where(eq(teamsBotAction.userId, member.id));

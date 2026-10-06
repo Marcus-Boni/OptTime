@@ -360,7 +360,8 @@ export function TeamsSettingsClient() {
                   </Label>
                   <p className="text-xs text-muted-foreground">
                     “Confira se sua meta diária está fechada” com ações em 1
-                    clique. Chega no Teams (webhook pessoal) ou por e-mail.
+                    clique. Chega no chat do app OptSolv Time no Teams; sem o
+                    app, pelo webhook pessoal ou por e-mail.
                   </p>
                 </div>
                 <Switch
@@ -406,9 +407,9 @@ export function TeamsSettingsClient() {
                   <PersonalWebhookGuide />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Recebe o lembrete no chat do Teams em vez do e-mail. Exige um
-                  fluxo do Power Automate — o passo a passo está em “Como
-                  configurar”.
+                  Só é necessário se você não usa o app OptSolv Time no Teams —
+                  com o app instalado, o lembrete já chega no chat dele. Exige
+                  um fluxo do Power Automate — veja “Como configurar”.
                 </p>
                 {preferences?.hasPersonalWebhook ? (
                   <div className="flex items-center justify-between gap-2 rounded-md bg-muted/50 px-2.5 py-1.5">
