@@ -349,9 +349,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
               />
 
               <WorkItemCombobox
-                projectName={
-                  selectedProject?.azureProjectId ? selectedProject.name : null
-                }
+                azureProjectRef={selectedProject?.azureProjectId ?? null}
                 value={workItem}
                 onChange={setWorkItem}
                 unavailableMessage={workItemUnavailableMessage}

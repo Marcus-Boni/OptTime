@@ -550,16 +550,26 @@ export async function getPeoplePerformance(
           ]);
 
           const workItemsMap = new Map<number, AzureDevOpsAssignedWorkItem>();
+          // Platform project that fetched each work item. Its name may differ
+          // from the Azure project name (e.g. "Marca Ambiental — Fase 2").
+          const platformProjectByWorkItem = new Map<number, string>();
           let workItemFailures = 0;
 
-          for (const result of workItemResults) {
+          for (const [index, result] of workItemResults.entries()) {
             if (result.status === "rejected") {
               workItemFailures += 1;
               continue;
             }
 
+            const platformProjectName = azureProjects[index]?.name;
             for (const item of result.value) {
               workItemsMap.set(item.id, item);
+              if (
+                platformProjectName &&
+                !platformProjectByWorkItem.has(item.id)
+              ) {
+                platformProjectByWorkItem.set(item.id, platformProjectName);
+              }
             }
           }
 
@@ -605,7 +615,7 @@ export async function getPeoplePerformance(
 
             const metricBucket = getOrCreateMapEntry(
               projectMetrics,
-              item.projectName,
+              platformProjectByWorkItem.get(item.id) ?? item.projectName,
               () => ({
                 activeItems: 0,
                 staleItems: 0,

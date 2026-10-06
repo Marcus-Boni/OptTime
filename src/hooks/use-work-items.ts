@@ -31,7 +31,8 @@ function normalizeErrorCode(code: unknown): WorkItemsErrorCode {
   }
 }
 
-export function useWorkItems(projectName: string | null) {
+/** @param azureProjectRef Azure DevOps project id or name */
+export function useWorkItems(azureProjectRef: string | null) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<WorkItemSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -40,11 +41,11 @@ export function useWorkItems(projectName: string | null) {
 
   const search = useCallback(
     async (q: string) => {
-      if (!projectName) return;
+      if (!azureProjectRef) return;
       setLoading(true);
       setError(null);
       try {
-        const params = new URLSearchParams({ project: projectName });
+        const params = new URLSearchParams({ project: azureProjectRef });
         if (q) params.set("q", q);
         const res = await fetch(
           `/api/integrations/azure-devops/work-items?${params.toString()}`,
@@ -79,19 +80,19 @@ export function useWorkItems(projectName: string | null) {
         setLoading(false);
       }
     },
-    [projectName],
+    [azureProjectRef],
   );
 
   // Load initial items when project changes
   useEffect(() => {
-    if (!projectName) {
+    if (!azureProjectRef) {
       setQuery("");
       setResults([]);
       setError(null);
       return;
     }
     void search("");
-  }, [projectName, search]);
+  }, [azureProjectRef, search]);
 
   const handleQueryChange = useCallback(
     (value: string) => {
@@ -105,9 +106,9 @@ export function useWorkItems(projectName: string | null) {
   );
 
   const refresh = useCallback(() => {
-    if (!projectName) return;
+    if (!azureProjectRef) return;
     void search(query);
-  }, [projectName, query, search]);
+  }, [azureProjectRef, query, search]);
 
   return {
     query,

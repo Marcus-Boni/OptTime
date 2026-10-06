@@ -59,6 +59,7 @@ interface ProjectOption {
   id: string;
   name: string;
   color: string;
+  azureProjectId?: string | null;
   members?: { userId: string }[];
 }
 
@@ -344,7 +345,7 @@ function CreateTimeEntryCard({
               </label>
               <div id="tb-entry-workitem">
                 <WorkItemCombobox
-                  projectName={projectName}
+                  azureProjectRef={selectedProject?.azureProjectId ?? null}
                   value={workItem}
                   onChange={setWorkItem}
                 />

@@ -291,9 +291,7 @@ export function QuickTimerDialog() {
               <span className="text-muted-foreground">(opcional)</span>
             </Label>
             <WorkItemCombobox
-              projectName={
-                selectedProject?.azureProjectId ? selectedProject.name : null
-              }
+              azureProjectRef={selectedProject?.azureProjectId ?? null}
               value={workItem}
               onChange={setWorkItem}
               disabled={loading || !selectedProject?.azureProjectId}
