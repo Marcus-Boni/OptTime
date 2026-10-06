@@ -4,6 +4,7 @@ import type { PlayerRef } from "@remotion/player";
 import { motion } from "framer-motion";
 import { Check, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
 import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useCallback, useRef, useState } from "react";
 import type { PublicRelease } from "@/lib/releases/public-release";
 
@@ -34,7 +35,9 @@ export function VideoDemo({ release, mp4Src, poster }: VideoDemoProps) {
   const [hasStarted, setHasStarted] = useState(false);
   const playerRef = useRef<PlayerRef>(null);
 
-  const durationText = "1:30";
+  // The pre-rendered launch film runs 24s; the live Remotion fallback runs 90s.
+  const demoSeconds = mp4Src ? 24 : 90;
+  const durationText = mp4Src ? "0:24" : "1:30";
 
   const handlePlay = useCallback(() => {
     setHasStarted(true);
@@ -90,7 +93,7 @@ export function VideoDemo({ release, mp4Src, poster }: VideoDemoProps) {
             {composition === "demo" ? (
               <>
                 Como funciona em{" "}
-                <span className="gradient-text">90 segundos</span>
+                <span className="gradient-text">{demoSeconds} segundos</span>
               </>
             ) : (
               <>
@@ -117,7 +120,7 @@ export function VideoDemo({ release, mp4Src, poster }: VideoDemoProps) {
                     : "text-white/60 hover:text-white"
                 }`}
               >
-                Visão Geral Oficial (90s)
+                Visão Geral Oficial ({demoSeconds}s)
               </button>
               {release ? (
                 <button
@@ -286,18 +289,41 @@ function PlayOverlay({
   duration,
   title,
   subtitle,
+  poster,
 }: {
   onPlay: () => void;
   duration: string;
   title: string;
   subtitle: string;
+  /** Poster frame shown behind the play button; it carries its own headline, so the text is hidden. */
+  poster?: string;
 }) {
   return (
-    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-gradient-to-br from-[#141416]/95 via-[#0c0c0e]/95 to-[#09090b]/95 p-6 text-center">
-      {/* Decorative ambient background grid */}
-      <div className="pointer-events-none absolute inset-0 opacity-20">
-        <div className="absolute inset-0 bg-[radial-gradient(#f97316_1px,transparent_1px)] [background-size:24px_24px]" />
-      </div>
+    <div
+      className={`absolute inset-0 z-10 flex flex-col items-center justify-center p-6 text-center ${
+        poster
+          ? ""
+          : "bg-gradient-to-br from-[#141416]/95 via-[#0c0c0e]/95 to-[#09090b]/95"
+      }`}
+    >
+      {poster ? (
+        <>
+          <Image
+            src={poster}
+            alt=""
+            width={1920}
+            height={1080}
+            sizes="(min-width: 1024px) 1024px, 100vw"
+            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-black/30" />
+        </>
+      ) : (
+        /* Decorative ambient background grid */
+        <div className="pointer-events-none absolute inset-0 opacity-20">
+          <div className="absolute inset-0 bg-[radial-gradient(#f97316_1px,transparent_1px)] [background-size:24px_24px]" />
+        </div>
+      )}
 
       <div className="relative z-10 flex flex-col items-center">
         <button
@@ -313,7 +339,7 @@ function PlayOverlay({
             />
           </div>
 
-          <div>
+          <div className={poster ? "sr-only" : undefined}>
             <h3 className="font-display text-lg font-bold text-white md:text-xl">
               {title}
             </h3>
@@ -343,22 +369,28 @@ function NativeVideo({
   hasStarted: boolean;
   onPlay: () => void;
 }) {
-  return hasStarted ? (
-    <video
-      src={src}
-      poster={poster}
-      controls
-      autoPlay
-      className="aspect-video w-full"
-    >
-      <track kind="captions" />
-    </video>
-  ) : (
-    <PlayOverlay
-      onPlay={onPlay}
-      duration={duration}
-      title="Assistir Demonstração"
-      subtitle="Apresentação em alta definição do sistema"
-    />
+  return (
+    <div className="relative aspect-video w-full">
+      {hasStarted ? (
+        <video
+          src={src}
+          poster={poster}
+          controls
+          autoPlay
+          playsInline
+          className="absolute inset-0 h-full w-full"
+        >
+          <track kind="captions" />
+        </video>
+      ) : (
+        <PlayOverlay
+          onPlay={onPlay}
+          duration={duration}
+          title="Assistir Demonstração"
+          subtitle="Apresentação em alta definição do sistema"
+          poster={poster}
+        />
+      )}
+    </div>
   );
 }

@@ -30,7 +30,11 @@ export default async function LandingPage(): Promise<ReactElement> {
         <Navbar versionTag={release?.versionTag ?? null} />
         <Hero />
         <SocialProof />
-        <VideoDemo release={release} />
+        <VideoDemo
+          release={release}
+          mp4Src="/product-film.mp4"
+          poster="/product-film-poster.jpg"
+        />
         <FeaturesBento />
         <HowItWorks />
         <StatsBar />
