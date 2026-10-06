@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# local renders from the brag-slim skill (the film source lives in video/product-film)
+/brag-output/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
