@@ -6,6 +6,7 @@ import { decrypt, encrypt } from "@/lib/encryption";
 import { fetchMicrosoftObjectId } from "@/lib/microsoft-graph";
 import { getMicrosoftAccessToken } from "@/lib/microsoft-token";
 import { verifyPresenceAccess } from "@/lib/teams/presence";
+import { getTeamsSettings } from "@/lib/teams/settings";
 import { saveTeamsPreferencesSchema } from "@/lib/validations/teams.schema";
 
 interface TeamsPreferencesView {
@@ -43,6 +44,21 @@ async function buildView(userId: string): Promise<TeamsPreferencesView | null> {
     personalWebhookPreview: webhook ? `${webhook.slice(0, 34)}…` : null,
     identityLinked: Boolean(row.azureId),
   };
+}
+
+/** Whether the OptSolv Time Teams app (bot + message extension) is live. */
+interface TeamsAppView {
+  available: boolean;
+  /** Teams app id (= bot App ID), used for the install deep link. */
+  appId: string | null;
+}
+
+async function buildAppView(): Promise<TeamsAppView> {
+  const settings = await getTeamsSettings();
+  const available = Boolean(
+    settings.enabled && settings.botAppId && settings.botAppPassword,
+  );
+  return { available, appId: available ? settings.botAppId : null };
 }
 
 /**
@@ -94,13 +110,19 @@ export async function GET(req: Request): Promise<Response> {
     }
 
     // Opening this page is the natural moment to bind the Teams identity.
-    const identityLinked = await ensureIdentityLinked(
-      req.headers,
-      session.user.id,
-      preferences.identityLinked,
-    );
+    const [identityLinked, app] = await Promise.all([
+      ensureIdentityLinked(
+        req.headers,
+        session.user.id,
+        preferences.identityLinked,
+      ),
+      buildAppView(),
+    ]);
 
-    return Response.json({ preferences: { ...preferences, identityLinked } });
+    return Response.json({
+      preferences: { ...preferences, identityLinked },
+      app,
+    });
   } catch (error) {
     console.error("[GET /api/teams/me]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

@@ -25,6 +25,12 @@ export interface TeamsSettings {
   standupEnabled: boolean;
   /** Personal end-of-day digests (Teams webhook or e-mail fallback). */
   eveningEnabled: boolean;
+  /** Microsoft App ID of the Azure Bot that backs the Teams app. */
+  botAppId: string | null;
+  /** Client secret of that App ID (encrypted at rest). */
+  botAppPassword: string | null;
+  /** Entra tenant of the bot registration (single-tenant bots). */
+  botTenantId: string | null;
 }
 
 export const DEFAULT_TEAMS_SETTINGS: TeamsSettings = {
@@ -33,6 +39,9 @@ export const DEFAULT_TEAMS_SETTINGS: TeamsSettings = {
   outgoingSecret: null,
   standupEnabled: true,
   eveningEnabled: true,
+  botAppId: null,
+  botAppPassword: null,
+  botTenantId: null,
 };
 
 interface StoredTeamsSettings {
@@ -41,6 +50,9 @@ interface StoredTeamsSettings {
   outgoingSecret?: string | null;
   standupEnabled?: boolean;
   eveningEnabled?: boolean;
+  botAppId?: string | null;
+  botAppPassword?: string | null;
+  botTenantId?: string | null;
 }
 
 /** Decrypted settings for server-side use (crons, webhook receiver). */
@@ -63,6 +75,11 @@ export async function getTeamsSettings(): Promise<TeamsSettings> {
         : null,
       standupEnabled: stored.standupEnabled ?? true,
       eveningEnabled: stored.eveningEnabled ?? true,
+      botAppId: stored.botAppId || null,
+      botAppPassword: stored.botAppPassword
+        ? decrypt(stored.botAppPassword) || null
+        : null,
+      botTenantId: stored.botTenantId || null,
     };
   } catch (error: unknown) {
     console.error("[teams] failed to parse teams_config:", error);
@@ -77,6 +94,15 @@ export interface SaveTeamsSettingsInput {
   outgoingSecret?: string | null;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  /** Same undefined/null/string semantics as the secrets above. */
+  botAppId?: string | null;
+  botAppPassword?: string | null;
+  botTenantId?: string | null;
+}
+
+/** Undefined keeps the current value; null or a string replaces it. */
+function pick<T>(next: T | undefined, current: T): T {
+  return next === undefined ? current : next;
 }
 
 export async function saveTeamsSettings(
@@ -85,14 +111,12 @@ export async function saveTeamsSettings(
 ): Promise<void> {
   const current = await getTeamsSettings();
 
-  const nextChannelUrl =
-    input.channelWebhookUrl === undefined
-      ? current.channelWebhookUrl
-      : input.channelWebhookUrl;
-  const nextSecret =
-    input.outgoingSecret === undefined
-      ? current.outgoingSecret
-      : input.outgoingSecret;
+  const nextChannelUrl = pick(
+    input.channelWebhookUrl,
+    current.channelWebhookUrl,
+  );
+  const nextSecret = pick(input.outgoingSecret, current.outgoingSecret);
+  const nextBotPassword = pick(input.botAppPassword, current.botAppPassword);
 
   const stored: StoredTeamsSettings = {
     enabled: input.enabled,
@@ -100,6 +124,9 @@ export async function saveTeamsSettings(
     outgoingSecret: nextSecret ? encrypt(nextSecret) : null,
     standupEnabled: input.standupEnabled,
     eveningEnabled: input.eveningEnabled,
+    botAppId: pick(input.botAppId, current.botAppId),
+    botAppPassword: nextBotPassword ? encrypt(nextBotPassword) : null,
+    botTenantId: pick(input.botTenantId, current.botTenantId),
   };
 
   const value = JSON.stringify(stored);
@@ -125,6 +152,9 @@ export interface MaskedTeamsSettings {
   hasOutgoingSecret: boolean;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  botAppId: string | null;
+  hasBotAppPassword: boolean;
+  botTenantId: string | null;
 }
 
 /** Read model for the admin UI — secrets never leave the server. */
@@ -140,5 +170,8 @@ export function maskTeamsSettings(
     hasOutgoingSecret: Boolean(settings.outgoingSecret),
     standupEnabled: settings.standupEnabled,
     eveningEnabled: settings.eveningEnabled,
+    botAppId: settings.botAppId,
+    hasBotAppPassword: Boolean(settings.botAppPassword),
+    botTenantId: settings.botTenantId,
   };
 }

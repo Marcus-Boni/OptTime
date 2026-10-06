@@ -16,6 +16,10 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { IntegrationBackLink } from "@/components/integrations/IntegrationBackLink";
 import { PersonalWebhookGuide } from "@/components/integrations/teams/PersonalWebhookGuide";
+import TeamsAppCard, {
+  type TeamsAppAvailability,
+} from "@/components/integrations/teams/TeamsAppCard";
+import TeamsBotAdminCard from "@/components/integrations/teams/TeamsBotAdminCard";
 import { TeamsLogo } from "@/components/integrations/teams/TeamsLogo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +85,9 @@ interface MaskedTeamsSettings {
   hasOutgoingSecret: boolean;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  botAppId: string | null;
+  hasBotAppPassword: boolean;
+  botTenantId: string | null;
 }
 
 const COMMANDS: Array<{ command: string; description: string }> = [
@@ -125,6 +132,7 @@ export function TeamsSettingsClient() {
 
   const [preferences, setPreferences] = useState<TeamsPreferences | null>(null);
   const [settings, setSettings] = useState<MaskedTeamsSettings | null>(null);
+  const [teamsApp, setTeamsApp] = useState<TeamsAppAvailability | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Per-user form state
@@ -155,8 +163,12 @@ export function TeamsSettingsClient() {
       const [meRes, settingsRes] = await Promise.all(requests);
 
       if (meRes?.ok) {
-        const body = (await meRes.json()) as { preferences: TeamsPreferences };
+        const body = (await meRes.json()) as {
+          preferences: TeamsPreferences;
+          app?: TeamsAppAvailability;
+        };
         setPreferences(body.preferences);
+        setTeamsApp(body.app ?? null);
       }
 
       if (settingsRes?.ok) {
@@ -311,8 +323,8 @@ export function TeamsSettingsClient() {
               Microsoft Teams
             </h1>
             <p className="text-sm text-muted-foreground">
-              Digest do time, lembrete vespertino, comandos no chat e status
-              sincronizado com o timer.
+              Registro de horas em linguagem natural, digest do time, lembrete
+              vespertino e status sincronizado com o timer.
             </p>
           </div>
         </div>
@@ -322,6 +334,9 @@ export function TeamsSettingsClient() {
         <SectionSkeleton />
       ) : (
         <>
+          {/* ── Teams app (bot + message extension) ── */}
+          <TeamsAppCard app={teamsApp} />
+
           {/* ── Per-user preferences ── */}
           <Card>
             <CardHeader>
@@ -668,6 +683,11 @@ export function TeamsSettingsClient() {
                 </div>
               </CardContent>
             </Card>
+          ) : null}
+
+          {/* ── Admin: Teams app registration ── */}
+          {isAdmin && settings ? (
+            <TeamsBotAdminCard settings={settings} onSaved={setSettings} />
           ) : null}
         </>
       )}

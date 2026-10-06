@@ -1299,6 +1299,64 @@ export const teamsNotificationLog = pgTable(
   ],
 );
 
+// ─── Teams Bot ────────────────────────────────────────────────────────
+/**
+ * Personal (1:1) conversation between the OptSolv Time bot and a user.
+ *
+ * Captured on install or on the first message, it is what lets the bot write
+ * to someone proactively — a private answer to a question asked in a group,
+ * or a confirmation of something logged from a message extension.
+ */
+export const teamsBotConversation = pgTable(
+  "teams_bot_conversation",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Entra object id (oid) of the user, stable across apps in the tenant. */
+    aadObjectId: text("aad_object_id").notNull(),
+    /** Bot-scoped Teams user id ("29:…"), required to open a 1:1 chat. */
+    botUserId: text("bot_user_id").notNull(),
+    conversationId: text("conversation_id").notNull(),
+    /** Regional Bot Connector endpoint the conversation lives on. */
+    serviceUrl: text("service_url").notNull(),
+    tenantId: text("tenant_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("teams_bot_conversation_aad_idx").on(table.aadObjectId)],
+);
+
+/** Lifecycle of a time entry proposed by the bot. */
+export type TeamsBotActionStatus = "pending" | "logged" | "undone";
+
+/**
+ * Idempotency ledger for bot cards: the proposal id travels inside the card,
+ * so a double click — or Teams retrying the invoke — can never create the
+ * same entry twice. It also remembers which entry to remove on "Desfazer".
+ */
+export const teamsBotAction = pgTable(
+  "teams_bot_action",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    entryId: text("entry_id"),
+    /** "pending" (being written) | "logged" | "undone" */
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index("teams_bot_action_user_idx").on(table.userId)],
+);
+
 // ─── Onboarding ───────────────────────────────────────────────────────
 export type OnboardingStatus =
   | "pending"
