@@ -186,7 +186,7 @@ export function Hero() {
               >
                 <a href="#video-demo">
                   <Play className="h-4 w-4" />
-                  Ver Demo (90s)
+                  Ver Demo (24s)
                 </a>
               </Button>
             </motion.div>
