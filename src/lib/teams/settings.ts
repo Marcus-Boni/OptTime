@@ -25,6 +25,8 @@ export interface TeamsSettings {
   standupEnabled: boolean;
   /** Personal end-of-day digests (Teams webhook or e-mail fallback). */
   eveningEnabled: boolean;
+  /** "Sua reunião terminou — registrar?" in the Teams app chat. */
+  meetingNudgesEnabled: boolean;
   /** Microsoft App ID of the Azure Bot that backs the Teams app. */
   botAppId: string | null;
   /** Client secret of that App ID (encrypted at rest). */
@@ -39,6 +41,7 @@ export const DEFAULT_TEAMS_SETTINGS: TeamsSettings = {
   outgoingSecret: null,
   standupEnabled: true,
   eveningEnabled: true,
+  meetingNudgesEnabled: true,
   botAppId: null,
   botAppPassword: null,
   botTenantId: null,
@@ -50,6 +53,7 @@ interface StoredTeamsSettings {
   outgoingSecret?: string | null;
   standupEnabled?: boolean;
   eveningEnabled?: boolean;
+  meetingNudgesEnabled?: boolean;
   botAppId?: string | null;
   botAppPassword?: string | null;
   botTenantId?: string | null;
@@ -75,6 +79,7 @@ export async function getTeamsSettings(): Promise<TeamsSettings> {
         : null,
       standupEnabled: stored.standupEnabled ?? true,
       eveningEnabled: stored.eveningEnabled ?? true,
+      meetingNudgesEnabled: stored.meetingNudgesEnabled ?? true,
       botAppId: stored.botAppId || null,
       botAppPassword: stored.botAppPassword
         ? decrypt(stored.botAppPassword) || null
@@ -94,6 +99,8 @@ export interface SaveTeamsSettingsInput {
   outgoingSecret?: string | null;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  /** Undefined keeps the stored value (older clients don't send it). */
+  meetingNudgesEnabled?: boolean;
   /** Same undefined/null/string semantics as the secrets above. */
   botAppId?: string | null;
   botAppPassword?: string | null;
@@ -124,6 +131,10 @@ export async function saveTeamsSettings(
     outgoingSecret: nextSecret ? encrypt(nextSecret) : null,
     standupEnabled: input.standupEnabled,
     eveningEnabled: input.eveningEnabled,
+    meetingNudgesEnabled: pick(
+      input.meetingNudgesEnabled,
+      current.meetingNudgesEnabled,
+    ),
     botAppId: pick(input.botAppId, current.botAppId),
     botAppPassword: nextBotPassword ? encrypt(nextBotPassword) : null,
     botTenantId: pick(input.botTenantId, current.botTenantId),
@@ -152,6 +163,7 @@ export interface MaskedTeamsSettings {
   hasOutgoingSecret: boolean;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  meetingNudgesEnabled: boolean;
   botAppId: string | null;
   hasBotAppPassword: boolean;
   botTenantId: string | null;
@@ -170,6 +182,7 @@ export function maskTeamsSettings(
     hasOutgoingSecret: Boolean(settings.outgoingSecret),
     standupEnabled: settings.standupEnabled,
     eveningEnabled: settings.eveningEnabled,
+    meetingNudgesEnabled: settings.meetingNudgesEnabled,
     botAppId: settings.botAppId,
     hasBotAppPassword: Boolean(settings.botAppPassword),
     botTenantId: settings.botTenantId,

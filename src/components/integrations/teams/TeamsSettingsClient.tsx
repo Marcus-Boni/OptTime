@@ -3,6 +3,7 @@
 import { motion } from "framer-motion";
 import {
   BellRing,
+  CalendarCheck,
   Copy,
   Loader2,
   Radio,
@@ -34,6 +35,7 @@ import type { User as UserType } from "@/types/user";
 interface TeamsPreferences {
   teamsStatusSyncEnabled: boolean;
   eveningDigestEnabled: boolean;
+  teamsMeetingNudgeEnabled: boolean;
   hasPersonalWebhook: boolean;
   personalWebhookPreview: string | null;
   identityLinked: boolean;
@@ -85,6 +87,7 @@ interface MaskedTeamsSettings {
   hasOutgoingSecret: boolean;
   standupEnabled: boolean;
   eveningEnabled: boolean;
+  meetingNudgesEnabled: boolean;
   botAppId: string | null;
   hasBotAppPassword: boolean;
   botTenantId: string | null;
@@ -194,6 +197,7 @@ export function TeamsSettingsClient() {
     async (patch: {
       teamsStatusSyncEnabled?: boolean;
       eveningDigestEnabled?: boolean;
+      teamsMeetingNudgeEnabled?: boolean;
       teamsWebhookUrl?: string | null;
     }) => {
       setSavingPreference(true);
@@ -245,6 +249,8 @@ export function TeamsSettingsClient() {
           enabled: patch.enabled ?? settings.enabled,
           standupEnabled: patch.standupEnabled ?? settings.standupEnabled,
           eveningEnabled: patch.eveningEnabled ?? settings.eveningEnabled,
+          meetingNudgesEnabled:
+            patch.meetingNudgesEnabled ?? settings.meetingNudgesEnabled,
         };
 
         // Secrets use tri-state semantics: only send when the admin typed one.
@@ -370,6 +376,34 @@ export function TeamsSettingsClient() {
                   disabled={savingPreference}
                   onCheckedChange={(checked) =>
                     savePreferences({ eveningDigestEnabled: checked })
+                  }
+                />
+              </div>
+
+              <div
+                data-tour="teams-meeting-nudge"
+                className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2.5"
+              >
+                <div>
+                  <Label htmlFor="meeting-nudge" className="text-sm">
+                    <CalendarCheck
+                      className="mr-1.5 inline size-3.5 text-brand-500"
+                      aria-hidden="true"
+                    />
+                    Lembrete ao fim de cada reunião
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Quando uma reunião da sua agenda termina, o app OptSolv Time
+                    pergunta no Teams se quer registrá-la — já com a duração
+                    real e o título. Exige o app instalado.
+                  </p>
+                </div>
+                <Switch
+                  id="meeting-nudge"
+                  checked={preferences?.teamsMeetingNudgeEnabled ?? false}
+                  disabled={savingPreference}
+                  onCheckedChange={(checked) =>
+                    savePreferences({ teamsMeetingNudgeEnabled: checked })
                   }
                 />
               </div>
@@ -576,6 +610,28 @@ export function TeamsSettingsClient() {
                       disabled={savingSettings}
                       onCheckedChange={(checked) =>
                         saveAdminSettings({ eveningEnabled: checked })
+                      }
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 px-3 py-2.5 sm:col-span-2">
+                    <div>
+                      <Label
+                        htmlFor="meeting-nudges-enabled"
+                        className="text-sm"
+                      >
+                        Lembrete pós-reunião
+                      </Label>
+                      <p className="text-xs text-muted-foreground">
+                        “Sua reunião terminou — registrar?” no chat do app, a
+                        cada 10 min em horário comercial.
+                      </p>
+                    </div>
+                    <Switch
+                      id="meeting-nudges-enabled"
+                      checked={settings.meetingNudgesEnabled}
+                      disabled={savingSettings}
+                      onCheckedChange={(checked) =>
+                        saveAdminSettings({ meetingNudgesEnabled: checked })
                       }
                     />
                   </div>

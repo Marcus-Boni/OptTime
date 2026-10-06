@@ -78,6 +78,10 @@ export const user = pgTable("user", {
   eveningDigestEnabled: boolean("evening_digest_enabled")
     .default(true)
     .notNull(),
+  /** Ask in the Teams app chat to log each meeting right after it ends. */
+  teamsMeetingNudgeEnabled: boolean("teams_meeting_nudge_enabled")
+    .default(true)
+    .notNull(),
 });
 
 export const session = pgTable(
@@ -1355,6 +1359,53 @@ export const teamsBotAction = pgTable(
       .notNull(),
   },
   (table) => [index("teams_bot_action_user_idx").on(table.userId)],
+);
+
+// ─── Teams Meeting Nudges ─────────────────────────────────────────────
+/** "sent" → card delivered; then "logged", "dismissed", "muted" or "failed". */
+export type TeamsMeetingNudgeStatus =
+  | "sent"
+  | "logged"
+  | "dismissed"
+  | "muted"
+  | "failed";
+
+/**
+ * One row per meeting the bot asked about. The unique (user, meeting) pair is
+ * the guarantee that overlapping cron runs never ask twice; rows keyed
+ * `series:<id>` with status "muted" silence a whole recurring series.
+ */
+export const teamsMeetingNudge = pgTable(
+  "teams_meeting_nudge",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Graph event id of the occurrence, or `series:<seriesId>`. */
+    meetingId: text("meeting_id").notNull(),
+    /** Local day of the meeting, YYYY-MM-DD — drives the daily cap. */
+    meetingDate: text("meeting_date").notNull(),
+    /** Proposal id carried by the card, shared with teams_bot_action. */
+    proposalId: text("proposal_id").notNull(),
+    status: text("status").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("teams_meeting_nudge_user_meeting_idx").on(
+      table.userId,
+      table.meetingId,
+    ),
+    uniqueIndex("teams_meeting_nudge_proposal_idx").on(table.proposalId),
+    index("teams_meeting_nudge_user_date_idx").on(
+      table.userId,
+      table.meetingDate,
+    ),
+  ],
 );
 
 // ─── Onboarding ───────────────────────────────────────────────────────

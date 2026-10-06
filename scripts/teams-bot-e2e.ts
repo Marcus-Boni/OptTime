@@ -38,9 +38,9 @@ async function readBody(
 async function main(): Promise<number> {
   const { sql, eq } = await import("drizzle-orm");
   const { db } = await import("@/lib/db");
-  const { user, teamsBotAction, teamsBotConversation } = await import(
-    "@/lib/db/schema"
-  );
+  const { user, teamsBotAction, teamsBotConversation, teamsMeetingNudge } =
+    await import("@/lib/db/schema");
+  const { loadMutedSeries } = await import("@/lib/teams/bot/nudges");
   const harness = await import("./mcp-e2e/harness");
   const { handleActivity, handleInvoke } = await import(
     "@/lib/teams/bot/handlers"
@@ -96,6 +96,9 @@ async function main(): Promise<number> {
 
   const migrated = await db
     .execute(sql`select to_regclass('public.teams_bot_action') as name`)
+    .then((result) => Boolean((result.rows[0] as { name: unknown })?.name));
+  const nudgesMigrated = await db
+    .execute(sql`select to_regclass('public.teams_meeting_nudge') as name`)
     .then((result) => Boolean((result.rows[0] as { name: unknown })?.name));
 
   try {
@@ -352,6 +355,102 @@ async function main(): Promise<number> {
       "grupo recebe só o aviso",
       sentTexts(sent).some((text) => text.includes("chat privado")),
     );
+
+    if (nudgesMigrated) {
+      harness.phase("Lembrete pós-reunião — botões do card");
+      const nudgeAction = async (
+        verb: string,
+        proposalId: string,
+        extra: Record<string, unknown> = {},
+      ) => {
+        await db.insert(teamsMeetingNudge).values({
+          id: crypto.randomUUID(),
+          userId: member.id,
+          meetingId: `evt-${proposalId}`,
+          meetingDate: today,
+          proposalId,
+          status: "sent",
+        });
+        const response = await handleInvoke(
+          baseActivity({
+            type: "invoke",
+            name: "adaptiveCard/action",
+            value: {
+              action: {
+                type: "Action.Execute",
+                verb,
+                data: {
+                  action: verb,
+                  proposalId,
+                  requesterOid: memberOid,
+                  meetingLabel: "Daily E2E · 09:00–09:30",
+                  seriesId: "series-e2e",
+                  ...extra,
+                },
+              },
+            },
+          }),
+          credentials,
+        );
+        // Status bookkeeping is fire-and-forget; give it a moment.
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const row = await db.query.teamsMeetingNudge.findFirst({
+          where: eq(teamsMeetingNudge.proposalId, proposalId),
+        });
+        return { body: JSON.stringify(response.body), status: row?.status };
+      };
+
+      const logged = await nudgeAction("log.confirm", crypto.randomUUID(), {
+        projectId: projectRow.id,
+        duration: "30min",
+        date: today,
+        description: "Daily E2E",
+      });
+      harness.check(
+        "Registrar lança a reunião",
+        logged.body.includes("registradas"),
+      );
+      harness.check(
+        "nudge marcado como lançado",
+        logged.status === "logged",
+        String(logged.status),
+      );
+
+      const dismissed = await nudgeAction(
+        "meeting.dismiss",
+        crypto.randomUUID(),
+      );
+      harness.check(
+        "Ignorar fecha o card",
+        dismissed.body.includes("não registrada"),
+      );
+      harness.check(
+        "nudge marcado como ignorado",
+        dismissed.status === "dismissed",
+        String(dismissed.status),
+      );
+
+      await nudgeAction("meeting.mute_series", crypto.randomUUID());
+      harness.check(
+        "série silenciada não volta a perguntar",
+        (await loadMutedSeries(member.id)).has("series-e2e"),
+      );
+
+      await nudgeAction("meeting.mute_all", crypto.randomUUID());
+      const prefs = await db.query.user.findFirst({
+        where: eq(user.id, member.id),
+        columns: { teamsMeetingNudgeEnabled: true },
+      });
+      harness.check(
+        "desligar lembretes grava a preferência",
+        prefs?.teamsMeetingNudgeEnabled === false,
+      );
+    } else {
+      harness.warn(
+        "botões do lembrete pós-reunião não testados",
+        "aplique a migração 0029 (pnpm db:migrate) e rode de novo",
+      );
+    }
 
     harness.phase("Lembrete proativo pelo chat do app");
     const delivered = await sendPersonalCard(

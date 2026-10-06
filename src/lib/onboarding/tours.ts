@@ -494,6 +494,16 @@ export const TOURS: readonly TourDefinition[] = [
         hint: "Suas horas só aparecem no seu chat privado com o app, nunca em grupos.",
       },
       {
+        id: "teams-meeting-nudge",
+        title: "Lembrete ao fim de cada reunião",
+        description:
+          "Quando uma reunião da sua agenda termina, o app pergunta no Teams se você quer registrá-la — com a duração real e o título já preenchidos. Um clique em Registrar e pronto; Ignorar ou silenciar uma série também é um clique.",
+        target: '[data-tour="teams-meeting-nudge"]',
+        placement: "bottom",
+        route: "/dashboard/settings/integrations/teams",
+        hint: "O projeto só vem preenchido quando a agenda deixa claro qual é.",
+      },
+      {
         id: "settings",
         title: "Você define os limites",
         description:

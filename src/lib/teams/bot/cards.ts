@@ -24,7 +24,10 @@ export type CardVerb =
   | "log.undo"
   | "dialog.parse"
   | "dialog.manual"
-  | "dialog.close";
+  | "dialog.close"
+  | "meeting.dismiss"
+  | "meeting.mute_series"
+  | "meeting.mute_all";
 
 /** Where a card is rendered decides which action type its buttons use. */
 export type CardSurface = "message" | "dialog";
@@ -34,6 +37,10 @@ export interface CardActionData {
   proposalId: string;
   /** Entra oid of whoever asked; in group chats only they may act. */
   requesterOid: string;
+  /** Meeting nudges: the line that names the meeting, kept across re-renders. */
+  meetingLabel?: string;
+  /** Meeting nudges: recurring series, for "não lembrar desta série". */
+  seriesId?: string;
 }
 
 const SCHEMA = "http://adaptivecards.io/schemas/adaptive-card.json";
@@ -184,20 +191,35 @@ export interface ProposalCardInput {
   error?: string | null;
   /** Shown when the conversation has more people than the requester. */
   isGroup?: boolean;
+  /** Turns the card into the "sua reunião terminou" nudge. */
+  meeting?: { label: string; seriesId: string | null };
 }
 
 export function buildProposalCard(input: ProposalCardInput): AdaptiveCard {
-  const { draft, projects, surface } = input;
+  const { draft, projects, surface, meeting } = input;
   const data = (verb: CardVerb): CardActionData => ({
     action: verb,
     proposalId: input.proposalId,
     requesterOid: input.requesterOid,
+    ...(meeting
+      ? {
+          meetingLabel: meeting.label,
+          ...(meeting.seriesId ? { seriesId: meeting.seriesId } : {}),
+        }
+      : {}),
   });
 
   const notices: unknown[] = [];
   if (input.error) notices.push(notice(`⚠️ ${input.error}`, "attention"));
   if (!draft.projectId) {
-    notices.push(notice("Escolha o projeto deste lançamento.", "warning"));
+    notices.push(
+      notice(
+        meeting
+          ? "Não achei o projeto pela agenda — escolha abaixo."
+          : "Escolha o projeto deste lançamento.",
+        "warning",
+      ),
+    );
   } else if (draft.projectGuessed) {
     notices.push(
       notice(
@@ -218,7 +240,9 @@ export function buildProposalCard(input: ProposalCardInput): AdaptiveCard {
       : "Confira e registre em 1 clique";
 
   const body: unknown[] = [
-    ...header("Registrar horas", subtitle),
+    ...(meeting
+      ? header("📅 Sua reunião terminou — registrar?", meeting.label)
+      : header("Registrar horas", subtitle)),
     ...(input.original
       ? [
           {
@@ -314,10 +338,52 @@ export function buildProposalCard(input: ProposalCardInput): AdaptiveCard {
     },
   ];
 
+  if (meeting) {
+    return baseCard(body, [
+      action(surface, "Registrar", data("log.confirm"), "positive"),
+      action(surface, "Ignorar", data("meeting.dismiss")),
+      {
+        type: "Action.ShowCard",
+        title: "Mais opções",
+        card: {
+          type: "AdaptiveCard",
+          body: [],
+          actions: [
+            ...(meeting.seriesId
+              ? [
+                  action(
+                    surface,
+                    "Não lembrar desta série",
+                    data("meeting.mute_series"),
+                  ),
+                ]
+              : []),
+            action(
+              surface,
+              "Desligar lembretes de reunião",
+              data("meeting.mute_all"),
+            ),
+          ],
+        },
+      },
+    ]);
+  }
+
   return baseCard(body, [
     action(surface, "Registrar", data("log.confirm"), "positive"),
     action(surface, "Cancelar", data("log.cancel")),
   ]);
+}
+
+/** Outcome of the secondary meeting-nudge buttons. */
+export function buildMeetingClosedCard(
+  title: string,
+  detail: string,
+): AdaptiveCard {
+  return baseCard(
+    [...header(title, detail)],
+    [openAppAction("/dashboard/settings/integrations/teams")],
+  );
 }
 
 // ─── Outcomes ────────────────────────────────────────────────────────

@@ -412,7 +412,48 @@ Teams ──JWT──▶ POST /api/teams/bot ──▶ valida o token do Bot Con
 > baixe o pacote de novo e reenvie no admin center. Mudanças só no servidor
 > (handlers, cards, IA) não exigem republicar.
 
-### 8.4 Testando
+### 8.4 Lembrete ao fim de cada reunião
+
+Quando uma reunião da agenda termina, o app manda no chat privado:
+**“📅 Sua reunião terminou — registrar?”**, com título, horário, duração real
+(medida pela chamada do Teams quando houver) e o formulário já preenchido.
+
+| Botão | Efeito |
+|---|---|
+| **Registrar** | Lança a entrada (mesmas regras do app) e oferece Desfazer |
+| **Ignorar** | Fecha o card; a reunião não volta a ser perguntada |
+| **Mais opções → Não lembrar desta série** | Silencia a reunião recorrente (ex.: daily) |
+| **Mais opções → Desligar lembretes de reunião** | Desliga a preferência da pessoa |
+
+**Como funciona.** A cron `teams-meeting-nudges-cron.yml` chama
+`POST /api/cron/teams-meeting-nudges` a cada 10 min, das 08h às 21h, em dias
+úteis. Para cada pessoa com o app instalado, monta o dia pelo mesmo módulo de
+colaboração do painel e do vespertino, e pergunta das reuniões que terminaram
+nas últimas 2 h. Assinaturas de calendário do Graph não foram usadas porque
+avisam criação e alteração, nunca “terminou”.
+
+**Regras anti-ruído.** Só reuniões de 10 min ou mais, com confiança média ou
+alta e ainda não lançadas; nada com a pessoa ausente (resposta automática) ou
+fora do dia de trabalho; no máximo 8 por dia; cada reunião é perguntada uma
+única vez (tabela `teams_meeting_nudge`, mesmo com execuções sobrepostas).
+
+**Projeto.** Segue a regra do reconstrutor: só vem preenchido com evidência
+única no assunto (nome, código ou cliente do projeto). Sem evidência, o card
+pede a escolha — nunca usa o “mais usado” como palpite para reunião.
+
+**Liga/desliga.** Admin: “Lembrete pós-reunião” na configuração da
+organização. Pessoa: “Lembrete ao fim de cada reunião” em Minhas notificações
+(ligado por padrão para quem tem o app).
+
+**Testar sem esperar.** GitHub → Actions → *Teams Meeting Nudges* → *Run
+workflow*. O padrão é `dry_run = 1`: conta o que seria enviado, sem enviar.
+Use `0` para enviar de verdade (ignora o horário comercial).
+
+> Requer a migração `0029_teams_meeting_nudge` e o escopo de calendário do
+> login Microsoft (já concedido). Pessoas que nunca entraram com a Microsoft
+> não têm agenda legível e são puladas.
+
+### 8.5 Testando
 
 | Teste | Comando |
 |---|---|
@@ -423,7 +464,7 @@ O E2E usa `TEAMS_BOT_DEV_SKIP_AUTH=true`, que desliga a validação de JWT
 **apenas fora de produção** (`NODE_ENV !== "production"`). Nunca defina essa
 variável no App Service.
 
-### 8.5 Problemas comuns
+### 8.6 Problemas comuns
 
 | Sintoma | Causa provável |
 |---|---|
@@ -435,6 +476,7 @@ variável no App Service.
 | "Não encontrei sua conta" | E-mail do Teams não existe no OptSolv Time — a pessoa precisa entrar uma vez com o login Microsoft |
 | "Registrar horas" não aparece no + | App não publicado/permitido na política do tenant, ou cliente do Teams sem recarregar |
 | Respostas pedidas em grupo não chegam no privado | A pessoa ainda não instalou o app no escopo pessoal (abra o app uma vez pela barra lateral) |
+| Lembrete de reunião não chega | App não instalado no escopo pessoal, preferência desligada, reunião < 10 min ou já lançada, ou a cron ainda não rodou (até ~10 min + atraso do GitHub). Veja `[teams_meeting_nudge_run]` nos logs |
 | Interpretação "dura" (descrição literal) | Provedores de IA indisponíveis — o parser de regras assumiu. Veja `[completeText]` nos logs |
 
 ---
