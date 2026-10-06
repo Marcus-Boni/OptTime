@@ -23,6 +23,15 @@
 import { z } from "zod";
 import { completeText } from "@/lib/ai/completion";
 import { describeTeamCall } from "@/lib/collaboration/calls";
+import {
+  type AutofillProject,
+  matchProjectForAzureProject,
+} from "@/lib/time-assistant/autofill";
+import {
+  type CommitSession,
+  estimateFromSessions,
+  sessionsForPullRequest,
+} from "@/lib/time-assistant/commit-sessions";
 import { getAppTimeZone } from "@/lib/timezone";
 import { formatDuration } from "@/lib/utils";
 import type { AutofillProposal } from "@/types/autofill";
@@ -33,20 +42,14 @@ import type {
   DayPlanItem,
   ReconstructConfidence,
 } from "@/types/reconstruct";
-import { type AutofillProject, matchProjectForAzureProject } from "./autofill";
-import {
-  type CommitSession,
-  estimateFromSessions,
-  sessionsForPullRequest,
-} from "./commit-sessions";
 
+export type { CommitSession } from "@/lib/time-assistant/commit-sessions";
 export type {
   DayPlan,
   DayPlanItem,
   ReconstructConfidence,
   ReconstructSourceKind,
 } from "@/types/reconstruct";
-export type { CommitSession } from "./commit-sessions";
 
 export interface CalendarEventInput {
   subject: string;
@@ -185,17 +188,47 @@ function commitSessionConfidence(
   return "low";
 }
 
-/** Matches a meeting subject to a project by name or code mention. */
+/** Token boundaries prevent partial names/codes from silently claiming meetings. */
+function meetingMatchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/** Explicit name/code beats a unique name prefix or client; ties stay unresolved. */
 function matchProjectBySubject(
   subject: string,
   projects: AutofillProject[],
 ): AutofillProject | null {
-  const needle = normalize(subject);
+  const needle = meetingMatchText(subject);
   if (!needle) return null;
 
-  return (
-    projects.find((project) => needle.includes(normalize(project.name))) ?? null
+  const mentions = (label: string | null | undefined): boolean => {
+    if (!label) return false;
+    const normalized = meetingMatchText(label);
+    return normalized.length >= 3 && ` ${needle} `.includes(` ${normalized} `);
+  };
+  const explicit = projects.filter(
+    (project) => mentions(project.name) || mentions(project.code),
   );
+  if (explicit.length > 0) return explicit.length === 1 ? explicit[0] : null;
+  // Client names may also be ordinary words (e.g. "Perfil"). Require them
+  // as the meeting's leading label, not as a word somewhere in the prose.
+  const meetingLabel = meetingMatchText(subject.split(/\s+[–—-]\s+|:\s*/)[0]);
+  const isMeetingLabel = (label: string | null | undefined): boolean => {
+    if (!label) return false;
+    const normalized = meetingMatchText(label);
+    return normalized.length >= 4 && normalized === meetingLabel;
+  };
+  const contextual = projects.filter((project) => {
+    const prefix = project.name.split(/\s+[–—-]\s+/)[0];
+    return isMeetingLabel(prefix) || isMeetingLabel(project.clientName);
+  });
+  return contextual.length === 1 ? contextual[0] : null;
 }
 
 /** HH:mm, so the evidence line says when the session actually happened. */
@@ -250,6 +283,13 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
   const items: DayPlanItem[] = [];
 
   const basePlan: Omit<DayPlan, "items" | "planMinutes"> = {
+    projects: projects.map(({ id, name, color, billable }) => ({
+      id,
+      name,
+      color,
+      billable,
+    })),
+    defaultBillable,
     date,
     targetMinutes,
     existingMinutes,
@@ -305,23 +345,22 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     );
 
     const matched = matchProjectBySubject(event.subject, projects);
-    const project = matched ?? defaultProject;
-    if (!project) continue;
+    const project = matched;
 
     const baseEvidence = matched
-      ? `Evento de ${formatDuration(minutes)} no seu calendário, associado a ${project.name}.`
-      : `Evento de ${formatDuration(minutes)} no seu calendário (projeto sugerido — confira).`;
+      ? `Evento de ${formatDuration(minutes)} no seu calendário, associado a ${matched.name}.`
+      : `Evento de ${formatDuration(minutes)} no seu calendário. Selecione o projeto antes de lançar.`;
 
     items.push({
       id: crypto.randomUUID(),
-      projectId: project.id,
-      projectName: project.name,
-      projectColor: project.color,
+      projectId: project?.id ?? null,
+      projectName: project?.name ?? "Projeto não identificado",
+      projectColor: project?.color ?? "",
       description,
       minutes,
       estimatedMinutes: minutes,
       startsAt: event.attendedFromIso ?? event.startIso,
-      billable: project.billable && defaultBillable,
+      billable: (project?.billable ?? false) && defaultBillable,
       azureWorkItemId: null,
       azureWorkItemTitle: null,
       source:
@@ -332,7 +371,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       // clipped) is more informative than "did the subject match a project".
       confidence: event.confidence ?? (matched ? "high" : "medium"),
       evidence: event.evidence
-        ? `${actualAttendance && actualAttendance > 0 ? `Presença real no Teams: ${formatDuration(minutes)}. ` : ""}${event.evidence} ${event.summary ? "Descrição sugerida a partir da transcrição. " : ""}${matched ? `Associado a ${project.name}.` : "Projeto sugerido — confira."}`
+        ? `${actualAttendance && actualAttendance > 0 ? `Presença real no Teams: ${formatDuration(minutes)}. ` : ""}${event.evidence} ${event.summary ? "Descrição sugerida a partir da transcrição. " : ""}${matched ? `Associado a ${matched.name}.` : "Selecione o projeto antes de lançar."}`
         : baseEvidence,
     });
   }
@@ -353,9 +392,6 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     const description = truncateDescription(describeTeamCall(call));
     if (alreadyLogged.has(normalize(description))) continue;
 
-    const project = defaultProject;
-    if (!project) continue;
-
     const minutes = Math.min(call.minutes, MAX_MEASURED_CALL_MINUTES);
     const participant =
       call.callType === "groupCall"
@@ -364,20 +400,20 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
 
     items.push({
       id: crypto.randomUUID(),
-      projectId: project.id,
-      projectName: project.name,
-      projectColor: project.color,
+      projectId: null,
+      projectName: "Projeto não identificado",
+      projectColor: "",
       description,
       minutes,
       estimatedMinutes: minutes,
       startsAt: call.startIso,
-      billable: project.billable && defaultBillable,
+      billable: false,
       azureWorkItemId: null,
       azureWorkItemTitle: null,
       source: "teams_call",
       sourceId: call.id,
       confidence: "high",
-      evidence: `Participação registrada no Teams: ${formatDuration(minutes)} com ${participant}. Projeto sugerido — confira.`,
+      evidence: `Participação registrada no Teams: ${formatDuration(minutes)} com ${participant}. Selecione o projeto antes de lançar.`,
     });
   }
 

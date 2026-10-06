@@ -19,7 +19,8 @@ export interface DayPlanItem {
   sourceId?: string;
   /** Stable key for UI editing and the AI refinement round-trip. */
   id: string;
-  projectId: string;
+  /** Null until evidence identifies a unique project or the user chooses one. */
+  projectId: string | null;
   projectName: string;
   projectColor: string;
   description: string;
@@ -41,6 +42,9 @@ export interface DayPlanItem {
 }
 
 export interface DayPlan {
+  /** Active, accessible projects offered for per-item review. */
+  projects: { id: string; name: string; color: string; billable: boolean }[];
+  defaultBillable: boolean;
   date: string;
   targetMinutes: number;
   existingMinutes: number;

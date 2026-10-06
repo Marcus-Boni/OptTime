@@ -36,6 +36,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { GeneratedStamp, StaleNotice } from "@/components/ai/cached";
+import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -300,10 +301,12 @@ function MicrosoftConsentNotice({ plan, date }: MicrosoftConsentNoticeProps) {
 
 interface PlanItemRowProps {
   item: DayPlanDraftItem;
+  projects: DayPlan["projects"];
+  disabled: boolean;
   onChange: (id: string, patch: Partial<DayPlanDraftItem>) => void;
 }
 
-function PlanItemRow({ item, onChange }: PlanItemRowProps) {
+function PlanItemRow({ item, projects, disabled, onChange }: PlanItemRowProps) {
   const meta = SOURCE_META[item.source];
   const SourceIcon = meta.icon;
   const minMinutes =
@@ -319,6 +322,10 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
 
   function handleIncrease() {
     onChange(item.id, { minutes: item.minutes + stepMinutes });
+  }
+
+  function handleProjectChange(projectId: string): void {
+    onChange(item.id, { projectId });
   }
 
   return (
@@ -361,7 +368,9 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
               variant="ghost"
               size="icon-xs"
               aria-label={`Reduzir ${stepMinutes} minuto${stepMinutes === 1 ? "" : "s"} em ${item.projectName}`}
-              disabled={!item.included || item.minutes <= minMinutes}
+              disabled={
+                disabled || !item.included || item.minutes <= minMinutes
+              }
               onClick={handleDecrease}
             >
               <Minus className="size-3" aria-hidden="true" />
@@ -373,13 +382,14 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
               variant="ghost"
               size="icon-xs"
               aria-label={`Aumentar ${stepMinutes} minuto${stepMinutes === 1 ? "" : "s"} em ${item.projectName}`}
-              disabled={!item.included}
+              disabled={disabled || !item.included}
               onClick={handleIncrease}
             >
               <Plus className="size-3" aria-hidden="true" />
             </Button>
           </div>
           <Switch
+            disabled={disabled}
             checked={item.included}
             onCheckedChange={(checked) =>
               onChange(item.id, { included: checked })
@@ -389,9 +399,32 @@ function PlanItemRow({ item, onChange }: PlanItemRowProps) {
         </div>
       </div>
 
+      <div className="space-y-1">
+        <label
+          htmlFor={`plan-project-${item.id}`}
+          className="text-xs text-muted-foreground"
+        >
+          Projeto
+        </label>
+        <ProjectCombobox
+          id={`plan-project-${item.id}`}
+          projects={projects}
+          value={item.projectId ?? ""}
+          onChange={handleProjectChange}
+          placeholder="Escolha o projeto deste item"
+          disabled={disabled || !item.included}
+          aria-invalid={item.included && !item.projectId}
+        />
+        {item.projectWasEdited ? (
+          <p className="text-xs text-muted-foreground">
+            Projeto ajustado na revisão.
+          </p>
+        ) : null}
+      </div>
+
       <Input
         value={item.description}
-        disabled={!item.included}
+        disabled={disabled || !item.included}
         maxLength={500}
         onChange={(event) =>
           onChange(item.id, { description: event.target.value })
@@ -486,6 +519,7 @@ export function ReconstructDayDialog({
     date,
     enabled: open && Boolean(user),
     weeklyCapacityHours: user?.weeklyCapacity,
+    userId: user?.id,
   });
   const [confirmRegenerate, setConfirmRegenerate] = useState(false);
 
@@ -516,6 +550,12 @@ export function ReconstructDayDialog({
   );
 
   const projectedMinutes = (plan?.existingMinutes ?? 0) + selectedMinutes;
+  const missingProjects = selectedItems.filter(
+    (item) => !item.projectId,
+  ).length;
+  const hasInvalidItems = selectedItems.some(
+    (item) => item.description.trim().length < 3,
+  );
   const targetMinutes =
     plan?.targetMinutes ?? dailyTargetMinutes(user?.weeklyCapacity);
   const projectedPct = Math.min(
@@ -735,7 +775,12 @@ export function ReconstructDayDialog({
                       variants={rowVariants}
                       layout={!prefersReducedMotion}
                     >
-                      <PlanItemRow item={item} onChange={updateItem} />
+                      <PlanItemRow
+                        item={item}
+                        projects={plan.projects}
+                        disabled={isApplying || isRegenerating}
+                        onChange={updateItem}
+                      />
                     </motion.li>
                   ))}
                 </AnimatePresence>
@@ -746,6 +791,18 @@ export function ReconstructDayDialog({
           {/* ── Footer ── */}
           {hasPlanItems && !isBuilding && !error ? (
             <div className="shrink-0 space-y-3 border-border/60 border-t px-6 py-4">
+              {missingProjects > 0 ? (
+                <output className="block text-xs text-amber-600 dark:text-amber-400">
+                  Escolha o projeto de {missingProjects} item
+                  {missingProjects === 1 ? "" : "s"} incluído
+                  {missingProjects === 1 ? "" : "s"} para lançar.
+                </output>
+              ) : hasInvalidItems ? (
+                <output className="block text-xs text-amber-600 dark:text-amber-400">
+                  Cada item incluído precisa de uma descrição com pelo menos 3
+                  caracteres.
+                </output>
+              ) : null}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground">
@@ -777,7 +834,11 @@ export function ReconstructDayDialog({
                 <Button
                   onClick={handleApply}
                   disabled={
-                    isApplying || isRegenerating || selectedItems.length === 0
+                    isApplying ||
+                    isRegenerating ||
+                    selectedItems.length === 0 ||
+                    missingProjects > 0 ||
+                    hasInvalidItems
                   }
                   className="bg-brand-500 text-white hover:bg-brand-600"
                 >

@@ -16,6 +16,10 @@ import {
   dispatchTimeEntriesUpdated,
   TIME_ENTRIES_UPDATED_EVENT,
 } from "@/lib/time-events";
+import {
+  type ApplyDayPlanInput,
+  applyDayPlanSchema,
+} from "@/lib/validations/reconstruct.schema";
 import type { DayPlan, DayPlanItem } from "@/types/reconstruct";
 
 /** A plan is a draft of *today's* work — it has no value tomorrow. */
@@ -26,6 +30,7 @@ const PLAN_STALE_AFTER_MS = 45 * 60 * 1000;
 export interface DayPlanDraftItem extends DayPlanItem {
   /** Unchecked items stay visible but are not logged. */
   included: boolean;
+  projectWasEdited?: boolean;
 }
 
 export interface DayPlanDraft {
@@ -37,8 +42,8 @@ export interface DayPlanDraft {
 
 const planCache = createAiResultCache<DayPlanDraft>({
   namespace: "day-plan",
-  // v5: Preserve the call evidence identity through review and application.
-  version: 5,
+  // v6: Discard drafts with arbitrary calendar/call project assignments.
+  version: 6,
   ttlMs: PLAN_TTL_MS,
   maxEntries: 10,
   storage: "session",
@@ -70,21 +75,53 @@ export interface UseReconstructDayOptions {
   enabled: boolean;
   /** Included in the cache key so 20h, 30h and 40h profiles keep separate drafts. */
   weeklyCapacityHours?: number | null;
+  userId?: string;
 }
 
 export function getReconstructDayCacheKey(
   date: string,
   weeklyCapacityHours?: number | null,
+  userId?: string,
 ): string {
+  const userKey = userId ? `:user:${userId}` : "";
   if (weeklyCapacityHours === undefined || weeklyCapacityHours === null) {
-    return `plan:${date}`;
+    return `plan:${date}${userKey}`;
   }
 
   const capacity = Number.isFinite(weeklyCapacityHours)
     ? Math.max(0, weeklyCapacityHours)
     : 0;
 
-  return `plan:${date}:capacity:${capacity}`;
+  return `plan:${date}${userKey}:capacity:${capacity}`;
+}
+
+/** Validate the entire selected review; never silently drop an invalid item. */
+export function buildDayPlanApplyPayload(
+  date: string,
+  items: DayPlanDraftItem[],
+): ApplyDayPlanInput {
+  const selected = items.filter((item) => item.included);
+  if (selected.some((item) => !item.projectId)) {
+    throw new Error(
+      "Selecione o projeto de cada item incluído antes de lançar.",
+    );
+  }
+  const parsed = applyDayPlanSchema.safeParse({
+    date,
+    items: selected.map((item) => ({
+      projectId: item.projectId,
+      description: item.description.trim(),
+      minutes: item.minutes,
+      billable: item.billable,
+      azureWorkItemId: item.azureWorkItemId,
+      azureWorkItemTitle: item.azureWorkItemTitle,
+      source: item.source,
+      sourceId: item.sourceId,
+    })),
+  });
+  if (!parsed.success)
+    throw new Error("Revise a descrição e a duração de cada item incluído.");
+  return parsed.data;
 }
 
 async function fetchDayPlan(
@@ -118,6 +155,7 @@ export function useReconstructDay({
   date,
   enabled,
   weeklyCapacityHours,
+  userId,
 }: UseReconstructDayOptions): ReconstructDayController {
   const [isApplying, setIsApplying] = useState(false);
   /** Mirrors `isApplying` for listeners that must not re-subscribe. */
@@ -130,7 +168,7 @@ export function useReconstructDay({
 
   const result = useCachedAiResult<DayPlanDraft>({
     cache: planCache,
-    key: getReconstructDayCacheKey(date, weeklyCapacityHours),
+    key: getReconstructDayCacheKey(date, weeklyCapacityHours, userId),
     fetcher,
     enabled,
     staleAfterMs: PLAN_STALE_AFTER_MS,
@@ -177,9 +215,29 @@ export function useReconstructDay({
       update((current) => ({
         ...current,
         edited: true,
-        items: current.items.map((item) =>
-          item.id === id ? { ...item, ...patch } : item,
-        ),
+        items: current.items.map((item) => {
+          if (item.id !== id) return item;
+          if (
+            patch.projectId === undefined ||
+            patch.projectId === item.projectId
+          )
+            return { ...item, ...patch };
+          const project = current.plan.projects.find(
+            (option) => option.id === patch.projectId,
+          );
+          if (!project) return item;
+          return {
+            ...item,
+            ...patch,
+            projectId: project.id,
+            projectName: project.name,
+            projectColor: project.color,
+            billable: project.billable && current.plan.defaultBillable,
+            azureWorkItemId: null,
+            azureWorkItemTitle: null,
+            projectWasEdited: true,
+          };
+        }),
       }));
     },
     [update],
@@ -190,22 +248,7 @@ export function useReconstructDay({
   }, [regenerateResult]);
 
   const apply = useCallback(async (): Promise<number> => {
-    const payload = selectedItems
-      .filter((item) => item.description.trim().length >= 3)
-      .map((item) => ({
-        projectId: item.projectId,
-        description: item.description.trim(),
-        minutes: item.minutes,
-        billable: item.billable,
-        azureWorkItemId: item.azureWorkItemId,
-        azureWorkItemTitle: item.azureWorkItemTitle,
-        source: item.source,
-        sourceId: item.sourceId,
-      }));
-
-    if (payload.length === 0) {
-      throw new Error("Selecione ao menos um item com descrição válida.");
-    }
+    const payload = buildDayPlanApplyPayload(date, selectedItems);
 
     isApplyingRef.current = true;
     setIsApplying(true);
@@ -214,7 +257,7 @@ export function useReconstructDay({
       const res = await fetch("/api/time-suggestions/reconstruct/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date, items: payload }),
+        body: JSON.stringify(payload),
       });
 
       const body = (await res.json().catch(() => ({}))) as {
@@ -233,7 +276,7 @@ export function useReconstructDay({
       // Every open view (day, week, autofill radar) refreshes on this event.
       dispatchTimeEntriesUpdated();
 
-      return body.created ?? payload.length;
+      return body.created ?? payload.items.length;
     } finally {
       isApplyingRef.current = false;
       setIsApplying(false);

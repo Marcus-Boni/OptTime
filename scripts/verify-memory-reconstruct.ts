@@ -173,11 +173,11 @@ if (
   calls.some(
     (item) =>
       !item.description.startsWith("Chamada Teams:") ||
-      !item.evidence.includes("Projeto sugerido"),
+      !item.evidence.includes("Selecione o projeto"),
   )
 ) {
   throw new Error(
-    "Teams calls must show measured participation and suggested project evidence",
+    "Teams calls must show measured participation and require project review",
   );
 }
 if (callPlan.items.find((item) => item.source === "document")?.minutes !== 15) {
