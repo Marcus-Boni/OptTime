@@ -25,6 +25,7 @@ import {
   buildErrorCard,
   buildLinkAccountCard,
   buildLoggedCard,
+  buildMeetingClosedCard,
   buildProposalCard,
   buildRequestCard,
   buildUndoneCard,
@@ -52,6 +53,11 @@ import {
   type TimeDraft,
   validateDraftDate,
 } from "@/lib/teams/bot/intent";
+import {
+  disableMeetingNudges,
+  muteSeries,
+  setNudgeStatus,
+} from "@/lib/teams/bot/nudges";
 import type {
   BotActivity,
   InvokeResponse,
@@ -474,6 +480,9 @@ const CARD_VERBS = new Set<CardVerb>([
   "dialog.parse",
   "dialog.manual",
   "dialog.close",
+  "meeting.dismiss",
+  "meeting.mute_series",
+  "meeting.mute_all",
 ]);
 
 interface ParsedActionData extends CardActionData {
@@ -493,8 +502,22 @@ function readActionData(raw: unknown, verb?: unknown): ParsedActionData | null {
     proposalId: data.proposalId,
     requesterOid:
       typeof data.requesterOid === "string" ? data.requesterOid : "",
+    ...(typeof data.meetingLabel === "string"
+      ? { meetingLabel: data.meetingLabel }
+      : {}),
+    ...(typeof data.seriesId === "string" ? { seriesId: data.seriesId } : {}),
     inputs: data,
   };
+}
+
+/** Nudge bookkeeping never blocks the answer the person is waiting for. */
+function trackNudge(proposalId: string, status: "logged" | "dismissed"): void {
+  setNudgeStatus(proposalId, status).catch((error: unknown) =>
+    console.warn(
+      "[teams-bot] nudge status update failed:",
+      error instanceof Error ? error.message : error,
+    ),
+  );
 }
 
 function cardInvokeResponse(card: AdaptiveCard): InvokeResponse {
@@ -574,7 +597,9 @@ async function runCardVerb(
           action: "confirm",
           surface,
           status: "logged",
+          meeting: Boolean(data.meetingLabel),
         });
+        if (data.meetingLabel) trackNudge(data.proposalId, "logged");
         return buildLoggedCard({
           surface,
           ...ids,
@@ -592,6 +617,14 @@ async function runCardVerb(
         draft: result.draft,
         projects: context.parse.projects,
         error: result.error,
+        ...(data.meetingLabel
+          ? {
+              meeting: {
+                label: data.meetingLabel,
+                seriesId: data.seriesId ?? null,
+              },
+            }
+          : {}),
       });
     }
 
@@ -603,6 +636,8 @@ async function runCardVerb(
         surface,
         status: result.status,
       });
+      // No-op unless the entry came from a meeting nudge.
+      if (result.status === "undone") trackNudge(data.proposalId, "dismissed");
       return result.status === "undone"
         ? buildUndoneCard(result.summary, surface, ids)
         : buildErrorCard(result.message, surface);
@@ -610,6 +645,35 @@ async function runCardVerb(
 
     case "log.cancel":
       return surface === "message" ? buildCancelledCard() : null;
+
+    case "meeting.dismiss":
+      trackNudge(data.proposalId, "dismissed");
+      return buildMeetingClosedCard(
+        "Reunião não registrada",
+        data.meetingLabel ?? "Você ainda pode lançá-la pelo OptSolv Time.",
+      );
+
+    case "meeting.mute_series": {
+      if (data.seriesId) {
+        const today = (await loadBotUserContext(principal)).parse.today;
+        await muteSeries(principal.userId, data.seriesId, today);
+      }
+      trackNudge(data.proposalId, "dismissed");
+      logTurn({ userId: principal.userId, action: "mute_series" });
+      return buildMeetingClosedCard(
+        "Não vou mais lembrar desta série",
+        `${data.meetingLabel ?? "Reunião recorrente"} · as outras reuniões continuam com lembrete.`,
+      );
+    }
+
+    case "meeting.mute_all":
+      await disableMeetingNudges(principal.userId);
+      trackNudge(data.proposalId, "dismissed");
+      logTurn({ userId: principal.userId, action: "mute_all" });
+      return buildMeetingClosedCard(
+        "Lembretes de reunião desligados",
+        "Reative quando quiser em Configurações → Integrações → Microsoft Teams.",
+      );
 
     case "dialog.parse":
     case "dialog.manual": {

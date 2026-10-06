@@ -29,6 +29,12 @@ async function main(): Promise<void> {
   const { verifyInboundRequest } = await import("@/lib/teams/bot/auth");
   const { isTrustedServiceUrl } = await import("@/lib/teams/bot/connector");
   const { readInputs } = await import("@/lib/teams/bot/actions");
+  const { selectMeetingsToNudge, nudgeMinutes } = await import(
+    "@/lib/teams/meeting-nudges"
+  );
+  const { matchProjectBySubject } = await import(
+    "@/lib/time-assistant/reconstruct"
+  );
 
   let passed = 0;
   async function check(
@@ -330,6 +336,132 @@ async function main(): Promise<void> {
     assert.equal(back.azureWorkItemId, 12);
     assert.equal(minutesToInput(45), "45min");
     assert.equal(minutesToInput(120), "2h");
+  });
+
+  console.log("Lembrete pós-reunião");
+
+  const NOW = Date.parse("2026-10-06T15:00:00Z");
+  const minutesAgo = (minutes: number): string =>
+    new Date(NOW - minutes * 60_000).toISOString();
+  const meeting = (
+    id: string,
+    endedMinutesAgo: number,
+    overrides: Record<string, unknown> = {},
+  ) =>
+    ({
+      id,
+      seriesId: null,
+      title: `Reunião ${id}`,
+      subject: `Reunião ${id}`,
+      startIso: minutesAgo(endedMinutesAgo + 30),
+      endIso: minutesAgo(endedMinutesAgo),
+      minutes: 30,
+      scheduledMinutes: 30,
+      participants: [],
+      participantCount: 2,
+      externalCount: 0,
+      acceptance: "accepted",
+      shape: "small",
+      isOnline: true,
+      isOrganizer: false,
+      isRecurring: false,
+      isException: false,
+      wasRescheduled: false,
+      originalStartIso: null,
+      wasClipped: false,
+      alreadyLogged: false,
+      confidence: "high",
+      evidence: "",
+      ...overrides,
+    }) as unknown as Parameters<typeof selectMeetingsToNudge>[0][number];
+
+  await check(
+    "só reuniões que acabaram de terminar e ainda não foram lançadas",
+    () => {
+      const picked = selectMeetingsToNudge(
+        [
+          meeting("recente", 5),
+          meeting("acabou-agora", 1), // dentro da folga de 2 min
+          meeting("em-andamento", -10),
+          meeting("de-manha", 180),
+          meeting("lancada", 5, { alreadyLogged: true }),
+          meeting("duvidosa", 5, { confidence: "low" }),
+          meeting("curta", 5, { minutes: 5 }),
+          meeting("serie-silenciada", 5, { seriesId: "s-1" }),
+        ],
+        NOW,
+        new Set(["s-1"]),
+      );
+      assert.deepEqual(
+        picked.map((item) => item.id),
+        ["recente"],
+      );
+    },
+  );
+
+  await check("duração real da chamada vence a agendada", () => {
+    assert.equal(nudgeMinutes(meeting("a", 5, { measuredMinutes: 47 })), 47);
+    assert.equal(nudgeMinutes(meeting("b", 5, { measuredMinutes: null })), 30);
+  });
+
+  await check("projeto da reunião só com evidência única", () => {
+    const projects = [
+      {
+        id: "vix",
+        name: "SHOPPING VIX - Atendimento Lojista",
+        code: "SV-1",
+        clientName: null,
+      },
+      {
+        id: "arc1",
+        name: "ARCELOR MITTAL - Antônio",
+        code: "AM-1",
+        clientName: null,
+      },
+      {
+        id: "arc2",
+        name: "ARCELOR MITTAL - Estivagem",
+        code: "AM-2",
+        clientName: null,
+      },
+    ];
+    assert.equal(
+      matchProjectBySubject("Shopping Vix - Daily", projects)?.id,
+      "vix",
+    );
+    assert.equal(
+      matchProjectBySubject("Arcelor Mittal - alinhamento", projects),
+      null,
+      "cliente com dois projetos fica sem projeto",
+    );
+    assert.equal(matchProjectBySubject("1:1 com o líder", projects), null);
+  });
+
+  await check("card de reunião: Registrar, Ignorar e mais opções", () => {
+    const card = buildProposalCard({
+      surface: "message",
+      proposalId: "prop-m",
+      requesterOid: "oid-1",
+      draft: {
+        durationMinutes: 30,
+        date: "2026-10-06",
+        description: "Daily Shopping Vix",
+        projectId: null,
+        projectGuessed: false,
+        azureWorkItemId: null,
+        source: "rules",
+      },
+      projects: context.projects,
+      meeting: { label: "Daily Shopping Vix · 09:00–09:30", seriesId: "s-9" },
+    });
+    const json = JSON.stringify(card);
+    assert.ok(json.includes("Sua reunião terminou"));
+    assert.ok(json.includes('"verb":"meeting.dismiss"'));
+    assert.ok(json.includes('"verb":"meeting.mute_series"'));
+    assert.ok(json.includes('"verb":"meeting.mute_all"'));
+    assert.ok(json.includes('"seriesId":"s-9"'), "série viaja no card");
+    assert.ok(json.includes("Não achei o projeto pela agenda"));
+    assert.ok(!json.includes("sugerido automaticamente"));
   });
 
   console.log("Pacote do app");

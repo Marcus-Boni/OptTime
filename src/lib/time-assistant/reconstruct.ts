@@ -199,11 +199,14 @@ function meetingMatchText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Explicit name/code beats a unique name prefix or client; ties stay unresolved. */
-function matchProjectBySubject(
-  subject: string,
-  projects: AutofillProject[],
-): AutofillProject | null {
+/**
+ * Explicit name/code beats a unique name prefix or client; ties stay
+ * unresolved. Shared with the Teams meeting nudge, so a meeting is never
+ * attributed to a project without unique evidence anywhere in the product.
+ */
+export function matchProjectBySubject<
+  T extends Pick<AutofillProject, "name" | "code" | "clientName">,
+>(subject: string, projects: T[]): T | null {
   const needle = meetingMatchText(subject);
   if (!needle) return null;
 

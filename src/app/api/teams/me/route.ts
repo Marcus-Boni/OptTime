@@ -12,6 +12,8 @@ import { saveTeamsPreferencesSchema } from "@/lib/validations/teams.schema";
 interface TeamsPreferencesView {
   teamsStatusSyncEnabled: boolean;
   eveningDigestEnabled: boolean;
+  /** "Sua reunião terminou — registrar?" in the Teams app chat. */
+  teamsMeetingNudgeEnabled: boolean;
   hasPersonalWebhook: boolean;
   /** Non-secret preview so the user recognizes the stored URL. */
   personalWebhookPreview: string | null;
@@ -28,6 +30,7 @@ async function buildView(userId: string): Promise<TeamsPreferencesView | null> {
     columns: {
       teamsStatusSyncEnabled: true,
       eveningDigestEnabled: true,
+      teamsMeetingNudgeEnabled: true,
       teamsWebhookUrl: true,
       azureId: true,
     },
@@ -40,6 +43,7 @@ async function buildView(userId: string): Promise<TeamsPreferencesView | null> {
   return {
     teamsStatusSyncEnabled: row.teamsStatusSyncEnabled,
     eveningDigestEnabled: row.eveningDigestEnabled,
+    teamsMeetingNudgeEnabled: row.teamsMeetingNudgeEnabled,
     hasPersonalWebhook: Boolean(webhook),
     personalWebhookPreview: webhook ? `${webhook.slice(0, 34)}…` : null,
     identityLinked: Boolean(row.azureId),
@@ -152,8 +156,12 @@ export async function PUT(req: Request): Promise<Response> {
   }
 
   try {
-    const { teamsStatusSyncEnabled, eveningDigestEnabled, teamsWebhookUrl } =
-      parsed.data;
+    const {
+      teamsStatusSyncEnabled,
+      eveningDigestEnabled,
+      teamsMeetingNudgeEnabled,
+      teamsWebhookUrl,
+    } = parsed.data;
 
     await db
       .update(user)
@@ -162,6 +170,9 @@ export async function PUT(req: Request): Promise<Response> {
           ? { teamsStatusSyncEnabled }
           : {}),
         ...(eveningDigestEnabled !== undefined ? { eveningDigestEnabled } : {}),
+        ...(teamsMeetingNudgeEnabled !== undefined
+          ? { teamsMeetingNudgeEnabled }
+          : {}),
         ...(teamsWebhookUrl !== undefined
           ? {
               teamsWebhookUrl: teamsWebhookUrl

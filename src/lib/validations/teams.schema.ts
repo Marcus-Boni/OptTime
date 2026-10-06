@@ -19,6 +19,7 @@ export const saveTeamsSettingsSchema = z.object({
   outgoingSecret: z.string().min(8).max(200).nullable().optional(),
   standupEnabled: z.boolean(),
   eveningEnabled: z.boolean(),
+  meetingNudgesEnabled: z.boolean().optional(),
   /** Azure Bot registration — same tri-state semantics as the secrets. */
   botAppId: z
     .string()
@@ -41,6 +42,7 @@ export type SaveTeamsSettingsPayload = z.infer<typeof saveTeamsSettingsSchema>;
 export const saveTeamsPreferencesSchema = z.object({
   teamsStatusSyncEnabled: z.boolean().optional(),
   eveningDigestEnabled: z.boolean().optional(),
+  teamsMeetingNudgeEnabled: z.boolean().optional(),
   /** undefined = keep, null = clear, string = replace. */
   teamsWebhookUrl: z
     .string()
