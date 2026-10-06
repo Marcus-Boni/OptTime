@@ -32,6 +32,14 @@ type LoadState =
   | { status: "success"; data: ProjectProgress }
   | { status: "error" };
 
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+/** "2026-10-06" → "06/10/2026" */
+function formatPhaseStart(date: string): string {
+  const [year, month, day] = date.split("-");
+  return `${day}/${month}/${year}`;
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function ProjectProgressBar({
@@ -175,9 +183,13 @@ export function ProjectProgressBar({
       no_azure_config: "Integração Azure não configurada",
       no_data: "Sem estimativas registradas no DevOps",
     };
-    const msg = data.unconfiguredReason
+    const baseMsg = data.unconfiguredReason
       ? messages[data.unconfiguredReason]
       : "Dados indisponíveis";
+    const msg =
+      data.unconfiguredReason === "no_data" && data.scopedSince
+        ? `${baseMsg} desde ${formatPhaseStart(data.scopedSince)}`
+        : baseMsg;
 
     return (
       <div
@@ -206,9 +218,22 @@ export function ProjectProgressBar({
       {/* Progress bar */}
       <div className="relative pt-3">
         <div className="flex items-center justify-between mb-1">
-          <span className="text-[11px] font-medium text-muted-foreground flex items-center gap-1">
+          <span
+            className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"
+            title={
+              data.scopedSince
+                ? `Considera apenas work items criados a partir de ${formatPhaseStart(data.scopedSince)}, início desta fase.`
+                : undefined
+            }
+          >
             <Activity className="h-3 w-3" />
             Progresso
+            {data.scopedSince && (
+              <span className="font-normal">
+                {" "}
+                · desde {formatPhaseStart(data.scopedSince)}
+              </span>
+            )}
           </span>
           <span className="text-[11px] font-mono font-semibold text-orange-600 dark:text-orange-400">
             {progressPercent}%

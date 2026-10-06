@@ -641,6 +641,16 @@ export const TOURS: readonly TourDefinition[] = [
         route: "/dashboard/team-hours",
       },
       {
+        id: "project-phases",
+        title: "Projetos do Azure e novas fases",
+        description:
+          "Importe projetos do Azure DevOps por aqui. Cliente renovou com novo orçamento no mesmo DevOps? Abra o projeto e use Nova fase: a fase anterior é encerrada com o histórico intacto e o orçamento recomeça do zero.",
+        target: '[data-tour="projects-import-azure"]',
+        placement: "bottom",
+        route: "/dashboard/projects",
+        hint: "As fases ficam lado a lado no card Fases do projeto.",
+      },
+      {
         id: "people",
         title: "Equipe",
         description:

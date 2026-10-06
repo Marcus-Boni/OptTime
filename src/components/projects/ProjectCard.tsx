@@ -11,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import Link from "next/link";
+import { ProjectPhaseBadge } from "@/components/projects/ProjectPhaseBadge";
 import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
 import type { ProjectFromAPI } from "@/components/projects/types";
 import { Badge } from "@/components/ui/badge";
@@ -201,6 +202,8 @@ export function ProjectCard({
                     >
                       {statusLabel}
                     </Badge>
+
+                    <ProjectPhaseBadge phase={proj.phase} />
 
                     {proj.currentStage && (
                       <Badge

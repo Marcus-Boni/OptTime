@@ -11,6 +11,8 @@ import {
   Clock,
   Cloud,
   ExternalLink,
+  GitBranch,
+  History,
   Layers,
   Pencil,
   Tag,
@@ -22,7 +24,12 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { ProjectEditDialog } from "@/components/projects";
+import {
+  ProjectEditDialog,
+  ProjectNewPhaseDialog,
+  ProjectPhaseBadge,
+  ProjectPhasesCard,
+} from "@/components/projects";
 import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
 import type { ProjectFromAPI } from "@/components/projects/types";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -31,6 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useProjectPhases } from "@/hooks/use-project-phases";
 import { useSession } from "@/lib/auth-client";
 import { cn, formatDate } from "@/lib/utils";
 import type { User as UserType } from "@/types/user";
@@ -128,12 +136,19 @@ export default function ProjectDetailPage() {
   const [project, setProject] = useState<ProjectFromAPI | null>(null);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [newPhaseOpen, setNewPhaseOpen] = useState(false);
+  const {
+    lineage: fetchedLineage,
+    error: phasesError,
+    refresh: refreshPhases,
+  } = useProjectPhases(id);
 
   const user = session?.user as unknown as UserType | undefined;
   const isPrivileged = user?.role === "manager" || user?.role === "admin";
   const isAdmin = user?.role === "admin";
 
   const fetchProject = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch(`/api/projects/${id}`);
       if (res.status === 404) {
@@ -157,6 +172,15 @@ export default function ProjectDetailPage() {
 
   function handleEditSuccess(updated: ProjectFromAPI) {
     setProject(updated);
+    void refreshPhases();
+  }
+
+  function handleOpenNewPhase() {
+    setNewPhaseOpen(true);
+  }
+
+  function handleRetryPhases() {
+    void refreshPhases();
   }
 
   if (loading || !project) return <PageSkeleton />;
@@ -165,6 +189,25 @@ export default function ProjectDetailPage() {
   const hasScope = !!project.scope;
   const hasDates = project.startDate || project.endDate;
   const hasCommercial = project.commercialName || hasDates;
+
+  // Ignore a lineage that belongs to the previously viewed phase.
+  const lineage = fetchedLineage?.phases.some(
+    (phase) => phase.id === project.id,
+  )
+    ? fetchedLineage
+    : null;
+  const canManageThisProject =
+    isAdmin || (user?.role === "manager" && project.managerId === user.id);
+  const isLatestPhase = lineage
+    ? lineage.nextPhase - 1 === project.phase
+    : false;
+  const currentPhase = lineage?.phases.find((phase) => phase.isCurrent) ?? null;
+  const viewingPhase =
+    lineage?.phases.find((phase) => phase.id === project.id) ?? null;
+  const supersededBy =
+    currentPhase && currentPhase.id !== project.id && currentPhase.accessible
+      ? currentPhase
+      : null;
 
   return (
     <motion.div
@@ -215,6 +258,7 @@ export default function ProjectDetailPage() {
                   {statusInfo.icon}
                   {statusInfo.label}
                 </Badge>
+                <ProjectPhaseBadge phase={project.phase} className="text-xs" />
                 {project.currentStage && (
                   <Badge
                     variant="secondary"
@@ -253,16 +297,51 @@ export default function ProjectDetailPage() {
           </div>
 
           {isPrivileged && (
-            <Button
-              variant="outline"
-              className="gap-1.5 shrink-0"
-              onClick={() => setEditOpen(true)}
-            >
-              <Pencil className="h-4 w-4" />
-              Editar Projeto
-            </Button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {canManageThisProject && isLatestPhase && lineage && (
+                <Button
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={handleOpenNewPhase}
+                  data-tour="project-new-phase"
+                >
+                  <GitBranch className="h-4 w-4" />
+                  Nova fase
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setEditOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+                Editar Projeto
+              </Button>
+            </div>
           )}
         </div>
+
+        {supersededBy && (
+          <div
+            role="note"
+            className="flex flex-col gap-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <p className="flex items-start gap-2 text-foreground">
+              <History className="mt-0.5 h-4 w-4 shrink-0 text-violet-500" />
+              <span>
+                Esta é a Fase {project.phase}, já encerrada. Os lançamentos
+                novos vão para a Fase {supersededBy.phase}.
+              </span>
+            </p>
+            <Link
+              href={`/dashboard/projects/${supersededBy.id}`}
+              className="inline-flex min-h-9 items-center gap-1 self-start rounded-md px-2 text-sm font-medium text-violet-600 transition-colors hover:text-violet-500 dark:text-violet-400 sm:self-auto"
+            >
+              Ir para a Fase {supersededBy.phase}
+              <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+        )}
       </motion.div>
 
       {/* ── Content grid ─────────────────────────────────────────────────── */}
@@ -573,6 +652,14 @@ export default function ProjectDetailPage() {
 
         {/* ─── Sidebar ───────────────────────────────────────────────────── */}
         <div className="space-y-6">
+          {/* Phase history — only rendered once there is more than one phase */}
+          <ProjectPhasesCard
+            projectId={project.id}
+            lineage={lineage}
+            error={phasesError}
+            onRetry={handleRetryPhases}
+          />
+
           {/* Metrics quick-view (Azure) */}
           {project.azureProjectId && (
             <motion.div variants={itemVariants}>
@@ -712,6 +799,16 @@ export default function ProjectDetailPage() {
         currentUserId={user?.id ?? ""}
         isAdmin={isAdmin}
       />
+
+      {lineage && isLatestPhase && (
+        <ProjectNewPhaseDialog
+          project={project}
+          nextPhase={lineage.nextPhase}
+          currentPhase={viewingPhase}
+          open={newPhaseOpen}
+          onOpenChange={setNewPhaseOpen}
+        />
+      )}
     </motion.div>
   );
 }
