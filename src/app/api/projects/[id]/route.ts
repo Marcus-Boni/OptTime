@@ -16,6 +16,12 @@ import {
   timeEntry,
   user,
 } from "@/lib/db/schema";
+import {
+  findLiveAzureLinkHolder,
+  liveAzureLinkConflict,
+  uniqueViolationResponse,
+} from "@/lib/projects/azure-link";
+import { isLiveProjectStatus } from "@/lib/projects/phases";
 import { projectSchema } from "@/lib/validations/project.schema";
 
 function safeParseStages(raw: string): string[] {
@@ -183,6 +189,15 @@ export async function PUT(
         { status: 400 },
       );
     }
+    const nextAzureProjectId =
+      data.azureProjectId !== undefined
+        ? data.azureProjectId
+        : existing.azureProjectId;
+    if (isLiveProjectStatus(projectStatus)) {
+      const holder = await findLiveAzureLinkHolder(nextAzureProjectId, id);
+      if (holder) return liveAzureLinkConflict(holder.name);
+    }
+
     const assigneeIds = [...new Set([managerId, ...data.memberIds])];
 
     if (!(await ensureManagerAssignableUsers(actor, assigneeIds))) {
@@ -206,10 +221,7 @@ export async function PUT(
           status: data.status ?? existing.status,
           billable: data.billable,
           budget: data.budget ?? null,
-          azureProjectId:
-            data.azureProjectId !== undefined
-              ? data.azureProjectId
-              : existing.azureProjectId,
+          azureProjectId: nextAzureProjectId,
           imageUrl: data.imageUrl ?? null,
           managerId,
           scopeId: data.scopeId ?? null,
@@ -277,6 +289,9 @@ export async function PUT(
 
     return Response.json({ project: projectData });
   } catch (error) {
+    const conflict = uniqueViolationResponse(error);
+    if (conflict) return conflict;
+
     console.error("[PUT /api/projects/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }

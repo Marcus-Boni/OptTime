@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -269,6 +270,16 @@ export const project = pgTable(
     endDate: text("end_date"),
     /** Standardized integration key for cross-app project mapping */
     integrationKey: text("integration_key"),
+    /**
+     * Phase number inside a project lineage. A client engagement that restarts
+     * with a new budget (same Azure DevOps project) becomes phase 2, 3, …
+     */
+    phase: integer("phase").notNull().default(1),
+    /** First phase of the lineage; null on the first phase itself */
+    phaseRootId: text("phase_root_id").references(
+      (): AnyPgColumn => project.id,
+      { onDelete: "set null" },
+    ),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -276,7 +287,15 @@ export const project = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("project_azure_id_unique").on(table.azureProjectId),
+    // Several phases may share an Azure DevOps project, but only one of them
+    // is live (open/active) at a time: Azure-driven matching stays unambiguous.
+    uniqueIndex("project_azure_id_live_unique")
+      .on(table.azureProjectId)
+      .where(sql`${table.status} in ('open', 'active')`),
+    uniqueIndex("project_phase_root_phase_unique").on(
+      table.phaseRootId,
+      table.phase,
+    ),
     index("project_status_idx").on(table.status),
     index("project_azure_id_idx").on(table.azureProjectId),
     index("project_manager_idx").on(table.managerId),

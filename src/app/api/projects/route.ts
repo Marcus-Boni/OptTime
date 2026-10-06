@@ -7,6 +7,12 @@ import {
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, projectMember, user } from "@/lib/db/schema";
+import {
+  findLiveAzureLinkHolder,
+  liveAzureLinkConflict,
+  uniqueViolationResponse,
+} from "@/lib/projects/azure-link";
+import { isLiveProjectStatus } from "@/lib/projects/phases";
 import { projectSchema } from "@/lib/validations/project.schema";
 
 function safeParseStages(raw: string): string[] {
@@ -138,6 +144,11 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
+    if (isLiveProjectStatus(projectStatus)) {
+      const holder = await findLiveAzureLinkHolder(data.azureProjectId, null);
+      if (holder) return liveAzureLinkConflict(holder.name);
+    }
+
     const assigneeIds = [...new Set([managerId, ...data.memberIds])];
     if (!(await ensureManagerAssignableUsers(actor, assigneeIds))) {
       return Response.json(
@@ -211,6 +222,9 @@ export async function POST(req: Request): Promise<Response> {
 
     return Response.json({ project: newProject }, { status: 201 });
   } catch (error) {
+    const conflict = uniqueViolationResponse(error);
+    if (conflict) return conflict;
+
     console.error("[POST /api/projects]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
