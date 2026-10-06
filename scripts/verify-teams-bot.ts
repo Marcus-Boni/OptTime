@@ -54,14 +54,22 @@ async function main(): Promise<void> {
         name: "Interno OptSolv",
         code: "OPT-000",
         billable: false,
+        clientName: null,
       },
       {
         id: "p-cid",
         name: "Cidade Engenharia",
         code: "CID-001",
         billable: true,
+        clientName: null,
       },
-      { id: "p-por", name: "Portal", code: "POR-01", billable: true },
+      {
+        id: "p-por",
+        name: "Portal",
+        code: "POR-01",
+        billable: true,
+        clientName: null,
+      },
     ],
     recentProjectIds: ["p-cid"],
   };
@@ -101,6 +109,76 @@ async function main(): Promise<void> {
     assert.equal(draft.azureWorkItemId, 4512);
     assert.equal(draft.description, "Daily");
   });
+
+  const realWorld = {
+    today: "2026-10-06",
+    managerName: "Rômulo Louzada",
+    recentProjectIds: ["cid", "arc2"],
+    projects: [
+      ["cid", "Cidade Engenharia - Painel Estratégico", "CIDADE-ENGENH-951E14"],
+      ["vix", "SHOPPING VIX - Atendimento Lojista", "SHOPPING-VIX-ATEND"],
+      [
+        "ape",
+        "APERAM - Sequenciamento Otimizado de Tesouras",
+        "APERAM-SEQUEN-365DAA",
+      ],
+      ["arc1", "ARCELOR MITTAL - Antônio", "ARCELOR-MITTA-C7F60A"],
+      ["arc2", "ARCELOR MITTAL - Estivagem", "ARCELOR-MITTAL-ESTIV"],
+      ["gab", "GAB - Suporte", "GAB-SUPORTE-72FE48"],
+      ["vit", "Shopping Vitória", "SHOP-VIT"],
+    ].map(([id, name, code]) => ({
+      id: id ?? "",
+      name: name ?? "",
+      code: code ?? "",
+      billable: true,
+      clientName: null,
+    })),
+  };
+
+  await check("frases reais do Teams: cliente citado e narrativa", () => {
+    const vix = parseWithRules(
+      "Tive uma reunião de 2 horas com o Júnio e Pedras sobre projeto shopping vix",
+      realWorld,
+    );
+    assert.equal(vix.projectId, "vix");
+    assert.equal(vix.projectGuessed, false);
+    assert.equal(vix.description, "Reunião com o Júnio e Pedras");
+
+    const aperam = parseWithRules(
+      "registre 2 horas no projeto da aperam, estava fazendo configuração de ambiente",
+      realWorld,
+    );
+    assert.equal(aperam.projectId, "ape");
+    assert.equal(aperam.description, "Configuração de ambiente");
+  });
+
+  await check(
+    "acento ignorado e cliente com vários projetos pede conferência",
+    () => {
+      const vitoria = parseWithRules(
+        "2h no shopping vitoria levantamento de requisitos",
+        realWorld,
+      );
+      assert.equal(vitoria.projectId, "vit");
+      assert.equal(vitoria.description, "Levantamento de requisitos");
+
+      const arcelor = parseWithRules(
+        "1h na arcelor mittal revisão do plano",
+        realWorld,
+      );
+      assert.equal(arcelor.projectId, "arc2", "o mais usado do cliente");
+      assert.equal(arcelor.projectGuessed, true);
+    },
+  );
+
+  await check(
+    "palavra genérica não vira projeto certo nem some do texto",
+    () => {
+      const draft = parseWithRules("45min de suporte ao cliente", realWorld);
+      assert.equal(draft.projectGuessed, true);
+      assert.equal(draft.description, "Suporte ao cliente");
+    },
+  );
 
   await check("meia hora e dia da semana", () => {
     const draft = parseWithRules(
@@ -200,7 +278,10 @@ async function main(): Promise<void> {
       assert.ok(json.includes(`"id":"${id}"`), `input ${id}`);
     }
     assert.ok(json.includes('"value":"1h30"'));
-    assert.ok(json.includes("histórico"), "aviso de projeto sugerido");
+    assert.ok(
+      json.includes("sugerido automaticamente"),
+      "aviso de projeto sugerido",
+    );
   });
 
   await check("card no diálogo usa Action.Submit com action no data", () => {
