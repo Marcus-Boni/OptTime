@@ -247,7 +247,9 @@ export function DayCollaborationPanel({
   onAdjust,
 }: DayCollaborationPanelProps) {
   const prefersReducedMotion = useReducedMotion();
-  const { day, isLoading, error, reload } = useCollaborationDay({ date });
+  const { day, isLoading, isRefreshing, error, reload } = useCollaborationDay({
+    date,
+  });
   const { isApplying, apply } = useQuickLog();
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -347,6 +349,7 @@ export function DayCollaborationPanel({
   );
 
   const handleLog = useCallback(async () => {
+    if (isRefreshing) return;
     if (!projectId) {
       toast.error("Escolha o projeto antes de lançar.");
       return;
@@ -380,7 +383,6 @@ export function DayCollaborationPanel({
       );
       setSelectedIds(new Set());
       setSelectedCallIds(new Set());
-      void reload();
     }
 
     if (failures.length > 0) {
@@ -394,9 +396,9 @@ export function DayCollaborationPanel({
   }, [
     apply,
     date,
+    isRefreshing,
     projectId,
     projects,
-    reload,
     selected,
     selectedCalls,
     selectedCount,
@@ -404,9 +406,7 @@ export function DayCollaborationPanel({
   ]);
 
   // ── Loading ──
-  // `isLoading` only flips inside the effect, so the first render has
-  // isLoading=false and day=null. The absence of both is the pending state.
-  if ((isLoading || !day) && !error) {
+  if (isLoading && !error) {
     return (
       <section className="rounded-[28px] border border-border/60 bg-card/90 p-5 shadow-sm">
         <output
@@ -423,7 +423,7 @@ export function DayCollaborationPanel({
   }
 
   // ── Error ──
-  if (error) {
+  if (error && !day) {
     return (
       <section className="rounded-[28px] border border-border/60 bg-card/90 p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -491,6 +491,11 @@ export function DayCollaborationPanel({
             </div>
 
             <div className="flex items-center gap-2">
+              {isRefreshing ? (
+                <output className="text-xs text-muted-foreground">
+                  Atualizando…
+                </output>
+              ) : null}
               {day.suggestedMinutes > 0 && (
                 <Badge
                   variant="secondary"
@@ -516,6 +521,20 @@ export function DayCollaborationPanel({
               </Button>
             </div>
           </div>
+
+          {error ? (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-border p-3">
+              <p className="text-xs text-muted-foreground">{error}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRefreshing}
+                onClick={() => void reload()}
+              >
+                Tentar de novo
+              </Button>
+            </div>
+          ) : null}
 
           {day.needsReauth && <ReauthNotice feature="o resumo do seu dia" />}
 
@@ -584,7 +603,7 @@ export function DayCollaborationPanel({
                     value={projectId}
                     onChange={setProjectId}
                     placeholder="Escolha o projeto"
-                    disabled={locked || isApplying}
+                    disabled={locked || isApplying || isRefreshing}
                   />
                 </div>
               </div>
@@ -603,7 +622,7 @@ export function DayCollaborationPanel({
                         <MeetingRow
                           meeting={meeting}
                           selected={selectedIds.has(meeting.id)}
-                          disabled={locked}
+                          disabled={locked || isApplying || isRefreshing}
                           onToggle={handleToggle}
                           onAdjust={onAdjust}
                         />
@@ -642,7 +661,12 @@ export function DayCollaborationPanel({
                         key={call.id}
                         call={call}
                         selected={selectedCallIds.has(call.id)}
-                        disabled={locked || call.alreadyLogged === true}
+                        disabled={
+                          locked ||
+                          isApplying ||
+                          isRefreshing ||
+                          call.alreadyLogged === true
+                        }
                         onToggle={handleToggleCall}
                       />
                     ))}
@@ -677,7 +701,9 @@ export function DayCollaborationPanel({
               <Button
                 size="sm"
                 className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
-                disabled={locked || isApplying || selectedCount === 0}
+                disabled={
+                  locked || isApplying || isRefreshing || selectedCount === 0
+                }
                 onClick={() => void handleLog()}
                 title={locked ? lockMessage : undefined}
               >

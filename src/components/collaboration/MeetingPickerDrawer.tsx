@@ -46,7 +46,7 @@ export function MeetingPickerDrawer({
   onSelectMeeting,
 }: MeetingPickerDrawerProps) {
   const { preferences, updatePreferences } = useUserTimePreferences();
-  const { day, isLoading, error, reload } = useCollaborationDay({
+  const { day, isLoading, isRefreshing, error, reload } = useCollaborationDay({
     date: selectedDate,
     enabled: open,
     includeLogged: true,
@@ -79,10 +79,7 @@ export function MeetingPickerDrawer({
 
   if (!open) return null;
 
-  // `isLoading` only flips inside the effect, so the first render after opening
-  // has isLoading=false and day=null — an empty panel with no explanation. The
-  // absence of both a day and an error *is* the pending state.
-  const isPending = isLoading || (!day && !error);
+  const isPending = isLoading;
 
   const meetings = day?.meetings ?? [];
   const pending = meetings.filter((meeting) => !meeting.alreadyLogged);
@@ -120,7 +117,9 @@ export function MeetingPickerDrawer({
               >
                 {isPending
                   ? "Lendo…"
-                  : `${pending.length} ${pending.length === 1 ? "pendente" : "pendentes"}`}
+                  : isRefreshing
+                    ? "Atualizando…"
+                    : `${pending.length} ${pending.length === 1 ? "pendente" : "pendentes"}`}
               </Badge>
               <button
                 type="button"
@@ -151,6 +150,7 @@ export function MeetingPickerDrawer({
         </div>
 
         <div
+          aria-busy={isPending || isRefreshing}
           className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-5 sm:px-6"
           onWheel={(event) => event.stopPropagation()}
         >
@@ -173,6 +173,7 @@ export function MeetingPickerDrawer({
                 size="sm"
                 className="rounded-full"
                 onClick={() => void reload()}
+                disabled={isPending || isRefreshing}
               >
                 <RefreshCw className="mr-2 size-3.5" aria-hidden="true" />
                 Tentar novamente
@@ -196,13 +197,15 @@ export function MeetingPickerDrawer({
             </div>
           )}
 
-          {ordered.map((meeting) => (
-            <MeetingCard
-              key={meeting.id}
-              meeting={meeting}
-              onPick={onSelectMeeting}
-            />
-          ))}
+          {!isPending &&
+            ordered.map((meeting) => (
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                onPick={onSelectMeeting}
+                disabled={isRefreshing}
+              />
+            ))}
 
           {day && <MeetingExclusionsNote exclusions={day.exclusions} />}
         </div>

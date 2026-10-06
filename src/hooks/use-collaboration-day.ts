@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   dispatchTimeEntriesUpdated,
   TIME_ENTRIES_UPDATED_EVENT,
@@ -17,6 +17,8 @@ export interface LogMeetingsItem {
 export interface CollaborationDayController {
   day: CollaborationDay | null;
   isLoading: boolean;
+  /** Refreshes the current day while keeping already-loaded evidence visible. */
+  isRefreshing: boolean;
   isLogging: boolean;
   error: string | null;
   reload: () => Promise<void>;
@@ -36,6 +38,13 @@ interface UseCollaborationDayOptions {
   includeLogged?: boolean;
 }
 
+interface CollaborationDayState {
+  key: string;
+  day: CollaborationDay | null;
+  pending: boolean;
+  error: string | null;
+}
+
 /**
  * Reads "o que você fez" for one day and turns picked meetings into entries.
  *
@@ -48,68 +57,81 @@ export function useCollaborationDay({
   enabled = true,
   includeLogged = false,
 }: UseCollaborationDayOptions): CollaborationDayController {
-  const [day, setDay] = useState<CollaborationDay | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const key = `${date}:${includeLogged}`;
+  const [state, setState] = useState<CollaborationDayState>({
+    key,
+    day: null,
+    pending: true,
+    error: null,
+  });
   const [isLogging, setIsLogging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const activeScopeRef = useRef<string | null>(null);
+  const ownUpdateRef = useRef(false);
 
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!enabled) return;
+  const load = useCallback(async (): Promise<void> => {
+    if (!enabled || activeScopeRef.current !== key) return;
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const { signal } = controller;
+    setState((current) => ({
+      key,
+      day: current.key === key ? current.day : null,
+      pending: true,
+      error: null,
+    }));
 
-      setIsLoading(true);
-      setError(null);
+    try {
+      const params = new URLSearchParams({ date });
+      if (includeLogged) params.set("includeLogged", "1");
 
-      try {
-        const params = new URLSearchParams({ date });
-        if (includeLogged) params.set("includeLogged", "1");
+      const res = await fetch(`/api/collaboration/day?${params}`, { signal });
 
-        const res = await fetch(`/api/collaboration/day?${params}`, { signal });
+      const body = (await res.json().catch(() => ({}))) as {
+        day?: CollaborationDay;
+        error?: string;
+      };
 
-        const body = (await res.json().catch(() => ({}))) as {
-          day?: CollaborationDay;
-          error?: string;
-        };
+      if (signal.aborted || requestRef.current !== controller) return;
 
-        if (signal?.aborted) return;
-
-        if (!res.ok || !body.day) {
-          throw new Error(body.error ?? "Não foi possível ler o seu dia.");
-        }
-
-        setDay(body.day);
-      } catch (err: unknown) {
-        if (signal?.aborted) return;
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("[useCollaborationDay] load:", err);
-        setError(err instanceof Error ? err.message : "Erro desconhecido.");
-        setDay(null);
-      } finally {
-        if (!signal?.aborted) setIsLoading(false);
+      if (!res.ok || !body.day) {
+        throw new Error(body.error ?? "Não foi possível ler o seu dia.");
       }
-    },
-    [date, enabled, includeLogged],
-  );
+
+      setState({ key, day: body.day, pending: false, error: null });
+    } catch (err: unknown) {
+      if (signal.aborted || requestRef.current !== controller) return;
+      console.error("[useCollaborationDay] load:", err);
+      setState((current) => ({
+        key,
+        day: current.key === key ? current.day : null,
+        pending: false,
+        error: err instanceof Error ? err.message : "Erro desconhecido.",
+      }));
+    } finally {
+      if (requestRef.current === controller) requestRef.current = null;
+    }
+  }, [date, enabled, includeLogged, key]);
 
   useEffect(() => {
+    activeScopeRef.current = enabled ? key : null;
     if (!enabled) return;
-
-    let controller = new AbortController();
     const handleUpdated = () => {
-      controller.abort();
-      controller = new AbortController();
-      void load(controller.signal);
+      if (!ownUpdateRef.current) void load();
     };
 
-    void load(controller.signal);
+    void load();
     window.addEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
     return () => {
       window.removeEventListener(TIME_ENTRIES_UPDATED_EVENT, handleUpdated);
-      controller.abort();
+      activeScopeRef.current = null;
+      requestRef.current?.abort();
+      requestRef.current = null;
     };
-  }, [enabled, load]);
+  }, [enabled, key, load]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (): Promise<void> => {
     await load();
   }, [load]);
 
@@ -142,7 +164,12 @@ export function useCollaborationDay({
         }
 
         // Every open view (day, week, autofill radar) refreshes on this event.
-        dispatchTimeEntriesUpdated();
+        ownUpdateRef.current = true;
+        try {
+          dispatchTimeEntriesUpdated();
+        } finally {
+          ownUpdateRef.current = false;
+        }
         await load();
 
         return body.created ?? items.length;
@@ -153,7 +180,19 @@ export function useCollaborationDay({
     [date, load],
   );
 
-  return { day, isLoading, isLogging, error, reload, logMeetings };
+  const current = state.key === key;
+  const day = current ? state.day : null;
+  const error = current ? state.error : null;
+  const pending = enabled && (!current || state.pending);
+  return {
+    day,
+    isLoading: pending && !day,
+    isRefreshing: pending && Boolean(day),
+    isLogging,
+    error,
+    reload,
+    logMeetings,
+  };
 }
 
 /** Time range label for a meeting row, e.g. "14:00 – 14:45". */

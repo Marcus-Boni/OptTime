@@ -36,7 +36,7 @@ export function TimeEntryDialogShell({
       <DialogContent
         showCloseButton={false}
         className={cn(
-          "overflow-hidden border-none bg-transparent p-0 shadow-none transition-all duration-300 ease-out md:flex md:flex-row md:items-start md:justify-center",
+          "flex max-h-[90vh] flex-col overflow-hidden border-none bg-transparent p-0 shadow-none md:flex-row md:items-stretch md:justify-center",
           asideOpen ? "md:max-w-[1056px] gap-4" : "md:max-w-[720px] gap-0",
           "w-full max-w-[calc(100vw-1rem)]",
         )}
@@ -49,8 +49,8 @@ export function TimeEntryDialogShell({
         {/* FORMULARIO PRINCIPAL — determina a altura do layout */}
         <div
           className={cn(
-            "relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg transition-all duration-300 max-h-[90vh]",
-            asideOpen ? "md:w-[720px]" : "w-full",
+            "relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg md:max-h-[90vh]",
+            asideOpen ? "w-full md:w-[720px]" : "w-full",
           )}
         >
           <DialogHeader className="border-b border-border/60 px-5 py-4 text-left sm:px-6 pr-12 shrink-0">
@@ -67,42 +67,23 @@ export function TimeEntryDialogShell({
 
           <div className="flex-1 overflow-y-auto flex flex-col min-h-0">
             <div className="flex-1">{children}</div>
-
-            {/* MOBILE ONLY ASIDE (Animação de altura fluída) */}
-            <div
-              className={cn(
-                "grid transition-all duration-300 ease-out md:hidden",
-                asideOpen && aside
-                  ? "grid-rows-[1fr] opacity-100"
-                  : "grid-rows-[0fr] opacity-0",
-              )}
-            >
-              <div className="overflow-hidden">
-                <div className="border-t border-border/60 bg-muted/10 flex flex-col">
-                  {aside}
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
         {/*
-          AGENDA OUTLOOK DESKTOP
-          O wrapper não tem filhos in-flow → contribui 0 para a altura do
-          container flex. self-stretch o estica até a altura do formulário
-          (o único filho in-flow, que define o container). O inner é
-          absolute inset-0, preenchendo exatamente essa altura com scroll
-          interno — sem nunca forçar o formulário a crescer.
+          One stable agenda instance across breakpoints. On desktop the form
+          defines the height and the absolute inner stretches to match it.
+          On mobile the agenda has its own bounded scrolling area.
         */}
         <div
           className={cn(
-            "hidden transform-gpu shrink-0 self-stretch relative transition-all duration-300 ease-out md:block",
+            "relative min-h-0 shrink-0",
             asideOpen && aside
-              ? "w-[320px] opacity-100"
-              : "w-0 opacity-0 pointer-events-none",
+              ? "flex h-[40vh] w-full flex-col md:block md:h-auto md:w-[320px] md:self-stretch"
+              : "hidden",
           )}
         >
-          <div className="absolute inset-0 flex flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg w-[320px]">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-background shadow-lg md:absolute md:inset-0">
             {aside}
           </div>
         </div>
