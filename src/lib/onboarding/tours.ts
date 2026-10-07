@@ -734,6 +734,17 @@ export const TOURS: readonly TourDefinition[] = [
         roles: ADMIN_ONLY,
       },
       {
+        id: "teams-meeting-watch",
+        title: "Lembrete de reunião instantâneo",
+        description:
+          "Com a permissão OnlineMeetings.Read.All concedida no Entra, o card “Sua reunião terminou” chega segundos após a pessoa sair da chamada do Teams, com o tempo real que ela ficou. Este indicador mostra se a permissão já está valendo.",
+        target: '[data-tour="teams-meeting-watch"]',
+        placement: "top",
+        route: "/dashboard/settings/integrations/teams",
+        roles: ADMIN_ONLY,
+        optional: true,
+      },
+      {
         id: "people",
         title: "Convidar pessoas",
         description:

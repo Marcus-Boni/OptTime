@@ -35,6 +35,16 @@ async function main(): Promise<void> {
   const { matchProjectBySubject } = await import(
     "@/lib/time-assistant/reconstruct"
   );
+  const { createSelfSignedCertificate } = await import("@/lib/graph/x509");
+  const {
+    decryptNotificationContent,
+    NotificationDecryptionError,
+    verifyValidationTokens,
+  } = await import("@/lib/graph/change-notifications");
+  const { selectMeetingsToWatch, hashJoinUrl } = await import(
+    "@/lib/teams/meeting-watch"
+  );
+  const crypto = await import("node:crypto");
 
   let passed = 0;
   async function check(
@@ -341,6 +351,7 @@ async function main(): Promise<void> {
   console.log("Lembrete pós-reunião");
 
   const NOW = Date.parse("2026-10-06T15:00:00Z");
+  const APP_ID_GRAPH = "22222222-3333-4444-5555-666666666666";
   const minutesAgo = (minutes: number): string =>
     new Date(NOW - minutes * 60_000).toISOString();
   const meeting = (
@@ -462,6 +473,151 @@ async function main(): Promise<void> {
     assert.ok(json.includes('"seriesId":"s-9"'), "série viaja no card");
     assert.ok(json.includes("Não achei o projeto pela agenda"));
     assert.ok(!json.includes("sugerido automaticamente"));
+  });
+
+  console.log("Aviso instantâneo (Graph meetingCallEvents)");
+
+  const { privateKey } = crypto.generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+  });
+  const certificateDer = createSelfSignedCertificate({
+    privateKey,
+    commonName: "OptSolv Time - teste",
+    notBefore: new Date("2026-10-01T00:00:00Z"),
+    notAfter: new Date("2028-10-01T00:00:00Z"),
+  });
+  const privateKeyPem = privateKey
+    .export({ type: "pkcs8", format: "pem" })
+    .toString();
+
+  await check("certificado autoassinado é X.509 válido e verificável", () => {
+    const certificate = new crypto.X509Certificate(certificateDer);
+    assert.equal(certificate.subject, "CN=OptSolv Time - teste");
+    assert.ok(certificate.verify(certificate.publicKey), "assinatura própria");
+    assert.equal(
+      certificate.publicKey
+        .export({ type: "spki", format: "der" })
+        .toString("hex"),
+      crypto
+        .createPublicKey(privateKey)
+        .export({ type: "spki", format: "der" })
+        .toString("hex"),
+    );
+  });
+
+  /** Encrypts exactly like Microsoft Graph does for rich notifications. */
+  const encryptLikeGraph = (payload: unknown) => {
+    const symmetricKey = crypto.randomBytes(32);
+    const cipher = crypto.createCipheriv(
+      "aes-256-cbc",
+      symmetricKey,
+      symmetricKey.subarray(0, 16),
+    );
+    const data = Buffer.concat([
+      cipher.update(JSON.stringify(payload), "utf8"),
+      cipher.final(),
+    ]);
+    const publicKey = new crypto.X509Certificate(certificateDer).publicKey;
+    return {
+      data: data.toString("base64"),
+      dataSignature: crypto
+        .createHmac("sha256", symmetricKey)
+        .update(data)
+        .digest("base64"),
+      dataKey: crypto
+        .publicEncrypt(
+          {
+            key: publicKey,
+            padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+            oaepHash: "sha1",
+          },
+          symmetricKey,
+        )
+        .toString("base64"),
+      encryptionCertificateId: "test-key",
+    };
+  };
+
+  await check("decifra notificação cifrada como o Graph cifra", () => {
+    const event = {
+      eventType: "rosterUpdated",
+      eventDateTime: "2026-10-07T13:30:00Z",
+      "participants@delta": [
+        {
+          info: { identity: { user: { id: "oid-1" } } },
+          removedState: { reason: "Participant has left the meeting call." },
+        },
+      ],
+    };
+    assert.deepEqual(
+      decryptNotificationContent(encryptLikeGraph(event), privateKeyPem),
+      event,
+    );
+  });
+
+  await check("conteúdo adulterado é rejeitado antes de decifrar", () => {
+    const content = encryptLikeGraph({ eventType: "callEnded" });
+    const tampered = Buffer.from(content.data, "base64");
+    tampered[0] = (tampered[0] ?? 0) ^ 0xff;
+    assert.throws(
+      () =>
+        decryptNotificationContent(
+          { ...content, data: tampered.toString("base64") },
+          privateKeyPem,
+        ),
+      NotificationDecryptionError,
+    );
+  });
+
+  await check(
+    "lote sem tokens de validação da Microsoft é recusado",
+    async () => {
+      const ids = { appId: APP_ID_GRAPH, tenantId: APP_ID_GRAPH };
+      assert.equal(await verifyValidationTokens(null, ids), false);
+      assert.equal(await verifyValidationTokens([], ids), false);
+      assert.equal(await verifyValidationTokens(["nao.e.jwt"], ids), false);
+    },
+  );
+
+  await check("monitora só reuniões do Teams próximas ou em andamento", () => {
+    const at = (minutesFromNow: number) =>
+      new Date(NOW + minutesFromNow * 60_000).toISOString();
+    const online = (id: string, start: number, end: number, extra = {}) =>
+      meeting(id, 0, {
+        isOnline: true,
+        joinWebUrl: `https://teams.microsoft.com/l/meetup-join/${id}`,
+        startIso: at(start),
+        endIso: at(end),
+        ...extra,
+      });
+    const watched = selectMeetingsToWatch(
+      [
+        online("em-andamento", -20, 10),
+        online("comeca-em-30", 30, 60),
+        online("amanha-cedo", 300, 330),
+        online("terminou-ha-2h", -180, -120),
+        online("presencial", -20, 10, { isOnline: false, joinWebUrl: null }),
+      ],
+      NOW,
+    );
+    assert.deepEqual(
+      watched.map((item) => item.id),
+      ["em-andamento", "comeca-em-30"],
+    );
+    assert.equal(hashJoinUrl(" x "), hashJoinUrl("x"));
+  });
+
+  await check("cron não atropela reunião ainda monitorada ao vivo", () => {
+    const picked = selectMeetingsToNudge(
+      [meeting("ao-vivo", 5), meeting("sem-teams", 5)],
+      NOW,
+      new Set(),
+      new Set(["ao-vivo"]),
+    );
+    assert.deepEqual(
+      picked.map((item) => item.id),
+      ["sem-teams"],
+    );
   });
 
   console.log("Pacote do app");

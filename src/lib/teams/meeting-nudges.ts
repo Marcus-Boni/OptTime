@@ -1,47 +1,49 @@
 /**
- * "Sua reunião terminou — registrar?" in the OptSolv Time Teams app.
+ * "Sua reunião terminou — registrar?" in the OptSolv Time Teams app — the
+ * scheduled half.
  *
  * Runs every few minutes during working hours (GitHub Actions cron). For each
- * person with the app installed, it reads today's meetings through the same
- * collaboration pipeline as the day panel and the evening digest, picks the
- * ones that just ended and are not logged yet, and sends one card per meeting
- * to their private chat with the app.
+ * person with the app installed it builds today through the same
+ * collaboration pipeline as the day panel and the evening digest, and then:
  *
- * Why polling and not Graph change notifications: calendar subscriptions
- * report created/updated/deleted events, never "ended", so a timer would be
- * needed anyway. Polling the day the app already knows how to build is
- * simpler and shares every rule (declined, cancelled, overlaps, already
- * logged) with the rest of the product.
+ * 1. Registers upcoming Teams meetings for instant nudges
+ *    (lib/teams/meeting-watch): a Graph subscription tells the app the second
+ *    the person leaves the call.
+ * 2. Acts as the safety net for everything the event path cannot see —
+ *    in-person meetings, other platforms, missed events — nudging meetings
+ *    whose calendar end has passed. A meeting still watched live is left to
+ *    the event path, so an overrun is never "ended" by the clock.
  *
- * Guard rails: opt-out per person and per organization, nothing outside
- * working hours or while away, meetings of 10+ minutes only, a daily cap,
- * a ledger that makes every meeting asked about once, and projects only
- * preselected on unique evidence (same rule as the day reconstructor).
+ * Both paths share lib/teams/meeting-nudge-delivery: opt-outs, daily cap,
+ * series mutes, the project rule and the one-nudge-per-meeting ledger.
  */
 
-import { and, eq } from "drizzle-orm";
 import { getBackgroundMicrosoftToken } from "@/lib/collaboration/background-token";
 import { buildCollaborationDay } from "@/lib/collaboration/service";
-import { db } from "@/lib/db";
-import { teamsBotConversation, user } from "@/lib/db/schema";
-import { buildProposalCard, toAttachment } from "@/lib/teams/bot/cards";
+import type { BotCredentials } from "@/lib/teams/bot/auth";
 import { getBotConfig } from "@/lib/teams/bot/config";
-import { ConnectorError, sendToConversation } from "@/lib/teams/bot/connector";
 import { loadBotUserContext } from "@/lib/teams/bot/context";
-import { forgetPersonalConversation } from "@/lib/teams/bot/conversations";
-import type { TimeDraft } from "@/lib/teams/bot/intent";
-import {
-  claimNudge,
-  countNudgesOn,
-  loadMutedSeries,
-  setNudgeStatus,
-} from "@/lib/teams/bot/nudges";
+import { countNudgesOn, loadMutedSeries } from "@/lib/teams/bot/nudges";
 import { buildTeamsPrincipal } from "@/lib/teams/commands";
+import {
+  deliverMeetingNudge,
+  loadNudgeCandidates,
+  MAX_NUDGES_PER_DAY,
+  MIN_MEETING_MINUTES,
+  type NudgeCandidate,
+  nudgeMinutes,
+} from "@/lib/teams/meeting-nudge-delivery";
+import {
+  loadDeferredMeetingIds,
+  pruneMeetingWatches,
+  syncMeetingWatches,
+} from "@/lib/teams/meeting-watch";
 import { getTeamsSettings } from "@/lib/teams/settings";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
-import { matchProjectBySubject } from "@/lib/time-assistant/reconstruct";
 import { getAppTimeZone, todayInAppTimeZone } from "@/lib/timezone";
 import type { MeetingSignal } from "@/types/collaboration";
+
+export { meetingLabel, nudgeMinutes } from "@/lib/teams/meeting-nudge-delivery";
 
 /** Calendars lag a little; a meeting is "over" this long after its end. */
 const END_GRACE_MS = 2 * 60_000;
@@ -50,8 +52,6 @@ const END_GRACE_MS = 2 * 60_000;
  * late cron run without pinging about the morning in the evening.
  */
 const LOOKBACK_MS = 2 * 60 * 60_000;
-const MIN_MEETING_MINUTES = 10;
-const MAX_NUDGES_PER_DAY = 8;
 /** Local hours in which nudges may go out (inclusive start, exclusive end). */
 const WORKING_HOURS = { start: 8, end: 21 } as const;
 const CONCURRENCY = 4;
@@ -78,6 +78,7 @@ export function selectMeetingsToNudge(
   meetings: MeetingSignal[],
   nowMs: number,
   mutedSeries: Set<string> = new Set(),
+  deferred: Set<string> = new Set(),
 ): MeetingSignal[] {
   return meetings
     .filter((meeting) => {
@@ -88,37 +89,10 @@ export function selectMeetingsToNudge(
       }
       if (meeting.alreadyLogged || meeting.confidence === "low") return false;
       if (meeting.seriesId && mutedSeries.has(meeting.seriesId)) return false;
+      if (deferred.has(meeting.id)) return false;
       return nudgeMinutes(meeting) >= MIN_MEETING_MINUTES;
     })
     .sort((a, b) => Date.parse(a.endIso) - Date.parse(b.endIso));
-}
-
-/** What really happened beats what was scheduled. */
-export function nudgeMinutes(meeting: MeetingSignal): number {
-  return meeting.measuredMinutes && meeting.measuredMinutes > 0
-    ? meeting.measuredMinutes
-    : meeting.minutes;
-}
-
-function clock(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZone: getAppTimeZone(),
-  }).format(new Date(iso));
-}
-
-/** "Daily Shopping Vix · 09:00–09:30 · você ficou 27min" */
-export function meetingLabel(meeting: MeetingSignal): string {
-  const parts = [
-    meeting.title,
-    `${clock(meeting.startIso)}–${clock(meeting.endIso)}`,
-  ];
-  if (meeting.measuredMinutes && meeting.measuredMinutes > 0) {
-    parts.push(`você ficou ${meeting.measuredMinutes}min na chamada`);
-  }
-  return parts.join(" · ");
 }
 
 function localHour(now: Date): number {
@@ -129,16 +103,6 @@ function localHour(now: Date): number {
       timeZone: getAppTimeZone(),
     }).format(now),
   );
-}
-
-interface NudgeCandidate {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  conversationId: string;
-  serviceUrl: string;
-  aadObjectId: string;
 }
 
 export async function runMeetingNudges(
@@ -179,24 +143,13 @@ export async function runMeetingNudges(
     };
   }
 
-  // Only people who can actually receive the card: app installed (a stored
-  // 1:1 conversation), active, and not opted out.
-  const candidates: NudgeCandidate[] = await db
-    .select({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      conversationId: teamsBotConversation.conversationId,
-      serviceUrl: teamsBotConversation.serviceUrl,
-      aadObjectId: teamsBotConversation.aadObjectId,
-    })
-    .from(user)
-    .innerJoin(teamsBotConversation, eq(teamsBotConversation.userId, user.id))
-    .where(
-      and(eq(user.isActive, true), eq(user.teamsMeetingNudgeEnabled, true)),
+  if (!options.dryRun) {
+    await pruneMeetingWatches(now).catch((error: unknown) =>
+      console.warn("[teams-meeting-nudge] prune failed:", error),
     );
+  }
 
+  const candidates = await loadNudgeCandidates();
   const today = todayInAppTimeZone();
   let sent = 0;
   let skipped = 0;
@@ -243,9 +196,7 @@ async function nudgeOne(
     now: Date;
     today: string;
     dryRun: boolean;
-    credentials: NonNullable<
-      Awaited<ReturnType<typeof getBotConfig>>["credentials"]
-    >;
+    credentials: BotCredentials;
   },
 ): Promise<{ sent: number; skipped: number; failed: number }> {
   const tally = { sent: 0, skipped: 0, failed: 0 };
@@ -262,11 +213,20 @@ async function nudgeOne(
   });
   if (day.away || !day.target.isWorkingDay) return { ...tally, skipped: 1 };
 
-  const mutedSeries = await loadMutedSeries(candidate.id);
+  // Instant path first: subscribe upcoming/ongoing Teams meetings.
+  if (!run.dryRun) {
+    await syncMeetingWatches(candidate, day.meetings, run.now);
+  }
+
+  const [mutedSeries, deferred] = await Promise.all([
+    loadMutedSeries(candidate.id),
+    loadDeferredMeetingIds(candidate.id, run.now.getTime()),
+  ]);
   const meetings = selectMeetingsToNudge(
     day.meetings,
     run.now.getTime(),
     mutedSeries,
+    deferred,
   );
   if (meetings.length === 0) return tally;
 
@@ -278,71 +238,21 @@ async function nudgeOne(
     return { ...tally, sent: Math.min(meetings.length, budget) };
   }
 
-  const principal = buildTeamsPrincipal(candidate);
-  const context = await loadBotUserContext(principal);
+  const context = await loadBotUserContext(buildTeamsPrincipal(candidate));
 
   for (const meeting of meetings.slice(0, budget)) {
-    const proposalId = crypto.randomUUID();
-    const claimed = await claimNudge({
-      userId: candidate.id,
-      meetingId: meeting.id,
-      meetingDate: run.today,
-      proposalId,
-    });
-    if (!claimed) continue;
-
-    // Same rule as the reconstructor: no project without unique evidence.
-    const project = matchProjectBySubject(
-      meeting.subject || meeting.title,
-      context.parse.projects,
-    );
-    const draft: TimeDraft = {
-      durationMinutes: nudgeMinutes(meeting),
+    const outcome = await deliverMeetingNudge({
+      candidate,
+      meeting,
       date: run.today,
-      // The title is what the day panel matches to call a meeting "logged".
-      description: meeting.title,
-      projectId: project?.id ?? null,
-      projectGuessed: false,
-      azureWorkItemId: null,
-      source: "rules",
-    };
-
-    const card = buildProposalCard({
-      surface: "message",
-      proposalId,
-      requesterOid: candidate.aadObjectId,
-      draft,
-      projects: context.parse.projects,
-      meeting: { label: meetingLabel(meeting), seriesId: meeting.seriesId },
+      credentials: run.credentials,
+      context,
     });
-
-    try {
-      await sendToConversation(
-        run.credentials,
-        candidate.serviceUrl,
-        candidate.conversationId,
-        {
-          type: "message",
-          summary: `Registrar a reunião “${meeting.title}”?`,
-          attachments: [toAttachment(card)],
-        },
-      );
-      tally.sent += 1;
-    } catch (error: unknown) {
+    if (outcome === "sent") tally.sent += 1;
+    else if (outcome === "failed") tally.failed += 1;
+    else if (outcome === "gone") {
       tally.failed += 1;
-      await setNudgeStatus(proposalId, "failed");
-      if (
-        error instanceof ConnectorError &&
-        (error.status === 403 || error.status === 404)
-      ) {
-        // App removed for this person: stop until they install it again.
-        await forgetPersonalConversation(candidate.id);
-        break;
-      }
-      console.warn("[teams-meeting-nudge] delivery failed:", {
-        userId: candidate.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      break;
     }
   }
 
