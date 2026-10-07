@@ -713,7 +713,7 @@ export function TimeClient() {
       }
 
       openCreate({
-        billable: latestEntry?.billable ?? true,
+        billable: true,
         date: format(new Date(meeting.startIso), "yyyy-MM-dd"),
         description: meeting.title,
         duration: meeting.minutes,

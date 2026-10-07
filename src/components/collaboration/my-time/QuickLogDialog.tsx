@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MeetingTitle } from "@/components/collaboration/MeetingTitle";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import { formatMeetingRange } from "@/hooks/use-collaboration-day";
 import { useQuickLog } from "@/hooks/use-quick-log";
 import { describeTeamCall } from "@/lib/collaboration/calls";
@@ -103,8 +105,17 @@ export function QuickLogDialog({
 }: QuickLogDialogProps) {
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [billable, setBillable] = useState(true);
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const { isApplying, apply } = useQuickLog();
+
+  function handleProjectChange(nextId: string): void {
+    setProjectId(nextId);
+    const matched = projects.find((item) => item.id === nextId);
+    if (matched?.billable !== undefined) {
+      setBillable(matched.billable);
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -179,8 +190,6 @@ export function QuickLogDialog({
   async function handleApply(): Promise<void> {
     if (!projectId || selected.length === 0) return;
 
-    const project = projects.find((item) => item.id === projectId);
-
     const { created, failures } = await apply(
       selected.map((item) => ({
         date: item.date,
@@ -192,7 +201,7 @@ export function QuickLogDialog({
             : describeTeamCall(item.call),
         minutes: item.minutes,
       })),
-      { projectId, billable: project?.billable ?? true },
+      { projectId, billable },
     );
 
     if (created > 0) {
@@ -235,13 +244,43 @@ export function QuickLogDialog({
         </DialogHeader>
 
         <div className="space-y-3">
-          <ProjectCombobox
-            projects={projects}
-            value={projectId}
-            onChange={setProjectId}
-            placeholder="Escolha o projeto"
-            disabled={isApplying}
-          />
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <ProjectCombobox
+                projects={projects}
+                value={projectId}
+                onChange={handleProjectChange}
+                placeholder="Escolha o projeto"
+                disabled={isApplying}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 rounded-xl border border-border/40 bg-muted/20 px-3 py-1.5">
+              <Switch
+                id="quicklog-billable"
+                size="sm"
+                checked={billable}
+                onCheckedChange={setBillable}
+                disabled={isApplying}
+                aria-label="Lançar como faturável"
+              />
+              <label
+                htmlFor="quicklog-billable"
+                className="cursor-pointer text-xs font-medium text-foreground select-none flex items-center gap-1.5"
+              >
+                <span>Faturável</span>
+                {billable ? (
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    (Sim)
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted-foreground font-normal">
+                    (Não)
+                  </span>
+                )}
+              </label>
+            </div>
+          </div>
 
           <ScrollArea className="-mr-4 h-[42vh] overflow-hidden pr-4">
             <div className="space-y-4">
@@ -324,12 +363,26 @@ export function QuickLogDialog({
         </div>
 
         <DialogFooter className="sm:justify-between">
-          <p className="text-xs text-muted-foreground">
-            {selected.length} selecionada(s) ·{" "}
-            <span className="font-mono tabular-nums text-foreground">
-              {formatDuration(totalMinutes)}
-            </span>
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted-foreground">
+              {selected.length} selecionada(s) ·{" "}
+              <span className="font-mono tabular-nums text-foreground">
+                {formatDuration(totalMinutes)}
+              </span>
+            </p>
+            {selected.length > 0 && (
+              <Badge
+                variant="outline"
+                className={
+                  billable
+                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium"
+                    : "border-muted-foreground/30 bg-muted/30 text-muted-foreground text-[10px] font-medium"
+                }
+              >
+                {billable ? "Faturável" : "Não faturável"}
+              </Badge>
+            )}
+          </div>
 
           <Button
             onClick={handleApply}

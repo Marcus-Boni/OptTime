@@ -23,6 +23,7 @@ import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   formatMeetingRange,
@@ -257,9 +258,21 @@ export function DayCollaborationPanel({
     new Set(),
   );
   const [projectId, setProjectId] = useState("");
+  const [billable, setBillable] = useState(true);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [showAll, setShowAll] = useState(false);
   const [showAllCalls, setShowAllCalls] = useState(false);
+
+  const handleProjectChange = useCallback(
+    (nextId: string) => {
+      setProjectId(nextId);
+      const matched = projects.find((item) => item.id === nextId);
+      if (matched?.billable !== undefined) {
+        setBillable(matched.billable);
+      }
+    },
+    [projects],
+  );
 
   // High-confidence meetings start selected; the rest is an explicit choice.
   useEffect(() => {
@@ -356,8 +369,6 @@ export function DayCollaborationPanel({
     }
     if (selectedCount === 0) return;
 
-    const project = projects.find((item) => item.id === projectId);
-
     const { created, failures } = await apply(
       [
         ...selected.map((meeting) => ({
@@ -374,7 +385,7 @@ export function DayCollaborationPanel({
           sourceId: call.id,
         })),
       ],
-      { projectId, billable: project?.billable ?? true },
+      { projectId, billable },
     );
 
     if (created > 0) {
@@ -395,10 +406,10 @@ export function DayCollaborationPanel({
     }
   }, [
     apply,
+    billable,
     date,
     isRefreshing,
     projectId,
-    projects,
     selected,
     selectedCalls,
     selectedCount,
@@ -590,21 +601,49 @@ export function DayCollaborationPanel({
 
           {meetings.length + calls.length > 0 && (
             <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <label
-                  htmlFor="collaboration-project"
-                  className="shrink-0 text-xs font-medium text-muted-foreground"
-                >
-                  Lançar em
-                </label>
-                <div id="collaboration-project" className="min-w-0 flex-1">
-                  <ProjectCombobox
-                    projects={projects}
-                    value={projectId}
-                    onChange={setProjectId}
-                    placeholder="Escolha o projeto"
+              <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex flex-1 items-center gap-2">
+                  <label
+                    htmlFor="collaboration-project"
+                    className="shrink-0 text-xs font-medium text-muted-foreground"
+                  >
+                    Lançar em
+                  </label>
+                  <div id="collaboration-project" className="min-w-0 flex-1">
+                    <ProjectCombobox
+                      projects={projects}
+                      value={projectId}
+                      onChange={handleProjectChange}
+                      placeholder="Escolha o projeto"
+                      disabled={locked || isApplying || isRefreshing}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 rounded-xl border border-border/40 bg-muted/20 px-3 py-1.5">
+                  <Switch
+                    id="collaboration-billable"
+                    size="sm"
+                    checked={billable}
+                    onCheckedChange={setBillable}
                     disabled={locked || isApplying || isRefreshing}
+                    aria-label="Lançar como faturável"
                   />
+                  <label
+                    htmlFor="collaboration-billable"
+                    className="cursor-pointer text-xs font-medium text-foreground select-none flex items-center gap-1.5"
+                  >
+                    <span>Faturável</span>
+                    {billable ? (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        (Sim)
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-muted-foreground font-normal">
+                        (Não)
+                      </span>
+                    )}
+                  </label>
                 </div>
               </div>
 
@@ -692,11 +731,25 @@ export function DayCollaborationPanel({
 
           {meetings.length + calls.length > 0 && (
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/40 pt-4">
-              <p className="text-xs text-muted-foreground">
-                {selectedCount === 0
-                  ? "Selecione o que quer lançar"
-                  : `${selectedCount} ${selectedCount === 1 ? "selecionada" : "selecionadas"} · ${formatDuration(selectedMinutes)}`}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {selectedCount === 0
+                    ? "Selecione o que quer lançar"
+                    : `${selectedCount} ${selectedCount === 1 ? "selecionada" : "selecionadas"} · ${formatDuration(selectedMinutes)}`}
+                </p>
+                {selectedCount > 0 && (
+                  <Badge
+                    variant="outline"
+                    className={
+                      billable
+                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-medium"
+                        : "border-muted-foreground/30 bg-muted/30 text-muted-foreground text-[10px] font-medium"
+                    }
+                  >
+                    {billable ? "Faturável" : "Não faturável"}
+                  </Badge>
+                )}
+              </div>
 
               <Button
                 size="sm"

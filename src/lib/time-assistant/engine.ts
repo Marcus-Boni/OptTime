@@ -1,10 +1,12 @@
-import { addMinutes, differenceInMinutes, max, min } from "date-fns";
+import { differenceInMinutes } from "date-fns";
 import { describeTeamCall } from "@/lib/collaboration/calls";
 import type { TeamCallSignal } from "@/types/collaboration";
 import type {
   SuggestionConfidence,
   TimeSuggestion,
   TimeSuggestionActivitySummary,
+  TimeSuggestionKind,
+  TimeSuggestionWorkItem,
 } from "@/types/time-suggestions";
 
 export interface NormalizedCommitActivity {
@@ -38,6 +40,13 @@ export interface RecentEntryActivity {
   description: string;
 }
 
+/** Title/type/state of a referenced Azure DevOps task, when it could be read. */
+export interface WorkItemDetails {
+  title: string;
+  type?: string | null;
+  state?: string | null;
+}
+
 export type CandidateSuggestion = TimeSuggestion;
 
 interface InternalProject {
@@ -45,6 +54,7 @@ interface InternalProject {
   name: string;
   billable: boolean;
   azureProjectId: string | null;
+  color?: string | null;
 }
 
 interface BuildSuggestionsInput {
@@ -56,6 +66,8 @@ interface BuildSuggestionsInput {
   recentEntries: RecentEntryActivity[];
   existingEntries: RecentEntryActivity[];
   organizationUrl?: string | null;
+  /** Resolved Azure DevOps tasks keyed by id; missing ids fall back to commit text. */
+  workItems?: ReadonlyMap<number, WorkItemDetails>;
   weights?: {
     commitBoost?: number;
     meetingBoost?: number;
@@ -63,37 +75,81 @@ interface BuildSuggestionsInput {
   };
 }
 
-function groupCommits(commits: NormalizedCommitActivity[]) {
-  if (commits.length === 0) return [] as NormalizedCommitActivity[][];
+/** Commits further apart than this start a new work session. */
+const SESSION_GAP_MINUTES = 90;
+/** Lead time credited before the first commit of every session. */
+const SESSION_LEAD_MINUTES = 15;
+/** Upper bound of suggestions returned for a single day. */
+const MAX_SUGGESTIONS = 24;
 
-  const sorted = [...commits].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-  );
+const MERGE_COMMIT_PATTERN =
+  /^(merge (branch|pull request|remote-tracking branch|commit|tag)\b|merged pr \d+)/i;
 
-  const groups: NormalizedCommitActivity[][] = [];
+interface CommitGroup {
+  kind: Extract<TimeSuggestionKind, "work_item" | "work_session">;
+  project: InternalProject | null;
+  projectLabel: string;
+  workItemId: number | null;
+  commits: NormalizedCommitActivity[];
+}
+
+export function isMergeCommitMessage(message: string): boolean {
+  return MERGE_COMMIT_PATTERN.test(message.trim());
+}
+
+function toTime(timestamp: string): number {
+  const time = new Date(timestamp).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function sortAscending(
+  commits: NormalizedCommitActivity[],
+): NormalizedCommitActivity[] {
+  return [...commits].sort((a, b) => toTime(a.timestamp) - toTime(b.timestamp));
+}
+
+/** The same commit can arrive twice when two projects share an Azure project. */
+function dedupeCommits(
+  commits: NormalizedCommitActivity[],
+): NormalizedCommitActivity[] {
+  const byId = new Map<string, NormalizedCommitActivity>();
+  for (const commit of commits) {
+    if (!byId.has(commit.id)) byId.set(commit.id, commit);
+  }
+  return [...byId.values()];
+}
+
+/** Splits chronologically sorted commits wherever the gap exceeds the session limit. */
+function splitIntoSessions(
+  commits: NormalizedCommitActivity[],
+): NormalizedCommitActivity[][] {
+  const sorted = sortAscending(commits);
+  if (sorted.length === 0) return [];
+
+  const sessions: NormalizedCommitActivity[][] = [];
   let current: NormalizedCommitActivity[] = [sorted[0]];
 
   for (let i = 1; i < sorted.length; i++) {
     const previous = sorted[i - 1];
     const next = sorted[i];
-    const diffMinutes = Math.abs(
+    const gap = Math.abs(
       differenceInMinutes(
         new Date(next.timestamp),
         new Date(previous.timestamp),
       ),
     );
 
-    if (diffMinutes <= 90) {
+    if (gap <= SESSION_GAP_MINUTES) {
       current.push(next);
       continue;
     }
 
-    groups.push(current);
+    sessions.push(current);
     current = [next];
   }
 
-  groups.push(current);
-  return groups;
+  sessions.push(current);
+  return sessions;
 }
 
 function confidenceFromScore(score: number): SuggestionConfidence {
@@ -102,16 +158,17 @@ function confidenceFromScore(score: number): SuggestionConfidence {
   return "low";
 }
 
+function normalizeName(value: string): string {
+  return value.trim().toLocaleLowerCase("pt-BR");
+}
+
 function parseProjectFromCommit(
   commit: NormalizedCommitActivity,
   projects: InternalProject[],
-) {
+): InternalProject | null {
+  const target = normalizeName(commit.projectName);
   return (
-    projects.find(
-      (project) =>
-        project.name.toLocaleLowerCase("pt-BR") ===
-        commit.projectName.toLocaleLowerCase("pt-BR"),
-    ) ?? null
+    projects.find((project) => normalizeName(project.name) === target) ?? null
   );
 }
 
@@ -172,28 +229,6 @@ function getRecencyProjectMap(entries: RecentEntryActivity[]) {
   return scoreByProject;
 }
 
-function mostFrequentWorkItem(commits: NormalizedCommitActivity[]) {
-  const counts = new Map<number, number>();
-
-  for (const commit of commits) {
-    for (const workItemId of commit.workItemIds) {
-      counts.set(workItemId, (counts.get(workItemId) ?? 0) + 1);
-    }
-  }
-
-  let winner: number | null = null;
-  let winnerScore = 0;
-
-  for (const [workItemId, count] of counts) {
-    if (count > winnerScore) {
-      winner = workItemId;
-      winnerScore = count;
-    }
-  }
-
-  return winner;
-}
-
 function roundToStandardDuration(minutes: number): number {
   const clamped = Math.max(15, Math.min(8 * 60, minutes));
   return Math.max(15, Math.round(clamped / 15) * 15);
@@ -243,7 +278,7 @@ function buildWorkItemUrl(
           return `${urlObj.origin}${parts[0]}/_workitems/edit/${workItemId}`;
         }
       } catch {
-        // ignore
+        // A malformed commit URL only costs the deep link.
       }
     }
   }
@@ -258,7 +293,7 @@ function buildActivitySummary(
   }
 
   const orderedCommits = [...commits].sort(
-    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    (a, b) => toTime(b.timestamp) - toTime(a.timestamp),
   );
   const repositories = Array.from(
     new Set(orderedCommits.map((commit) => commit.repositoryName)),
@@ -274,12 +309,324 @@ function buildActivitySummary(
       id: commit.id,
       commitId: commit.commitId,
       repositoryName: commit.repositoryName,
+      projectName: commit.projectName,
       message: commit.message,
       branch: commit.branch,
       timestamp: commit.timestamp,
       workItemIds: commit.workItemIds,
       url: commit.url ?? null,
+      isMerge: isMergeCommitMessage(commit.message),
     })),
+  };
+}
+
+/** Latest meaningful commit message: merges never name a block of work. */
+function pickHeadline(commits: NormalizedCommitActivity[]): string | null {
+  const newestFirst = [...commits].sort(
+    (a, b) => toTime(b.timestamp) - toTime(a.timestamp),
+  );
+  const meaningful = newestFirst.find(
+    (commit) => commit.message.trim() && !isMergeCommitMessage(commit.message),
+  );
+  return (meaningful ?? newestFirst[0])?.message.trim() || null;
+}
+
+/**
+ * Sum of the active windows of each session, so a task touched in the morning
+ * and again in the afternoon does not get credited for the idle gap between.
+ */
+function estimateGroupMinutes(
+  commits: NormalizedCommitActivity[],
+  defaultDuration: number,
+): number {
+  const sessions = splitIntoSessions(commits);
+  const activeMinutes = sessions.reduce((total, session) => {
+    const first = new Date(session[0].timestamp);
+    const last = new Date(session[session.length - 1].timestamp);
+    return (
+      total +
+      Math.max(0, differenceInMinutes(last, first)) +
+      SESSION_LEAD_MINUTES
+    );
+  }, 0);
+
+  const floor =
+    commits.length === 1
+      ? Math.min(defaultDuration, 45)
+      : Math.min(defaultDuration, 60);
+
+  return roundToStandardDuration(Math.max(activeMinutes, floor));
+}
+
+function minutesBetween(
+  commit: NormalizedCommitActivity,
+  group: CommitGroup,
+): number {
+  const time = toTime(commit.timestamp);
+  return Math.min(
+    ...group.commits.map(
+      (candidate) => Math.abs(toTime(candidate.timestamp) - time) / 60_000,
+    ),
+  );
+}
+
+/**
+ * Groups one project's commits: by referenced task first, then the remaining
+ * commits by work session. Merge commits without a task join the closest group
+ * of the same project instead of becoming a suggestion of their own.
+ */
+function groupProjectCommits(
+  project: InternalProject | null,
+  projectLabel: string,
+  commits: NormalizedCommitActivity[],
+): CommitGroup[] {
+  const byWorkItem = new Map<number, NormalizedCommitActivity[]>();
+  const loose: NormalizedCommitActivity[] = [];
+  const looseMerges: NormalizedCommitActivity[] = [];
+
+  for (const commit of sortAscending(commits)) {
+    const workItemId = commit.workItemIds[0];
+    if (workItemId !== undefined) {
+      const bucket = byWorkItem.get(workItemId) ?? [];
+      bucket.push(commit);
+      byWorkItem.set(workItemId, bucket);
+    } else if (isMergeCommitMessage(commit.message)) {
+      looseMerges.push(commit);
+    } else {
+      loose.push(commit);
+    }
+  }
+
+  const groups: CommitGroup[] = [
+    ...[...byWorkItem.entries()].map(
+      ([workItemId, items]): CommitGroup => ({
+        kind: "work_item",
+        project,
+        projectLabel,
+        workItemId,
+        commits: items,
+      }),
+    ),
+    ...splitIntoSessions(loose).map(
+      (items): CommitGroup => ({
+        kind: "work_session",
+        project,
+        projectLabel,
+        workItemId: null,
+        commits: items,
+      }),
+    ),
+  ];
+
+  const orphanMerges: NormalizedCommitActivity[] = [];
+  for (const merge of looseMerges) {
+    let closest: CommitGroup | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+
+    for (const group of groups) {
+      const distance = minutesBetween(merge, group);
+      if (distance < closestDistance) {
+        closest = group;
+        closestDistance = distance;
+      }
+    }
+
+    if (closest && closestDistance <= SESSION_GAP_MINUTES) {
+      closest.commits.push(merge);
+    } else {
+      orphanMerges.push(merge);
+    }
+  }
+
+  for (const items of splitIntoSessions(orphanMerges)) {
+    groups.push({
+      kind: "work_session",
+      project,
+      projectLabel,
+      workItemId: null,
+      commits: items,
+    });
+  }
+
+  return groups;
+}
+
+interface CommitSuggestionContext {
+  date: string;
+  defaultDuration: number;
+  existingEntries: RecentEntryActivity[];
+  organizationUrl?: string | null;
+  recencyByProject: Map<string, number>;
+  workItems?: ReadonlyMap<number, WorkItemDetails>;
+  commitBoost: number;
+  recencyBoost: number;
+}
+
+function buildCommitSuggestion(
+  group: CommitGroup,
+  context: CommitSuggestionContext,
+): CandidateSuggestion | null {
+  const { date, workItems } = context;
+  const commits = sortAscending(group.commits);
+  const linkedProject = group.project;
+  const workItemId = group.workItemId;
+  const details = workItemId ? workItems?.get(workItemId) : undefined;
+  const workItemTitle = details?.title?.trim() || null;
+  const headline = pickHeadline(commits);
+  const onlyMerges = commits.every((commit) =>
+    isMergeCommitMessage(commit.message),
+  );
+  const recency = linkedProject
+    ? (context.recencyByProject.get(linkedProject.id) ?? 0)
+    : 0;
+
+  let score = 0.4 + context.commitBoost;
+  const reasons: string[] = [];
+
+  if (group.kind === "work_item" && workItemId) {
+    score += 0.25;
+    reasons.push(
+      `${commits.length} commit${commits.length === 1 ? "" : "s"} referencia${commits.length === 1 ? "" : "m"} a tarefa #${workItemId}.`,
+    );
+    if (workItemTitle) score += 0.05;
+  } else if (onlyMerges) {
+    score -= 0.15;
+    reasons.push("Apenas integrações de branch, sem tarefa vinculada.");
+  } else {
+    reasons.push(
+      commits.length === 1
+        ? "Commit sem tarefa vinculada."
+        : `${commits.length} commits próximos no tempo, sem tarefa vinculada.`,
+    );
+  }
+
+  if (linkedProject) {
+    score += 0.15;
+    reasons.push(
+      `Projeto identificado pelo repositório: ${linkedProject.name}.`,
+    );
+  }
+
+  if (commits.length > 1) {
+    score += 0.05;
+  }
+
+  if (recency > 0) {
+    score += 0.1 + context.recencyBoost;
+    reasons.push("Projeto presente no seu histórico recente.");
+  }
+
+  if (commits.length === 1) {
+    reasons.push("Commit único: estimativa conservadora de duração.");
+  }
+
+  score = Math.min(1, Math.max(0, score));
+
+  const newestFirst = [...commits].sort(
+    (a, b) => toTime(b.timestamp) - toTime(a.timestamp),
+  );
+  const description =
+    group.kind === "work_item"
+      ? (workItemTitle ?? headline ?? `Trabalho na tarefa #${workItemId}`)
+      : newestFirst[0]?.message?.trim() || "Bloco de desenvolvimento";
+
+  const title =
+    group.kind === "work_item"
+      ? workItemTitle
+        ? `Tarefa #${workItemId} — ${workItemTitle}`
+        : headline
+          ? `Tarefa #${workItemId} — ${headline}`
+          : `Tarefa #${workItemId} — ${linkedProject?.name ?? group.projectLabel}`
+      : commits.length > 1
+        ? `Bloco de desenvolvimento — ${linkedProject?.name ?? group.projectLabel}`
+        : `Commit: ${description}`;
+
+  const duration = estimateGroupMinutes(commits, context.defaultDuration);
+
+  if (
+    hasVerySimilarEntry(context.existingEntries, {
+      projectId: linkedProject?.id ?? null,
+      azureWorkItemId: workItemId,
+      description,
+      duration,
+      date,
+    })
+  ) {
+    return null;
+  }
+
+  const loggedMinutes =
+    workItemId && linkedProject
+      ? context.existingEntries
+          .filter(
+            (entry) =>
+              entry.date === date &&
+              entry.projectId === linkedProject.id &&
+              entry.azureWorkItemId === workItemId,
+          )
+          .reduce((total, entry) => total + entry.duration, 0)
+      : 0;
+
+  const workItemUrl = buildWorkItemUrl(
+    context.organizationUrl,
+    commits,
+    workItemId,
+  );
+  const azureWorkItemTitle = workItemId
+    ? (workItemTitle ?? `Work Item #${workItemId}`)
+    : null;
+  const workItem: TimeSuggestionWorkItem | null = workItemId
+    ? {
+        id: workItemId,
+        title: workItemTitle,
+        type: details?.type ?? null,
+        state: details?.state ?? null,
+        url: workItemUrl,
+      }
+    : null;
+
+  return {
+    fingerprint: buildFingerprint([
+      date,
+      "commit",
+      group.kind,
+      linkedProject?.id ?? group.projectLabel,
+      workItemId ?? commits[0]?.id,
+    ]),
+    kind: group.kind,
+    projectId: linkedProject?.id ?? null,
+    projectName: linkedProject?.name ?? group.projectLabel,
+    projectColor: linkedProject?.color ?? null,
+    title,
+    description,
+    date,
+    duration,
+    billable: linkedProject?.billable ?? true,
+    azureWorkItemId: workItemId,
+    azureWorkItemTitle,
+    azureWorkItemUrl: workItemUrl,
+    workItem,
+    loggedMinutes,
+    score,
+    confidence: confidenceFromScore(score),
+    reasons,
+    sourceBreakdown: {
+      commits: commits.length,
+      meetings: 0,
+      recency,
+    },
+    activitySummary: buildActivitySummary(commits),
+    payload: linkedProject
+      ? {
+          projectId: linkedProject.id,
+          description,
+          date,
+          duration,
+          billable: linkedProject.billable,
+          azureWorkItemId: workItemId ?? undefined,
+          azureWorkItemTitle: azureWorkItemTitle ?? undefined,
+        }
+      : null,
   };
 }
 
@@ -292,9 +639,9 @@ export function buildDeterministicSuggestions({
   recentEntries,
   existingEntries,
   organizationUrl,
+  workItems,
   weights,
 }: BuildSuggestionsInput): CandidateSuggestion[] {
-  const commitGroups = groupCommits(commits);
   const recencyByProject = getRecencyProjectMap(recentEntries);
   const defaultDuration = getTopRecentDuration(recentEntries);
   const commitBoost = weights?.commitBoost ?? 0;
@@ -321,6 +668,7 @@ export function buildDeterministicSuggestions({
 
     candidates.push({
       fingerprint: `teams_call:${call.id}`,
+      kind: "call",
       projectId: null,
       projectName: null,
       description,
@@ -347,264 +695,108 @@ export function buildDeterministicSuggestions({
     });
   }
 
+  // Meetings never absorb commits: coding during a meeting says nothing about
+  // which project the meeting belongs to, so the project is left for the user.
   for (const meeting of meetings) {
-    const start = new Date(meeting.startDateTime);
-    const end = new Date(meeting.endDateTime);
+    const score = Math.min(1, Math.max(0.5, 0.78 + meetingBoost));
+    const description = meeting.subject || "Reunião";
+    const duration = Math.max(15, meeting.durationMinutes);
 
-    const overlappingCommits = commits.filter((commit) => {
-      const commitTime = new Date(commit.timestamp);
-      const windowStart = addMinutes(start, -30);
-      const windowEnd = addMinutes(end, 30);
-      return commitTime >= windowStart && commitTime <= windowEnd;
-    });
-
-    const linkedProject = overlappingCommits
-      .map((commit) => parseProjectFromCommit(commit, projects))
-      .find(Boolean);
-
-    const linkedWorkItemId = mostFrequentWorkItem(overlappingCommits);
-
-    let score = 0.78 + meetingBoost;
-    const reasons: string[] = [
-      "Evento do Outlook considerado sinal de alta confianca.",
-    ];
-
-    if (overlappingCommits.length > 0) {
-      score += 0.2 + commitBoost;
-      reasons.push(
-        `${overlappingCommits.length} commit(s) aconteceram durante ou perto da reunião.`,
-      );
-    }
-
-    if (linkedWorkItemId) {
-      score += 0.2;
-      reasons.push(`Commit(s) referenciaram Work Item #${linkedWorkItemId}.`);
-    }
-
-    if (linkedProject) {
-      score += 0.1;
-      reasons.push(`Projeto inferido pelos commits: ${linkedProject.name}.`);
-    }
-
-    if (linkedProject && (recencyByProject.get(linkedProject.id) ?? 0) > 0) {
-      score += 0.05 + recencyBoost;
-      reasons.push("Projeto usado recentemente pelo usuário.");
-    }
-
-    score = Math.min(1, Math.max(0.78, score));
-
-    const suggestion = {
-      projectId: linkedProject?.id ?? null,
-      azureWorkItemId: linkedWorkItemId,
-      description: meeting.subject || "Reunião",
-      duration: Math.max(15, meeting.durationMinutes),
-      date,
-    };
-
-    if (hasVerySimilarEntry(existingEntries, suggestion)) {
+    if (
+      hasVerySimilarEntry(existingEntries, {
+        projectId: null,
+        azureWorkItemId: null,
+        description,
+        duration,
+        date,
+      })
+    ) {
       continue;
     }
-
-    const confidence = confidenceFromScore(score);
 
     candidates.push({
       fingerprint: buildFingerprint([
         date,
         "meeting",
         meeting.id,
-        linkedProject?.id,
-        linkedWorkItemId,
         meeting.subject,
       ]),
-      projectId: linkedProject?.id ?? null,
-      projectName: linkedProject?.name ?? null,
-      description: suggestion.description,
+      kind: "meeting",
+      projectId: null,
+      projectName: null,
+      description,
       date,
-      duration: suggestion.duration,
-      billable: linkedProject?.billable ?? true,
-      azureWorkItemId: linkedWorkItemId,
-      azureWorkItemTitle: linkedWorkItemId
-        ? `Work Item #${linkedWorkItemId}`
-        : null,
-      azureWorkItemUrl: buildWorkItemUrl(
-        organizationUrl,
-        overlappingCommits,
-        linkedWorkItemId,
-      ),
+      duration,
+      billable: true,
+      azureWorkItemId: null,
+      azureWorkItemTitle: null,
+      azureWorkItemUrl: null,
       score,
-      confidence,
-      reasons,
+      confidence: confidenceFromScore(score),
+      reasons: [
+        "Evento do Outlook considerado sinal de alta confiança.",
+        "Escolha o projeto antes de lançar; commits feitos durante a reunião não definem o projeto dela.",
+      ],
       sourceBreakdown: {
-        commits: overlappingCommits.length,
+        commits: 0,
         meetings: 1,
-        recency: linkedProject
-          ? (recencyByProject.get(linkedProject.id) ?? 0)
-          : 0,
+        recency: 0,
       },
-      activitySummary: buildActivitySummary(overlappingCommits),
-      payload: linkedProject
-        ? {
-            projectId: linkedProject.id,
-            description: suggestion.description,
-            date,
-            duration: suggestion.duration,
-            billable: linkedProject.billable,
-            azureWorkItemId: linkedWorkItemId ?? undefined,
-            azureWorkItemTitle: linkedWorkItemId
-              ? `Work Item #${linkedWorkItemId}`
-              : undefined,
-          }
-        : null,
+      activitySummary: null,
+      payload: null,
     });
   }
 
-  for (const group of commitGroups) {
-    const first = new Date(group[0].timestamp);
-    const last = new Date(group[group.length - 1].timestamp);
-    const windowMinutes = Math.max(15, differenceInMinutes(last, first) + 15);
-
-    const mainCommit = group[group.length - 1];
-    const linkedProject = parseProjectFromCommit(mainCommit, projects);
-    const linkedWorkItemId = mostFrequentWorkItem(group);
-
-    const overlapsMeeting = meetings.some((meeting) => {
-      const meetingStart = new Date(meeting.startDateTime);
-      const meetingEnd = new Date(meeting.endDateTime);
-      const overlapStart = max([meetingStart, first]);
-      const overlapEnd = min([meetingEnd, last]);
-      return differenceInMinutes(overlapEnd, overlapStart) > 0;
-    });
-
-    let score = 0.35 + commitBoost;
-    const reasons: string[] = [
-      `${group.length} commit(s) proximos no tempo formaram um bloco de trabalho.`,
-    ];
-
-    if (linkedWorkItemId) {
-      score += 0.25;
-      reasons.push(`Commit(s) referenciaram Work Item #${linkedWorkItemId}.`);
+  const commitsByProject = new Map<
+    string,
+    {
+      project: InternalProject | null;
+      label: string;
+      commits: NormalizedCommitActivity[];
     }
+  >();
 
-    if (linkedProject) {
-      score += 0.15;
-      reasons.push(
-        `Projeto inferido por repositorio/projeto do commit: ${linkedProject.name}.`,
-      );
-    }
-
-    if (overlapsMeeting) {
-      score += 0.1 + meetingBoost;
-      reasons.push(
-        "Bloco de commits coincide com horario de reunião relevante.",
-      );
-    }
-
-    if (linkedProject && (recencyByProject.get(linkedProject.id) ?? 0) > 0) {
-      score += 0.1 + recencyBoost;
-      reasons.push("Projeto aparece no histórico recente do usuário.");
-    }
-
-    score = Math.min(1, Math.max(0, score));
-
-    const description =
-      mainCommit.message?.trim() ||
-      (linkedWorkItemId
-        ? `Trabalho no item #${linkedWorkItemId}`
-        : "Bloco de desenvolvimento");
-
-    let rawDuration = Math.max(defaultDuration, windowMinutes);
-
-    if (group.length === 1) {
-      // A single commit can represent a short checkpoint, so keep estimate conservative.
-      rawDuration = Math.max(windowMinutes, Math.min(defaultDuration, 45));
-      reasons.push(
-        "Bloco com 1 commit usa estimativa conservadora em blocos padronizados.",
-      );
-    }
-
-    const duration = roundToStandardDuration(rawDuration);
-
-    const suggestion = {
-      projectId: linkedProject?.id ?? null,
-      azureWorkItemId: linkedWorkItemId,
-      description,
-      duration,
-      date,
+  for (const commit of dedupeCommits(commits)) {
+    const project = parseProjectFromCommit(commit, projects);
+    const key = project?.id ?? `azure:${normalizeName(commit.projectName)}`;
+    const bucket = commitsByProject.get(key) ?? {
+      project,
+      label: project?.name ?? commit.projectName,
+      commits: [],
     };
-
-    if (hasVerySimilarEntry(existingEntries, suggestion)) {
-      continue;
-    }
-
-    const confidence = confidenceFromScore(score);
-
-    candidates.push({
-      fingerprint: buildFingerprint([
-        date,
-        "commit",
-        group.map((commit) => commit.id).join("-"),
-        linkedProject?.id,
-        linkedWorkItemId,
-      ]),
-      projectId: linkedProject?.id ?? null,
-      projectName: linkedProject?.name ?? null,
-      title:
-        group.length > 1
-          ? `Bloco de desenvolvimento — ${linkedProject?.name ?? mainCommit.projectName}`
-          : `Commit: ${description}`,
-      description,
-      date,
-      duration,
-      billable: linkedProject?.billable ?? true,
-      azureWorkItemId: linkedWorkItemId,
-      azureWorkItemTitle: linkedWorkItemId
-        ? `Work Item #${linkedWorkItemId}`
-        : null,
-      azureWorkItemUrl: buildWorkItemUrl(
-        organizationUrl,
-        group,
-        linkedWorkItemId,
-      ),
-      score,
-      confidence,
-      reasons,
-      sourceBreakdown: {
-        commits: group.length,
-        meetings: overlapsMeeting ? 1 : 0,
-        recency: linkedProject
-          ? (recencyByProject.get(linkedProject.id) ?? 0)
-          : 0,
-      },
-      activitySummary: buildActivitySummary(group),
-      payload: linkedProject
-        ? {
-            projectId: linkedProject.id,
-            description,
-            date,
-            duration,
-            billable: linkedProject.billable,
-            azureWorkItemId: linkedWorkItemId ?? undefined,
-            azureWorkItemTitle: linkedWorkItemId
-              ? `Work Item #${linkedWorkItemId}`
-              : undefined,
-          }
-        : null,
-    });
+    bucket.commits.push(commit);
+    commitsByProject.set(key, bucket);
   }
 
-  // First render should show high confidence suggestions.
+  const context: CommitSuggestionContext = {
+    date,
+    defaultDuration,
+    existingEntries,
+    organizationUrl,
+    recencyByProject,
+    workItems,
+    commitBoost,
+    recencyBoost,
+  };
+
+  for (const bucket of commitsByProject.values()) {
+    for (const group of groupProjectCommits(
+      bucket.project,
+      bucket.label,
+      bucket.commits,
+    )) {
+      const suggestion = buildCommitSuggestion(group, context);
+      if (suggestion) candidates.push(suggestion);
+    }
+  }
+
   const deduped = new Map<string, CandidateSuggestion>();
 
   for (const candidate of candidates) {
     const dedupeKey =
-      (candidate.sourceBreakdown.calls ?? 0) > 0
-        ? candidate.fingerprint
-        : buildFingerprint([
-            candidate.date,
-            candidate.projectId,
-            candidate.azureWorkItemId,
-            candidate.description.slice(0, 80),
-          ]);
+      candidate.kind === "meeting"
+        ? buildFingerprint([candidate.date, candidate.description.slice(0, 80)])
+        : candidate.fingerprint;
 
     const current = deduped.get(dedupeKey);
     if (!current || current.score < candidate.score) {
@@ -612,5 +804,7 @@ export function buildDeterministicSuggestions({
     }
   }
 
-  return [...deduped.values()].sort((a, b) => b.score - a.score).slice(0, 8);
+  return [...deduped.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_SUGGESTIONS);
 }

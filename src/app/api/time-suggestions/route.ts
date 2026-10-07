@@ -8,7 +8,6 @@ import {
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
-import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import { project, timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
@@ -142,6 +141,7 @@ export async function GET(req: Request): Promise<Response> {
       name: string;
       billable: boolean;
       azureProjectId: string | null;
+      color: string | null;
     }> = [];
 
     if (accessibleProjectIds === null) {
@@ -152,6 +152,7 @@ export async function GET(req: Request): Promise<Response> {
           name: true,
           billable: true,
           azureProjectId: true,
+          color: true,
         },
       });
     } else if (accessibleProjectIds.length > 0) {
@@ -165,6 +166,7 @@ export async function GET(req: Request): Promise<Response> {
           name: true,
           billable: true,
           azureProjectId: true,
+          color: true,
         },
       });
     }
@@ -221,38 +223,14 @@ export async function GET(req: Request): Promise<Response> {
 
     const weightAdjustments = getWeightAdjustments(recentFeedback);
 
-    let meetings: NormalizedOutlookActivity[] = [];
-    let calls: TeamCallSignal[] = [];
-    try {
-      const collaboration = await buildCollaborationDay({
-        headers: req.headers,
-        userId: session.user.id,
-        userEmail: session.user.email ?? null,
-        date,
-        skipPortrait: true,
-      });
-
-      meetings = collaboration.meetings
-        .filter((meeting) => !meeting.alreadyLogged)
-        .map((meeting) => ({
-          id: meeting.id,
-          subject: meeting.subject || meeting.title,
-          startDateTime: meeting.startIso,
-          endDateTime: meeting.endIso,
-          durationMinutes: meeting.minutes,
-        }));
-      calls = collaboration.calls?.filter((call) => !call.alreadyLogged) ?? [];
-    } catch (error) {
-      console.warn("[time_suggestions][collaboration_fetch_failed]", {
-        userId: session.user.id,
-        date,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-      meetings = [];
-      calls = [];
-    }
+    const meetings: NormalizedOutlookActivity[] = [];
+    const calls: TeamCallSignal[] = [];
 
     let commits: NormalizedCommitActivity[] = [];
+    const workItemsMap = new Map<
+      number,
+      { title: string; type?: string | null; state?: string | null }
+    >();
     const config = await findAzureDevopsConfigByUserId(session.user.id);
 
     if (config?.commitAuthor) {
@@ -307,6 +285,30 @@ export async function GET(req: Request): Promise<Response> {
                 new Date(b.timestamp).getTime() -
                 new Date(a.timestamp).getTime(),
             );
+
+          // Resolve task titles for Work Items referenced in commits
+          const uniqueWorkItemIds = Array.from(
+            new Set(commits.flatMap((c) => c.workItemIds)),
+          ).slice(0, 20);
+
+          if (uniqueWorkItemIds.length > 0) {
+            await mapWithConcurrencyLimit(
+              uniqueWorkItemIds,
+              4,
+              async (workItemId) => {
+                try {
+                  const wi = await client.getWorkItem(workItemId);
+                  workItemsMap.set(workItemId, {
+                    title: wi.title,
+                    type: wi.type,
+                    state: wi.state,
+                  });
+                } catch {
+                  // non-blocking
+                }
+              },
+            );
+          }
         }
       } catch (error) {
         console.warn("[time_suggestions][azure_commits_failed]", {
@@ -325,6 +327,7 @@ export async function GET(req: Request): Promise<Response> {
       calls,
       projects,
       organizationUrl: config?.organizationUrl,
+      workItems: workItemsMap,
       recentEntries: recentEntries.map((entry) => ({
         date: entry.date,
         projectId: entry.projectId,
