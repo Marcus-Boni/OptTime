@@ -39,10 +39,19 @@ assert.deepEqual(
 assert.equal(toPublicRelease({ ...published, videoUrl: "  " })?.videoUrl, null);
 
 const compositions = [
+  { id: "ReleaseShowcaseV110", aliases: ["v1.10", "v110"] },
   { id: "ReleaseShowcaseV19", aliases: ["v1.9", "v19"] },
   { id: "ReleaseShowcaseV18", aliases: ["v1.8", "v18"] },
   { id: "ProductDemo", aliases: ["demo"] },
 ];
+assert.equal(
+  findRemotionComposition("remotion:ReleaseShowcaseV110", compositions)?.id,
+  "ReleaseShowcaseV110",
+);
+assert.equal(
+  findRemotionComposition("v110", compositions)?.id,
+  "ReleaseShowcaseV110",
+);
 assert.equal(
   findRemotionComposition("remotion:ReleaseShowcaseV18", compositions)?.id,
   "ReleaseShowcaseV18",

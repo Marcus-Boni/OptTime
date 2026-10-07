@@ -19,6 +19,7 @@ import { ReleaseShowcaseV16 } from "@/remotion/ReleaseShowcaseV16";
 import { ReleaseShowcaseV17 } from "@/remotion/ReleaseShowcaseV17";
 import { ReleaseShowcaseV18 } from "@/remotion/ReleaseShowcaseV18";
 import { ReleaseShowcaseV19 } from "@/remotion/ReleaseShowcaseV19";
+import { ReleaseShowcaseV110 } from "@/remotion/ReleaseShowcaseV110";
 
 /**
  * Remotion compositions a release can point at, newest first.
@@ -27,6 +28,14 @@ import { ReleaseShowcaseV19 } from "@/remotion/ReleaseShowcaseV19";
  * and the duration all follow from it.
  */
 const REMOTION_COMPOSITIONS = [
+  {
+    id: "ReleaseShowcaseV110",
+    component: ReleaseShowcaseV110,
+    durationInFrames: 2100,
+    aliases: ["v1.10", "v110"],
+    label: (versionTag: string) =>
+      `Demonstração Oficial ${versionTag} (Remotion)`,
+  },
   {
     id: "ReleaseShowcaseV19",
     component: ReleaseShowcaseV19,

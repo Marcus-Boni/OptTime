@@ -88,7 +88,7 @@ export default function ReleaseFormDialog({
         versionTag: "",
         title: "",
         description: "",
-        videoUrl: "remotion:ReleaseShowcaseV19",
+        videoUrl: "remotion:ReleaseShowcaseV110",
       });
     }
   }, [form, isOpen, release]);
@@ -277,6 +277,21 @@ export default function ReleaseFormDialog({
                         type="button"
                         size="sm"
                         variant={
+                          field.value === "remotion:ReleaseShowcaseV110"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          field.onChange("remotion:ReleaseShowcaseV110")
+                        }
+                        className={`h-7 text-xs ${field.value === "remotion:ReleaseShowcaseV110" ? "bg-brand-500 text-white" : ""}`}
+                      >
+                        🎬 Showcase v1.10.0
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
                           field.value === "remotion:ReleaseShowcaseV19"
                             ? "default"
                             : "outline"
@@ -367,7 +382,7 @@ export default function ReleaseFormDialog({
                     <FormControl>
                       <Input
                         id="release-video-url"
-                        placeholder="remotion:ReleaseShowcaseV19 ou URL do YouTube/Loom/MP4"
+                        placeholder="remotion:ReleaseShowcaseV110 ou URL do YouTube/Loom/MP4"
                         className="font-mono text-xs"
                         value={field.value ?? ""}
                         onChange={field.onChange}
