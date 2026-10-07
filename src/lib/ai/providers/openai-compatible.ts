@@ -11,6 +11,20 @@ import {
 
 const REQUEST_TIMEOUT_MS = 45_000;
 
+/**
+ * Models that think before answering spend completion tokens on hidden
+ * reasoning. Under a tight cap (the Teams parser asks for 300) they returned
+ * empty or truncated JSON, so they get a floor — the cap still stops a
+ * rambling answer, it just leaves room for the thinking.
+ */
+const REASONING_MODEL_PATTERN =
+  /gpt-oss|nemotron-3|qwen3|deepseek-(r|v4)|kimi|reason/i;
+const REASONING_MIN_TOKENS = 1536;
+
+export function isReasoningModel(model: string): boolean {
+  return REASONING_MODEL_PATTERN.test(model);
+}
+
 interface OpenAiMessage {
   role: "system" | "user" | "assistant" | "tool";
   content: string | null;
@@ -93,9 +107,11 @@ export interface OpenAiCompatibleOptions {
   apiKey: string;
   model: string;
   extraHeaders?: Record<string, string>;
+  /** Provider-specific fields merged into every request body. */
+  extraBody?: Record<string, unknown>;
 }
 
-/** Groq and OpenRouter both speak the OpenAI chat-completions dialect. */
+/** Groq, NVIDIA and OpenRouter all speak the OpenAI chat-completions dialect. */
 export function createOpenAiCompatibleProvider(
   options: OpenAiCompatibleOptions,
 ): ChatProvider {
@@ -105,12 +121,16 @@ export function createOpenAiCompatibleProvider(
     async *streamChat(
       request: ProviderRequest,
     ): AsyncGenerator<ProviderStreamChunk> {
+      const requestedTokens = request.maxTokens ?? 2048;
       const body: Record<string, unknown> = {
         model: options.model,
         messages: toMessages(request),
         temperature: request.temperature ?? 0.4,
-        max_tokens: request.maxTokens ?? 2048,
+        max_tokens: isReasoningModel(options.model)
+          ? Math.max(requestedTokens, REASONING_MIN_TOKENS)
+          : requestedTokens,
         stream: true,
+        ...options.extraBody,
       };
 
       if (request.tools.length > 0) {
@@ -194,11 +214,18 @@ export function createOpenAiCompatibleProvider(
 }
 
 export function createGroqProvider(apiKey: string): ChatProvider {
+  // gpt-oss-120b: tool calling, clean JSON, ~1s on Groq (benchmarked
+  // 2026-10-06; llama-3.3-70b-versatile was retired from the account).
+  const model = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
   return createOpenAiCompatibleProvider({
     name: "groq",
     url: "https://api.groq.com/openai/v1/chat/completions",
     apiKey,
-    model: process.env.GROQ_MODEL || "llama-3.3-70b-versatile",
+    model,
+    // Short answers (parsing, one-liners) don't need deep thinking.
+    extraBody: model.includes("gpt-oss")
+      ? { reasoning_effort: "low" }
+      : undefined,
   });
 }
 
@@ -207,11 +234,26 @@ export function createOpenRouterProvider(apiKey: string): ChatProvider {
     name: "openrouter",
     url: "https://openrouter.ai/api/v1/chat/completions",
     apiKey,
-    model: process.env.OPENROUTER_MODEL || "nvidia/nemotron-3.5-lightning:free",
+    // The free "lightning" model streamed its reasoning as plain text and
+    // took 4s+; nemotron-3-super answers JSON directly (~2s, 2026-10-06).
+    model:
+      process.env.OPENROUTER_MODEL || "nvidia/nemotron-3-super-120b-a12b:free",
+    // OpenRouter's unified knob; models that don't reason ignore it.
+    extraBody: { reasoning: { effort: "low" } },
     extraHeaders: {
       "HTTP-Referer":
         process.env.NEXT_PUBLIC_APP_URL || "https://optsolv.com.br",
       "X-Title": "OptSolv Time Tracker",
     },
+  });
+}
+
+/** NVIDIA API Catalog (build.nvidia.com) — free developer keys, `nvapi-…`. */
+export function createNvidiaProvider(apiKey: string): ChatProvider {
+  return createOpenAiCompatibleProvider({
+    name: "nvidia",
+    url: "https://integrate.api.nvidia.com/v1/chat/completions",
+    apiKey,
+    model: process.env.NVIDIA_MODEL || "nvidia/nemotron-3-super-120b-a12b",
   });
 }
