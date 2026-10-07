@@ -6,7 +6,12 @@
 import type { AppRole } from "@/lib/access-control";
 import type { UiCommandId } from "@/lib/ai/operator/ui-commands";
 
-export type ProviderName = "gemini" | "groq" | "openrouter" | "local_fallback";
+export type ProviderName =
+  | "gemini"
+  | "groq"
+  | "nvidia"
+  | "openrouter"
+  | "local_fallback";
 
 /** JSON-Schema (draft-07 subset) used to declare tool parameters. */
 export interface JsonSchemaProperty {
