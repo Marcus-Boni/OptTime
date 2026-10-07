@@ -1408,6 +1408,73 @@ export const teamsMeetingNudge = pgTable(
   ],
 );
 
+// ─── Graph meeting-call subscriptions ─────────────────────────────────
+/**
+ * One Microsoft Graph subscription per Teams meeting (Graph allows one per
+ * app per meeting), keyed by a hash of the join URL. Notifications carry the
+ * subscription id; `clientState` is the shared secret that proves they came
+ * from the subscription we created.
+ */
+export const graphMeetingSubscription = pgTable(
+  "graph_meeting_subscription",
+  {
+    /** Graph subscription id. */
+    id: text("id").primaryKey(),
+    /** sha256 of the meeting join URL — the URL itself stays out of the DB. */
+    joinUrlHash: text("join_url_hash").notNull(),
+    clientState: text("client_state").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("graph_meeting_subscription_join_idx").on(table.joinUrlHash),
+  ],
+);
+
+/** "watching" → waiting for the person to leave; "nudged"/"closed" → done. */
+export type TeamsMeetingWatchStatus = "watching" | "nudged" | "closed";
+
+/**
+ * A person × meeting pair the bot is watching for "left the call". Presence
+ * is accumulated from roster events, so the card carries the time the person
+ * actually spent in the call, rejoins included.
+ */
+export const teamsMeetingWatch = pgTable(
+  "teams_meeting_watch",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    joinUrlHash: text("join_url_hash").notNull(),
+    /** Calendar event id in this person's mailbox — the nudge ledger key. */
+    eventId: text("event_id").notNull(),
+    /** Entra oid, the identity roster events report. */
+    aadObjectId: text("aad_object_id").notNull(),
+    title: text("title").notNull(),
+    subject: text("subject").notNull(),
+    seriesId: text("series_id"),
+    startIso: text("start_iso").notNull(),
+    endIso: text("end_iso").notNull(),
+    /** Set while the person is in the call. */
+    joinedAt: timestamp("joined_at"),
+    presenceMs: integer("presence_ms").notNull().default(0),
+    status: text("status").notNull().default("watching"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("teams_meeting_watch_user_event_idx").on(
+      table.userId,
+      table.eventId,
+    ),
+    index("teams_meeting_watch_join_idx").on(table.joinUrlHash),
+  ],
+);
+
 // ─── Onboarding ───────────────────────────────────────────────────────
 export type OnboardingStatus =
   | "pending"

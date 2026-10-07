@@ -17,6 +17,7 @@
 import assert from "node:assert/strict";
 import { createServer, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
+import type { ChangeNotificationCollection } from "@/lib/graph/change-notifications";
 
 process.env.TEAMS_BOT_DEV_SKIP_AUTH = "true";
 
@@ -41,6 +42,12 @@ async function main(): Promise<number> {
   const { user, teamsBotAction, teamsBotConversation, teamsMeetingNudge } =
     await import("@/lib/db/schema");
   const { loadMutedSeries } = await import("@/lib/teams/bot/nudges");
+  const { applyMeetingCallEvent, handleNotificationBatch } = await import(
+    "@/lib/teams/meeting-watch"
+  );
+  const { graphMeetingSubscription, teamsMeetingWatch } = await import(
+    "@/lib/db/schema"
+  );
   const harness = await import("./mcp-e2e/harness");
   const { handleActivity, handleInvoke } = await import(
     "@/lib/teams/bot/handlers"
@@ -449,6 +456,185 @@ async function main(): Promise<number> {
       harness.warn(
         "botões do lembrete pós-reunião não testados",
         "aplique a migração 0029 (pnpm db:migrate) e rode de novo",
+      );
+    }
+
+    const watchMigrated = await db
+      .execute(sql`select to_regclass('public.teams_meeting_watch') as name`)
+      .then((result) => Boolean((result.rows[0] as { name: unknown })?.name));
+
+    if (watchMigrated) {
+      harness.phase("Aviso instantâneo — eventos de presença do Graph");
+      const joinUrlHash = `e2e-${crypto.randomUUID()}`;
+      const minutesFromNow = (minutes: number) =>
+        new Date(Date.now() + minutes * 60_000).toISOString();
+      const leadOid = crypto.randomUUID();
+
+      await db.insert(teamsMeetingWatch).values([
+        {
+          id: crypto.randomUUID(),
+          userId: member.id,
+          joinUrlHash,
+          eventId: "evt-live-member",
+          aadObjectId: memberOid,
+          title: "Daily E2E ao vivo",
+          subject: "Daily E2E ao vivo",
+          startIso: minutesFromNow(-40),
+          endIso: minutesFromNow(20),
+        },
+        {
+          id: crypto.randomUUID(),
+          userId: lead.id,
+          joinUrlHash,
+          eventId: "evt-live-lead",
+          aadObjectId: leadOid,
+          title: "Daily E2E ao vivo",
+          subject: "Daily E2E ao vivo",
+          startIso: minutesFromNow(-40),
+          endIso: minutesFromNow(20),
+        },
+      ]);
+
+      const delivered: Array<{ userId: string; minutes: number }> = [];
+      const fakeDeliver = async (
+        watch: { userId: string },
+        presenceMs: number,
+      ) => {
+        delivered.push({
+          userId: watch.userId,
+          minutes: Math.round(presenceMs / 60_000),
+        });
+        return true;
+      };
+      const roster = (oid: string, left: boolean) => ({
+        info: { identity: { user: { id: oid } } },
+        isInLobby: false,
+        ...(left ? { removedState: { reason: "left" } } : {}),
+      });
+
+      await applyMeetingCallEvent(
+        joinUrlHash,
+        {
+          eventType: "rosterUpdated",
+          eventDateTime: minutesFromNow(-35),
+          "participants@delta": [
+            roster(memberOid, false),
+            roster(strangerOid, false),
+          ],
+        },
+        fakeDeliver,
+      );
+      harness.check(
+        "entrada na chamada não dispara card",
+        delivered.length === 0,
+      );
+
+      await applyMeetingCallEvent(
+        joinUrlHash,
+        {
+          eventType: "rosterUpdated",
+          eventDateTime: minutesFromNow(-8),
+          "participants@delta": [roster(memberOid, true)],
+        },
+        fakeDeliver,
+      );
+      harness.check(
+        "card sai quando a pessoa deixa a chamada, antes do fim agendado",
+        delivered.length === 1 && delivered[0]?.userId === member.id,
+      );
+      harness.check(
+        "duração = tempo real na chamada",
+        delivered[0]?.minutes === 27,
+        `${delivered[0]?.minutes}min`,
+      );
+
+      await applyMeetingCallEvent(
+        joinUrlHash,
+        { eventType: "callEnded", eventDateTime: minutesFromNow(-1) },
+        fakeDeliver,
+      );
+      harness.check(
+        "fim da chamada não repete o card de quem já saiu",
+        delivered.filter((item) => item.userId === member.id).length === 1,
+      );
+      const leadWatch = await db.query.teamsMeetingWatch.findFirst({
+        where: eq(teamsMeetingWatch.eventId, "evt-live-lead"),
+      });
+      harness.check(
+        "quem nunca entrou na chamada fica para a cron decidir",
+        leadWatch?.status === "closed" &&
+          !delivered.some((item) => item.userId === lead.id),
+      );
+
+      harness.phase("Aviso instantâneo — notificações forjadas");
+      await db.insert(graphMeetingSubscription).values({
+        id: `sub-${joinUrlHash}`,
+        joinUrlHash,
+        clientState: "segredo-correto",
+        expiresAt: new Date(Date.now() + 60 * 60_000),
+      });
+      const fakeContent = {
+        data: "AAAA",
+        dataSignature: "AAAA",
+        dataKey: "AAAA",
+        encryptionCertificateId: "x",
+      };
+      const forged: Array<[string, ChangeNotificationCollection]> = [
+        [
+          "assinatura desconhecida é ignorada",
+          {
+            value: [
+              {
+                subscriptionId: "nao-existe",
+                clientState: "x",
+                encryptedContent: fakeContent,
+              },
+            ],
+          },
+        ],
+        [
+          "clientState errado é ignorado",
+          {
+            value: [
+              {
+                subscriptionId: `sub-${joinUrlHash}`,
+                clientState: "chute",
+                encryptedContent: fakeContent,
+              },
+            ],
+          },
+        ],
+        [
+          "sem tokens assinados pela Microsoft é ignorado",
+          {
+            value: [
+              {
+                subscriptionId: `sub-${joinUrlHash}`,
+                clientState: "segredo-correto",
+                encryptedContent: fakeContent,
+              },
+            ],
+            validationTokens: null,
+          },
+        ],
+      ];
+      for (const [label, batch] of forged) {
+        let threw = false;
+        try {
+          await handleNotificationBatch(batch);
+        } catch {
+          threw = true;
+        }
+        harness.check(label, !threw);
+      }
+
+      await db
+        .delete(graphMeetingSubscription)
+        .where(eq(graphMeetingSubscription.joinUrlHash, joinUrlHash));
+    } else {
+      harness.warn(
+        "aviso instantâneo não testado",
+        "aplique a migração 0030 (pnpm db:migrate) e rode de novo",
       );
     }
 

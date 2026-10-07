@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { IntegrationBackLink } from "@/components/integrations/IntegrationBackLink";
+import MeetingWatchStatus from "@/components/integrations/teams/MeetingWatchStatus";
 import { PersonalWebhookGuide } from "@/components/integrations/teams/PersonalWebhookGuide";
 import TeamsAppCard, {
   type TeamsAppAvailability,
@@ -635,6 +636,9 @@ export function TeamsSettingsClient() {
                       }
                     />
                   </div>
+                  <MeetingWatchStatus
+                    enabled={settings.enabled && settings.meetingNudgesEnabled}
+                  />
                 </div>
 
                 <div className="space-y-2 rounded-lg border border-border/60 px-3 py-2.5">

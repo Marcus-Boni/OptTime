@@ -425,12 +425,60 @@ Quando uma reunião da agenda termina, o app manda no chat privado:
 | **Mais opções → Não lembrar desta série** | Silencia a reunião recorrente (ex.: daily) |
 | **Mais opções → Desligar lembretes de reunião** | Desliga a preferência da pessoa |
 
-**Como funciona.** A cron `teams-meeting-nudges-cron.yml` chama
-`POST /api/cron/teams-meeting-nudges` a cada 10 min, das 08h às 21h, em dias
-úteis. Para cada pessoa com o app instalado, monta o dia pelo mesmo módulo de
-colaboração do painel e do vespertino, e pergunta das reuniões que terminaram
-nas últimas 2 h. Assinaturas de calendário do Graph não foram usadas porque
-avisam criação e alteração, nunca “terminou”.
+**Como funciona — dois gatilhos, um card.**
+
+1. **Instantâneo (reuniões do Teams).** O Graph avisa o app, por
+   `meetingCallEvents`, quando cada pessoa **sai da chamada** (`rosterUpdated`)
+   e quando a chamada **termina** (`callEnded`). O card chega segundos depois
+   que *você* sai — mesmo que a reunião continue sem você — com o **tempo real
+   que você ficou** (entradas e saídas somadas). Detalhes em §8.4.1.
+2. **Verificação a cada 10 min (rede de segurança).** A cron
+   `teams-meeting-nudges-cron.yml` chama `POST /api/cron/teams-meeting-nudges`
+   das 08h às 21h, em dias úteis. Ela monta o dia pelo mesmo módulo de
+   colaboração do painel e do vespertino, inscreve no Graph as reuniões do
+   Teams que vão começar (ou já começaram) e pergunta das reuniões que
+   terminaram pelo calendário nas últimas 2 h — presenciais, de outras
+   plataformas ou qualquer evento que o Graph não tenha entregue. Reunião ainda
+   monitorada ao vivo fica com o gatilho instantâneo, para a cron nunca
+   perguntar de uma reunião que estourou o horário e ainda está rolando.
+
+Os dois gatilhos usam o mesmo registro (`teams_meeting_nudge`): quem pegar a
+reunião primeiro envia; o outro não repete.
+
+#### 8.4.1 Aviso instantâneo — configuração (admin do tenant, uma vez)
+
+1. **Entra → App registrations → o app do login** (o mesmo
+   `MICROSOFT_CLIENT_ID`, que já tem `CallRecords.Read.All`) → **API
+   permissions → Add a permission → Microsoft Graph → Application
+   permissions** → marque **`OnlineMeetings.Read.All`** → **Add** →
+   **Grant admin consent**.
+2. **Entra → Enterprise applications → o mesmo app → Properties →
+   "Assignment required?"**: se estiver **Yes**, o Graph não consegue gerar os
+   tokens de validação das notificações. Mude para **No** — o acesso ao OptSolv
+   Time continua protegido pelo domínio permitido e pelos convites — ou, se
+   precisar manter **Yes**, atribua um app role ao service principal *Microsoft
+   Graph Change Tracking* (`0bf30f3b-4a52-48df-9a82-234910c4a086`).
+3. Confira em **Configurações → Integrações → Microsoft Teams →
+   Configuração da organização**: a linha ⚡ abaixo de “Lembrete pós-reunião”
+   lê as permissões do token do app na hora e fica verde quando está tudo
+   certo.
+
+Não há certificado para criar nem variável de ambiente: o app gera o próprio
+par de chaves RSA (certificado X.509 autoassinado, como a Microsoft
+recomenda), guarda a chave privada criptografada em `system_setting`
+(`graph_notification_keys`) e a renova a cada ~11 meses.
+
+**Segurança.** O endpoint público `POST /api/graph/notifications` responde 202
+na hora (recomendação da Microsoft) e só processa o lote se: o `clientState`
+bater com o segredo da assinatura; todos os `validationTokens` forem JWTs
+assinados pela Microsoft, emitidos para o nosso app e tenant e publicados pelo
+serviço de change tracking; e a assinatura HMAC do conteúdo conferir antes de
+decifrar (RSA-OAEP + AES-CBC). O link da reunião nunca é gravado — só o hash.
+
+**Limites conhecidos.** Uma assinatura por reunião (limite do Graph, dividida
+entre todos os participantes que usam o app), expiração de até 3 dias
+(renovada pela cron). Chamadas avulsas sem agenda (“Reunir agora”, ligação
+1:1) não têm calendário e não são cobertas.
 
 **Regras anti-ruído.** Só reuniões de 10 min ou mais, com confiança média ou
 alta e ainda não lançadas; nada com a pessoa ausente (resposta automática) ou
@@ -449,8 +497,8 @@ organização. Pessoa: “Lembrete ao fim de cada reunião” em Minhas notifica
 workflow*. O padrão é `dry_run = 1`: conta o que seria enviado, sem enviar.
 Use `0` para enviar de verdade (ignora o horário comercial).
 
-> Requer a migração `0029_teams_meeting_nudge` e o escopo de calendário do
-> login Microsoft (já concedido). Pessoas que nunca entraram com a Microsoft
+> Requer as migrações `0029_teams_meeting_nudge` e `0030_graph_meeting_watch`
+> e o escopo de calendário do login Microsoft (já concedido). Pessoas que nunca entraram com a Microsoft
 > não têm agenda legível e são puladas.
 
 ### 8.5 Testando
