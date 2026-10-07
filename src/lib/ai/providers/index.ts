@@ -16,19 +16,30 @@ import {
  * (free tier, least predictable). Providers benched by the circuit breaker
  * are skipped until their pause ends.
  */
+/**
+ * Reads an API key from the environment. The Azure pipeline writes keys as
+ * `"$(NAME)"`; when the pipeline variable is missing that macro lands in the
+ * App Service verbatim, so an unresolved macro counts as "not configured".
+ */
+function readApiKey(name: string): string | null {
+  const value = process.env[name]?.trim();
+  if (!value || /^\$\(.+\)$/.test(value)) return null;
+  return value;
+}
+
 export function resolveProviderChain(): ChatProvider[] {
   const chain: ChatProvider[] = [];
 
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const geminiKey = readApiKey("GEMINI_API_KEY");
   if (geminiKey) chain.push(createGeminiProvider(geminiKey));
 
-  const groqKey = process.env.GROQ_API_KEY;
+  const groqKey = readApiKey("GROQ_API_KEY");
   if (groqKey) chain.push(createGroqProvider(groqKey));
 
-  const nvidiaKey = process.env.NVIDIA_API_KEY;
+  const nvidiaKey = readApiKey("NVIDIA_API_KEY");
   if (nvidiaKey) chain.push(createNvidiaProvider(nvidiaKey));
 
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
+  const openRouterKey = readApiKey("OPENROUTER_API_KEY");
   if (openRouterKey) chain.push(createOpenRouterProvider(openRouterKey));
 
   const available = chain.filter((provider) => !isBenched(provider.name));
