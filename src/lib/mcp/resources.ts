@@ -70,6 +70,26 @@ dos projetos, então precisão importa mais do que velocidade.
    desfaz). Nunca use \`force=true\` sem confirmação explícita.
 4. \`opt_time_delete_time_entry\` exclui de verdade. Confirme antes.
 5. Ao terminar, informe o total do dia — o usuário quer saber se fechou as horas.
+
+## Agenda, work items e sugestões (assistente pessoal)
+
+- \`opt_time_get_my_agenda\` lê a agenda do Outlook **do próprio usuário** (escopo
+  \`calendar:read\`). Use para saber o que ele tem hoje ou nos próximos dias, quais
+  reuniões ele aceitou e quais já viraram lançamento (\`loggedMinutes\`).
+  Datas voltam com offset do fuso; não converta de novo. Se a chamada devolver
+  \`MICROSOFT_NOT_CONNECTED\`, peça ao usuário para entrar no OptTime com a conta
+  Microsoft — não tente de novo antes disso.
+- \`opt_time_list_my_work_items\` lista os work items atribuídos a ele. Use para
+  descobrir em que ele trabalha e para achar o \`azureWorkItemId\` sem adivinhar.
+- Para preencher um dia, chame \`opt_time_suggest_daily_entries\`, mostre as
+  sugestões ao usuário, deixe-o aprovar, editar ou recusar, e então aplique **tudo
+  de uma vez** com \`opt_time_apply_suggestions\`: é uma transação, então ou todos
+  os lançamentos entram ou nenhum entra.
+- \`opt_time_apply_suggestions\` e \`opt_time_log_time\` aceitam \`idempotencyKey\`.
+  Gere **um UUID novo por operação** e reutilize-o só ao repetir exatamente a mesma
+  chamada (por exemplo, depois de um timeout): nada é gravado duas vezes.
+- Sugestão sem projeto (\`projectId: null\`) exige que o usuário escolha o projeto;
+  informe-o em \`projectId\` ao aplicar.
 `;
 
 export const RESOURCES: ResourceDefinition[] = [

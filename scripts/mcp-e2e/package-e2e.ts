@@ -32,7 +32,7 @@ const PREFIX = "e2e-pkg-";
 
 /** Kept in sync with the package manifest so the published check pins a version. */
 const PACKAGE_NAME = "opt-time-mcp";
-const PACKAGE_VERSION = "1.0.1";
+const PACKAGE_VERSION = "1.1.0";
 let failures = 0;
 
 function check(label: string, ok: boolean, detail = ""): void {
@@ -209,8 +209,8 @@ async function main(): Promise<void> {
       (tools.result?.tools ?? []) as Array<{ name: string }>
     ).map((t) => t.name);
     check(
-      "tools/list traz 16 ferramentas",
-      toolNames.length === 16,
+      "tools/list traz 19 ferramentas",
+      toolNames.length === 19,
       String(toolNames.length),
     );
 

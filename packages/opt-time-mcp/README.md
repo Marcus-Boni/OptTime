@@ -121,7 +121,10 @@ chamadas saiam da sua máquina.
 | `opt_time_update_time_entry`    | `time:write`        | Edita um lançamento existente                                             |
 | `opt_time_delete_time_entry`    | `time:write`        | Exclui um lançamento                                                      |
 | `opt_time_get_today_summary`    | `time:read`         | Total do dia, distribuição por projeto e quanto falta                     |
-| `opt_time_suggest_daily_entries`| `time:read`         | Sugestões a partir dos commits do Azure DevOps e do histórico             |
+| `opt_time_suggest_daily_entries`| `time:read`         | Sugestões do dia (reuniões, commits, work items e padrão da semana), com ids estáveis |
+| `opt_time_apply_suggestions`    | `time:write`        | Aplica as sugestões aprovadas numa transação, sem duplicar (`idempotencyKey`) |
+| `opt_time_get_my_agenda`        | `calendar:read`     | A sua agenda do Outlook (1 a 7 dias), com projeto sugerido e minutos já lançados |
+| `opt_time_list_my_work_items`   | `time:read`         | Work items do Azure DevOps atribuídos a você, com horas já lançadas       |
 | `opt_time_get_timesheet_status` | `time:read`         | Status da semana, detalhamento por dia e pendências                       |
 | `opt_time_submit_timesheet`     | `timesheets:submit` | Submete a semana para aprovação do gestor                                 |
 

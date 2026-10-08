@@ -1147,6 +1147,42 @@ export const apiTokenRelations = relations(apiToken, ({ one }) => ({
   }),
 }));
 
+/**
+ * Replay ledger for agent writes that must not run twice.
+ *
+ * A desktop assistant retries on flaky networks, so the client mints a UUID per
+ * logical operation and sends it as `idempotencyKey`. The row remembers what
+ * that key produced: the same key with the same input replays the stored
+ * response, the same key with different input is a client bug and is refused.
+ * Rows expire after 24 hours and are swept lazily by the next write.
+ */
+export const apiIdempotencyKey = pgTable(
+  "api_idempotency_key",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** Operation the key belongs to, e.g. "apply_suggestions". */
+    scope: text("scope").notNull(),
+    key: text("key").notNull(),
+    /** SHA-256 of the canonicalised input, to detect key reuse with new input. */
+    requestHash: text("request_hash").notNull(),
+    /** JSON serialised response replayed on a repeat call. */
+    response: text("response").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("api_idempotency_key_user_scope_key_idx").on(
+      table.userId,
+      table.scope,
+      table.key,
+    ),
+    index("api_idempotency_key_expires_idx").on(table.expiresAt),
+  ],
+);
+
 // ─── HQ: Capacity Allocations (FTE forecasting) ───────────────────────
 /**
  * Planned minutes of one person on one project for one future ISO week.

@@ -41,7 +41,7 @@ import {
 import { cn, getRelativeTime } from "@/lib/utils";
 import { CopyBlock } from "./CopyBlock";
 
-const PRESET_ORDER: ApiTokenPreset[] = ["read", "write", "full"];
+const PRESET_ORDER: ApiTokenPreset[] = ["read", "write", "full", "assistant"];
 
 const EXPIRY_OPTIONS = [
   { value: "30", label: "30 dias" },
@@ -220,7 +220,10 @@ export function ApiTokenManager({
   }
 
   return (
-    <Card className="border-border/50 bg-card/80 backdrop-blur">
+    <Card
+      data-tour="mcp-tokens"
+      className="border-border/50 bg-card/80 backdrop-blur"
+    >
       <CardHeader className="flex flex-row items-start justify-between gap-4 pb-4">
         <div className="space-y-1">
           <CardTitle className="flex items-center gap-2 font-display text-base">

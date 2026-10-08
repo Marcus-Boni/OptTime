@@ -52,7 +52,7 @@ export const PROMPTS: PromptDefinition[] = [
         "Siga exatamente estes passos:",
         "",
         `1. Chame \`opt_time_get_today_summary\` com date="${date}" para ver o que já está lançado — nunca duplique horas já registradas.`,
-        `2. Chame \`opt_time_suggest_daily_entries\` com date="${date}" para trazer os commits e o histórico recente.`,
+        `2. Chame \`opt_time_suggest_daily_entries\` com date="${date}" para trazer as reuniões, os commits e o histórico recente.`,
         "3. Revise o histórico da nossa sessão de hoje: o que foi implementado, corrigido, revisado ou investigado, e em quais branches/repositórios.",
         "4. Combine as duas fontes em uma lista de lançamentos agrupada por projeto. Para cada um informe: projeto, duração em minutos, descrição objetiva do que foi entregue e, quando houver, o Work Item do Azure DevOps.",
         "5. **Pare e me mostre a lista.** Não registre nada ainda.",

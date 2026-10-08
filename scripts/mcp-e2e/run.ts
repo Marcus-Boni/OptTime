@@ -8,6 +8,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { formatLocalDate, getWeekPeriod } from "@/lib/utils";
+import { runAssistantGatewayPhase } from "./assistant-gateway";
 import {
   assertServerReachable,
   check,
@@ -120,8 +121,8 @@ async function main(): Promise<void> {
     annotations?: Record<string, unknown>;
   }>;
   check(
-    "tools/list traz 16 ferramentas",
-    toolList.length === 16,
+    "tools/list traz 19 ferramentas",
+    toolList.length === 19,
     String(toolList.length),
   );
 
@@ -1091,12 +1092,17 @@ async function main(): Promise<void> {
   };
   check(
     "manifesto público acessível sem auth",
-    manifest.status === 200 && manifestBody.counts?.tools === 16,
+    manifest.status === 200 && manifestBody.counts?.tools === 19,
   );
   const manifestText = JSON.stringify(manifestBody);
   check(
     "manifesto não vaza dados de usuário",
     !manifestText.includes("@optsolv.com.br"),
+  );
+
+  // ═══ 11. Porta corporativa do assistente ════════════════════════════
+  await runAssistantGatewayPhase(
+    realAccount ? { id: realAccount.id, role: realAccount.role } : undefined,
   );
 }
 

@@ -1,55 +1,59 @@
-import { subDays } from "date-fns";
-import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
-import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
-import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
-import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
-import { db } from "@/lib/db";
-import { timeEntry } from "@/lib/db/schema";
-import { decrypt } from "@/lib/encryption";
-import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import {
-  buildDeterministicSuggestions,
-  type NormalizedCommitActivity,
-  type RecentEntryActivity,
-} from "@/lib/time-assistant/engine";
+  assertDayPlannable,
+  buildDayPlanForUser,
+  DayPlanRejectedError,
+} from "@/lib/time-assistant/day-plan";
+import { formatInstantWithOffset, getAppTimeZone } from "@/lib/timezone";
+import type {
+  DayPlan,
+  DayPlanItem,
+  ReconstructSourceKind,
+} from "@/types/reconstruct";
 import type { AgentPrincipal } from "../auth";
+import { AgentError } from "../errors";
 import { humanizeMinutes } from "../format";
-import { getVisibleProjects } from "./projects";
+import { getAgentMicrosoftToken } from "./microsoft";
 
 /**
  * Smart daily suggestions for agents.
  *
- * Reuses the same deterministic engine that powers the in-app time assistant,
- * fed by Azure DevOps commits and the user's own recent entries. Outlook
- * meetings are intentionally absent: they require a delegated Microsoft token
- * that a personal access token cannot mint, and silently degrading is better
- * than failing the whole call.
+ * The same "Preencher meu dia" engine the web uses — Outlook meetings, Teams
+ * calls, commit sessions, assigned work items and weekday habits — fed by the
+ * server-held Microsoft token, so an agent sees the day exactly as the person
+ * does in the browser. Every source is best-effort and failures come back as
+ * `warnings`, never as errors.
  */
 
-/** How many Azure projects to fan out to concurrently. */
-const AZURE_FANOUT_LIMIT = 4;
-
-/** Days of history used to learn the user's typical durations and projects. */
-const HISTORY_WINDOW_DAYS = 14;
+/** Where a suggestion comes from, in the vocabulary agents see. */
+export type AgentSuggestionSource =
+  | "calendar"
+  | "teams_call"
+  | "commits"
+  | "work_item"
+  | "pattern"
+  | "document";
 
 export interface AgentSuggestion {
+  /** Deterministic: the same day rebuilds to the same ids. */
+  id: string;
+  source: AgentSuggestionSource;
+  /** Event id, commit session, `pr<id>` or work item id behind the suggestion. */
+  sourceRef: string | null;
+  /** Null when the evidence did not identify a project: the caller must choose one. */
   projectId: string | null;
   projectName: string | null;
   description: string;
   date: string;
+  /** When the activity started, ISO 8601 with offset, for items anchored in time. */
+  startsAt: string | null;
   durationMinutes: number;
   durationLabel: string;
   billable: boolean;
   azureWorkItemId: number | null;
   confidence: "high" | "medium" | "low";
+  /** Why this was suggested; also exposed as `reasons` for older clients. */
+  evidence: string;
   reasons: string[];
-  /** Commits behind the suggestion, so the agent can quote real evidence. */
-  evidence: {
-    commitCount: number;
-    repositories: string[];
-    firstCommitAt: string | null;
-    lastCommitAt: string | null;
-  } | null;
 }
 
 export interface SuggestDailyEntriesResult {
@@ -57,229 +61,194 @@ export interface SuggestDailyEntriesResult {
   suggestions: AgentSuggestion[];
   alreadyLoggedMinutes: number;
   alreadyLoggedLabel: string;
+  targetMinutes: number;
+  /** Minutes still missing to reach the day's target. */
+  gapMinutes: number;
   sources: {
+    outlook: boolean;
+    teamsCalls: boolean;
+    azureDevOps: boolean;
+    /** The user's own weekday habits contributed a suggestion. */
+    history: boolean;
+    /** How many suggestions came from commit sessions. */
     commits: number;
-    /** False when the Azure DevOps integration is not usable for this user. */
-    azureDevOpsAvailable: boolean;
-    outlookAvailable: false;
   };
+  warnings: string[];
   notes: string[];
 }
 
-function toEntryActivity(
-  rows: Array<{
-    date: string;
-    projectId: string;
-    duration: number;
-    azureWorkItemId: number | null;
-    description: string;
-    project: { name: string };
-  }>,
-): RecentEntryActivity[] {
-  return rows.map((row) => ({
-    date: row.date,
-    projectId: row.projectId,
-    projectName: row.project.name,
-    duration: row.duration,
-    azureWorkItemId: row.azureWorkItemId,
-    description: row.description,
-  }));
+/** Collapses the engine's eight evidence kinds into the agent vocabulary. */
+export function toAgentSource(
+  source: ReconstructSourceKind,
+): AgentSuggestionSource {
+  switch (source) {
+    case "calendar":
+    case "teams_attendance":
+      return "calendar";
+    case "teams_call":
+      return "teams_call";
+    case "commits":
+    case "pull_request":
+      return "commits";
+    case "work_item":
+      return "work_item";
+    case "document":
+      return "document";
+    case "pattern":
+      return "pattern";
+  }
 }
 
-/** Pulls the day's commits for every Azure-linked project in scope. */
-async function fetchCommits(
-  userId: string,
+function toAgentSuggestion(
+  item: DayPlanItem,
   date: string,
-  projects: Array<{ name: string; azureProjectId: string | null }>,
-): Promise<{
-  commits: NormalizedCommitActivity[];
-  available: boolean;
-  note?: string;
-}> {
-  const config = await findAzureDevopsConfigByUserId(userId);
+  timeZone: string,
+): AgentSuggestion {
+  return {
+    id: item.id,
+    source: toAgentSource(item.source),
+    sourceRef: item.sourceRef ?? null,
+    projectId: item.projectId,
+    projectName: item.projectId ? item.projectName : null,
+    description: item.description,
+    date,
+    startsAt: item.startsAt
+      ? formatInstantWithOffset(item.startsAt, timeZone)
+      : null,
+    durationMinutes: item.minutes,
+    durationLabel: humanizeMinutes(item.minutes),
+    billable: item.billable,
+    azureWorkItemId: item.azureWorkItemId,
+    confidence: item.confidence,
+    evidence: item.evidence,
+    reasons: [item.evidence],
+  };
+}
 
-  if (!config) {
-    return {
-      commits: [],
-      available: false,
-      note: "Integração com Azure DevOps não configurada — as sugestões usam apenas o seu histórico de lançamentos.",
-    };
-  }
+/** Shapes a day plan into the agent contract. Pure. */
+export function buildSuggestResult(
+  plan: DayPlan,
+  timeZone: string = getAppTimeZone(),
+): SuggestDailyEntriesResult {
+  const suggestions = plan.items.map((item) =>
+    toAgentSuggestion(item, plan.date, timeZone),
+  );
 
-  if (!config.commitAuthor) {
-    return {
-      commits: [],
-      available: false,
-      note: "Autor de commits não configurado na integração do Azure DevOps — sem sinal de commits para hoje.",
-    };
-  }
-
-  const pat = decrypt(config.pat);
-  if (!pat) {
-    return {
-      commits: [],
-      available: false,
-      note: "Token do Azure DevOps inválido — atualize a integração para melhorar as sugestões.",
-    };
-  }
-
-  try {
-    const client = createAzureDevOpsClient(config.organizationUrl, pat);
-    const authorCandidates = buildCommitAuthorCandidates({
-      configuredAuthor: config.commitAuthor,
-    });
-
-    const buckets = await mapWithConcurrencyLimit(
-      projects,
-      AZURE_FANOUT_LIMIT,
-      async (item) => {
-        try {
-          return await client.getRecentCommits(
-            item.azureProjectId ?? item.name,
-            {
-              authorCandidates,
-              fromDate: `${date}T00:00:00`,
-              toDate: `${date}T23:59:59`,
-              projectLabel: item.name,
-            },
-          );
-        } catch {
-          return [];
-        }
-      },
+  const notes: string[] = [];
+  if (suggestions.length === 0) {
+    notes.push(
+      plan.gapMinutes <= 0
+        ? "O dia já está completo — não há o que sugerir."
+        : "Nenhuma sugestão automática para este dia. Pergunte ao usuário o que foi feito e use opt_time_log_time.",
     );
+  }
+  if (suggestions.some((item) => item.projectId === null)) {
+    notes.push(
+      "Sugestões sem projeto identificado exigem que o usuário escolha o projeto; informe-o em 'projectId' ao aplicar.",
+    );
+  }
 
-    const commits = buckets
-      .flat()
-      .map((commit) => ({
-        id: commit.id,
-        projectName: commit.projectName,
-        repositoryName: commit.repositoryName,
-        commitId: commit.commitId,
-        message: commit.message,
-        comment: commit.comment,
-        branch: commit.branch,
-        authorEmail: commit.authorEmail,
-        timestamp: commit.timestamp,
-        workItemIds: commit.workItemIds,
-        url: commit.url ?? null,
-      }))
-      .sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-      );
+  return {
+    date: plan.date,
+    suggestions,
+    alreadyLoggedMinutes: plan.existingMinutes,
+    alreadyLoggedLabel: humanizeMinutes(plan.existingMinutes),
+    targetMinutes: plan.targetMinutes,
+    gapMinutes: plan.gapMinutes,
+    sources: {
+      outlook: plan.sources.calendar,
+      teamsCalls: plan.sources.calls ?? false,
+      azureDevOps: plan.sources.azureDevops,
+      history: plan.sources.patterns,
+      commits: suggestions.filter((item) => item.source === "commits").length,
+    },
+    warnings: plan.warnings,
+    notes,
+  };
+}
 
-    return { commits, available: true };
-  } catch (error: unknown) {
-    console.warn("[mcp][suggestions] azure commits failed", {
-      userId,
+/** Collaborators the suggestion flow needs, injectable so the logic runs offline. */
+export interface SuggestionsDeps {
+  assertPlannable: (userId: string, date: string) => Promise<void>;
+  getToken: (principal: AgentPrincipal) => Promise<string | null>;
+  buildPlan: (input: {
+    userId: string;
+    date: string;
+    microsoftAccessToken: string | null;
+  }) => Promise<DayPlan>;
+}
+
+export const defaultSuggestionsDeps: SuggestionsDeps = {
+  assertPlannable: assertDayPlannable,
+  getToken: getAgentMicrosoftToken,
+  buildPlan: buildDayPlanForUser,
+};
+
+/** Shown when the token cannot read the calendar, so the plan skips Outlook and Teams. */
+export const CALENDAR_SCOPE_WARNING =
+  "Reuniões e chamadas do Teams não foram consideradas: o token não tem o escopo calendar:read.";
+
+/** Translates a day that cannot be planned into the agent error vocabulary. */
+export function toAgentPlanError(error: unknown): unknown {
+  if (!(error instanceof DayPlanRejectedError)) return error;
+
+  return new AgentError(
+    error.reason === "period_locked" ? "PERIOD_LOCKED" : "VALIDATION_ERROR",
+    error.message,
+  );
+}
+
+/**
+ * Builds the day plan for the principal without any presentation concerns.
+ * Shared by `suggestDailyEntries` and `applySuggestions`.
+ *
+ * @throws {AgentError} `VALIDATION_ERROR` for future or out-of-window dates,
+ * `PERIOD_LOCKED` when the week was already submitted or approved.
+ */
+export async function loadDayPlan(
+  principal: AgentPrincipal,
+  date: string,
+  deps: SuggestionsDeps = defaultSuggestionsDeps,
+): Promise<DayPlan> {
+  try {
+    await deps.assertPlannable(principal.userId, date);
+
+    // The calendar is personal data: a token that was never granted
+    // `calendar:read` does not get meeting titles through the suggestions
+    // either. Without a Graph token the plan simply loses the calendar.
+    const canReadCalendar = principal.scopes.includes("calendar:read");
+    const microsoftAccessToken = canReadCalendar
+      ? await deps.getToken(principal)
+      : null;
+
+    const plan = await deps.buildPlan({
+      userId: principal.userId,
       date,
-      error: error instanceof Error ? error.message : "unknown",
+      microsoftAccessToken,
     });
+
+    if (canReadCalendar) return plan;
+
     return {
-      commits: [],
-      available: false,
-      note: "Não foi possível consultar os commits do Azure DevOps agora.",
+      ...plan,
+      warnings: [
+        CALENDAR_SCOPE_WARNING,
+        // "Reconecte sua conta Microsoft…" would blame the wrong thing here.
+        ...plan.warnings.filter(
+          (warning) => !warning.startsWith("Reconecte sua conta Microsoft"),
+        ),
+      ],
     };
+  } catch (error: unknown) {
+    throw toAgentPlanError(error);
   }
 }
 
 export async function suggestDailyEntries(
   principal: AgentPrincipal,
   date: string,
+  deps: SuggestionsDeps = defaultSuggestionsDeps,
 ): Promise<SuggestDailyEntriesResult> {
-  const projects = await getVisibleProjects(principal);
-
-  const historyFloor = subDays(
-    new Date(`${date}T12:00:00`),
-    HISTORY_WINDOW_DAYS,
-  )
-    .toISOString()
-    .slice(0, 10);
-
-  const [dayEntries, recentEntries, commitResult] = await Promise.all([
-    db.query.timeEntry.findMany({
-      where: and(
-        eq(timeEntry.userId, principal.userId),
-        eq(timeEntry.date, date),
-        isNull(timeEntry.deletedAt),
-      ),
-      with: { project: { columns: { id: true, name: true } } },
-      orderBy: [desc(timeEntry.createdAt)],
-    }),
-    db.query.timeEntry.findMany({
-      where: and(
-        eq(timeEntry.userId, principal.userId),
-        gte(timeEntry.date, historyFloor),
-        lte(timeEntry.date, date),
-        isNull(timeEntry.deletedAt),
-      ),
-      with: { project: { columns: { id: true, name: true } } },
-      orderBy: [desc(timeEntry.date)],
-      limit: 120,
-    }),
-    fetchCommits(principal.userId, date, projects),
-  ]);
-
-  const config = await findAzureDevopsConfigByUserId(principal.userId);
-
-  const raw = buildDeterministicSuggestions({
-    date,
-    commits: commitResult.commits,
-    meetings: [],
-    projects: projects.map((item) => ({
-      id: item.id,
-      name: item.name,
-      billable: item.billable,
-      azureProjectId: item.azureProjectId,
-    })),
-    organizationUrl: config?.organizationUrl,
-    recentEntries: toEntryActivity(recentEntries),
-    existingEntries: toEntryActivity(dayEntries),
-  });
-
-  const alreadyLoggedMinutes = dayEntries.reduce(
-    (total, row) => total + row.duration,
-    0,
-  );
-
-  const notes: string[] = [];
-  if (commitResult.note) notes.push(commitResult.note);
-  if (raw.length === 0) {
-    notes.push(
-      "Nenhuma sugestão automática para este dia. Pergunte ao usuário o que foi feito e use opt_time_log_time.",
-    );
-  }
-
-  return {
-    date,
-    alreadyLoggedMinutes,
-    alreadyLoggedLabel: humanizeMinutes(alreadyLoggedMinutes),
-    sources: {
-      commits: commitResult.commits.length,
-      azureDevOpsAvailable: commitResult.available,
-      outlookAvailable: false,
-    },
-    notes,
-    suggestions: raw.map((item) => ({
-      projectId: item.projectId,
-      projectName: item.projectName,
-      description: item.description,
-      date: item.date,
-      durationMinutes: item.duration,
-      durationLabel: humanizeMinutes(item.duration),
-      billable: item.billable,
-      azureWorkItemId: item.azureWorkItemId,
-      confidence: item.confidence,
-      reasons: item.reasons,
-      evidence: item.activitySummary
-        ? {
-            commitCount: item.activitySummary.totalCommits,
-            repositories: item.activitySummary.repositories,
-            firstCommitAt: item.activitySummary.startedAt,
-            lastCommitAt: item.activitySummary.endedAt,
-          }
-        : null,
-    })),
-  };
+  const plan = await loadDayPlan(principal, date, deps);
+  return buildSuggestResult(plan);
 }

@@ -37,7 +37,9 @@ Pontos essenciais:
 - 'projectId' aceita ID, código (OPT-001) ou nome (Harvest).
 - 'durationMinutes' é em MINUTOS (2h30 = 150).
 - Confirme com o usuário antes de registrar, editar, excluir ou submeter.
-- Semanas submetidas ou aprovadas estão bloqueadas para edição.`;
+- Semanas submetidas ou aprovadas estão bloqueadas para edição.
+- Para preencher um dia: opt_time_suggest_daily_entries → o usuário aprova → opt_time_apply_suggestions com uma idempotencyKey nova (UUID) por operação.
+- A agenda (opt_time_get_my_agenda) é só a do próprio usuário e exige o escopo calendar:read.`;
 
 export const JSON_RPC_ERRORS = {
   PARSE_ERROR: -32700,

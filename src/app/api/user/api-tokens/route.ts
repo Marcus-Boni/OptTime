@@ -21,7 +21,7 @@ const createTokenSchema = z.object({
     .trim()
     .min(1, "Dê um nome ao token")
     .max(60, "Máximo de 60 caracteres"),
-  preset: z.enum(["read", "write", "full"]).optional(),
+  preset: z.enum(["read", "write", "full", "assistant"]).optional(),
   scopes: z.array(z.enum(API_TOKEN_SCOPES)).min(1).optional(),
   client: z.enum(API_TOKEN_CLIENTS).optional(),
   expiresInDays: z

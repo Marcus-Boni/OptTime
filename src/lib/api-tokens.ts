@@ -2,10 +2,10 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   API_TOKEN_PREFIX,
-  API_TOKEN_SCOPES,
   type ApiTokenClientKind,
   type ApiTokenScope,
   type ApiTokenSummary,
+  BASE_TOKEN_SCOPES,
   looksLikeApiToken,
   maskApiToken,
   parseScopes,
@@ -37,6 +37,7 @@ export {
   API_TOKEN_PREFIX,
   API_TOKEN_PRESETS,
   API_TOKEN_SCOPES,
+  BASE_TOKEN_SCOPES,
   isApiTokenScope,
   looksLikeApiToken,
   maskApiToken,
@@ -279,7 +280,7 @@ export async function authenticateApiToken(
       name: legacyUser.name,
       email: legacyUser.email,
       role: normalizeRole(legacyUser.role),
-      scopes: [...API_TOKEN_SCOPES],
+      scopes: [...BASE_TOKEN_SCOPES],
       tokenId: null,
       tokenName: "Token da extensão (legado)",
       legacy: true,

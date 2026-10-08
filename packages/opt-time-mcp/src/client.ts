@@ -166,9 +166,21 @@ export interface DailySuggestions {
   date: string;
   alreadyLoggedMinutes: number;
   alreadyLoggedLabel: string;
-  sources: { commits: number; azureDevOpsAvailable: boolean };
+  targetMinutes?: number;
+  gapMinutes?: number;
+  sources: {
+    commits: number;
+    outlook?: boolean;
+    teamsCalls?: boolean;
+    azureDevOps?: boolean;
+    history?: boolean;
+  };
+  warnings?: string[];
   notes: string[];
   suggestions: Array<{
+    /** Stable id; pass it to `opt_time_apply_suggestions`. */
+    id?: string;
+    source?: string;
     projectId: string | null;
     projectName: string | null;
     description: string;
@@ -178,8 +190,74 @@ export interface DailySuggestions {
     billable: boolean;
     azureWorkItemId: number | null;
     confidence: "high" | "medium" | "low";
+    evidence?: string;
     reasons: string[];
   }>;
+}
+
+export interface AgendaEvent {
+  id: string;
+  subject: string;
+  start: string;
+  end: string;
+  durationMinutes: number;
+  isAllDay: boolean;
+  isOnline: boolean;
+  joinUrl: string | null;
+  location: string | null;
+  responseStatus: string;
+  loggedMinutes: number;
+  /** Presence measured in Teams; null when no call record matches. */
+  attendance?: { joined: boolean; minutes: number } | null;
+  suggestedProject: { id: string; code: string | null; name: string } | null;
+}
+
+export interface AgendaResult {
+  timezone: string;
+  range: { start: string; end: string };
+  sources: { outlook: boolean };
+  warnings: string[];
+  events: AgendaEvent[];
+}
+
+export interface MyWorkItem {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+  teamProject: string;
+  changedAt: string;
+  url: string;
+  optTimeProject: { id: string; name: string } | null;
+  loggedMinutesInOptTime: number;
+}
+
+export interface MyWorkItemsResult {
+  sources: { azureDevOps: boolean };
+  warnings: string[];
+  items: MyWorkItem[];
+}
+
+export interface ApplySuggestionsInput {
+  date: string;
+  idempotencyKey: string;
+  items: Array<{
+    suggestionId: string;
+    projectId?: string;
+    durationMinutes?: number;
+    description?: string;
+    billable?: boolean;
+  }>;
+  rejectedSuggestionIds?: string[];
+}
+
+export interface ApplySuggestionsResult {
+  date: string;
+  createdEntryIds: string[];
+  dayTotalMinutes: number;
+  dailyCapacityMinutes: number;
+  remainingMinutes: number;
+  replayed: boolean;
 }
 
 export interface LogTimeResult {
@@ -431,6 +509,40 @@ export class OptSolvClient {
 
   getSuggestions(date?: string): Promise<DailySuggestions> {
     return this.request("GET", "/suggestions", { query: { date } });
+  }
+
+  // ─── Personal assistant ─────────────────────────────────────────────
+
+  getAgenda(query: {
+    date?: string;
+    days?: number;
+    includeDeclined?: boolean;
+    includeDescription?: boolean;
+  }): Promise<AgendaResult> {
+    return this.request("GET", "/agenda", {
+      query: {
+        date: query.date,
+        days: query.days,
+        includeDeclined: query.includeDeclined ? "true" : undefined,
+        includeDescription: query.includeDescription ? "true" : undefined,
+      },
+    });
+  }
+
+  listMyWorkItems(query: {
+    includeClosed?: boolean;
+    top?: number;
+  }): Promise<MyWorkItemsResult> {
+    return this.request("GET", "/work-items/assigned", {
+      query: {
+        includeClosed: query.includeClosed ? "true" : undefined,
+        top: query.top,
+      },
+    });
+  }
+
+  applySuggestions(body: ApplySuggestionsInput): Promise<ApplySuggestionsResult> {
+    return this.request("POST", "/suggestions/apply", { body });
   }
 
   // ─── Timesheets ─────────────────────────────────────────────────────

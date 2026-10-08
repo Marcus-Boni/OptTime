@@ -116,7 +116,7 @@ async function main(): Promise<void> {
   );
   check(
     "catálogo completo",
-    manifest.counts?.tools === 16 &&
+    manifest.counts?.tools === 19 &&
       manifest.counts?.resources === 4 &&
       manifest.counts?.prompts === 3,
     JSON.stringify(manifest.counts),
@@ -215,6 +215,85 @@ async function main(): Promise<void> {
     "prompts disponíveis",
     promptList.length === 3,
     String(promptList.length),
+  );
+
+  // ── Porta do assistente (somente leitura) ───────────────────────────
+  section("Porta do assistente");
+
+  check(
+    "whoami informa fuso e integrações",
+    typeof who.data.timezone === "string" &&
+      typeof (who.data.microsoft as { connected?: unknown })?.connected ===
+        "boolean" &&
+      typeof (who.data.azureDevOps as { configured?: unknown })?.configured ===
+        "boolean",
+    `${who.data.timezone} · Microsoft ${JSON.stringify(who.data.microsoft)} · Azure ${JSON.stringify(who.data.azureDevOps)}`,
+  );
+  check(
+    "resumo do dia informa isWorkday e targetMinutes",
+    typeof summary.data.isWorkday === "boolean" &&
+      typeof summary.data.targetMinutes === "number",
+    `isWorkday=${summary.data.isWorkday} meta=${summary.data.targetMinutes}min`,
+  );
+
+  const catalog = await rpc("tools/list");
+  const listedTools = (catalog.body.result?.tools ?? []) as Array<{
+    name: string;
+    outputSchema?: unknown;
+  }>;
+  const withOutput = [
+    "opt_time_get_my_agenda",
+    "opt_time_list_my_work_items",
+    "opt_time_apply_suggestions",
+    "opt_time_suggest_daily_entries",
+  ].filter((name) =>
+    listedTools.some((item) => item.name === name && item.outputSchema),
+  );
+  check(
+    "ferramentas do assistente publicam outputSchema",
+    withOutput.length === 4,
+    `${withOutput.length}/4`,
+  );
+
+  const suggested = await callTool("opt_time_suggest_daily_entries");
+  const suggestionList = (suggested.data.suggestions ?? []) as Array<{
+    id?: string;
+  }>;
+  check(
+    "sugestões do dia com ids estáveis",
+    !suggested.isError && suggestionList.every((item) => !!item.id),
+    suggested.isError
+      ? suggested.text.split("\n")[0]
+      : `${suggestionList.length} sugestão(ões)`,
+  );
+
+  const agenda = await callTool("opt_time_get_my_agenda");
+  if (scopes.includes("calendar:read")) {
+    check(
+      "agenda do Outlook",
+      !agenda.isError ||
+        (agenda.data.error as { code?: string } | undefined)?.code ===
+          "MICROSOFT_NOT_CONNECTED",
+      (agenda.data.error as { code?: string } | undefined)?.code ===
+        "MICROSOFT_NOT_CONNECTED"
+        ? "sem conexão Microsoft válida neste ambiente — a agenda não pôde ser lida"
+        : agenda.text.split("\n")[0],
+    );
+  } else {
+    check(
+      "agenda exige o escopo calendar:read",
+      (agenda.data.error as { code?: string } | undefined)?.code ===
+        "INSUFFICIENT_SCOPE",
+    );
+  }
+
+  const myItems = await callTool("opt_time_list_my_work_items", { top: 5 });
+  check(
+    "work items atribuídos",
+    !myItems.isError ||
+      (myItems.data.error as { code?: string } | undefined)?.code ===
+        "AZURE_DEVOPS_NOT_CONFIGURED",
+    myItems.text.split("\n")[0],
   );
 
   // ── Garantia de que nada foi escrito ────────────────────────────────

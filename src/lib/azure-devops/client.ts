@@ -46,6 +46,60 @@ function isGuidLike(value: string) {
   );
 }
 
+/**
+ * A work item assigned to the PAT's owner, across every team project.
+ *
+ * `state` and `type` are plain strings: the organisation runs a localised
+ * process ("Em Desenvolvimento", "Aberto") that the narrow `WorkItemState`
+ * union does not describe.
+ */
+export interface AzureDevOpsMyWorkItem {
+  id: number;
+  title: string;
+  type: string;
+  state: string;
+  teamProject: string;
+  areaPath: string | null;
+  iterationPath: string | null;
+  priority: number | null;
+  originalEstimateHours: number | null;
+  remainingWorkHours: number | null;
+  completedWorkHours: number | null;
+  /** UTC instant, as Azure returns it. */
+  changedDate: string | null;
+  parentId: number | null;
+  url: string;
+}
+
+export interface GetMyWorkItemsOptions {
+  /** Maximum items, 1–100. Default 50. */
+  top?: number;
+  /** Also return items closed or completed in the last 14 days. */
+  includeClosed?: boolean;
+}
+
+/**
+ * States that mean "no longer open" in the organisation's process.
+ *
+ * `Cancelad` is not a typo for `Cancelado`: it is the literal state name in the
+ * process template (category Removed, present in 44 work item types), and WIQL
+ * rejects a state value that does not exist.
+ */
+const CANCELLED_STATES = ["Removed", "Cancelad"] as const;
+const COMPLETED_STATES = ["Closed", "Done", "Completed"] as const;
+
+function wiqlList(states: readonly string[]): string {
+  return states.map((state) => `'${state}'`).join(", ");
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
   const orgUrl = organizationUrl.replace(/\/$/, "");
   const authHeader = buildAuthHeader(pat);
@@ -278,6 +332,8 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     top = 100,
   ): Promise<AzureDevOpsAssignedWorkItem[]> {
     const projectContext = await resolveProjectContext(projectRef);
+    // 'Cancelad' is the organisation's literal state name, not a typo — see
+    // CANCELLED_STATES above.
     const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.AssignedTo] = @Me AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' AND [System.State] <> 'Done' AND [System.State] <> 'Completed' AND [System.State] <> 'Cancelad' ORDER BY [System.ChangedDate] DESC`;
 
     const wiqlResult = await fetchApi<{
@@ -343,6 +399,72 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
         wi._links?.html?.href ??
         `${orgUrl}/_workitems/edit/${encodeURIComponent(String(wi.id))}`,
     }));
+  }
+
+  /**
+   * Work items assigned to the PAT's owner in every team project of the
+   * organisation — one WIQL query plus one batch read, however many projects.
+   */
+  async function getMyWorkItems(
+    options: GetMyWorkItemsOptions = {},
+  ): Promise<AzureDevOpsMyWorkItem[]> {
+    const top = Math.min(100, Math.max(1, Math.trunc(options.top ?? 50)));
+
+    const stateFilter = options.includeClosed
+      ? `[System.State] NOT IN (${wiqlList(CANCELLED_STATES)}) AND ([System.State] NOT IN (${wiqlList(COMPLETED_STATES)}) OR [System.ChangedDate] >= @Today - 14)`
+      : `[System.State] NOT IN (${wiqlList([...CANCELLED_STATES, ...COMPLETED_STATES])})`;
+
+    const wiqlResult = await fetchApi<{ workItems: Array<{ id: number }> }>(
+      `${orgUrl}/_apis/wit/wiql?$top=${top}&api-version=7.1`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          query: `SELECT [System.Id] FROM WorkItems WHERE [System.AssignedTo] = @Me AND ${stateFilter} ORDER BY [System.ChangedDate] DESC`,
+        }),
+      },
+    );
+
+    const ids = wiqlResult.workItems.slice(0, top).map((item) => item.id);
+    if (ids.length === 0) return [];
+
+    const batch = await fetchApi<{
+      value: Array<{
+        id: number;
+        fields: Record<string, unknown>;
+        _links?: { html?: { href?: string } };
+      }>;
+    }>(
+      `${orgUrl}/_apis/wit/workitems?ids=${ids.join(",")}&fields=System.Id,System.Title,System.WorkItemType,System.State,System.TeamProject,System.AreaPath,System.IterationPath,System.ChangedDate,System.Parent,Microsoft.VSTS.Scheduling.RemainingWork,Microsoft.VSTS.Scheduling.CompletedWork,Microsoft.VSTS.Scheduling.OriginalEstimate,Microsoft.VSTS.Common.Priority&api-version=7.1`,
+    );
+
+    return batch.value.map((item) => {
+      const teamProject = stringOrNull(item.fields["System.TeamProject"]) ?? "";
+
+      return {
+        id: item.id,
+        title: stringOrNull(item.fields["System.Title"]) ?? "",
+        type: stringOrNull(item.fields["System.WorkItemType"]) ?? "Task",
+        state: stringOrNull(item.fields["System.State"]) ?? "",
+        teamProject,
+        areaPath: stringOrNull(item.fields["System.AreaPath"]),
+        iterationPath: stringOrNull(item.fields["System.IterationPath"]),
+        priority: numberOrNull(item.fields["Microsoft.VSTS.Common.Priority"]),
+        originalEstimateHours: numberOrNull(
+          item.fields["Microsoft.VSTS.Scheduling.OriginalEstimate"],
+        ),
+        remainingWorkHours: numberOrNull(
+          item.fields["Microsoft.VSTS.Scheduling.RemainingWork"],
+        ),
+        completedWorkHours: numberOrNull(
+          item.fields["Microsoft.VSTS.Scheduling.CompletedWork"],
+        ),
+        changedDate: stringOrNull(item.fields["System.ChangedDate"]),
+        parentId: numberOrNull(item.fields["System.Parent"]),
+        url:
+          item._links?.html?.href ??
+          `${orgUrl}/${encodeURIComponent(teamProject)}/_workitems/edit/${item.id}`,
+      };
+    });
   }
 
   async function listRepositories(
@@ -651,6 +773,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     updateCompletedWork,
     getProjectWorkItems,
     getAssignedWorkItems,
+    getMyWorkItems,
     listRepositories,
     getRecentCommits,
     getPullRequests,

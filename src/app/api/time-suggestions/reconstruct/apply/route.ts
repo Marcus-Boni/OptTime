@@ -1,4 +1,3 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   canAccessProject,
   getActiveSession,
@@ -6,16 +5,16 @@ import {
 } from "@/lib/access-control";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
-import { timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
+import {
+  applyDayPlanEntries,
+  CallAlreadyAppliedError,
+  DayLimitError,
+} from "@/lib/time-assistant/apply-day-plan";
 import { clearCachedSuggestionsByPrefix } from "@/lib/time-assistant/cache";
+import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/day-plan";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { applyDayPlanSchema } from "@/lib/validations/reconstruct.schema";
-
-const MAX_DAY_MINUTES = 24 * 60;
-const MAX_BACKFILL_DAYS = 30;
-class CallAlreadyAppliedError extends Error {}
-class DayLimitError extends Error {}
 
 /**
  * POST - Applies an edited "Preencher meu dia" plan: creates every accepted
@@ -84,96 +83,22 @@ export async function POST(req: Request): Promise<Response> {
       }
     }
 
-    const newMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
-
-    const createdIds = await db.transaction(async (tx) => {
-      const ids: string[] = [];
-      // Serialize this review flow across tabs before checking evidence or totals.
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext(${session.user.id}), hashtext(${date}))`,
-      );
-      const [existingTotals] = await tx
-        .select({
-          minutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::int`,
-        })
-        .from(timeEntry)
-        .where(
-          and(
-            eq(timeEntry.userId, session.user.id),
-            eq(timeEntry.date, date),
-            isNull(timeEntry.deletedAt),
-          ),
-        );
-      if (Number(existingTotals?.minutes ?? 0) + newMinutes > MAX_DAY_MINUTES)
-        throw new DayLimitError();
-      const callFingerprints = items.flatMap((item) =>
-        item.source === "teams_call" && item.sourceId
-          ? [`teams_call:${item.sourceId}`]
-          : [],
-      );
-      if (callFingerprints.length > 0) {
-        const existing = await tx
-          .select({ id: timeSuggestionFeedback.id })
-          .from(timeSuggestionFeedback)
-          .where(
-            and(
-              eq(timeSuggestionFeedback.userId, session.user.id),
-              eq(timeSuggestionFeedback.date, date),
-              inArray(timeSuggestionFeedback.action, ["accepted", "edited"]),
-              inArray(
-                timeSuggestionFeedback.suggestionFingerprint,
-                callFingerprints,
-              ),
-            ),
-          )
-          .limit(1);
-        if (
-          existing.length > 0 ||
-          new Set(callFingerprints).size !== callFingerprints.length
-        )
-          throw new CallAlreadyAppliedError();
-      }
-
-      for (const item of items) {
-        const id = crypto.randomUUID();
-        ids.push(id);
-
-        await tx.insert(timeEntry).values({
-          id,
-          userId: session.user.id,
+    const { entryIds, totalMinutes } = await db.transaction((tx) =>
+      applyDayPlanEntries(tx, {
+        userId: session.user.id,
+        date,
+        items: items.map((item) => ({
           projectId: item.projectId,
-          description: item.description.trim(),
-          date,
-          duration: item.minutes,
+          description: item.description,
+          minutes: item.minutes,
           billable: item.billable,
-          azureWorkItemId: item.azureWorkItemId ?? null,
-          azureWorkItemTitle: item.azureWorkItemTitle ?? null,
-          azdoSyncStatus: item.azureWorkItemId ? "pending" : "none",
-        });
-
-        await tx.insert(timeSuggestionFeedback).values({
-          id: crypto.randomUUID(),
-          userId: session.user.id,
-          date,
-          suggestionFingerprint:
-            item.source === "teams_call" && item.sourceId
-              ? `teams_call:${item.sourceId}`
-              : `reconstruct:${date}:${item.projectId}:${item.source}`,
-          action: "accepted",
-          editedFields: null,
-          sourceBreakdown: JSON.stringify({
-            source: item.source,
-            sourceId: item.sourceId,
-            timeEntryId: id,
-            minutes: item.minutes,
-            reconstruct: true,
-          }),
-          score: null,
-        });
-      }
-
-      return ids;
-    });
+          azureWorkItemId: item.azureWorkItemId,
+          azureWorkItemTitle: item.azureWorkItemTitle,
+          source: item.source,
+          sourceId: item.sourceId,
+        })),
+      }),
+    );
     clearCachedSuggestionsByPrefix(`${session.user.id}:`);
 
     const workItemIds = [
@@ -191,32 +116,23 @@ export async function POST(req: Request): Promise<Response> {
     console.info("[reconstruct_apply]", {
       userId: session.user.id,
       date,
-      entries: createdIds.length,
-      totalMinutes: newMinutes,
+      entries: entryIds.length,
+      totalMinutes,
     });
 
     return Response.json(
       {
-        created: createdIds.length,
-        entryIds: createdIds,
-        totalMinutes: newMinutes,
+        created: entryIds.length,
+        entryIds,
+        totalMinutes,
       },
       { status: 201 },
     );
   } catch (error) {
     if (error instanceof DayLimitError)
-      return Response.json(
-        { error: "O total do dia ultrapassaria 24 horas." },
-        { status: 400 },
-      );
+      return Response.json({ error: error.message }, { status: 400 });
     if (error instanceof CallAlreadyAppliedError) {
-      return Response.json(
-        {
-          error:
-            "Uma chamada deste plano já foi registrada. Atualize as sugestões antes de continuar.",
-        },
-        { status: 409 },
-      );
+      return Response.json({ error: error.message }, { status: 409 });
     }
     console.error("[POST /api/time-suggestions/reconstruct/apply]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

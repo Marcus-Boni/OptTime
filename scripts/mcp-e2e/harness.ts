@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from "node:crypto";
 import { eq, inArray, like } from "drizzle-orm";
 import { createApiToken, revokeApiToken } from "@/lib/api-tokens";
 import type { ApiTokenScope } from "@/lib/api-tokens.shared";
@@ -7,6 +8,7 @@ import {
   apiToken,
   project,
   projectMember,
+  session,
   timeEntry,
   timesheet,
   user,
@@ -378,6 +380,55 @@ export async function makeToken(
   });
   createdTokenIds.push({ userId, tokenId: token.id });
   return { token: plaintext, tokenId: token.id };
+}
+
+/**
+ * A signed Better Auth session cookie for an ephemeral user, so the web routes
+ * (`/api/time-suggestions/*`) can be exercised without real credentials.
+ *
+ * The session row dies with the user (`ON DELETE CASCADE`), so `cleanup()`
+ * removes it too.
+ */
+export async function makeSessionCookie(userId: string): Promise<string> {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (!secret)
+    throw new Error("BETTER_AUTH_SECRET ausente — rode via --env-file");
+
+  const token = randomBytes(24).toString("hex");
+  await db.insert(session).values({
+    id: crypto.randomUUID(),
+    token,
+    userId,
+    expiresAt: new Date(Date.now() + 60 * 60_000),
+    updatedAt: new Date(),
+  });
+
+  const signature = createHmac("sha256", secret).update(token).digest("base64");
+  return `__Secure-better-auth.session_token=${encodeURIComponent(`${token}.${signature}`)}`;
+}
+
+/** Calls an app route (outside `/api/v1/me`) with a session cookie. */
+export async function web(
+  cookie: string,
+  path: string,
+  init?: RequestInit,
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(`${getBaseUrl()}${path}`, {
+    ...init,
+    headers: {
+      Cookie: cookie,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+  const text = await res.text();
+  let body: Record<string, unknown> = {};
+  try {
+    body = text ? JSON.parse(text) : {};
+  } catch {
+    body = { raw: text.slice(0, 200) };
+  }
+  return { status: res.status, body };
 }
 
 export async function makeProject(

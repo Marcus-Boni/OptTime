@@ -1,4 +1,4 @@
-export const DEFAULT_APP_VERSION = "1.10.0";
-export const DEFAULT_APP_VERSION_TAG = "v1.10.0";
+export const DEFAULT_APP_VERSION = "1.11.0";
+export const DEFAULT_APP_VERSION_TAG = "v1.11.0";
 export const APP_NAME = "OptSolv Time";
 export const CHANGELOG_HREF = "/dashboard/releases";

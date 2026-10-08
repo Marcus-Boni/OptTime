@@ -105,3 +105,61 @@ export function dateOfInstantInTimeZone(
     day: "2-digit",
   }).format(value);
 }
+
+/**
+ * Offset of `timeZone` from UTC at `instant`, in milliseconds (BRT → -10_800_000).
+ *
+ * Read from the formatter instead of a table so daylight-saving zones stay
+ * right without this module knowing which ones observe it.
+ */
+function zoneOffsetMs(instant: Date, timeZone: string): number {
+  const label =
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: normalizeTimeZone(timeZone),
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(instant)
+      .find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+
+  const match = label.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  if (!match) return 0;
+
+  const minutes = Number(match[2]) * 60 + Number(match[3] ?? 0);
+  return (match[1] === "-" ? -1 : 1) * minutes * 60_000;
+}
+
+/**
+ * ISO 8601 with a numeric offset, in the given timezone:
+ * `2026-10-07T17:00:00Z` in São Paulo becomes `2026-10-07T14:00:00-03:00`.
+ *
+ * What an assistant needs to show a wall-clock time without guessing the zone.
+ */
+export function formatInstantWithOffset(
+  instant: Date | string,
+  timeZone: string,
+): string {
+  const value = typeof instant === "string" ? new Date(instant) : instant;
+  const offsetMs = zoneOffsetMs(value, timeZone);
+
+  // Shifting the instant by the offset makes its UTC fields read as local time.
+  const local = new Date(value.getTime() + offsetMs).toISOString().slice(0, 19);
+
+  const totalMinutes = Math.abs(offsetMs) / 60_000;
+  const sign = offsetMs < 0 ? "-" : "+";
+  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const minutes = String(totalMinutes % 60).padStart(2, "0");
+
+  return `${local}${sign}${hours}:${minutes}`;
+}
+
+/** The UTC instant at which calendar day `date` (`YYYY-MM-DD`) begins in `timeZone`. */
+export function startOfDayInstant(date: string, timeZone: string): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  const wallClockAsUtc = Date.UTC(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+
+  // Two passes: the first offset is read at a guess that can sit on the wrong
+  // side of a daylight-saving change, the second at the corrected instant.
+  const first =
+    wallClockAsUtc - zoneOffsetMs(new Date(wallClockAsUtc), timeZone);
+  return new Date(wallClockAsUtc - zoneOffsetMs(new Date(first), timeZone));
+}

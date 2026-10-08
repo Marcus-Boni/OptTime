@@ -8,7 +8,7 @@
  */
 
 import { eq } from "drizzle-orm";
-import { API_TOKEN_SCOPES } from "@/lib/api-tokens.shared";
+import { BASE_TOKEN_SCOPES } from "@/lib/api-tokens.shared";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 import type { AgentPrincipal } from "@/lib/mcp/auth";
@@ -90,7 +90,7 @@ export function parseTeamsCommand(text: string): TeamsCommand {
   return { kind: "unknown", input: normalized };
 }
 
-/** Full-scope synthetic principal for a Teams-authenticated user. */
+/** Synthetic principal for a Teams-authenticated user (no agenda access). */
 export function buildTeamsPrincipal(row: {
   id: string;
   name: string;
@@ -105,7 +105,7 @@ export function buildTeamsPrincipal(row: {
     name: row.name,
     email: row.email,
     role,
-    scopes: [...API_TOKEN_SCOPES],
+    scopes: [...BASE_TOKEN_SCOPES],
     tokenId: null,
     tokenName: "Microsoft Teams",
     legacy: false,

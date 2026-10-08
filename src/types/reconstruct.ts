@@ -17,7 +17,18 @@ export type ReconstructConfidence = "high" | "medium" | "low";
 
 export interface DayPlanItem {
   sourceId?: string;
-  /** Stable key for UI editing and the AI refinement round-trip. */
+  /**
+   * Reference to the evidence behind the item — calendar event id, commit
+   * session id, `pr<id>`, work item id. Unlike `sourceId` (which the web client
+   * echoes back to the apply route and is capped at 160 characters) this is
+   * for agents and carries no length promise.
+   */
+  sourceRef?: string;
+  /**
+   * Stable key for UI editing and the AI refinement round-trip. Deterministic:
+   * rebuilding the same day yields the same ids, so an agent can reference an
+   * item across calls.
+   */
   id: string;
   /** Null until evidence identifies a unique project or the user chooses one. */
   projectId: string | null;

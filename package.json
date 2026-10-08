@@ -1,6 +1,6 @@
 {
   "name": "opt-time",
-  "version": "1.10.0",
+  "version": "1.11.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
@@ -19,6 +19,7 @@
     "verify:mcp": "tsx --env-file=.env.local scripts/mcp-e2e/run.ts",
     "verify:mcp:package": "tsx --env-file=.env.local scripts/mcp-e2e/package-e2e.ts",
     "verify:mcp:smoke": "tsx scripts/mcp-e2e/smoke.ts",
+    "verify:assistant-gateway": "tsx scripts/verify-assistant-gateway.ts",
     "verify:onboarding": "tsx scripts/verify-onboarding.ts",
     "verify:collaboration": "tsx scripts/verify-collaboration.ts && tsx scripts/verify-collaboration-fusion.ts",
     "verify:time-registration": "tsx scripts/verify-collaboration-day-refresh.ts && tsx scripts/verify-time-suggestion-titles.ts && tsx scripts/verify-reconstruct-projects.ts",

@@ -504,6 +504,17 @@ export const TOURS: readonly TourDefinition[] = [
         hint: "O projeto só vem preenchido quando a agenda deixa claro qual é.",
       },
       {
+        id: "personal-assistant",
+        title: "Conecte um assistente pessoal",
+        description:
+          "Gere um token com o preset “Assistente pessoal (ISPer)” para que um assistente no seu computador leia a sua agenda do Outlook, os seus work items e as sugestões do dia, e lance horas por você — sem pedir nenhuma permissão nova no Microsoft. O token aparece uma única vez.",
+        target: '[data-tour="mcp-tokens"]',
+        placement: "top",
+        route: "/dashboard/settings/integrations/mcp",
+        hint: "Cole o token só no aplicativo do assistente; ele não deve ser enviado em chats.",
+        optional: true,
+      },
+      {
         id: "settings",
         title: "Você define os limites",
         description:

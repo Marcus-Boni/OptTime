@@ -106,6 +106,7 @@ ancoram no atributo `data-tour`, que é um **contrato público** do componente.
 | `my-time-ledger`, `my-time-shape`, `my-time-people`, `my-time-rituals`, `my-time-projects`, `my-time-activity` | `collaboration/my-time/*` (dentro das abas) |
 | `hq-tabs`, `hq-tab-radar`, `hq-tab-capacity`, `hq-tab-approvals`, `hq-tab-portal` | `hq/hq-client.tsx` |
 | `settings-tabs`, `settings-integrations`                      | `settings/settings-client.tsx`  |
+| `mcp-tokens`                                                  | `integrations/mcp/ApiTokenManager.tsx` |
 
 ---
 
