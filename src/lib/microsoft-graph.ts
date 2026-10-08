@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { account } from "@/lib/db/schema";
+import { pickMicrosoftAccount } from "@/lib/microsoft-account-selection";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
@@ -133,28 +134,10 @@ export async function getMicrosoftAccountSnapshot(
     return null;
   }
 
-  const msAccount = [...microsoftAccounts].sort((left, right) => {
-    const leftHasRefreshToken = Boolean(left.refreshToken);
-    const rightHasRefreshToken = Boolean(right.refreshToken);
-
-    if (leftHasRefreshToken !== rightHasRefreshToken) {
-      return leftHasRefreshToken ? -1 : 1;
-    }
-
-    const leftRefreshExpiry = left.refreshTokenExpiresAt?.getTime() ?? 0;
-    const rightRefreshExpiry = right.refreshTokenExpiresAt?.getTime() ?? 0;
-    if (leftRefreshExpiry !== rightRefreshExpiry) {
-      return rightRefreshExpiry - leftRefreshExpiry;
-    }
-
-    const leftAccessExpiry = left.accessTokenExpiresAt?.getTime() ?? 0;
-    const rightAccessExpiry = right.accessTokenExpiresAt?.getTime() ?? 0;
-    if (leftAccessExpiry !== rightAccessExpiry) {
-      return rightAccessExpiry - leftAccessExpiry;
-    }
-
-    return right.updatedAt.getTime() - left.updatedAt.getTime();
-  })[0];
+  // The one rule for which row is "the" Microsoft account, shared with the
+  // background token path (see `microsoft-account-selection`).
+  const msAccount = pickMicrosoftAccount(microsoftAccounts);
+  if (!msAccount) return null;
 
   return {
     accessTokenExpiresAt: msAccount.accessTokenExpiresAt,

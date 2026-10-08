@@ -9,6 +9,7 @@
     "start": "next start",
     "start:standalone": "node .next/standalone/server.js",
     "db:migrate": "drizzle-kit migrate",
+    "ops:microsoft-duplicates": "tsx --env-file=.env.local scripts/ops/microsoft-duplicate-accounts.ts",
     "lint": "biome check",
     "format": "biome format --write",
     "video:studio": "remotion studio remotion/index.ts",

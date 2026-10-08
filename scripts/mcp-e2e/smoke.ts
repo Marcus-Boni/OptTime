@@ -235,6 +235,8 @@ async function main(): Promise<void> {
     typeof who.data.timezone === "string" &&
       typeof (who.data.microsoft as { connected?: unknown })?.connected ===
         "boolean" &&
+      typeof (who.data.microsoft as { tokenUsable?: unknown })?.tokenUsable ===
+        "boolean" &&
       typeof (who.data.azureDevOps as { configured?: unknown })?.configured ===
         "boolean",
     `${who.data.timezone} · Microsoft ${JSON.stringify(who.data.microsoft)} · Azure ${JSON.stringify(who.data.azureDevOps)}`,
@@ -279,13 +281,24 @@ async function main(): Promise<void> {
 
   const agenda = await callTool("opt_time_get_my_agenda");
   if (scopes.includes("calendar:read")) {
-    check(
-      "agenda do Outlook",
-      !agenda.isError || agenda.errorCode === "MICROSOFT_NOT_CONNECTED",
-      agenda.errorCode === "MICROSOFT_NOT_CONNECTED"
-        ? "sem conexão Microsoft válida neste ambiente — a agenda não pôde ser lida"
-        : agenda.text.split("\n")[0],
-    );
+    const microsoft = who.data.microsoft as
+      | { connected?: boolean; tokenUsable?: boolean }
+      | undefined;
+
+    if (agenda.errorCode === "MICROSOFT_NOT_CONNECTED") {
+      // An account with no Microsoft login is a legitimate "nothing to read".
+      // But whoami saying "connected" while the agenda cannot get a token is
+      // exactly the failure this smoke test exists to catch: it must not pass.
+      check(
+        "agenda do Outlook",
+        microsoft?.connected !== true,
+        microsoft?.connected === true
+          ? `whoami diz conectado (tokenUsable=${microsoft.tokenUsable}), mas a agenda não consegue obter o token do Graph`
+          : "sem conta Microsoft vinculada — nada a ler",
+      );
+    } else {
+      check("agenda do Outlook", !agenda.isError, agenda.text.split("\n")[0]);
+    }
   } else {
     check(
       "agenda exige o escopo calendar:read",

@@ -55,6 +55,55 @@ export async function getMicrosoftConnection(
 }
 
 /**
+ * The connection plus whether a Graph token can actually be had right now.
+ *
+ * `connected` only says a row exists, and `needsReconnect` only reads that row's
+ * stored expiry. Neither notices a refresh token Microsoft has since revoked, so
+ * an assistant told "connected" would call the agenda and fail. `tokenUsable`
+ * asks for the token the same way every Graph read does.
+ */
+export interface MicrosoftConnectionStatus extends MicrosoftConnection {
+  tokenUsable: boolean;
+}
+
+/** Collaborators `getMicrosoftConnectionStatus` needs, injectable for tests. */
+export interface MicrosoftStatusDeps {
+  loadConnection: (userId: string) => Promise<MicrosoftConnection>;
+  loadToken: (userId: string) => Promise<string | null>;
+}
+
+const defaultStatusDeps: MicrosoftStatusDeps = {
+  loadConnection: getMicrosoftConnection,
+  loadToken: loadBackgroundToken,
+};
+
+/**
+ * Whether the account is connected *and* usable.
+ *
+ * The token comes from `loadBackgroundToken`, so a status check that races an
+ * agenda read shares its refresh instead of spending Microsoft's rotating
+ * refresh token twice. When no token can be had the connection is reported as
+ * needing a reconnect, whatever the stored expiry says.
+ */
+export async function getMicrosoftConnectionStatus(
+  userId: string,
+  deps: MicrosoftStatusDeps = defaultStatusDeps,
+): Promise<MicrosoftConnectionStatus> {
+  const connection = await deps.loadConnection(userId);
+
+  if (!connection.connected) return { ...connection, tokenUsable: false };
+
+  const token = await deps.loadToken(userId).catch(() => null);
+  const tokenUsable = token !== null;
+
+  return {
+    connected: true,
+    tokenUsable,
+    needsReconnect: connection.needsReconnect || !tokenUsable,
+  };
+}
+
+/**
  * A Graph token for the principal, or null when none can be had.
  *
  * For composite tools, which degrade gracefully instead of failing: a day plan
@@ -96,6 +145,14 @@ export async function requireAgentMicrosoftToken(
     connection.connected
       ? "A conexão da sua conta Microsoft com o OptTime expirou."
       : "Sua conta do OptTime não tem uma conta Microsoft conectada.",
-    { details: connection, hint: MICROSOFT_RECONNECT_HINT },
+    {
+      // A linked account that gave no token is one that must be reconnected.
+      details: {
+        connected: connection.connected,
+        needsReconnect: connection.connected,
+        tokenUsable: false,
+      } satisfies MicrosoftConnectionStatus,
+      hint: MICROSOFT_RECONNECT_HINT,
+    },
   );
 }

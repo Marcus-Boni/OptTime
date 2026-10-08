@@ -14,6 +14,52 @@ type MicrosoftRefreshTokenResponse = {
   error_description?: string;
 };
 
+/**
+ * Microsoft refused a refresh, with the reason Entra gave.
+ *
+ * Carries the OAuth error and the AADSTS code and nothing else on purpose: the
+ * rest of `error_description` is a trace id, a correlation id and a timestamp,
+ * and the messages end up in logs.
+ */
+export class MicrosoftRefreshError extends Error {
+  /** `invalid_grant`, `invalid_client`… */
+  readonly oauthError: string | null;
+  /** `AADSTS70000`… the stable, searchable part of Entra's description. */
+  readonly aadstsCode: string | null;
+  readonly status: number;
+
+  constructor(input: {
+    oauthError: string | null;
+    aadstsCode: string | null;
+    status: number;
+  }) {
+    const reason = [input.oauthError, input.aadstsCode]
+      .filter((part): part is string => Boolean(part))
+      .join(", ");
+
+    super(
+      `Failed to refresh Microsoft access token${reason ? ` (${reason})` : ""}`,
+    );
+    this.name = "MicrosoftRefreshError";
+    this.oauthError = input.oauthError;
+    this.aadstsCode = input.aadstsCode;
+    this.status = input.status;
+  }
+}
+
+/**
+ * The AADSTS code in the first line of Entra's `error_description`.
+ *
+ * Only the first line is read: the following ones are the trace, correlation
+ * id and timestamp.
+ */
+export function parseAadstsCode(
+  description: string | null | undefined,
+): string | null {
+  const firstLine = description?.split(/\r?\n/, 1)[0];
+  return firstLine?.match(/\bAADSTS\d{3,7}\b/)?.[0] ?? null;
+}
+
 export async function refreshMicrosoftAccessToken(refreshToken: string) {
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
@@ -37,12 +83,18 @@ export async function refreshMicrosoftAccessToken(refreshToken: string) {
     body,
   });
 
+  // A gateway error can come back as HTML; that is still a refusal, not a crash.
   const payload =
-    ((await response.json()) as MicrosoftRefreshTokenResponse | null) ?? {};
+    ((await response
+      .json()
+      .catch(() => null)) as MicrosoftRefreshTokenResponse | null) ?? {};
 
   if (!response.ok || !payload.access_token) {
-    const suffix = payload.error ? ` (${payload.error})` : "";
-    throw new Error(`Failed to refresh Microsoft access token${suffix}`);
+    throw new MicrosoftRefreshError({
+      oauthError: payload.error ?? null,
+      aadstsCode: parseAadstsCode(payload.error_description),
+      status: response.status,
+    });
   }
 
   const now = Date.now();

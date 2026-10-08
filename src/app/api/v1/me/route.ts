@@ -2,7 +2,7 @@ import { agentOptions, withAgentAuth } from "@/lib/mcp/http";
 import {
   getDaySummary,
   getIntegrationStatus,
-  getMicrosoftConnection,
+  getMicrosoftConnectionStatus,
 } from "@/lib/mcp/service";
 import { getAppTimeZone, todayInAppTimeZone } from "@/lib/timezone";
 
@@ -16,7 +16,7 @@ export const OPTIONS = agentOptions;
 export const GET = withAgentAuth("GET /api/v1/me", async (principal) => {
   const [today, microsoft, integrations] = await Promise.all([
     getDaySummary(principal, todayInAppTimeZone()),
-    getMicrosoftConnection(principal.userId),
+    getMicrosoftConnectionStatus(principal.userId),
     getIntegrationStatus(principal.userId),
   ]);
 

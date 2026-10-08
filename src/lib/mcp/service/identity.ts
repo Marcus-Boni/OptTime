@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
 import type { AgentPrincipal } from "../auth";
 import type { DaySummary } from "./entries";
-import type { MicrosoftConnection } from "./microsoft";
+import type { MicrosoftConnectionStatus } from "./microsoft";
 
 /**
  * What is connected to the account behind a token — enough for an assistant to
@@ -47,7 +47,7 @@ export interface WhoamiData {
     totalMinutes: number;
     dailyCapacityMinutes: number;
   };
-  microsoft: MicrosoftConnection;
+  microsoft: MicrosoftConnectionStatus;
   azureDevOps: { configured: boolean };
   eveningDigestEnabled: boolean;
 }
@@ -60,7 +60,7 @@ export function buildWhoamiData(input: {
     DaySummary,
     "date" | "totalMinutes" | "dailyCapacityMinutes" | "weeklyCapacityMinutes"
   >;
-  microsoft: MicrosoftConnection;
+  microsoft: MicrosoftConnectionStatus;
   integrations: IntegrationStatus;
 }): WhoamiData {
   const { principal, summary } = input;
