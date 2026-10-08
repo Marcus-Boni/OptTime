@@ -10,6 +10,7 @@ import { todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
 import { humanizeMinutes } from "../format";
+import { clearAgendaCache } from "./agenda-cache";
 import { type ProjectSummary, resolveProject } from "./projects";
 
 /**
@@ -480,6 +481,8 @@ async function stopAndPersist(
     return created;
   });
 
+  // A new entry changes what the agenda reports as already logged.
+  clearAgendaCache(userId);
   triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
 
   return { entryId: entry.id, durationMinutes, date };

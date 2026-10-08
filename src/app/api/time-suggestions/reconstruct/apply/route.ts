@@ -11,7 +11,7 @@ import {
   DayLimitError,
 } from "@/lib/time-assistant/apply-day-plan";
 import { clearCachedSuggestionsByPrefix } from "@/lib/time-assistant/cache";
-import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/day-plan";
+import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/limits";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { applyDayPlanSchema } from "@/lib/validations/reconstruct.schema";

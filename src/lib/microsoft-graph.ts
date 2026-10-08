@@ -89,6 +89,12 @@ export interface FetchOutlookEventsOptions {
   extraSelect?: string[];
   /** Ask Graph for the event body as plain text instead of HTML. */
   bodyAsText?: boolean;
+  /**
+   * Called when `maxPages` was reached with more pages still to read, i.e. the
+   * returned list is a prefix of what the calendar holds. Callers that cannot
+   * afford to cut silently use it to say so.
+   */
+  onTruncated?: () => void;
 }
 
 export interface MicrosoftAccountSnapshot {
@@ -248,7 +254,8 @@ const CALENDAR_SELECT = [
   "attendees",
 ].join(",");
 
-const CALENDAR_PAGE_SIZE = 100;
+/** Events per Graph page; with `maxPages` this bounds what one read can return. */
+export const CALENDAR_PAGE_SIZE = 100;
 /** A packed week for a lead still fits well inside three pages. */
 const CALENDAR_MAX_PAGES = 3;
 
@@ -306,6 +313,8 @@ export async function fetchOutlookEvents(
     nextUrl = data["@odata.nextLink"] ?? null;
     page += 1;
   }
+
+  if (nextUrl) options.onTruncated?.();
 
   if (options.includeExcluded) return events;
   return events.filter((event) => !event.isCancelled && !event.isAllDay);

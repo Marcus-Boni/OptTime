@@ -162,6 +162,7 @@ export const TODAY_SUMMARY_OUTPUT_SCHEMA: JsonSchemaObject = {
     "weeklyCapacityMinutes",
     "isWorkday",
     "targetMinutes",
+    "warnings",
   ],
   properties: {
     date: string("Dia resumido, YYYY-MM-DD."),
@@ -175,10 +176,13 @@ export const TODAY_SUMMARY_OUTPUT_SCHEMA: JsonSchemaObject = {
     remainingLabel: string("Quanto falta, legível."),
     isComplete: boolean("Se a capacidade diária foi atingida."),
     isWorkday: boolean(
-      "False em fim de semana, dia não útil do calendário do Outlook ou período de ausência.",
+      "False em fim de semana, dia fora dos dias de trabalho configurados no Outlook ou coberto por uma resposta automática AGENDADA. Resposta automática sempre ligada não conta como ausência.",
     ),
     targetMinutes: integer(
-      "Meta do dia: a capacidade ajustada pelo expediente do Outlook; 0 quando não é dia útil.",
+      "Meta do dia: a capacidade semanal já ajustada ao expediente do Outlook. É 0 quando o dia não é útil.",
+    ),
+    warnings: stringList(
+      "Avisos sobre como o dia foi avaliado, p.ex. resposta automática sempre ligada ignorada.",
     ),
     byProject: {
       type: "array",
@@ -232,7 +236,8 @@ const SUGGESTION_OUTPUT = {
         "pattern",
         "document",
       ],
-      description: "Origem da evidência.",
+      description:
+        "Origem da evidência. Lista aberta: novos valores podem surgir, trate-os como desconhecidos.",
     },
     sourceRef: nullableString(
       "Evento da agenda, sessão de commits (ou pr<id>), chamada do Teams ou work item que originou a sugestão.",

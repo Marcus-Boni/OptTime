@@ -94,6 +94,9 @@ function negotiateProtocolVersion(requested: unknown): string {
   return LATEST_PROTOCOL_VERSION;
 }
 
+/** `_meta` key under which a failed tool call carries its machine-readable error. */
+export const TOOL_ERROR_META_KEY = "opt-time/error";
+
 /**
  * Renders a failed tool call as a *successful* JSON-RPC result carrying
  * `isError: true`.
@@ -101,6 +104,13 @@ function negotiateProtocolVersion(requested: unknown): string {
  * That is the MCP contract for tool failures: the model must see the error text
  * so it can correct course, which it cannot do if the failure is swallowed by
  * the transport as a protocol error.
+ *
+ * No `structuredContent` here, on purpose. Tools publish an `outputSchema`, and
+ * the official SDK client validates `structuredContent` whenever it is present —
+ * even on `isError` — so an error object there turns every failure into
+ * "Structured content does not match the tool's output schema" and hides the
+ * message. The code, hint and details travel in `_meta` instead, which no schema
+ * governs.
  */
 function toolErrorResult(error: unknown) {
   if (isAgentError(error)) {
@@ -112,10 +122,11 @@ function toolErrorResult(error: unknown) {
 
     return {
       content: [{ type: "text", text: parts.join("") }],
-      structuredContent: {
-        error: {
+      _meta: {
+        [TOOL_ERROR_META_KEY]: {
           code: error.code,
           message: error.message,
+          hint: error.hint,
           details: error.details,
         },
       },
@@ -132,7 +143,14 @@ function toolErrorResult(error: unknown) {
         text: "❌ Erro interno ao executar a ferramenta. Tente novamente em instantes.",
       },
     ],
-    structuredContent: { error: { code: "INTERNAL_ERROR" } },
+    _meta: {
+      [TOOL_ERROR_META_KEY]: {
+        code: "INTERNAL_ERROR",
+        message: "Erro interno ao executar a ferramenta.",
+        hint: null,
+        details: null,
+      },
+    },
     isError: true,
   };
 }

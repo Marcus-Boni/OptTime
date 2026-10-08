@@ -13,6 +13,9 @@ process.env.DATABASE_URL ??= "postgres://verify:verify@localhost:5432/verify";
 process.env.APP_TIMEZONE ??= "America/Sao_Paulo";
 
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 async function main(): Promise<void> {
   const { AgentError } = await import("@/lib/mcp/errors");
@@ -44,7 +47,9 @@ async function main(): Promise<void> {
     "@/lib/mcp/service/apply-suggestions"
   );
   const { buildWhoamiData } = await import("@/lib/mcp/service/identity");
-  const { resolveDayContext } = await import("@/lib/mcp/service/day-context");
+  const { ALWAYS_ON_AWAY_WARNING, resolveDayContext } = await import(
+    "@/lib/mcp/service/day-context"
+  );
   const {
     hashIdempotencyInput,
     parseIdempotencyKey,
@@ -551,6 +556,118 @@ async function main(): Promise<void> {
   });
 
   await check(
+    "clearAgendaCache(userId) limpa só o cache daquele usuário",
+    async () => {
+      clearAgendaCache();
+      const counter = { fetches: 0, now: 1_000_000 };
+      const deps = agendaDeps(counter);
+      const input = {
+        date: "2026-10-07",
+        days: 1,
+        includeDeclined: false,
+        includeDescription: false,
+      };
+      const other = { ...me, userId: "user-2" };
+
+      await getMyAgenda(me, input, deps);
+      await getMyAgenda(other, input, deps);
+      assert.equal(counter.fetches, 2);
+
+      // What log_time, edit, delete, timer stop and apply do after writing.
+      clearAgendaCache(me.userId);
+
+      await getMyAgenda(me, input, deps);
+      await getMyAgenda(other, input, deps);
+      assert.equal(
+        counter.fetches,
+        3,
+        "only the writer's agenda was refetched",
+      );
+      clearAgendaCache();
+    },
+  );
+
+  await check(
+    "agenda cortada pelo limite de páginas avisa em warnings",
+    async () => {
+      const run = async (days: number, truncate: boolean) => {
+        clearAgendaCache();
+        return getMyAgenda(
+          me,
+          {
+            date: "2026-10-07",
+            days,
+            includeDeclined: false,
+            includeDescription: false,
+          },
+          {
+            ...agendaDeps({ fetches: 0, now: 1 }),
+            fetchEvents: async (_token, _start, _end, options) => {
+              if (truncate) options?.onTruncated?.();
+              return graphEvents;
+            },
+          },
+        );
+      };
+
+      const complete = await run(1, false);
+      assert.deepEqual(complete.warnings, []);
+
+      const cut = await run(1, true);
+      assert.equal(cut.warnings.length, 1);
+      assert.ok(
+        cut.warnings[0]?.includes("300"),
+        "3 pages of 100 for a short range",
+      );
+      assert.ok(cut.events.length > 0, "what was read is still returned");
+
+      const cutWeek = await run(7, true);
+      assert.ok(
+        cutWeek.warnings[0]?.includes("500"),
+        "5 pages of 100 beyond 3 days",
+      );
+      clearAgendaCache();
+    },
+  );
+
+  await check(
+    "evento de dia inteiro do dia vizinho não escapa para o intervalo",
+    async () => {
+      // Graph filters in UTC: for 7 Oct in São Paulo (03:00Z to 03:00Z) it still
+      // returns this floating all-day event of the 8th, which starts at 00:00Z.
+      const neighbour = graphEvent({
+        id: "evt-neighbour-allday",
+        subject: "Feriado do dia seguinte",
+        isAllDay: true,
+        start: { dateTime: "2026-10-08T00:00:00.0000000", timeZone: "UTC" },
+        end: { dateTime: "2026-10-09T00:00:00.0000000", timeZone: "UTC" },
+      });
+
+      const read = async (date: string) => {
+        clearAgendaCache();
+        const result = await getMyAgenda(
+          me,
+          { date, days: 1, includeDeclined: false, includeDescription: false },
+          {
+            ...agendaDeps({ fetches: 0, now: 1 }),
+            fetchEvents: async () => [neighbour],
+          },
+        );
+        return result.events.map((event) => event.id);
+      };
+
+      assert.deepEqual(
+        await read("2026-10-07"),
+        [],
+        "the 8th stays out of the 7th",
+      );
+      assert.deepEqual(await read("2026-10-08"), ["evt-neighbour-allday"]);
+      assert.deepEqual(await read("2026-10-09"), [], "and out of the 9th");
+      clearAgendaCache();
+    },
+  );
+
+  await check(
     "logs não carregam assunto, participantes nem corpo",
     async () => {
       clearAgendaCache();
@@ -910,6 +1027,7 @@ async function main(): Promise<void> {
         weeklyCapacityMinutes: 2400,
         isWorkday: true,
         targetMinutes: 480,
+        warnings: [],
       };
     assertConforms("summary", summary, TODAY_SUMMARY_OUTPUT_SCHEMA);
 
@@ -1568,6 +1686,198 @@ async function main(): Promise<void> {
     );
   });
 
+  await check(
+    "apply_suggestions: a repetição que perdeu a corrida devolve a resposta guardada",
+    async () => {
+      const target = buildSuggestResult(plan).suggestions.find(
+        (item) => item.source === "calendar" && item.projectId,
+      );
+      assert.ok(target);
+      const targetId = target.id;
+
+      const stored = {
+        date: day,
+        createdEntryIds: ["entry-a"],
+        dayTotalMinutes: 90,
+        dailyCapacityMinutes: 480,
+        remainingMinutes: 390,
+      };
+      const request = {
+        date: day,
+        idempotencyKey: "77777777-race-aaaa",
+        items: [{ suggestionId: targetId }],
+        rejectedSuggestionIds: [],
+      };
+
+      function raceDeps(originalWritesDuringPlan: boolean) {
+        const state = {
+          ledger: null as typeof stored | null,
+          peeks: 0,
+          commits: 0,
+        };
+        return {
+          state,
+          deps: {
+            // B rebuilds the plan after A committed: the suggestion is now an
+            // entry, so it is gone from the plan.
+            loadPlan: async () => {
+              if (originalWritesDuringPlan) state.ledger = stored;
+              return {
+                ...plan,
+                items: plan.items.filter((item) => item.id !== targetId),
+              };
+            },
+            resolveProject: async () => {
+              throw new AgentError("NOT_FOUND", "não deve ser chamado");
+            },
+            peek: async () => {
+              state.peeks += 1;
+              return state.ledger;
+            },
+            commit: async () => {
+              state.commits += 1;
+              throw new Error("a stale request must never reach the write");
+            },
+            afterWrite: () => undefined,
+          },
+        };
+      }
+
+      const raced = raceDeps(true);
+      const result = await applySuggestions(me, request, raced.deps);
+      assert.equal(result.replayed, true);
+      assert.deepEqual(result.createdEntryIds, stored.createdEntryIds);
+      assert.equal(result.dayTotalMinutes, 90);
+      assert.equal(
+        raced.state.peeks,
+        2,
+        "the ledger is read again after the failure",
+      );
+      assert.equal(raced.state.commits, 0);
+
+      // Nothing settled the key: the stale id is still reported, naming the item.
+      const stale = raceDeps(false);
+      await assert.rejects(
+        () => applySuggestions(me, request, stale.deps),
+        (error: unknown) =>
+          error instanceof AgentError &&
+          error.code === "NOT_FOUND" &&
+          error.message.includes("Item 1"),
+      );
+      assert.equal(stale.state.peeks, 2);
+    },
+  );
+
+  await check(
+    "apply_suggestions: erro de projeto diz qual item e guarda código, dica e detalhes",
+    async () => {
+      const suggestions = buildSuggestResult(plan).suggestions;
+      const first = suggestions.find((item) => item.source === "calendar");
+      const second = suggestions.find((item) => item.source === "work_item");
+      assert.ok(first && second);
+
+      const failures = [
+        ["NOT_FOUND", { availableProjects: [{ id: "p-portal" }] }],
+        [
+          "AMBIGUOUS_PROJECT",
+          { candidates: [{ code: "A-1" }, { code: "A-2" }] },
+        ],
+        ["CONFLICT", { projectId: "p-old" }],
+        ["FORBIDDEN", null],
+      ] as const;
+
+      for (const [code, details] of failures) {
+        const deps = {
+          loadPlan: async () => plan,
+          resolveProject: async (): Promise<never> => {
+            throw new AgentError(code, "Projeto indisponível.", {
+              details: details ?? undefined,
+              hint: "Use o código exato do projeto.",
+            });
+          },
+          peek: async () => null,
+          commit: async (): Promise<never> => {
+            throw new Error("nothing may be written");
+          },
+          afterWrite: () => undefined,
+        };
+
+        await assert.rejects(
+          () =>
+            applySuggestions(
+              me,
+              {
+                date: day,
+                idempotencyKey: `88888888-${code}`,
+                items: [
+                  { suggestionId: first.id },
+                  { suggestionId: second.id, projectId: "qualquer" },
+                ],
+                rejectedSuggestionIds: [],
+              },
+              deps,
+            ),
+          (error: unknown) => {
+            assert.ok(error instanceof AgentError);
+            assert.equal(error.code, code, "the original code is kept");
+            assert.ok(error.message.startsWith("Item 2: "), error.message);
+            assert.equal(error.hint, "Use o código exato do projeto.");
+            const merged = error.details as Record<string, unknown>;
+            assert.equal(merged.itemIndex, 1);
+            assert.equal(merged.suggestionId, second.id);
+            for (const [key, value] of Object.entries(details ?? {})) {
+              assert.deepEqual(merged[key], value, `${key} survives`);
+            }
+            return true;
+          },
+          code,
+        );
+      }
+    },
+  );
+
+  await check(
+    "WIQL escapa aspas no nome do projeto do Azure DevOps",
+    async () => {
+      const { createAzureDevOpsClient } = await import(
+        "@/lib/azure-devops/client"
+      );
+      const client = createAzureDevOpsClient(
+        "https://dev.azure.com/org",
+        "pat",
+      );
+
+      const queries: string[] = [];
+      const realFetch = globalThis.fetch;
+      globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          query?: string;
+        };
+        if (body.query) queries.push(body.query);
+        return Response.json({ workItems: [] });
+      }) as typeof fetch;
+
+      try {
+        const project = "Cliente's Portal";
+        await client.getAssignedWorkItems(project, 5);
+        await client.searchWorkItems(project, "login", 5);
+        await client.searchWorkItems(project, "#123", 5);
+        await client.getProjectWorkItems(project, 5);
+      } finally {
+        globalThis.fetch = realFetch;
+      }
+
+      assert.equal(queries.length, 4, "every query reached Azure");
+      for (const query of queries) {
+        assert.ok(
+          query.includes("[System.TeamProject] = 'Cliente''s Portal'"),
+          `quote doubled in: ${query.slice(0, 90)}`,
+        );
+        assert.ok(!query.includes("'Cliente's"), "no unescaped quote left");
+      }
+    },
+  );
+
   // ─── 5. Scope ──────────────────────────────────────────────────────────
 
   console.log("\n5. Escopo calendar:read");
@@ -1632,6 +1942,167 @@ async function main(): Promise<void> {
   });
 
   // ─── 6. No Microsoft account ───────────────────────────────────────────
+
+  console.log("\nErros de ferramenta");
+
+  const { handleMcpPayload } = await import("@/lib/mcp/rpc");
+
+  interface ToolCallResult {
+    isError?: boolean;
+    content?: Array<{ text: string }>;
+    structuredContent?: unknown;
+    _meta?: Record<
+      string,
+      { code?: string; hint?: string | null; details?: unknown } | undefined
+    >;
+  }
+
+  async function callThroughRpc(
+    caller: Principal,
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<ToolCallResult> {
+    const outcome = await handleMcpPayload(caller, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name, arguments: args },
+    });
+    const body = outcome.body;
+    assert.ok(
+      body && !Array.isArray(body) && body.result,
+      "tools/call answers with a result, not a protocol error",
+    );
+    return body.result as ToolCallResult;
+  }
+
+  await check(
+    "erro de ferramenta não manda structuredContent; o código vai em _meta",
+    async () => {
+      const missingScope = await callThroughRpc(
+        principal(["time:read", "time:write"]),
+        "opt_time_get_my_agenda",
+        {},
+      );
+      assert.equal(missingScope.isError, true);
+      assert.equal(
+        missingScope.structuredContent,
+        undefined,
+        "an error object would be validated against the outputSchema",
+      );
+      const meta = missingScope._meta?.["opt-time/error"];
+      assert.equal(meta?.code, "INSUFFICIENT_SCOPE");
+      assert.ok(
+        String(meta?.hint).includes("calendar:read"),
+        "the hint is machine-readable too",
+      );
+      assert.ok(
+        missingScope.content?.[0]?.text.includes("calendar:read"),
+        "the text still carries the hint",
+      );
+
+      const invalid = await callThroughRpc(me, "opt_time_get_my_agenda", {
+        days: 9,
+      });
+      assert.equal(invalid.structuredContent, undefined);
+      assert.equal(invalid._meta?.["opt-time/error"]?.code, "VALIDATION_ERROR");
+
+      const unknown = await callThroughRpc(me, "opt_time_nao_existe", {});
+      assert.equal(unknown.structuredContent, undefined);
+      assert.equal(unknown._meta?.["opt-time/error"]?.code, "NOT_FOUND");
+      assert.ok(
+        Array.isArray(
+          (
+            unknown._meta?.["opt-time/error"]?.details as {
+              availableTools?: unknown;
+            }
+          )?.availableTools,
+        ),
+        "details survive in _meta",
+      );
+
+      // Why it matters: the old error shape violates every published schema.
+      const legacyShape = {
+        error: { code: "INSUFFICIENT_SCOPE", message: "x" },
+      };
+      for (const schema of [
+        AGENDA_OUTPUT_SCHEMA,
+        MY_WORK_ITEMS_OUTPUT_SCHEMA,
+        APPLY_SUGGESTIONS_OUTPUT_SCHEMA,
+      ]) {
+        assert.ok(validateAgainstSchema(legacyShape, schema).length > 0);
+      }
+    },
+  );
+
+  await check(
+    "o Client oficial do SDK mostra o erro em vez de falhar no esquema",
+    async () => {
+      // The package lives outside the pnpm workspace, so its SDK is only there
+      // after `npm install` in packages/opt-time-mcp.
+      const sdkDir = join(
+        process.cwd(),
+        "packages/opt-time-mcp/node_modules/@modelcontextprotocol/sdk/dist/esm",
+      );
+      if (!existsSync(sdkDir)) {
+        console.log(
+          "    (SDK não instalado em packages/opt-time-mcp — pulado)",
+        );
+        return;
+      }
+
+      const { Client } = await import(
+        pathToFileURL(join(sdkDir, "client/index.js")).href
+      );
+
+      /** Feeds the SDK client straight into the JSON-RPC handler. */
+      class InProcessTransport {
+        onclose?: () => void;
+        onerror?: (error: Error) => void;
+        onmessage?: (message: unknown) => void;
+
+        async start(): Promise<void> {}
+
+        async send(message: unknown): Promise<void> {
+          const { body } = await handleMcpPayload(
+            principal(["time:read", "time:write"]),
+            message,
+          );
+          if (body) queueMicrotask(() => this.onmessage?.(body));
+        }
+
+        async close(): Promise<void> {
+          this.onclose?.();
+        }
+      }
+
+      const client = new Client({ name: "verify", version: "1" });
+      await client.connect(new InProcessTransport());
+      // listTools caches the validators the client later applies to each result.
+      const listed = await client.listTools();
+      assert.ok(
+        listed.tools.some(
+          (item: { name: string; outputSchema?: unknown }) =>
+            item.name === "opt_time_get_my_agenda" && item.outputSchema,
+        ),
+        "the client sees the outputSchema it will validate against",
+      );
+
+      const result = await client.callTool({
+        name: "opt_time_get_my_agenda",
+        arguments: {},
+      });
+
+      assert.equal(result.isError, true);
+      assert.ok(
+        (result.content as Array<{ text: string }>)[0]?.text.includes(
+          "calendar:read",
+        ),
+        "the user sees the hint instead of a schema error",
+      );
+      await client.close();
+    },
+  );
 
   console.log("\n6. Sem conta Microsoft");
 
@@ -1811,6 +2282,13 @@ async function main(): Promise<void> {
       weeklyCapacityHours: 40,
       dailyCapacityMinutes: 480,
     };
+    const fourDayWeek = {
+      daysOfWeek: [1, 2, 3, 4],
+      startMinute: 540,
+      endMinute: 1080,
+      windowMinutes: 540,
+      timeZone: null,
+    };
     const okMailbox = (
       overrides: Partial<import("@/types/collaboration").MailboxProfile>,
     ): import("@/types/collaboration").MailboxProfile => ({
@@ -1821,62 +2299,110 @@ async function main(): Promise<void> {
       ...overrides,
     });
 
-    // 2026-10-07 is a Wednesday; 2026-10-10 a Saturday.
+    // 2026-10-07 is a Wednesday; 2026-10-09 a Friday; 2026-10-10 a Saturday.
     assert.deepEqual(
       resolveDayContext({ ...base, date: "2026-10-07", mailbox: null }),
-      { isWorkday: true, targetMinutes: 480 },
+      { isWorkday: true, targetMinutes: 480, warnings: [] },
       "Graph unreachable falls back to the weekly capacity",
     );
     assert.deepEqual(
       resolveDayContext({ ...base, date: "2026-10-10", mailbox: null }),
-      { isWorkday: false, targetMinutes: 0 },
+      { isWorkday: false, targetMinutes: 0, warnings: [] },
     );
     assert.deepEqual(
       resolveDayContext({
         ...base,
         date: "2026-10-07",
-        mailbox: okMailbox({
-          workingHours: {
-            daysOfWeek: [1, 2, 3, 4],
-            startMinute: 540,
-            endMinute: 1080,
-            windowMinutes: 540,
-            timeZone: null,
-          },
-        }),
+        mailbox: okMailbox({ workingHours: fourDayWeek }),
       }),
       // 40h spread over four days is 600 min, capped by the 9h window.
-      { isWorkday: true, targetMinutes: 540 },
+      { isWorkday: true, targetMinutes: 540, warnings: [] },
       "the target follows the days the person works in Outlook",
     );
     assert.deepEqual(
       resolveDayContext({
         ...base,
-        date: "2026-10-09", // Friday, off in a four-day week
-        mailbox: okMailbox({
-          workingHours: {
-            daysOfWeek: [1, 2, 3, 4],
-            startMinute: 540,
-            endMinute: 1080,
-            windowMinutes: 540,
-            timeZone: null,
-          },
-        }),
+        date: "2026-10-09",
+        mailbox: okMailbox({ workingHours: fourDayWeek }),
       }),
-      { isWorkday: false, targetMinutes: 0 },
-    );
-    assert.deepEqual(
-      resolveDayContext({
-        ...base,
-        date: "2026-10-07",
-        mailbox: okMailbox({
-          away: { kind: "always", startIso: null, endIso: null },
-        }),
-      }),
-      { isWorkday: false, targetMinutes: 0 },
-      "an out-of-office period is not a working day",
+      { isWorkday: false, targetMinutes: 0, warnings: [] },
+      "a day off in the Outlook week is not a workday",
     );
   });
+
+  await check(
+    "resposta automática: agendada conta como ausência, sempre ligada não",
+    () => {
+      const base = { weeklyCapacityHours: 40, dailyCapacityMinutes: 480 };
+      const withAway = (
+        away: import("@/types/collaboration").AwayPeriod,
+      ): import("@/types/collaboration").MailboxProfile => ({
+        workingHours: null,
+        timeZone: null,
+        away,
+        availability: "ok",
+      });
+
+      // Scheduled and covering the day: absence.
+      assert.deepEqual(
+        resolveDayContext({
+          ...base,
+          date: "2026-10-07",
+          mailbox: withAway({
+            kind: "scheduled",
+            startIso: "2026-10-05T03:00:00.000Z",
+            endIso: "2026-10-10T03:00:00.000Z",
+          }),
+        }),
+        { isWorkday: false, targetMinutes: 0, warnings: [] },
+        "a scheduled out-of-office covering the day is absence",
+      );
+
+      // Scheduled but over: a normal day.
+      assert.deepEqual(
+        resolveDayContext({
+          ...base,
+          date: "2026-10-07",
+          mailbox: withAway({
+            kind: "scheduled",
+            startIso: "2026-09-20T03:00:00.000Z",
+            endIso: "2026-09-27T03:00:00.000Z",
+          }),
+        }),
+        { isWorkday: true, targetMinutes: 480, warnings: [] },
+      );
+
+      // Always on — and scheduled with no bounds, which says the same: not
+      // absence, or the person would never have a working day.
+      for (const away of [
+        { kind: "always", startIso: null, endIso: null },
+        { kind: "scheduled", startIso: null, endIso: null },
+      ] as const) {
+        const context = resolveDayContext({
+          ...base,
+          date: "2026-10-07",
+          mailbox: withAway(away),
+        });
+        assert.equal(
+          context.isWorkday,
+          true,
+          `${away.kind} reply keeps the day`,
+        );
+        assert.equal(context.targetMinutes, 480);
+        assert.deepEqual(context.warnings, [ALWAYS_ON_AWAY_WARNING]);
+      }
+
+      // The weekend still wins, and does not nag about the reply.
+      assert.deepEqual(
+        resolveDayContext({
+          ...base,
+          date: "2026-10-10",
+          mailbox: withAway({ kind: "always", startIso: null, endIso: null }),
+        }),
+        { isWorkday: false, targetMinutes: 0, warnings: [] },
+      );
+    },
+  );
 
   console.log(`\nassistant gateway OK — ${passed} checks passed`);
 }

@@ -751,7 +751,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_get_today_summary",
     title: "Resumo do dia",
     description:
-      "Retorna o resumo das horas do dia: total registrado, distribuição por projeto, lançamentos, timer ativo, capacidade diária, quanto falta para fechar o dia, se é dia útil (isWorkday) e a meta do dia (targetMinutes).",
+      "Retorna o resumo das horas do dia: total registrado, distribuição por projeto, lançamentos, timer ativo, capacidade diária, quanto falta para fechar o dia, se é dia útil (isWorkday) e a meta do dia (targetMinutes). isWorkday é false em fim de semana, em dia fora dos dias de trabalho do Outlook e em ausência com resposta automática agendada (a sempre ligada é ignorada, com aviso em warnings). targetMinutes é 0 em dia não útil e já desconta o expediente do Outlook.",
     scope: "time:read",
     annotations: READ_ONLY,
     inputSchema: {
@@ -939,7 +939,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_suggest_daily_entries",
     title: "Sugerir lançamentos do dia",
     description:
-      "Sugere como preencher o dia, com a mesma qualidade do 'Preencher meu dia' da web: reuniões do Outlook, chamadas do Teams, sessões de commits e PRs do Azure DevOps, work items atribuídos e o padrão do usuário naquele dia da semana. Cada sugestão tem um 'id' estável. Reuniões e chamadas do Teams só entram se o token tiver o escopo calendar:read. Confirme com o usuário e aplique com opt_time_apply_suggestions (várias de uma vez) ou opt_time_log_time (uma).",
+      "Sugere como preencher o dia, com a mesma qualidade do 'Preencher meu dia' da web: reuniões do Outlook, chamadas do Teams, sessões de commits e PRs do Azure DevOps, work items atribuídos e o padrão do usuário naquele dia da semana. Cada sugestão tem um 'id' estável e um 'source' (calendar, teams_call, commits, work_item, pattern ou document — uma lista aberta: trate valores novos como desconhecidos, não como erro). Reuniões e chamadas do Teams só entram se o token tiver o escopo calendar:read. Confirme com o usuário e aplique com opt_time_apply_suggestions (várias de uma vez) ou opt_time_log_time (uma).",
     scope: "time:read",
     annotations: { ...READ_ONLY, openWorldHint: true },
     inputSchema: {

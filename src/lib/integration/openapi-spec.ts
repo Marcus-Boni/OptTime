@@ -516,7 +516,7 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
         operationId: "suggestDailyEntries",
         summary: "Sugestões para preencher o dia",
         description:
-          "O mesmo motor do 'Preencher meu dia' da web: reuniões, chamadas do Teams, sessões de commits e PRs, work items e o padrão da semana. Cada sugestão tem um `id` estável. Requer `time:read`.",
+          "O mesmo motor do 'Preencher meu dia' da web: reuniões, chamadas do Teams, sessões de commits e PRs, work items e o padrão da semana. Cada sugestão tem um `id` estável. `source` é uma lista aberta (`calendar`, `teams_call`, `commits`, `work_item`, `pattern`, `document`). **Mudou na v1.11.0:** `sources.outlookAvailable` virou `sources.outlook`, `sources.azureDevOpsAvailable` virou `sources.azureDevOps`, e `evidence` deixou de ser um objeto e passou a ser um texto; `reasons` continua existindo. Requer `time:read`.",
         tags: ["Assistente pessoal"],
         security: agentSecurity,
         parameters: [dateParameter],

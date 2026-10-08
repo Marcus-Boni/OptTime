@@ -4,7 +4,7 @@ import {
   resolveDailyTarget,
 } from "@/lib/collaboration/mailbox";
 import { parseLocalDate } from "@/lib/utils";
-import type { MailboxProfile } from "@/types/collaboration";
+import type { AwayPeriod, MailboxProfile } from "@/types/collaboration";
 import type { AgentPrincipal } from "../auth";
 import { type DaySummary, getDaySummary } from "./entries";
 import { getAgentMicrosoftToken } from "./microsoft";
@@ -14,16 +14,25 @@ import { getAgentMicrosoftToken } from "./microsoft";
  * expected to log on it.
  *
  * OptTime keeps no holiday calendar. What it does know comes from the person's
- * own mailbox: the working days and hours they configured in Outlook, and an
- * out-of-office period. When Microsoft is unreachable the answer degrades to
- * "weekdays, at the weekly capacity" instead of failing the summary.
+ * own mailbox: the working days and hours they configured in Outlook, and a
+ * *scheduled* out-of-office period. When Microsoft is unreachable the answer
+ * degrades to "weekdays, at the weekly capacity" instead of failing the summary.
  */
 
+/** Said when an automatic reply that never ends is deliberately ignored. */
+export const ALWAYS_ON_AWAY_WARNING =
+  "A resposta automática do Outlook está sempre ligada; ela não foi tratada como ausência.";
+
 export interface DayContext {
-  /** False on weekends, non-working days and out-of-office periods. */
+  /** False on weekends, non-working days and scheduled out-of-office periods. */
   isWorkday: boolean;
-  /** What the person is expected to log that day. 0 when it is not a workday. */
+  /**
+   * What the person is expected to log that day: the weekly capacity already
+   * adjusted to the Outlook working window, and 0 when it is not a workday.
+   */
   targetMinutes: number;
+  /** Things the answer glossed over, e.g. an always-on automatic reply. */
+  warnings: string[];
 }
 
 export interface ResolveDayContextInput {
@@ -34,19 +43,43 @@ export interface ResolveDayContextInput {
   mailbox: MailboxProfile | null;
 }
 
-/** Pure decision: weekend → mailbox working days → out-of-office. */
+/**
+ * An automatic reply with no end: "always on", or scheduled with neither a
+ * start nor an end. It says nothing about any particular day.
+ */
+function isOpenEndedAway(away: AwayPeriod | null): boolean {
+  if (!away) return false;
+  return away.kind === "always" || (!away.startIso && !away.endIso);
+}
+
+/**
+ * Pure decision: weekend → mailbox working days → scheduled out-of-office.
+ *
+ * Only a *scheduled* automatic reply covering the day counts as absence. Someone
+ * who leaves the reply on permanently would otherwise never have a working day,
+ * and anything keyed on `isWorkday` would never run for them.
+ */
 export function resolveDayContext(input: ResolveDayContextInput): DayContext {
   const weekday = parseLocalDate(input.date).getDay();
   const isWeekend = weekday === 0 || weekday === 6;
 
-  if (isWeekend) return { isWorkday: false, targetMinutes: 0 };
+  if (isWeekend) return { isWorkday: false, targetMinutes: 0, warnings: [] };
 
   if (!input.mailbox || input.mailbox.availability !== "ok") {
-    return { isWorkday: true, targetMinutes: input.dailyCapacityMinutes };
+    return {
+      isWorkday: true,
+      targetMinutes: input.dailyCapacityMinutes,
+      warnings: [],
+    };
   }
 
-  if (isAwayOn(input.mailbox.away, input.date)) {
-    return { isWorkday: false, targetMinutes: 0 };
+  const warnings: string[] = [];
+  const { away } = input.mailbox;
+
+  if (isOpenEndedAway(away)) {
+    warnings.push(ALWAYS_ON_AWAY_WARNING);
+  } else if (isAwayOn(away, input.date)) {
+    return { isWorkday: false, targetMinutes: 0, warnings };
   }
 
   const target = resolveDailyTarget(
@@ -58,6 +91,7 @@ export function resolveDayContext(input: ResolveDayContextInput): DayContext {
   return {
     isWorkday: target.isWorkingDay,
     targetMinutes: target.isWorkingDay ? target.minutes : 0,
+    warnings,
   };
 }
 

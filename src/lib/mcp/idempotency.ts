@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { apiIdempotencyKey } from "@/lib/db/schema";
 import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
@@ -109,15 +109,7 @@ export async function runIdempotent<T>({
 
   if (existing) {
     if (existing.expiresAt.getTime() > now.getTime()) {
-      if (existing.requestHash !== requestHash) {
-        throw new AgentError(
-          "IDEMPOTENCY_CONFLICT",
-          "Esta idempotencyKey já foi usada com uma entrada diferente.",
-          {
-            hint: "Gere um UUID novo para uma operação nova; reutilize a chave só ao repetir exatamente a mesma chamada.",
-          },
-        );
-      }
+      if (existing.requestHash !== requestHash) throw idempotencyConflict();
       return { result: existing.response as T, replayed: true };
     }
 
@@ -133,6 +125,65 @@ export async function runIdempotent<T>({
   });
 
   return { result, replayed: false };
+}
+
+export interface PeekIdempotencyInput {
+  userId: string;
+  scope: string;
+  key: string;
+  /** The same value the write will later pass to `runIdempotent`. */
+  input: unknown;
+}
+
+/**
+ * Looks for the stored outcome of a key without opening a transaction or taking
+ * a lock.
+ *
+ * Callers use it before doing any expensive or validating work: once a key has
+ * been applied, the state it depended on (suggestions that no longer exist, a
+ * week that was submitted since) has moved on, so re-validating would fail a
+ * request that is simply a repeat.
+ *
+ * @returns the stored response, or null when the key is unused or expired.
+ * @throws {AgentError} `IDEMPOTENCY_CONFLICT` when the key belongs to a
+ * different input.
+ */
+export async function peekIdempotency<T>(
+  args: PeekIdempotencyInput,
+): Promise<T | null> {
+  const [row] = await db
+    .select({
+      requestHash: apiIdempotencyKey.requestHash,
+      response: apiIdempotencyKey.response,
+    })
+    .from(apiIdempotencyKey)
+    .where(
+      and(
+        eq(apiIdempotencyKey.userId, args.userId),
+        eq(apiIdempotencyKey.scope, args.scope),
+        eq(apiIdempotencyKey.key, args.key),
+        gte(apiIdempotencyKey.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!row) return null;
+
+  if (row.requestHash !== hashIdempotencyInput(args.input)) {
+    throw idempotencyConflict();
+  }
+
+  return JSON.parse(row.response) as T;
+}
+
+function idempotencyConflict(): AgentError {
+  return new AgentError(
+    "IDEMPOTENCY_CONFLICT",
+    "Esta idempotencyKey já foi usada com uma entrada diferente.",
+    {
+      hint: "Gere um UUID novo para uma operação nova; reutilize a chave só ao repetir exatamente a mesma chamada.",
+    },
+  );
 }
 
 /** Database-backed store bound to one transaction and one user. */

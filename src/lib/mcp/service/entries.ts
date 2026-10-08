@@ -10,8 +10,9 @@ import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
 import { humanizeMinutes, weekdayLabel } from "../format";
-import { runIdempotentInTransaction } from "../idempotency";
-import { resolveProject } from "./projects";
+import { peekIdempotency, runIdempotentInTransaction } from "../idempotency";
+import { clearAgendaCache } from "./agenda-cache";
+import { type ProjectSummary, resolveProject } from "./projects";
 import { type ActiveTimerView, assertUnlocked, getActiveTimer } from "./timer";
 
 /**
@@ -98,17 +99,24 @@ export interface LogTimeResult {
 /** Either the pool or an open transaction — both can insert and select. */
 type Executor = typeof db | DbTransaction;
 
+/** What validating a manual entry resolves, ready to be inserted. */
+interface PreparedEntry {
+  description: string;
+  project: ProjectSummary;
+}
+
 /**
- * Validates the input, then inserts the entry through `executor`.
+ * Everything about a manual entry that reads the pool and can fail: the
+ * description, the project and whether the week is still open.
  *
- * Does not fire the Azure DevOps sync: the caller decides when, because inside
- * a transaction the entry is not yet visible to the sync that reads it back.
+ * It runs before any transaction opens. Done inside one, each of these queries
+ * would hold the transaction's connection and wait for a second one from the
+ * pool, so about ten simultaneous idempotent calls would exhaust it.
  */
-async function createEntry(
-  executor: Executor,
+async function prepareEntry(
   principal: AgentPrincipal,
   input: LogTimeInput,
-): Promise<LogTimeResult> {
+): Promise<PreparedEntry> {
   const description = input.description?.trim();
   if (!description) {
     throw new AgentError(
@@ -117,8 +125,25 @@ async function createEntry(
     );
   }
 
-  const targetProject = await resolveProject(principal, input.project);
+  const project = await resolveProject(principal, input.project);
   await assertUnlocked(principal.userId, input.date);
+
+  return { description, project };
+}
+
+/**
+ * Inserts a prepared entry through `executor`.
+ *
+ * Does not fire the Azure DevOps sync: the caller decides when, because inside
+ * a transaction the entry is not yet visible to the sync that reads it back.
+ */
+async function insertEntry(
+  executor: Executor,
+  principal: AgentPrincipal,
+  input: LogTimeInput,
+  prepared: PreparedEntry,
+): Promise<LogTimeResult> {
+  const { description, project: targetProject } = prepared;
 
   const [created] = await executor
     .insert(timeEntry)
@@ -170,8 +195,10 @@ export async function logTime(
   principal: AgentPrincipal,
   input: LogTimeInput,
 ): Promise<LogTimeResult> {
-  const result = await createEntry(db, principal, input);
+  const prepared = await prepareEntry(principal, input);
+  const result = await insertEntry(db, principal, input, prepared);
 
+  clearAgendaCache(principal.userId);
   triggerCompletedWorkSync(principal.userId, [result.entry.azureWorkItemId]);
 
   return result;
@@ -181,24 +208,38 @@ export async function logTime(
  * `logTime` that runs at most once per `idempotencyKey`.
  *
  * A retry with the same key and input returns the first result and writes
- * nothing; the same key with different input is refused. Validation runs only
- * when the key is new, so a replay survives the week having been submitted in
- * the meantime.
+ * nothing; the same key with different input is refused. The ledger is read
+ * first and validation runs only when the key is new, so a replay survives the
+ * week having been submitted in the meantime. The transaction then contains
+ * nothing but the insert and the ledger record.
  */
 export async function logTimeIdempotent(
   principal: AgentPrincipal,
   input: LogTimeInput,
   idempotencyKey: string,
 ): Promise<LogTimeResult & { replayed: boolean }> {
-  const { result, replayed } = await runIdempotentInTransaction({
+  const scope = "log_time";
+
+  const previous = await peekIdempotency<LogTimeResult>({
     userId: principal.userId,
-    scope: "log_time",
+    scope,
     key: idempotencyKey,
     input,
-    execute: (tx) => createEntry(tx, principal, input),
+  });
+  if (previous) return { ...previous, replayed: true };
+
+  const prepared = await prepareEntry(principal, input);
+
+  const { result, replayed } = await runIdempotentInTransaction({
+    userId: principal.userId,
+    scope,
+    key: idempotencyKey,
+    input,
+    execute: (tx) => insertEntry(tx, principal, input, prepared),
   });
 
   if (!replayed) {
+    clearAgendaCache(principal.userId);
     triggerCompletedWorkSync(principal.userId, [result.entry.azureWorkItemId]);
   }
 
@@ -330,6 +371,7 @@ export async function updateTimeEntry(
     .where(eq(timeEntry.id, input.entryId))
     .returning();
 
+  clearAgendaCache(principal.userId);
   triggerCompletedWorkSync(principal.userId, [
     updated.azureWorkItemId,
     current.azureWorkItemId,
@@ -360,6 +402,7 @@ export async function deleteTimeEntry(
     .set({ deletedAt: new Date() })
     .where(eq(timeEntry.id, entryId));
 
+  clearAgendaCache(principal.userId);
   triggerCompletedWorkSync(principal.userId, [current.azureWorkItemId]);
 
   return {

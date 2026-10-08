@@ -262,6 +262,10 @@ export async function tool(
   text: string;
   data: Record<string, unknown>;
   errorCode: string | null;
+  /** The `_meta["opt-time/error"]` block of a failed call. */
+  errorMeta: ToolErrorMeta | null;
+  /** Whether the result carries `structuredContent` at all. */
+  hasStructuredContent: boolean;
   status: number;
 }> {
   const { status, body } = await rpc(token, "tools/call", {
@@ -270,15 +274,28 @@ export async function tool(
   });
   const result = body.result;
   const data = (result?.structuredContent ?? {}) as Record<string, unknown>;
-  const errorBlock = data.error as { code?: string } | undefined;
+  const errorMeta =
+    ((result?._meta as Record<string, unknown> | undefined)?.[
+      "opt-time/error"
+    ] as ToolErrorMeta | undefined) ?? null;
 
   return {
     isError: result?.isError === true,
     text: result?.content?.[0]?.text ?? "",
     data,
-    errorCode: errorBlock?.code ?? null,
+    errorCode: errorMeta?.code ?? null,
+    errorMeta,
+    hasStructuredContent: result?.structuredContent !== undefined,
     status,
   };
+}
+
+/** Machine-readable error a failed tool call carries in `_meta`. */
+export interface ToolErrorMeta {
+  code?: string;
+  message?: string;
+  hint?: string | null;
+  details?: unknown;
 }
 
 export async function rest(
