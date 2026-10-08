@@ -281,7 +281,7 @@ Entra: a leitura do Graph usa o token que o servidor já guarda
 | `opt_time_list_my_work_items` | `time:read` | Work items atribuídos (org inteira, uma WIQL), com projeto do OptTime ligado e minutos já lançados. |
 | `opt_time_suggest_daily_entries` | `time:read` | Mesmo motor do "Preencher meu dia": agenda, chamadas do Teams, sessões de commits/PRs, work items e padrão da semana. Cada sugestão tem `id` estável. |
 | `opt_time_apply_suggestions` | `time:write` | Cria vários lançamentos numa **transação**, idempotente por `idempotencyKey`. |
-| `opt_time_whoami` | `time:read` | Ganhou `timezone`, `microsoft`, `azureDevOps`, `eveningDigestEnabled`. |
+| `opt_time_whoami` | `time:read` | Ganhou `timezone`, `microsoft`, `azureDevOps`, `eveningDigestEnabled`. `microsoft.tokenUsable` diz se um token do Graph foi obtido agora; `connected: true` com `tokenUsable: false` é conta vinculada que não renova (`needsReconnect` também fica `true`). |
 | `opt_time_get_today_summary` | `time:read` | Ganhou `isWorkday` e `targetMinutes`. |
 | `opt_time_log_time` | `time:write` | Ganhou `idempotencyKey` opcional. |
 
@@ -303,6 +303,15 @@ Entra: a leitura do Graph usa o token que o servidor já guarda
 - **Falha aberta nas composições.** Sem conta Microsoft, `suggest_daily_entries`
   segue sem o Outlook (`sources.outlook = false` + `warnings`); só a agenda, que
   existe para ler o Outlook, devolve `MICROSOFT_NOT_CONNECTED`.
+- **Várias contas Microsoft.** Um usuário pode ter mais de uma linha
+  `provider_id = 'microsoft'` (a troca de registro do app no Entra cria outra e
+  deixa a antiga com um refresh token morto). Todos os leitores escolhem a linha
+  pela mesma regra (`src/lib/microsoft-account-selection.ts`: tem refresh token →
+  expiração do refresh mais tardia → do access mais tardia → atualização mais
+  recente → `id`). O token em segundo plano tenta as linhas nessa ordem e só
+  devolve `null` quando nenhuma renova; o par renovado volta para a linha de onde
+  veio. `pnpm ops:microsoft-duplicates` lista, **sem remover nada**, as linhas
+  que uma limpeza removeria (não escolhidas e sem atualização há mais de 90 dias).
 - **Privacidade.** Assunto, participantes e corpo de evento não entram em log de
   aplicação — só contagens e ids.
 - **Cache.** A agenda é guardada 60 s por usuário + intervalo + opções, em
@@ -514,7 +523,7 @@ Duas garantias sustentam a suíte:
 | Servidor não aparece no cliente                    | Rode `npx opt-time-mcp doctor` no terminal para ver o erro real.                   |
 | `INTEGRATION_NOT_CONFIGURED` em work items          | O usuário não configurou o PAT do Azure DevOps em Configurações → Integrações.               |
 | `AZURE_DEVOPS_NOT_CONFIGURED` em work items atribuídos | Mesma causa: falta o PAT em Configurações → Integrações → Azure DevOps.                  |
-| `MICROSOFT_NOT_CONNECTED` na agenda                 | Sem conta Microsoft ligada ou a conexão expirou. O usuário entra no OptTime com a conta Microsoft; no dev, confira `MICROSOFT_CLIENT_SECRET` (`invalid_client` no log = segredo vencido). |
+| `MICROSOFT_NOT_CONNECTED` na agenda                 | Sem conta Microsoft ligada ou a conexão expirou. O usuário entra no OptTime com a conta Microsoft; no dev, confira `MICROSOFT_CLIENT_SECRET` (`invalid_client` no log = segredo vencido). Com `whoami` dizendo `connected: true`, olhe o log `[collaboration] background token failed`: ele lista, por `account.id`, o motivo de cada linha (`AADSTS…`, `invalid_grant`, `no_refresh_token`). |
 | `IDEMPOTENCY_CONFLICT` ao aplicar                   | A `idempotencyKey` foi reutilizada com outra entrada. Gere um UUID novo por operação.        |
 | `relation "api_idempotency_key" does not exist`     | Falta aplicar a migração `0031` (`pnpm run db:migrate`).                                    |
 | `PERIOD_LOCKED` ao registrar                        | A semana já foi submetida/aprovada. O gestor precisa rejeitar o timesheet antes.             |

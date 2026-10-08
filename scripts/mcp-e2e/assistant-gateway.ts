@@ -189,6 +189,8 @@ export async function runAssistantGatewayPhase(
     "whoami: o que está conectado e o fuso",
     who.data.timezone === "America/Sao_Paulo" &&
       (who.data.microsoft as { connected?: boolean })?.connected === false &&
+      (who.data.microsoft as { tokenUsable?: boolean })?.tokenUsable ===
+        false &&
       (who.data.azureDevOps as { configured?: boolean })?.configured ===
         false &&
       who.data.eveningDigestEnabled === true,
@@ -771,6 +773,15 @@ export async function runAssistantGatewayPhase(
   );
 
   const graphToken = await getBackgroundMicrosoftToken(realAccount.id);
+
+  // whoami must not say "usable" about a token the agenda cannot get, nor the
+  // reverse: both ask the same way.
+  check(
+    "conta real: whoami.tokenUsable concorda com o token do Graph",
+    (realWho.data.microsoft as { tokenUsable?: boolean })?.tokenUsable ===
+      Boolean(graphToken),
+    `tokenUsable=${JSON.stringify((realWho.data.microsoft as { tokenUsable?: unknown })?.tokenUsable)} · token ${graphToken ? "obtido" : "não obtido"}`,
+  );
 
   if (!graphToken) {
     const unlinked = await tool(real.token, "opt_time_get_my_agenda");

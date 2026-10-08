@@ -28,7 +28,7 @@ import {
   getDaySummary,
   getDaySummaryWithContext,
   getIntegrationStatus,
-  getMicrosoftConnection,
+  getMicrosoftConnectionStatus,
   getMyAgenda,
   getTimesheetStatus,
   listMyWorkItems,
@@ -232,15 +232,17 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (principal) => {
       const [summary, microsoft, integrations] = await Promise.all([
         getDaySummary(principal, todayInAppTimeZone()),
-        getMicrosoftConnection(principal.userId),
+        getMicrosoftConnectionStatus(principal.userId),
         getIntegrationStatus(principal.userId),
       ]);
 
       const microsoftLine = !microsoft.connected
         ? "Microsoft: não conectada"
-        : microsoft.needsReconnect
-          ? "Microsoft: precisa reconectar"
-          : "Microsoft: conectada";
+        : !microsoft.tokenUsable
+          ? "Microsoft: vinculada, mas o token não renova — reconecte"
+          : microsoft.needsReconnect
+            ? "Microsoft: precisa reconectar"
+            : "Microsoft: conectada";
 
       return {
         text:

@@ -68,6 +68,30 @@ async function main(): Promise<void> {
   const { API_TOKEN_PRESETS, API_TOKEN_SCOPES, BASE_TOKEN_SCOPES } =
     await import("@/lib/api-tokens.shared");
 
+  const { getBackgroundMicrosoftToken } = await import(
+    "@/lib/collaboration/background-token"
+  );
+  const {
+    pickMicrosoftAccount,
+    planDuplicateCleanup,
+    rankMicrosoftAccounts,
+    STALE_ACCOUNT_DAYS,
+  } = await import("@/lib/microsoft-account-selection");
+  const {
+    MicrosoftRefreshError,
+    parseAadstsCode,
+    refreshMicrosoftAccessToken,
+  } = await import("@/lib/microsoft-oauth");
+  const { getMicrosoftConnectionStatus } = await import(
+    "@/lib/mcp/service/microsoft"
+  );
+
+  type BackgroundAccountRow =
+    import("@/lib/collaboration/background-token").BackgroundAccountRow;
+  type BackgroundTokenDeps =
+    import("@/lib/collaboration/background-token").BackgroundTokenDeps;
+  type MicrosoftAccountRow =
+    import("@/lib/microsoft-account-selection").MicrosoftAccountRow;
   type Principal = import("@/lib/mcp/auth").AgentPrincipal;
   type OutlookEvent = import("@/lib/microsoft-graph").OutlookEvent;
   type DayPlan = import("@/types/reconstruct").DayPlan;
@@ -972,7 +996,11 @@ async function main(): Promise<void> {
           dailyCapacityMinutes: 480,
           weeklyCapacityMinutes: 2400,
         },
-        microsoft: { connected: true, needsReconnect: false },
+        microsoft: {
+          connected: true,
+          needsReconnect: false,
+          tokenUsable: true,
+        },
         integrations: {
           azureDevOps: { configured: true },
           eveningDigestEnabled: false,
@@ -2401,6 +2429,573 @@ async function main(): Promise<void> {
         }),
         { isWorkday: false, targetMinutes: 0, warnings: [] },
       );
+    },
+  );
+
+  // ─── Microsoft account choice and the background token ─────────────────
+
+  const MS_NOW = Date.parse("2026-10-08T12:00:00Z");
+  const hoursFromNow = (hours: number): Date =>
+    new Date(MS_NOW + hours * 3_600_000);
+  const daysAgo = (days: number): Date => new Date(MS_NOW - days * 86_400_000);
+
+  function msRow(
+    overrides: Partial<BackgroundAccountRow> & { id: string },
+  ): BackgroundAccountRow {
+    return {
+      accessToken: null,
+      accessTokenExpiresAt: null,
+      refreshToken: `refresh-${overrides.id}`,
+      refreshTokenExpiresAt: null,
+      updatedAt: daysAgo(1),
+      ...overrides,
+    };
+  }
+
+  function entraRefusal(code: string | null = "AADSTS70000") {
+    return new MicrosoftRefreshError({
+      oauthError: "invalid_grant",
+      aadstsCode: code,
+      status: 400,
+    });
+  }
+
+  /** The row Postgres happens to list first is dead; the second is the live one. */
+  const deadOlderFirst = msRow({
+    id: "acc-dead",
+    updatedAt: daysAgo(200),
+    refreshTokenExpiresAt: hoursFromNow(-24 * 150),
+  });
+  const alive = msRow({
+    id: "acc-alive",
+    updatedAt: daysAgo(1),
+    refreshTokenExpiresAt: hoursFromNow(24 * 60),
+  });
+
+  interface BackgroundHarness {
+    deps: BackgroundTokenDeps;
+    /** Refresh tokens presented to Microsoft, in order. */
+    presented: string[];
+    /** Rows a refreshed pair was written into, in order. */
+    savedInto: string[];
+    saved: Array<{ rowId: string; refreshToken?: string }>;
+  }
+
+  /** `refusals` maps a refresh token to the error Microsoft answers it with. */
+  function backgroundHarness(
+    rows: BackgroundAccountRow[],
+    refusals: Record<string, Error> = {},
+  ): BackgroundHarness {
+    const harness: BackgroundHarness = {
+      presented: [],
+      savedInto: [],
+      saved: [],
+      deps: {
+        loadAccounts: async () => rows,
+        refresh: async (refreshToken) => {
+          harness.presented.push(refreshToken);
+          const refusal = refusals[refreshToken];
+          if (refusal) throw refusal;
+          return {
+            accessToken: `access-from-${refreshToken}`,
+            accessTokenExpiresAt: hoursFromNow(1),
+            refreshToken: `rotated-${refreshToken}`,
+          };
+        },
+        saveRefreshed: async (row, refreshed) => {
+          harness.savedInto.push(row.id);
+          harness.saved.push({
+            rowId: row.id,
+            refreshToken: refreshed.refreshToken,
+          });
+        },
+        now: () => MS_NOW,
+      },
+    };
+    return harness;
+  }
+
+  /** Runs `run` with console.error captured, always restoring it. */
+  async function captureConsoleErrors<T>(
+    run: () => Promise<T>,
+  ): Promise<{ result: T; logged: unknown[][] }> {
+    const original = console.error;
+    const logged: unknown[][] = [];
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      return { result: await run(), logged };
+    } finally {
+      console.error = original;
+    }
+  }
+
+  await check(
+    "escolha da conta Microsoft: uma regra só, determinística",
+    () => {
+      assert.equal(pickMicrosoftAccount([]), null);
+      assert.deepEqual(rankMicrosoftAccounts([]), []);
+
+      // A dead row listed first loses to the live one, in either input order.
+      assert.equal(
+        pickMicrosoftAccount([deadOlderFirst, alive])?.id,
+        "acc-alive",
+      );
+      assert.equal(
+        pickMicrosoftAccount([alive, deadOlderFirst])?.id,
+        "acc-alive",
+      );
+
+      // Having a refresh token beats everything else, even a later expiry.
+      const noRefreshToken = msRow({
+        id: "acc-none",
+        refreshToken: null,
+        refreshTokenExpiresAt: hoursFromNow(24 * 300),
+        accessTokenExpiresAt: hoursFromNow(1),
+        updatedAt: daysAgo(0),
+      });
+      assert.equal(
+        pickMicrosoftAccount([noRefreshToken, deadOlderFirst])?.id,
+        "acc-dead",
+      );
+
+      // Full ties are broken by id, never by the order the database returned.
+      const twinA = msRow({ id: "acc-a", updatedAt: daysAgo(3) });
+      const twinB = msRow({ id: "acc-b", updatedAt: daysAgo(3) });
+      assert.equal(pickMicrosoftAccount([twinB, twinA])?.id, "acc-a");
+      assert.equal(pickMicrosoftAccount([twinA, twinB])?.id, "acc-a");
+
+      // Ranking does not reorder the caller's array.
+      const input = [deadOlderFirst, alive];
+      rankMicrosoftAccounts(input);
+      assert.deepEqual(
+        input.map((row) => row.id),
+        ["acc-dead", "acc-alive"],
+      );
+    },
+  );
+
+  await check(
+    "token em segundo plano: com duas linhas, usa a viva",
+    async () => {
+      const harness = backgroundHarness([deadOlderFirst, alive], {
+        "refresh-acc-dead": entraRefusal(),
+      });
+      const { result, logged } = await captureConsoleErrors(() =>
+        getBackgroundMicrosoftToken("user-1", harness.deps),
+      );
+
+      assert.equal(result, "access-from-refresh-acc-alive");
+      // The ranking puts the live row first, so the dead one is never even tried.
+      assert.deepEqual(harness.presented, ["refresh-acc-alive"]);
+      // …and the rotated pair is written into the row it came from, not the dead one.
+      assert.deepEqual(harness.savedInto, ["acc-alive"]);
+      assert.equal(harness.saved[0]?.refreshToken, "rotated-refresh-acc-alive");
+      assert.equal(logged.length, 0, "a success is not logged as a failure");
+    },
+  );
+
+  await check(
+    "token em segundo plano: se a escolhida falha no refresh, tenta a outra",
+    async () => {
+      // The ranking trusts stored dates, and a stale far-future expiry makes a
+      // dead row look best. Microsoft's answer is what settles it.
+      const lyingDead = msRow({
+        id: "acc-lying",
+        updatedAt: daysAgo(200),
+        refreshTokenExpiresAt: hoursFromNow(24 * 900),
+      });
+      assert.equal(
+        pickMicrosoftAccount([alive, lyingDead])?.id,
+        "acc-lying",
+        "fixture: the dead row ranks first",
+      );
+
+      const harness = backgroundHarness([alive, lyingDead], {
+        "refresh-acc-lying": entraRefusal(),
+      });
+      const { result, logged } = await captureConsoleErrors(() =>
+        getBackgroundMicrosoftToken("user-1", harness.deps),
+      );
+
+      assert.equal(result, "access-from-refresh-acc-alive");
+      assert.deepEqual(harness.presented, [
+        "refresh-acc-lying",
+        "refresh-acc-alive",
+      ]);
+      assert.deepEqual(harness.savedInto, ["acc-alive"]);
+      assert.equal(
+        logged.length,
+        0,
+        "recovering on another row is not an error",
+      );
+    },
+  );
+
+  await check(
+    "token em segundo plano: access token válido não gasta o refresh",
+    async () => {
+      const fresh = msRow({
+        id: "acc-fresh",
+        accessToken: "access-still-good",
+        accessTokenExpiresAt: hoursFromNow(1),
+      });
+      const harness = backgroundHarness([fresh]);
+      assert.equal(
+        await getBackgroundMicrosoftToken("user-1", harness.deps),
+        "access-still-good",
+      );
+      assert.deepEqual(harness.presented, []);
+
+      // Inside the 5-minute skew it counts as expired.
+      const expiring = msRow({
+        id: "acc-expiring",
+        accessToken: "access-about-to-die",
+        accessTokenExpiresAt: new Date(MS_NOW + 2 * 60_000),
+      });
+      const second = backgroundHarness([expiring]);
+      assert.equal(
+        await getBackgroundMicrosoftToken("user-1", second.deps),
+        "access-from-refresh-acc-expiring",
+      );
+      assert.deepEqual(second.savedInto, ["acc-expiring"]);
+    },
+  );
+
+  await check(
+    "token em segundo plano: sem linha, ou sem nenhuma que renove, devolve null sem lançar",
+    async () => {
+      const none = backgroundHarness([]);
+      assert.equal(
+        await getBackgroundMicrosoftToken("user-1", none.deps),
+        null,
+      );
+      assert.deepEqual(none.presented, []);
+
+      const bothDead = backgroundHarness(
+        [deadOlderFirst, alive, msRow({ id: "acc-bare", refreshToken: null })],
+        {
+          "refresh-acc-dead": entraRefusal("AADSTS70000"),
+          "refresh-acc-alive": entraRefusal("AADSTS700082"),
+        },
+      );
+      const { result, logged } = await captureConsoleErrors(() =>
+        getBackgroundMicrosoftToken("user-1", bothDead.deps),
+      );
+
+      assert.equal(result, null);
+      assert.equal(logged.length, 1);
+
+      const text = JSON.stringify(logged[0]);
+      // What an operator needs: which rows, and why Microsoft refused each.
+      for (const expected of [
+        "acc-dead",
+        "acc-alive",
+        "acc-bare",
+        "AADSTS70000",
+        "AADSTS700082",
+        "no_refresh_token",
+      ]) {
+        assert.ok(text.includes(expected), `log mentions ${expected}`);
+      }
+      // What must never reach a log.
+      assert.ok(!text.includes("refresh-acc-"), "no refresh token in the log");
+      assert.ok(!text.includes("@"), "no e-mail address in the log");
+
+      // A failure reading the accounts is also contained.
+      const broken: BackgroundTokenDeps = {
+        ...bothDead.deps,
+        loadAccounts: async () => {
+          throw new Error("connection refused");
+        },
+      };
+      const contained = await captureConsoleErrors(() =>
+        getBackgroundMicrosoftToken("user-1", broken),
+      );
+      assert.equal(contained.result, null);
+    },
+  );
+
+  await check("erro do Entra vira mensagem com o código AADSTS", async () => {
+    assert.equal(parseAadstsCode(null), null);
+    assert.equal(parseAadstsCode(undefined), null);
+    assert.equal(parseAadstsCode(""), null);
+    assert.equal(parseAadstsCode("invalid_grant, sem código"), null);
+    assert.equal(
+      parseAadstsCode("AADSTS70000: The scope is not valid."),
+      "AADSTS70000",
+    );
+    // Only the first line counts: a code further down is not the reason.
+    assert.equal(
+      parseAadstsCode("sem código aqui\r\nTrace ID: x\r\nAADSTS99999: eco"),
+      null,
+    );
+
+    const refusalText =
+      "AADSTS70000: The provided grant is not valid.\r\n" +
+      "Trace ID: 0a1b2c3d-trace\r\n" +
+      "Correlation ID: 4e5f6a7b-correlation\r\n" +
+      "Timestamp: 2026-10-08 12:00:00Z";
+    const sentRefreshToken = "0.AAAA-secret-refresh-token";
+
+    const originalFetch = globalThis.fetch;
+    const originalId = process.env.MICROSOFT_CLIENT_ID;
+    const originalSecret = process.env.MICROSOFT_CLIENT_SECRET;
+    process.env.MICROSOFT_CLIENT_ID = "client-id-fixture";
+    process.env.MICROSOFT_CLIENT_SECRET = "client-secret-fixture";
+
+    try {
+      globalThis.fetch = async () =>
+        new Response(
+          JSON.stringify({
+            error: "invalid_grant",
+            error_description: refusalText,
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+
+      const refusal = await refreshMicrosoftAccessToken(sentRefreshToken).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      assert.ok(refusal instanceof MicrosoftRefreshError);
+      assert.equal(refusal.aadstsCode, "AADSTS70000");
+      assert.equal(refusal.oauthError, "invalid_grant");
+      assert.equal(refusal.status, 400);
+      assert.match(refusal.message, /AADSTS70000/);
+      assert.match(refusal.message, /invalid_grant/);
+      assert.doesNotMatch(refusal.message, /Trace ID|Correlation ID|Timestamp/);
+      assert.ok(!refusal.message.includes(sentRefreshToken));
+      assert.ok(!refusal.message.includes("client-secret-fixture"));
+
+      // A gateway page that is not JSON is still a refusal, not a crash.
+      globalThis.fetch = async () =>
+        new Response("<html>Bad gateway</html>", { status: 502 });
+      const gateway = await refreshMicrosoftAccessToken(sentRefreshToken).then(
+        () => null,
+        (error: unknown) => error,
+      );
+      assert.ok(gateway instanceof MicrosoftRefreshError);
+      assert.equal(gateway.aadstsCode, null);
+      assert.equal(gateway.status, 502);
+      assert.doesNotMatch(gateway.message, /Bad gateway/);
+
+      // And a good answer still comes through, rotated token included.
+      globalThis.fetch = async () =>
+        new Response(
+          JSON.stringify({
+            access_token: "new-access",
+            refresh_token: "new-refresh",
+            expires_in: 3600,
+            scope: "Calendars.Read offline_access",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      const refreshed = await refreshMicrosoftAccessToken(sentRefreshToken);
+      assert.equal(refreshed.accessToken, "new-access");
+      assert.equal(refreshed.refreshToken, "new-refresh");
+      assert.deepEqual(refreshed.scopes, ["Calendars.Read", "offline_access"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalId === undefined) delete process.env.MICROSOFT_CLIENT_ID;
+      else process.env.MICROSOFT_CLIENT_ID = originalId;
+      if (originalSecret === undefined) {
+        delete process.env.MICROSOFT_CLIENT_SECRET;
+      } else {
+        process.env.MICROSOFT_CLIENT_SECRET = originalSecret;
+      }
+    }
+  });
+
+  await check(
+    "whoami: token inutilizável vira tokenUsable false e needsReconnect true",
+    async () => {
+      const linked = async () => ({ connected: true, needsReconnect: false });
+
+      const unusable = await getMicrosoftConnectionStatus("user-1", {
+        loadConnection: linked,
+        loadToken: async () => null,
+      });
+      assert.deepEqual(unusable, {
+        connected: true,
+        needsReconnect: true,
+        tokenUsable: false,
+      });
+
+      // A token lookup that throws is the same as no token.
+      const throwing = await getMicrosoftConnectionStatus("user-1", {
+        loadConnection: linked,
+        loadToken: async () => {
+          throw new Error("boom");
+        },
+      });
+      assert.equal(throwing.tokenUsable, false);
+      assert.equal(throwing.needsReconnect, true);
+
+      const usable = await getMicrosoftConnectionStatus("user-1", {
+        loadConnection: linked,
+        loadToken: async () => "access",
+      });
+      assert.deepEqual(usable, {
+        connected: true,
+        needsReconnect: false,
+        tokenUsable: true,
+      });
+
+      // The stored expiry still counts: a token in hand does not hide a grant that
+      // is known to have lapsed.
+      const lapsing = await getMicrosoftConnectionStatus("user-1", {
+        loadConnection: async () => ({ connected: true, needsReconnect: true }),
+        loadToken: async () => "access",
+      });
+      assert.equal(lapsing.needsReconnect, true);
+
+      // No Microsoft account: nothing to reconnect and no token to ask for.
+      let asked = false;
+      const absent = await getMicrosoftConnectionStatus("user-1", {
+        loadConnection: async () => ({
+          connected: false,
+          needsReconnect: false,
+        }),
+        loadToken: async () => {
+          asked = true;
+          return "access";
+        },
+      });
+      assert.deepEqual(absent, {
+        connected: false,
+        needsReconnect: false,
+        tokenUsable: false,
+      });
+      assert.equal(asked, false, "no refresh is attempted without an account");
+
+      // The shape that reaches the assistant validates, and tokenUsable is required.
+      const whoami = buildWhoamiData({
+        principal: me,
+        timezone: "America/Sao_Paulo",
+        summary: {
+          date: day,
+          totalMinutes: 0,
+          dailyCapacityMinutes: 480,
+          weeklyCapacityMinutes: 2400,
+        },
+        microsoft: unusable,
+        integrations: {
+          azureDevOps: { configured: false },
+          eveningDigestEnabled: false,
+        },
+      });
+      assertConforms(
+        "whoami com token inutilizável",
+        whoami,
+        WHOAMI_OUTPUT_SCHEMA,
+      );
+      assert.equal(whoami.microsoft.tokenUsable, false);
+      assert.equal(whoami.microsoft.needsReconnect, true);
+
+      const withoutFlag = {
+        ...whoami,
+        microsoft: { connected: true, needsReconnect: true },
+      };
+      assert.notEqual(
+        validateAgainstSchema(withoutFlag, WHOAMI_OUTPUT_SCHEMA).length,
+        0,
+        "a whoami without tokenUsable is rejected",
+      );
+    },
+  );
+
+  await check(
+    "limpeza de contas duplicadas: só planeja, e só o que é seguro",
+    () => {
+      const row = (
+        overrides: Partial<MicrosoftAccountRow> & {
+          id: string;
+          userId: string;
+        },
+      ): MicrosoftAccountRow => ({
+        accountId: `sub-${overrides.id}`,
+        refreshToken: `refresh-${overrides.id}`,
+        refreshTokenExpiresAt: null,
+        accessTokenExpiresAt: null,
+        updatedAt: daysAgo(1),
+        ...overrides,
+      });
+      const now = new Date(MS_NOW);
+
+      const plans = planDuplicateCleanup(
+        [
+          // u2: one live row, one abandoned, one dead-but-recent.
+          row({
+            id: "u2-live",
+            userId: "u2",
+            refreshTokenExpiresAt: hoursFromNow(500),
+          }),
+          row({
+            id: "u2-old",
+            userId: "u2",
+            updatedAt: daysAgo(STALE_ACCOUNT_DAYS + 1),
+          }),
+          row({ id: "u2-recent", userId: "u2", updatedAt: daysAgo(10) }),
+          // u1: a single row is never listed.
+          row({ id: "u1-only", userId: "u1", updatedAt: daysAgo(400) }),
+          // u3: exactly on the boundary is NOT stale (> 90, not >= 90).
+          row({
+            id: "u3-live",
+            userId: "u3",
+            refreshTokenExpiresAt: hoursFromNow(500),
+          }),
+          row({
+            id: "u3-edge",
+            userId: "u3",
+            updatedAt: daysAgo(STALE_ACCOUNT_DAYS),
+          }),
+        ],
+        now,
+      );
+
+      assert.deepEqual(
+        plans.map((plan) => plan.userId),
+        ["u2", "u3"],
+        "single-row users are omitted; plans are ordered by user",
+      );
+
+      const decisions = (userId: string): Record<string, string> =>
+        Object.fromEntries(
+          (plans.find((plan) => plan.userId === userId)?.rows ?? []).map(
+            (entry) => [entry.row.id, entry.decision],
+          ),
+        );
+
+      assert.deepEqual(decisions("u2"), {
+        "u2-live": "keep-selected",
+        "u2-old": "remove-candidate",
+        "u2-recent": "keep-recent",
+      });
+      assert.deepEqual(decisions("u3"), {
+        "u3-live": "keep-selected",
+        "u3-edge": "keep-recent",
+      });
+
+      // The kept row leads each plan, and it is the one the app itself would use.
+      const u2 = plans[0];
+      assert.equal(u2?.rows[0]?.row.id, "u2-live");
+      assert.equal(
+        pickMicrosoftAccount(u2?.rows.map((entry) => entry.row) ?? [])?.id,
+        u2?.rows[0]?.row.id,
+      );
+
+      // The selected row is never a candidate, however old.
+      const allStale = planDuplicateCleanup(
+        [
+          row({ id: "x-a", userId: "x", updatedAt: daysAgo(500) }),
+          row({ id: "x-b", userId: "x", updatedAt: daysAgo(600) }),
+        ],
+        now,
+      );
+      const decided = allStale[0]?.rows.map((entry) => entry.decision);
+      assert.deepEqual(decided, ["keep-selected", "remove-candidate"]);
     },
   );
 

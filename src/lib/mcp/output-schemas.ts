@@ -126,10 +126,15 @@ export const WHOAMI_OUTPUT_SCHEMA: JsonSchemaObject = {
     },
     microsoft: {
       type: "object",
-      required: ["connected", "needsReconnect"],
+      required: ["connected", "needsReconnect", "tokenUsable"],
       properties: {
         connected: boolean("Se há conta Microsoft vinculada."),
-        needsReconnect: boolean("Se a conexão expirou e exige novo login."),
+        needsReconnect: boolean(
+          "Se a conexão expirou ou o Microsoft recusa renová-la: exige novo login no OptTime.",
+        ),
+        tokenUsable: boolean(
+          "Se um token do Microsoft Graph pôde ser obtido agora. False com connected true significa conta vinculada, mas inutilizável: agenda e sugestões do Outlook vão falhar.",
+        ),
       },
     },
     azureDevOps: {
