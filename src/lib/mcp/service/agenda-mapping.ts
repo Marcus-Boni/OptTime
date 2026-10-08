@@ -83,6 +83,14 @@ export interface AgendaEvent {
   attendance: AgendaAttendance | null;
 }
 
+export interface AgendaResult {
+  timezone: string;
+  range: { start: string; end: string };
+  sources: { outlook: boolean };
+  warnings: string[];
+  events: AgendaEvent[];
+}
+
 export interface AgendaAttendance {
   joined: boolean;
   minutes: number;
@@ -117,6 +125,12 @@ export interface MapAgendaInput {
    * be read. Only used to fill `attendance`.
    */
   calls?: ReadonlyArray<TeamCallSignal> | null;
+  /**
+   * The requested range, `[start, end)`. Graph filters in UTC, so an all-day
+   * event that is the neighbouring day in São Paulo can still come back; events
+   * that do not overlap the range are dropped here.
+   */
+  window?: { start: Date; end: Date };
 }
 
 /** Most attendees echoed per event; `attendeeCount` still carries the total. */
@@ -264,6 +278,23 @@ function toRawCalendarEvent(
   };
 }
 
+/** An event belongs to the range when it overlaps `[start, end)`. */
+export function overlapsWindow(
+  start: Date,
+  end: Date,
+  window: { start: Date; end: Date } | undefined,
+): boolean {
+  if (!window) return true;
+
+  // An instantaneous event has no overlap to speak of: it counts if it starts
+  // inside the range.
+  if (end.getTime() <= start.getTime()) {
+    return start >= window.start && start < window.end;
+  }
+
+  return start < window.end && end > window.start;
+}
+
 interface ResolvedEvent {
   event: OutlookEvent;
   start: Date;
@@ -374,6 +405,7 @@ export function mapAgendaEvents(input: MapAgendaInput): AgendaEvent[] {
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
         return [];
       }
+      if (!overlapsWindow(start, end, input.window)) return [];
       return [
         {
           event,

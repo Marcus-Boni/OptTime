@@ -89,7 +89,8 @@ export function registerAssistantTools(
         const result = await client.getAgenda(args);
         const days = args.days ?? 1;
         const first = result.range.start.slice(0, 10);
-        const range = days === 1 ? first : `${first} a ${shiftDate(first, days - 1)}`;
+        const range =
+          days === 1 ? first : `${first} a ${shiftDate(first, days - 1)}`;
 
         if (result.events.length === 0) {
           return ok(`Nenhum evento na agenda em ${range}.`, { ...result });

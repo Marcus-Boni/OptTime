@@ -541,7 +541,9 @@ export class OptSolvClient {
     });
   }
 
-  applySuggestions(body: ApplySuggestionsInput): Promise<ApplySuggestionsResult> {
+  applySuggestions(
+    body: ApplySuggestionsInput,
+  ): Promise<ApplySuggestionsResult> {
     return this.request("POST", "/suggestions/apply", { body });
   }
 

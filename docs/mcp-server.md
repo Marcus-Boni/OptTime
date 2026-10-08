@@ -245,7 +245,12 @@ Todas as rotas exigem `Authorization: Bearer opt_tok_…`.
 - **`GET`** responde `405` — o servidor não abre streams iniciados pelo servidor,
   o que a especificação permite.
 - **Erros de ferramenta** voltam como resultado com `isError: true`, nunca como
-  erro de protocolo: o modelo precisa **ver** a mensagem para se corrigir.
+  erro de protocolo: o modelo precisa **ver** a mensagem para se corrigir. O
+  resultado **não traz `structuredContent`**: o SDK oficial valida esse campo
+  contra o `outputSchema` até em erro, e um objeto de erro ali viraria "Structured
+  content does not match the tool's output schema" no lugar da mensagem. O código
+  estável, a dica e os detalhes vão em `_meta["opt-time/error"]`
+  (`{ code, message, hint, details }`), além do texto de sempre.
 
 Teste rápido:
 
@@ -288,7 +293,8 @@ Entra: a leitura do Graph usa o token que o servidor já guarda
   8601 com offset (`2026-10-07T14:00:00-03:00`).
 - **`outputSchema`.** Publicado em `tools/list` para `whoami`,
   `get_today_summary`, `suggest_daily_entries`, `log_time` e as três ferramentas
-  novas. `structuredContent` obedece ao schema; erros (`isError: true`) não.
+  novas. `structuredContent` obedece ao schema; erros (`isError: true`) não têm
+  `structuredContent` e levam o código em `_meta["opt-time/error"]`.
   `scripts/verify-assistant-gateway.ts` e a fase 11 do `verify:mcp` validam dados
   contra eles (`src/lib/mcp/json-schema.ts`).
 - **Entradas compatíveis com qualquer LLM.** Objetos rasos, `enum` para listas
@@ -300,7 +306,14 @@ Entra: a leitura do Graph usa o token que o servidor já guarda
 - **Privacidade.** Assunto, participantes e corpo de evento não entram em log de
   aplicação — só contagens e ids.
 - **Cache.** A agenda é guardada 60 s por usuário + intervalo + opções, em
-  memória. Com várias instâncias é só economia, nunca inconsistência.
+  memória. Com várias instâncias é só economia, nunca inconsistência. Registrar,
+  editar ou excluir um lançamento, parar um timer e aplicar sugestões limpam o
+  cache do próprio usuário, para `loggedMinutes` não ficar defasado.
+- **Limite de leitura da agenda.** Cada leitura traz no máximo 300 eventos (500
+  com mais de 3 dias). Ao bater no limite a resposta ganha um aviso em
+  `warnings`; peça menos dias para ver todos. Eventos fora do intervalo pedido
+  (um evento de dia inteiro do dia vizinho, que o Graph devolve por filtrar em
+  UTC) são descartados.
 
 ### `apply_suggestions`: como a atomicidade e a idempotência funcionam
 
@@ -330,9 +343,13 @@ cada lançamento ao token que o criou.
   Microsoft para um token sem esse escopo: um token "Registrar horas" continua
   recebendo só commits, work items e hábito, e a resposta avisa em `warnings`.
 - **`isWorkday` / `targetMinutes`** vêm de uma única fonte que o OptTime já tinha:
-  o expediente e a resposta automática (ausência) configurados no Outlook. Sem
-  Microsoft, caem para "segunda a sexta, na capacidade semanal". Não há cadastro
-  de feriados.
+  o expediente e a resposta automática configurados no Outlook. Só uma resposta
+  automática **agendada** que cobre o dia conta como ausência; uma resposta
+  "sempre ligada" (ou agendada sem início nem fim) é ignorada e vira um aviso em
+  `warnings`, senão quem a deixa ligada nunca teria dia útil. `targetMinutes` é a
+  capacidade semanal já ajustada ao expediente do Outlook e vale 0 em dia não
+  útil. Sem Microsoft, caem para "segunda a sexta, na capacidade semanal". Não há
+  cadastro de feriados.
 - **`suggestedProject`** usa `matchProjectBySubject`, o casamento do "Preencher
   meu dia". O mapa "agenda → projeto" das preferências de tempo vive no
   `localStorage` do navegador (`agendaProjectMap`) e, por isso, não é visível ao
@@ -340,7 +357,13 @@ cada lançamento ao token que o criou.
 - **`source: "document"`** existe além das cinco origens da especificação: o
   motor também propõe um bloco a partir de arquivos do Microsoft 365 quando o
   consentimento de documentos foi dado. `pull_request` e `teams_attendance`
-  aparecem como `commits` e `calendar`.
+  aparecem como `commits` e `calendar`. `source` é uma lista aberta; clientes
+  devem tratar um valor novo como desconhecido, não como erro.
+- **Contrato de `suggest_daily_entries` mudou na v1.11.0.**
+  `sources.outlookAvailable` virou `sources.outlook`,
+  `sources.azureDevOpsAvailable` virou `sources.azureDevOps` e `evidence` deixou
+  de ser um objeto (`commitCount`, `repositories`…) e passou a ser um texto.
+  `reasons` foi mantido.
 - **Estado `Cancelad`.** É o nome literal do estado no processo da organização
   (categoria *Removed*, em 44 tipos de work item) — não é erro de digitação, e
   `Cancelado` faria o WIQL falhar. As consultas o excluem como estava.

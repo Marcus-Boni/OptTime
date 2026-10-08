@@ -1,7 +1,7 @@
-import { and, eq, gte, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
-import { db } from "@/lib/db";
-import { apiIdempotencyKey, timeEntry } from "@/lib/db/schema";
+import type { db } from "@/lib/db";
+import { timeEntry } from "@/lib/db/schema";
 import {
   type ApplyPlanItem,
   applyDayPlanEntries,
@@ -17,11 +17,8 @@ import {
 import type { DayPlan, DayPlanItem } from "@/types/reconstruct";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
-import {
-  hashIdempotencyInput,
-  runIdempotentInTransaction,
-} from "../idempotency";
-import { clearAgendaCache } from "./agenda";
+import { peekIdempotency, runIdempotentInTransaction } from "../idempotency";
+import { clearAgendaCache } from "./agenda-cache";
 import { resolveProject } from "./projects";
 import { defaultSuggestionsDeps, loadDayPlan } from "./suggestions";
 
@@ -146,38 +143,13 @@ const defaultApplyDeps: ApplyDeps = {
     const found = await resolveProject(principal, reference);
     return { id: found.id, name: found.name, billable: found.billable };
   },
-  peek: async (principal, key, input) => {
-    const [row] = await db
-      .select({
-        requestHash: apiIdempotencyKey.requestHash,
-        response: apiIdempotencyKey.response,
-        expiresAt: apiIdempotencyKey.expiresAt,
-      })
-      .from(apiIdempotencyKey)
-      .where(
-        and(
-          eq(apiIdempotencyKey.userId, principal.userId),
-          eq(apiIdempotencyKey.scope, APPLY_SCOPE),
-          eq(apiIdempotencyKey.key, key),
-          gte(apiIdempotencyKey.expiresAt, new Date()),
-        ),
-      )
-      .limit(1);
-
-    if (!row) return null;
-
-    if (row.requestHash !== hashIdempotencyInput(input)) {
-      throw new AgentError(
-        "IDEMPOTENCY_CONFLICT",
-        "Esta idempotencyKey já foi usada com uma entrada diferente.",
-        {
-          hint: "Gere um UUID novo para uma operação nova; reutilize a chave só ao repetir exatamente a mesma chamada.",
-        },
-      );
-    }
-
-    return JSON.parse(row.response) as StoredOutcome;
-  },
+  peek: (principal, key, input) =>
+    peekIdempotency<StoredOutcome>({
+      userId: principal.userId,
+      scope: APPLY_SCOPE,
+      key,
+      input,
+    }),
   commit: (principal, request) =>
     runIdempotentInTransaction<StoredOutcome>({
       userId: principal.userId,
@@ -238,6 +210,32 @@ function describeInvalid(error: {
 }
 
 /**
+ * Adds the item to an error raised while resolving its project.
+ *
+ * `resolveProject` knows nothing about which suggestion it was resolving for, so
+ * "project not found", "ambiguous" or "no access" would reach the assistant
+ * without saying which of up to twelve items to fix. The original code, hint and
+ * details (e.g. the ambiguous candidates) are kept.
+ */
+function withItemContext(
+  error: unknown,
+  index: number,
+  suggestionId: string,
+): unknown {
+  if (!(error instanceof AgentError)) return error;
+
+  const original =
+    typeof error.details === "object" && error.details !== null
+      ? (error.details as Record<string, unknown>)
+      : {};
+
+  return new AgentError(error.code, `Item ${index + 1}: ${error.message}`, {
+    details: { ...original, itemIndex: index, suggestionId },
+    hint: error.hint ?? undefined,
+  });
+}
+
+/**
  * Turns the reviewed items into rows to write, validating every edit.
  *
  * @throws {AgentError} naming the offending item — nothing is written on error.
@@ -269,7 +267,12 @@ async function buildRows(
     let billable = suggestion.billable;
 
     if (edit.projectId) {
-      const chosen = await deps.resolveProject(principal, edit.projectId);
+      let chosen: Awaited<ReturnType<ApplyDeps["resolveProject"]>>;
+      try {
+        chosen = await deps.resolveProject(principal, edit.projectId);
+      } catch (error: unknown) {
+        throw withItemContext(error, index, edit.suggestionId);
+      }
       if (chosen.id !== suggestion.projectId) {
         editedFields.push("projectId");
         // A project the engine did not pick brings its own billing default.
@@ -367,13 +370,32 @@ export async function applySuggestions(
 
   const input = parsed.data;
 
+  const settled = async (): Promise<ApplySuggestionsResult | null> => {
+    const stored = await deps.peek(principal, input.idempotencyKey, input);
+    return stored ? { ...stored, replayed: true } : null;
+  };
+
   // The ledger is consulted first: once a key has been applied, the suggestions
   // it referred to are gone from the plan, so rebuilding it would only fail.
-  const previous = await deps.peek(principal, input.idempotencyKey, input);
-  if (previous) return { ...previous, replayed: true };
+  const previous = await settled();
+  if (previous) return previous;
 
-  const plan = await deps.loadPlan(principal, input.date);
-  const { items, rejected } = await buildRows(principal, plan, input, deps);
+  let plan: DayPlan;
+  let rows: { items: ApplyPlanItem[]; rejected: RejectedPlanItem[] };
+  try {
+    plan = await deps.loadPlan(principal, input.date);
+    rows = await buildRows(principal, plan, input, deps);
+  } catch (error: unknown) {
+    // A retry racing the original call can pass the first look at the ledger
+    // before the original commits. By the time the plan is rebuilt the
+    // suggestions are already entries and gone from it, so the failure here is
+    // a symptom of the original having won — the answer is its stored result.
+    const raced = await settled();
+    if (raced) return raced;
+    throw error;
+  }
+
+  const { items, rejected } = rows;
 
   try {
     const { result, replayed } = await deps.commit(principal, {

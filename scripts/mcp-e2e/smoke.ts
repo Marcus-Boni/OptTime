@@ -67,12 +67,22 @@ async function rpc(
 async function callTool(
   name: string,
   args: Record<string, unknown> = {},
-): Promise<{ isError: boolean; text: string; data: Record<string, unknown> }> {
+): Promise<{
+  isError: boolean;
+  text: string;
+  data: Record<string, unknown>;
+  errorCode: string | null;
+}> {
   const { body } = await rpc("tools/call", { name, arguments: args });
+  // A failed call carries its code in `_meta`, never in `structuredContent`.
+  const meta = body.result?._meta as
+    | Record<string, { code?: string } | undefined>
+    | undefined;
   return {
     isError: body.result?.isError === true,
     text: body.result?.content?.[0]?.text ?? "",
     data: (body.result?.structuredContent ?? {}) as Record<string, unknown>,
+    errorCode: meta?.["opt-time/error"]?.code ?? null,
   };
 }
 
@@ -271,28 +281,23 @@ async function main(): Promise<void> {
   if (scopes.includes("calendar:read")) {
     check(
       "agenda do Outlook",
-      !agenda.isError ||
-        (agenda.data.error as { code?: string } | undefined)?.code ===
-          "MICROSOFT_NOT_CONNECTED",
-      (agenda.data.error as { code?: string } | undefined)?.code ===
-        "MICROSOFT_NOT_CONNECTED"
+      !agenda.isError || agenda.errorCode === "MICROSOFT_NOT_CONNECTED",
+      agenda.errorCode === "MICROSOFT_NOT_CONNECTED"
         ? "sem conexão Microsoft válida neste ambiente — a agenda não pôde ser lida"
         : agenda.text.split("\n")[0],
     );
   } else {
     check(
       "agenda exige o escopo calendar:read",
-      (agenda.data.error as { code?: string } | undefined)?.code ===
-        "INSUFFICIENT_SCOPE",
+      agenda.errorCode === "INSUFFICIENT_SCOPE" &&
+        Object.keys(agenda.data).length === 0,
     );
   }
 
   const myItems = await callTool("opt_time_list_my_work_items", { top: 5 });
   check(
     "work items atribuídos",
-    !myItems.isError ||
-      (myItems.data.error as { code?: string } | undefined)?.code ===
-        "AZURE_DEVOPS_NOT_CONFIGURED",
+    !myItems.isError || myItems.errorCode === "AZURE_DEVOPS_NOT_CONFIGURED",
     myItems.text.split("\n")[0],
   );
 

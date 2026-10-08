@@ -40,6 +40,7 @@ import {
 import { buildCommitSessions } from "@/lib/time-assistant/commit-sessions";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import type { NormalizedCommitActivity } from "@/lib/time-assistant/engine";
+import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/limits";
 import {
   buildDeterministicDayPlan,
   type CalendarEventInput,
@@ -69,8 +70,6 @@ import type { DayPlan } from "@/types/reconstruct";
 const AZURE_CONCURRENCY = 4;
 /** Days of history mined for the weekday-pattern layer. */
 const PATTERN_LOOKBACK_DAYS = 60;
-/** Reconstruction and manual entry share the same 30-day window. */
-export const MAX_BACKFILL_DAYS = 30;
 const WORKING_DAYS_PER_WEEK = 5;
 const MAX_ENRICHED_MEETINGS = 3;
 

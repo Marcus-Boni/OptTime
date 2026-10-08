@@ -88,6 +88,15 @@ export interface GetMyWorkItemsOptions {
 const CANCELLED_STATES = ["Removed", "Cancelad"] as const;
 const COMPLETED_STATES = ["Closed", "Done", "Completed"] as const;
 
+/**
+ * A string literal for WIQL: the value between single quotes, with any quote in
+ * it doubled. A project called `Cliente's Portal` otherwise ends the literal
+ * early and the whole query is rejected.
+ */
+function wiqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function wiqlList(states: readonly string[]): string {
   return states.map((state) => `'${state}'`).join(", ");
 }
@@ -141,9 +150,9 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     let wiql: string;
     if (isIdSearch) {
       const id = query.replace("#", "").trim();
-      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.Id] = ${id}`;
+      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${wiqlString(projectContext.name)} AND [System.Id] = ${id}`;
     } else {
-      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.Title] CONTAINS '${sanitizedQuery}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
+      wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${wiqlString(projectContext.name)} AND [System.Title] CONTAINS '${sanitizedQuery}' AND [System.State] <> 'Removed' ORDER BY [System.ChangedDate] DESC`;
     }
 
     const wiqlResult = await fetchApi<{
@@ -293,7 +302,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     top = 50,
   ): Promise<WorkItemSearchResult[]> {
     const projectContext = await resolveProjectContext(projectName);
-    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' ORDER BY [System.ChangedDate] DESC`;
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${wiqlString(projectContext.name)} AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' ORDER BY [System.ChangedDate] DESC`;
 
     const wiqlResult = await fetchApi<{
       workItems: Array<{ id: number }>;
@@ -334,7 +343,7 @@ export function createAzureDevOpsClient(organizationUrl: string, pat: string) {
     const projectContext = await resolveProjectContext(projectRef);
     // 'Cancelad' is the organisation's literal state name, not a typo — see
     // CANCELLED_STATES above.
-    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = '${projectContext.name}' AND [System.AssignedTo] = @Me AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' AND [System.State] <> 'Done' AND [System.State] <> 'Completed' AND [System.State] <> 'Cancelad' ORDER BY [System.ChangedDate] DESC`;
+    const wiql = `SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = ${wiqlString(projectContext.name)} AND [System.AssignedTo] = @Me AND [System.State] <> 'Removed' AND [System.State] <> 'Closed' AND [System.State] <> 'Done' AND [System.State] <> 'Completed' AND [System.State] <> 'Cancelad' ORDER BY [System.ChangedDate] DESC`;
 
     const wiqlResult = await fetchApi<{
       workItems: Array<{ id: number }>;

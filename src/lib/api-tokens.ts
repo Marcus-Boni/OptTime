@@ -197,8 +197,10 @@ function normalizeRole(role: string): "admin" | "manager" | "member" {
  * Resolves a raw bearer token into a principal.
  *
  * Falls back to the legacy `user.extension_token` column so tokens minted for
- * the Azure DevOps extension keep working against the agent API — those grant
- * the full scope set, matching the access they already had.
+ * the Azure DevOps extension keep working against the agent API. They receive
+ * `BASE_TOKEN_SCOPES`, the three scopes that existed when those tokens were
+ * minted, so the access they already had is kept and nothing added since — the
+ * agenda scope in particular — reaches them.
  */
 export async function authenticateApiToken(
   rawToken: string | null | undefined,

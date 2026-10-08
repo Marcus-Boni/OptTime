@@ -120,6 +120,8 @@ export async function runAssistantGatewayPhase(
     atomic: shiftDay(today, -2),
     web: shiftDay(today, -3),
     log: shiftDay(today, -4),
+    race2: shiftDay(today, -5),
+    race3: shiftDay(today, -6),
   };
   for (const day of Object.values(days)) {
     for (const weeksBack of [7, 14]) {
@@ -223,7 +225,8 @@ export async function runAssistantGatewayPhase(
   check(
     "agenda sem calendar:read → INSUFFICIENT_SCOPE",
     noScope.errorCode === "INSUFFICIENT_SCOPE" &&
-      noScope.text.includes("calendar:read"),
+      noScope.text.includes("calendar:read") &&
+      String(noScope.errorMeta?.hint).includes("calendar:read"),
     noScope.errorCode ?? "",
   );
 
@@ -250,6 +253,27 @@ export async function runAssistantGatewayPhase(
     noAzure.errorCode === "AZURE_DEVOPS_NOT_CONFIGURED" &&
       noAzure.text.includes("Integrações"),
     noAzure.errorCode ?? "",
+  );
+
+  // The SDK validates structuredContent against the outputSchema even on an
+  // error, so a failure must not carry one: the code rides in _meta.
+  const failures = [noScope, noMicrosoft, noAzure, badDays];
+  check(
+    "erros de ferramenta não trazem structuredContent, só _meta",
+    failures.every(
+      (call) =>
+        call.isError &&
+        !call.hasStructuredContent &&
+        Boolean(call.errorMeta?.code) &&
+        Boolean(call.errorMeta?.message),
+    ),
+    failures.map((call) => call.errorCode).join(", "),
+  );
+  check(
+    "a dica do erro vai no texto e em _meta",
+    Boolean(noMicrosoft.errorMeta?.hint) &&
+      noMicrosoft.text.includes(String(noMicrosoft.errorMeta?.hint)) &&
+      Boolean(noAzure.errorMeta?.hint),
   );
 
   const restNoScope = await rest(withoutCalendar.token, "/agenda");
@@ -415,36 +439,51 @@ export async function runAssistantGatewayPhase(
       `${feedback.length} linha(s), ação ${feedback[0]?.action}`,
     );
 
-    // Concurrency: two simultaneous calls with the same new key.
-    const raceSuggest = await tool(
-      gateway.token,
-      "opt_time_suggest_daily_entries",
-      { date: days.race },
-    );
-    const raceItem = suggestions(raceSuggest.data).find(
-      (item) => item.source === "pattern",
-    );
-    if (raceItem) {
+    // Concurrency: simultaneous callers with the same new key. A retry that
+    // reaches the plan after the original committed must be answered with the
+    // result of the original, not with "the day changed". Several rounds, since
+    // the race is a matter of timing.
+    for (const raceDay of [days.race, days.race2, days.race3]) {
+      const raceSuggest = await tool(
+        gateway.token,
+        "opt_time_suggest_daily_entries",
+        { date: raceDay },
+      );
+      const raceItem = suggestions(raceSuggest.data).find(
+        (item) => item.source === "pattern",
+      );
+      if (!raceItem) {
+        warn(`sem sugestão de padrão em ${raceDay}`);
+        continue;
+      }
+
       const raceRequest = {
-        date: days.race,
+        date: raceDay,
         idempotencyKey: crypto.randomUUID(),
         items: [{ suggestionId: raceItem.id, durationMinutes: 120 }],
       };
-      const [a, b] = await Promise.all([
+      const calls = await Promise.all([
+        tool(gateway.token, "opt_time_apply_suggestions", raceRequest),
         tool(gateway.token, "opt_time_apply_suggestions", raceRequest),
         tool(gateway.token, "opt_time_apply_suggestions", raceRequest),
       ]);
-      const replays = [a, b].filter((call) => call.data.replayed === true);
-      check(
-        "duas chamadas simultâneas com a mesma chave gravam uma vez",
-        !a.isError &&
-          !b.isError &&
-          replays.length === 1 &&
-          (await countEntries(gateway.id, days.race)) === 1,
-        `${await countEntries(gateway.id, days.race)} lançamento(s); replays=${replays.length}`,
+      const failed = calls.filter((call) => call.isError);
+      const replays = calls.filter((call) => call.data.replayed === true);
+      const created = new Set(
+        calls.flatMap((call) => (call.data.createdEntryIds ?? []) as string[]),
       );
-    } else {
-      warn("sem sugestão de padrão no dia da corrida");
+      const stored = await countEntries(gateway.id, raceDay);
+
+      check(
+        `três chamadas simultâneas com a mesma chave gravam uma vez (${raceDay})`,
+        failed.length === 0 &&
+          replays.length === 2 &&
+          created.size === 1 &&
+          stored === 1,
+        failed.length > 0
+          ? `falhas: ${failed.map((call) => call.errorCode).join(", ")}`
+          : `${stored} lançamento(s); replays=${replays.length}`,
+      );
     }
 
     // Atomicity: an invalid item must leave nothing behind.
@@ -471,6 +510,33 @@ export async function runAssistantGatewayPhase(
           broken.text.includes("Item 2") &&
           (await countEntries(gateway.id, days.atomic)) === 0,
         `${broken.errorCode} · ${await countEntries(gateway.id, days.atomic)} lançamento(s)`,
+      );
+
+      const unknownProject = await tool(
+        gateway.token,
+        "opt_time_apply_suggestions",
+        {
+          date: days.atomic,
+          idempotencyKey: crypto.randomUUID(),
+          items: [
+            {
+              suggestionId: atomicItem.id,
+              projectId: "projeto-que-nao-existe-e2e",
+            },
+          ],
+        },
+      );
+      const projectDetails = unknownProject.errorMeta?.details as
+        | { itemIndex?: number; suggestionId?: string }
+        | undefined;
+      check(
+        "projeto desconhecido: o erro diz qual item",
+        unknownProject.errorCode === "NOT_FOUND" &&
+          unknownProject.text.includes("Item 1") &&
+          projectDetails?.itemIndex === 0 &&
+          projectDetails?.suggestionId === atomicItem.id &&
+          (await countEntries(gateway.id, days.atomic)) === 0,
+        unknownProject.errorCode ?? "",
       );
 
       const tooLong = await tool(gateway.token, "opt_time_apply_suggestions", {
@@ -543,6 +609,34 @@ export async function runAssistantGatewayPhase(
     logConflict.errorCode ?? "",
   );
 
+  // The idempotent path used to hold a transaction connection while it asked
+  // the pool for a second one, so a burst larger than the pool deadlocked into
+  // the 5 s connection timeout. More simultaneous calls than the pool has
+  // connections must all complete.
+  const poolBurst = 25;
+  const beforeBurst = await countEntries(gateway.id, days.log);
+  const burstStartedAt = Date.now();
+  const burst = await Promise.all(
+    Array.from({ length: poolBurst }, (_, index) =>
+      tool(gateway.token, "opt_time_log_time", {
+        projectId: gatewayProject.code,
+        durationMinutes: 5 + index,
+        description: `Rajada idempotente ${index}`,
+        date: days.log,
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    ),
+  );
+  const burstFailures = burst.filter((call) => call.isError);
+  check(
+    `${poolBurst} log_time idempotentes simultâneos não esgotam o pool`,
+    burstFailures.length === 0 &&
+      (await countEntries(gateway.id, days.log)) === beforeBurst + poolBurst,
+    burstFailures.length > 0
+      ? `falhas: ${burstFailures.map((call) => call.errorCode ?? call.text.slice(0, 60)).join(" | ")}`
+      : `${poolBurst} gravados em ${Date.now() - burstStartedAt} ms`,
+  );
+
   const restKey = crypto.randomUUID();
   const restBody = JSON.stringify({
     projectId: gatewayProject.code,
@@ -551,6 +645,7 @@ export async function runAssistantGatewayPhase(
     date: days.log,
     idempotencyKey: restKey,
   });
+  const beforeRest = await countEntries(gateway.id, days.log);
   const restFirst = await rest(gateway.token, "/time-entries", {
     method: "POST",
     body: restBody,
@@ -564,8 +659,8 @@ export async function runAssistantGatewayPhase(
     restFirst.status === 201 &&
       restSecond.status === 201 &&
       restSecond.body.replayed === true &&
-      (await countEntries(gateway.id, days.log)) === 2,
-    `${await countEntries(gateway.id, days.log)} lançamento(s) no dia`,
+      (await countEntries(gateway.id, days.log)) === beforeRest + 1,
+    `${(await countEntries(gateway.id, days.log)) - beforeRest} lançamento(s) novo(s)`,
   );
 
   // ── The web routes still work after the shared-service refactor ───────

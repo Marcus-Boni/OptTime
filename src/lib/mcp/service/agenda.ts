@@ -4,6 +4,7 @@ import { fetchTeamCallRecords } from "@/lib/collaboration/call-records";
 import { db } from "@/lib/db";
 import { timeEntry } from "@/lib/db/schema";
 import {
+  CALENDAR_PAGE_SIZE,
   fetchMicrosoftObjectId,
   fetchOutlookEvents,
   MicrosoftConnectionError,
@@ -19,9 +20,15 @@ import type { TeamCallSignal } from "@/types/collaboration";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
 import {
+  agendaCacheKey,
+  clearAgendaCache,
+  readAgendaCache,
+  writeAgendaCache,
+} from "./agenda-cache";
+import {
   type AgendaEntryRow,
-  type AgendaEvent,
   type AgendaProjectCandidate,
+  type AgendaResult,
   mapAgendaEvents,
 } from "./agenda-mapping";
 import {
@@ -38,9 +45,8 @@ import { getVisibleProjects } from "./projects";
  * Microsoft permission of its own.
  */
 
-/** How long a fetched agenda is reused. The assistant polls every few minutes. */
-const AGENDA_CACHE_TTL_MS = 60_000;
-const AGENDA_CACHE_MAX_ENTRIES = 200;
+export { clearAgendaCache };
+export type { AgendaResult };
 
 export interface GetMyAgendaInput {
   /** First day, `YYYY-MM-DD` in the app timezone. */
@@ -49,14 +55,6 @@ export interface GetMyAgendaInput {
   days: number;
   includeDeclined: boolean;
   includeDescription: boolean;
-}
-
-export interface AgendaResult {
-  timezone: string;
-  range: { start: string; end: string };
-  sources: { outlook: boolean };
-  warnings: string[];
-  events: AgendaEvent[];
 }
 
 /** Collaborators the agenda needs, injectable so the logic runs offline. */
@@ -123,32 +121,9 @@ const defaultDeps: AgendaDeps = {
   now: () => Date.now(),
 };
 
-interface CachedAgenda {
-  expiresAt: number;
-  value: AgendaResult;
-}
-
-const agendaCache = new Map<string, CachedAgenda>();
-
-/** Drops cached agendas — for tests, and for callers that just changed an entry. */
-export function clearAgendaCache(userId?: string): void {
-  if (!userId) {
-    agendaCache.clear();
-    return;
-  }
-  for (const key of agendaCache.keys()) {
-    if (key.startsWith(`${userId}|`)) agendaCache.delete(key);
-  }
-}
-
-function cacheKey(userId: string, input: GetMyAgendaInput): string {
-  return [
-    userId,
-    input.date,
-    input.days,
-    input.includeDeclined ? 1 : 0,
-    input.includeDescription ? 1 : 0,
-  ].join("|");
+/** Pages read per request; with the page size this is the most events returned. */
+function pagesFor(days: number): number {
+  return days > 3 ? 5 : 3;
 }
 
 /**
@@ -162,9 +137,14 @@ export async function getMyAgenda(
   input: GetMyAgendaInput,
   deps: AgendaDeps = defaultDeps,
 ): Promise<AgendaResult> {
-  const key = cacheKey(principal.userId, input);
-  const cached = agendaCache.get(key);
-  if (cached && cached.expiresAt > deps.now()) return cached.value;
+  const key = agendaCacheKey(principal.userId, [
+    input.date,
+    input.days,
+    input.includeDeclined,
+    input.includeDescription,
+  ]);
+  const cached = readAgendaCache(key, deps.now());
+  if (cached) return cached;
 
   const timeZone = getAppTimeZone();
   const lastDate = shiftDay(input.date, input.days - 1);
@@ -176,6 +156,9 @@ export async function getMyAgenda(
 
   const accessToken = await deps.getToken(principal);
 
+  const maxPages = pagesFor(input.days);
+  const warnings: string[] = [];
+
   let events: OutlookEvent[];
   try {
     events = await deps.fetchEvents(
@@ -184,13 +167,18 @@ export async function getMyAgenda(
       rangeEnd.toISOString(),
       {
         includeExcluded: true,
-        maxPages: input.days > 3 ? 5 : 3,
+        maxPages,
         extraSelect: [
           "iCalUId",
           "location",
           ...(input.includeDescription ? ["body"] : []),
         ],
         bodyAsText: input.includeDescription,
+        onTruncated: () => {
+          warnings.push(
+            `A agenda tem mais de ${maxPages * CALENDAR_PAGE_SIZE} eventos neste intervalo; os últimos não foram carregados. Consulte menos dias para ver todos.`,
+          );
+        },
       },
     );
   } catch (error: unknown) {
@@ -231,6 +219,7 @@ export async function getMyAgenda(
     includeDeclined: input.includeDeclined,
     includeDescription: input.includeDescription,
     calls,
+    window: { start: rangeStart, end: rangeEnd },
   });
 
   // Counts only: subjects, attendees and bodies stay out of the logs.
@@ -249,15 +238,11 @@ export async function getMyAgenda(
       end: formatInstantWithOffset(rangeEnd, timeZone),
     },
     sources: { outlook: true },
-    warnings: [],
+    warnings,
     events: mapped,
   };
 
-  if (agendaCache.size >= AGENDA_CACHE_MAX_ENTRIES) {
-    const oldest = agendaCache.keys().next().value;
-    if (oldest !== undefined) agendaCache.delete(oldest);
-  }
-  agendaCache.set(key, { expiresAt: deps.now() + AGENDA_CACHE_TTL_MS, value });
+  writeAgendaCache(key, value, deps.now());
 
   return value;
 }
