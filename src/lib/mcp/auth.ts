@@ -44,6 +44,7 @@ const SCOPE_LABELS: Record<ApiTokenScope, string> = {
   "time:read": "leitura de horas",
   "time:write": "registro de horas",
   "timesheets:submit": "submissão de timesheet",
+  "calendar:read": "leitura da agenda",
 };
 
 export type AgentPrincipal = ApiTokenPrincipal;

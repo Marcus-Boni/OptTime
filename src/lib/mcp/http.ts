@@ -116,3 +116,9 @@ export async function readJsonBody(
 export function searchParamsOf(req: Request): URLSearchParams {
   return new URL(req.url).searchParams;
 }
+
+/** Reads a boolean query parameter: `true` and `1` are true, anything else false. */
+export function booleanParam(params: URLSearchParams, name: string): boolean {
+  const value = params.get(name)?.trim().toLowerCase();
+  return value === "true" || value === "1";
+}

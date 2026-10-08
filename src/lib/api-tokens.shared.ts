@@ -14,9 +14,21 @@ export const API_TOKEN_SCOPES = [
   "time:read",
   "time:write",
   "timesheets:submit",
+  "calendar:read",
 ] as const;
 
 export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
+
+/**
+ * Scopes held by principals that predate `calendar:read` — the legacy
+ * extension token and the Teams bot. The agenda is personal data, so a scope
+ * added later must never reach an old credential just because the list grew.
+ */
+export const BASE_TOKEN_SCOPES: readonly ApiTokenScope[] = [
+  "time:read",
+  "time:write",
+  "timesheets:submit",
+];
 
 export const API_TOKEN_CLIENTS = [
   "mcp",
@@ -47,6 +59,12 @@ export const API_TOKEN_PRESETS = {
     description:
       "Tudo acima e ainda submete o timesheet da semana para aprovação.",
     scopes: ["time:read", "time:write", "timesheets:submit"] as ApiTokenScope[],
+  },
+  assistant: {
+    label: "Assistente pessoal (ISPer)",
+    description:
+      "Lê horas e a sua agenda do Outlook, controla o timer e lança horas. Não submete a semana.",
+    scopes: ["time:read", "time:write", "calendar:read"] as ApiTokenScope[],
   },
 } as const;
 

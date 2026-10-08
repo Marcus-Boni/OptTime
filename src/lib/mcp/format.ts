@@ -100,6 +100,10 @@ const RELATIVE_DATES: Record<string, number> = {
   yesterday: -1,
   anteontem: -2,
   "dia anterior": -1,
+  // Only meaningful for lookups: entries reject future dates on their own.
+  amanhã: 1,
+  amanha: 1,
+  tomorrow: 1,
 };
 
 /**

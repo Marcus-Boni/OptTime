@@ -1,3 +1,10 @@
+import {
+  AGENDA_OUTPUT_SCHEMA,
+  APPLY_SUGGESTIONS_OUTPUT_SCHEMA,
+  MY_WORK_ITEMS_OUTPUT_SCHEMA,
+  SUGGEST_OUTPUT_SCHEMA,
+} from "@/lib/mcp/output-schemas";
+
 const API_BASE = "/api/v1";
 
 // ─── Reusable schemas ────────────────────────────────────────────────────────
@@ -201,6 +208,67 @@ const rateLimitedResponse = {
   content: { "application/json": { schema: errorSchema } },
 };
 
+// ─── Personal assistant API (/me/*, personal access token) ───────────────────
+
+const agentErrorSchema = {
+  type: "object",
+  required: ["error"],
+  properties: {
+    error: {
+      type: "object",
+      required: ["code", "message"],
+      properties: {
+        code: {
+          type: "string",
+          example: "MICROSOFT_NOT_CONNECTED",
+          description:
+            "UNAUTHORIZED, FORBIDDEN, INSUFFICIENT_SCOPE, VALIDATION_ERROR, NOT_FOUND, CONFLICT, PERIOD_LOCKED, MICROSOFT_NOT_CONNECTED, AZURE_DEVOPS_NOT_CONFIGURED, IDEMPOTENCY_CONFLICT, RATE_LIMITED, UPSTREAM_ERROR, INTERNAL_ERROR.",
+        },
+        message: { type: "string" },
+        details: { nullable: true },
+        hint: {
+          type: "string",
+          nullable: true,
+          description: "Próximo passo sugerido ao agente.",
+        },
+      },
+    },
+  },
+};
+
+const agentResponse = (description: string, schema: object) => ({
+  description,
+  content: { "application/json": { schema } },
+});
+
+const agentErrors = {
+  400: agentResponse("Entrada inválida.", agentErrorSchema),
+  401: agentResponse(
+    "Token ausente, inválido, revogado ou expirado.",
+    agentErrorSchema,
+  ),
+  403: agentResponse("Token sem o escopo necessário.", agentErrorSchema),
+  409: agentResponse(
+    "Conflito: semana travada ou `idempotencyKey` reutilizada com outra entrada.",
+    agentErrorSchema,
+  ),
+  412: agentResponse(
+    "Integração ausente: `MICROSOFT_NOT_CONNECTED` ou `AZURE_DEVOPS_NOT_CONFIGURED`.",
+    agentErrorSchema,
+  ),
+  429: agentResponse("Acima de 240 requisições por minuto.", agentErrorSchema),
+};
+
+const agentSecurity = [{ agentToken: [] }];
+
+const dateParameter = {
+  name: "date",
+  in: "query",
+  schema: { type: "string" },
+  description:
+    "`YYYY-MM-DD`, `hoje`, `amanhã` ou `ontem`, no fuso America/Sao_Paulo. Padrão: hoje.",
+};
+
 // ─── Full spec object ────────────────────────────────────────────────────────
 
 export const openapiSpec = {
@@ -332,7 +400,13 @@ A API formata respostas de erro de maneira uniforme:
 }
 \`\`\`
 
-Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (404), \`VALIDATION_ERROR\` (400), \`RATE_LIMITED\` (429), \`INTERNAL_ERROR\` (500).`,
+Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (404), \`VALIDATION_ERROR\` (400), \`RATE_LIMITED\` (429), \`INTERNAL_ERROR\` (500).
+
+---
+
+### 🤖 7. API pessoal do assistente (\`/me/*\`)
+
+As rotas da tag **Assistente pessoal** não usam o token de máquina: elas pertencem a uma pessoa e autenticam com um **token pessoal** (\`opt_tok_…\`, esquema \`agentToken\`), gerado em Configurações → Integrações → Agentes de IA com o preset *Assistente pessoal (ISPer)*. Cada rota lê ou escreve **somente** os dados do dono do token e é espelhada por uma ferramenta do servidor MCP (\`POST /api/mcp\`), que é a porta preferencial do assistente. O envelope de erro dessas rotas inclui \`hint\` e os códigos \`MICROSOFT_NOT_CONNECTED\`, \`AZURE_DEVOPS_NOT_CONFIGURED\` e \`IDEMPOTENCY_CONFLICT\`.`,
     contact: { name: "OptSolv Engineering", email: "dev@optsolv.com.br" },
   },
   servers: [{ url: API_BASE, description: "Ambiente atual" }],
@@ -346,9 +420,21 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
         description:
           "Token M2M do Entra ID (concessão client_credentials) ou Chave de Integração Padronizada (definida via variável de ambiente).",
       },
+      agentToken: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "opt_tok_…",
+        description:
+          "Token pessoal gerado em Configurações → Integrações → Agentes de IA. Para o assistente pessoal use o preset 'Assistente pessoal (ISPer)' (`time:read`, `time:write`, `calendar:read`). Vale apenas para as rotas `/me/*`.",
+      },
     },
     schemas: {
       Error: errorSchema,
+      AgentError: agentErrorSchema,
+      AgentAgenda: AGENDA_OUTPUT_SCHEMA,
+      AgentMyWorkItems: MY_WORK_ITEMS_OUTPUT_SCHEMA,
+      AgentSuggestions: SUGGEST_OUTPUT_SCHEMA,
+      AgentApplySuggestionsResult: APPLY_SUGGESTIONS_OUTPUT_SCHEMA,
       TimeEntryDTO: timeEntryDTOSchema,
       UserDTO: userDTOSchema,
       ProjectDTO: projectDTOSchema,
@@ -356,6 +442,154 @@ Códigos de erro: \`UNAUTHORIZED\` (401), \`FORBIDDEN\` (403), \`NOT_FOUND\` (40
     },
   },
   paths: {
+    "/me/agenda": {
+      get: {
+        operationId: "getMyAgenda",
+        summary: "Minha agenda do Outlook",
+        description:
+          "A agenda do Outlook **do dono do token**, de 1 a 7 dias. Eventos cancelados são omitidos; eventos de dia inteiro são mantidos. Datas e horas saem em ISO 8601 com o offset do fuso. Espelho da ferramenta MCP `opt_time_get_my_agenda`. Requer `calendar:read`. Cache de 60 s por usuário e intervalo.",
+        tags: ["Assistente pessoal"],
+        security: agentSecurity,
+        parameters: [
+          dateParameter,
+          {
+            name: "days",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 7, default: 1 },
+            description: "Quantos dias a partir de `date`.",
+          },
+          {
+            name: "includeDeclined",
+            in: "query",
+            schema: { type: "boolean", default: false },
+            description: "Inclui eventos recusados.",
+          },
+          {
+            name: "includeDescription",
+            in: "query",
+            schema: { type: "boolean", default: false },
+            description:
+              "Inclui a descrição em texto puro, cortada em 500 caracteres.",
+          },
+        ],
+        responses: {
+          200: agentResponse("Agenda do intervalo.", {
+            $ref: "#/components/schemas/AgentAgenda",
+          }),
+          ...agentErrors,
+        },
+      },
+    },
+    "/me/work-items/assigned": {
+      get: {
+        operationId: "listMyWorkItems",
+        summary: "Work items atribuídos a mim",
+        description:
+          "Work items do Azure DevOps atribuídos ao dono do token, do mais recentemente alterado para o mais antigo, com o projeto do OptTime ligado e os minutos já lançados. Espelho da ferramenta MCP `opt_time_list_my_work_items`. Requer `time:read`.",
+        tags: ["Assistente pessoal"],
+        security: agentSecurity,
+        parameters: [
+          {
+            name: "includeClosed",
+            in: "query",
+            schema: { type: "boolean", default: false },
+            description:
+              "Inclui itens fechados ou concluídos nos últimos 14 dias.",
+          },
+          {
+            name: "top",
+            in: "query",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 50 },
+            description: "Máximo de itens.",
+          },
+        ],
+        responses: {
+          200: agentResponse("Work items atribuídos.", {
+            $ref: "#/components/schemas/AgentMyWorkItems",
+          }),
+          ...agentErrors,
+        },
+      },
+    },
+    "/me/suggestions": {
+      get: {
+        operationId: "suggestDailyEntries",
+        summary: "Sugestões para preencher o dia",
+        description:
+          "O mesmo motor do 'Preencher meu dia' da web: reuniões, chamadas do Teams, sessões de commits e PRs, work items e o padrão da semana. Cada sugestão tem um `id` estável. Requer `time:read`.",
+        tags: ["Assistente pessoal"],
+        security: agentSecurity,
+        parameters: [dateParameter],
+        responses: {
+          200: agentResponse("Sugestões do dia.", {
+            $ref: "#/components/schemas/AgentSuggestions",
+          }),
+          ...agentErrors,
+        },
+      },
+    },
+    "/me/suggestions/apply": {
+      post: {
+        operationId: "applySuggestions",
+        summary: "Aplicar sugestões aprovadas",
+        description:
+          "Cria os lançamentos das sugestões aprovadas numa única transação: se um item falhar, nada é gravado e o erro nomeia o item. Repetir a chamada com a mesma `idempotencyKey` e a mesma entrada em até 24 h devolve o primeiro resultado (`replayed: true`) sem duplicar; a mesma chave com outra entrada devolve `IDEMPOTENCY_CONFLICT`. Espelho de `opt_time_apply_suggestions`. Requer `time:write`.",
+        tags: ["Assistente pessoal"],
+        security: agentSecurity,
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["date", "idempotencyKey", "items"],
+                properties: {
+                  date: { type: "string", example: "2026-10-07" },
+                  idempotencyKey: {
+                    type: "string",
+                    description: "UUID gerado pelo cliente para esta operação.",
+                    example: "3f2b8c1e-5d6a-4b7c-9e0f-1a2b3c4d5e6f",
+                  },
+                  items: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 12,
+                    items: {
+                      type: "object",
+                      required: ["suggestionId"],
+                      properties: {
+                        suggestionId: { type: "string" },
+                        projectId: {
+                          type: "string",
+                          description: "ID, código ou nome do projeto.",
+                        },
+                        durationMinutes: {
+                          type: "integer",
+                          minimum: 1,
+                          maximum: 1440,
+                        },
+                        description: { type: "string" },
+                        billable: { type: "boolean" },
+                      },
+                    },
+                  },
+                  rejectedSuggestionIds: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: agentResponse("Lançamentos criados (ou resultado repetido).", {
+            $ref: "#/components/schemas/AgentApplySuggestionsResult",
+          }),
+          ...agentErrors,
+        },
+      },
+    },
     "/time-entries": {
       get: {
         operationId: "listTimeEntries",

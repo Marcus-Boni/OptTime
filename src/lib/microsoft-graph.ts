@@ -58,6 +58,10 @@ export interface OutlookEvent {
   onlineMeeting?: { joinUrl?: string | null } | null;
   onlineMeetingProvider?: string | null;
   attendees?: OutlookAttendee[];
+  /** Only present when requested through `extraSelect`. */
+  iCalUId?: string;
+  location?: { displayName?: string } | null;
+  body?: { contentType?: string; content?: string } | null;
 }
 
 interface OutlookEventsResponse {
@@ -77,6 +81,14 @@ export interface FetchOutlookEventsOptions {
    * Tempo raises it because it reads a whole month in one request.
    */
   maxPages?: number;
+  /**
+   * Fields requested on top of the default projection. The agent agenda asks
+   * for `iCalUId`, `location` and (opt-in) `body`; every other caller keeps
+   * the lean payload it always had.
+   */
+  extraSelect?: string[];
+  /** Ask Graph for the event body as plain text instead of HTML. */
+  bodyAsText?: boolean;
 }
 
 export interface MicrosoftAccountSnapshot {
@@ -249,7 +261,10 @@ export async function fetchOutlookEvents(
   const url = new URL(`${GRAPH_BASE}/me/calendarView`);
   url.searchParams.set("startDateTime", startDateTime);
   url.searchParams.set("endDateTime", endDateTime);
-  url.searchParams.set("$select", CALENDAR_SELECT);
+  url.searchParams.set(
+    "$select",
+    [CALENDAR_SELECT, ...(options.extraSelect ?? [])].join(","),
+  );
   url.searchParams.set("$orderby", "start/dateTime");
   url.searchParams.set("$top", String(CALENDAR_PAGE_SIZE));
 
@@ -259,13 +274,18 @@ export async function fetchOutlookEvents(
 
   const maxPages = Math.max(1, options.maxPages ?? CALENDAR_MAX_PAGES);
 
+  // Attendee display names come back in the user's locale.
+  const prefer = [
+    'outlook.timezone="UTC"',
+    ...(options.bodyAsText ? ['outlook.body-content-type="text"'] : []),
+  ].join(", ");
+
   while (nextUrl && page < maxPages) {
     const response: Response = await fetch(nextUrl, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
-        // Attendee display names come back in the user's locale.
-        Prefer: 'outlook.timezone="UTC"',
+        Prefer: prefer,
       },
       cache: "no-store",
     });

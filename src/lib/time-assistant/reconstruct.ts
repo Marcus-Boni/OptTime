@@ -20,6 +20,7 @@
  * (or the model answers garbage) the deterministic plan ships untouched.
  */
 
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { completeText } from "@/lib/ai/completion";
 import { describeTeamCall } from "@/lib/collaboration/calls";
@@ -41,6 +42,7 @@ import type {
   DayPlan,
   DayPlanItem,
   ReconstructConfidence,
+  ReconstructSourceKind,
 } from "@/types/reconstruct";
 
 export type { CommitSession } from "@/lib/time-assistant/commit-sessions";
@@ -52,6 +54,8 @@ export type {
 } from "@/types/reconstruct";
 
 export interface CalendarEventInput {
+  /** Graph event id. Anchors the suggestion id so a rebuild yields the same one. */
+  id?: string;
   subject: string;
   startIso: string;
   endIso: string;
@@ -285,6 +289,28 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
   const gapMinutes = Math.max(0, targetMinutes - existingMinutes);
   const items: DayPlanItem[] = [];
 
+  const usedIds = new Set<string>();
+  /**
+   * Deterministic identity for an item: hash of day + origin + reference.
+   *
+   * The agent API hands these ids to a client and resolves them again on a
+   * later call, so rebuilding the same day must produce the same ids. A random
+   * UUID here would make every plan unreferenceable.
+   */
+  const identity = (
+    kind: ReconstructSourceKind,
+    reference: string,
+  ): { id: string; sourceRef: string } => {
+    const digest = createHash("sha256")
+      .update(`${date}|${kind}|${reference}`)
+      .digest("hex")
+      .slice(0, 16);
+    let id = `sg_${digest}`;
+    for (let n = 2; usedIds.has(id); n += 1) id = `sg_${digest}_${n}`;
+    usedIds.add(id);
+    return { id, sourceRef: reference };
+  };
+
   const basePlan: Omit<DayPlan, "items" | "planMinutes"> = {
     projects: projects.map(({ id, name, color, billable }) => ({
       id,
@@ -355,7 +381,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       : `Evento de ${formatDuration(minutes)} no seu calendário. Selecione o projeto antes de lançar.`;
 
     items.push({
-      id: crypto.randomUUID(),
+      ...identity("calendar", event.id ?? `${event.startIso}|${event.subject}`),
       projectId: project?.id ?? null,
       projectName: project?.name ?? "Projeto não identificado",
       projectColor: project?.color ?? "",
@@ -402,7 +428,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
         : call.otherParticipantName.trim();
 
     items.push({
-      id: crypto.randomUUID(),
+      ...identity("teams_call", call.id),
       projectId: null,
       projectName: "Projeto não identificado",
       projectColor: "",
@@ -444,7 +470,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     if (alreadyLogged.has(normalize(description))) continue;
     seenDocuments.add(document.id);
     items.push({
-      id: crypto.randomUUID(),
+      ...identity("document", document.id),
       projectId: project.id,
       projectName: project.name,
       projectColor: project.color,
@@ -534,7 +560,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
       : `${session.substantiveCount} commit(s) entre ${window} em ${session.repositoryName}${branch}. ${session.basis}`;
 
     items.push({
-      id: crypto.randomUUID(),
+      ...identity("commits", session.id),
       projectId: project.id,
       projectName: project.name,
       projectColor: project.color,
@@ -593,7 +619,7 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     const estimate = estimateFromSessions(matched);
 
     items.push({
-      id: crypto.randomUUID(),
+      ...identity("pull_request", `pr${pullRequest.id}`),
       projectId: project.id,
       projectName: project.name,
       projectColor: project.color,
@@ -628,7 +654,12 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
     if (alreadyLogged.has(normalize(proposal.description))) continue;
 
     items.push({
-      id: crypto.randomUUID(),
+      ...identity(
+        "work_item",
+        proposal.azureWorkItemId != null
+          ? String(proposal.azureWorkItemId)
+          : proposal.description,
+      ),
       projectId: proposal.projectId,
       projectName: proposal.projectName,
       projectColor: proposal.projectColor,
@@ -661,7 +692,10 @@ export function buildDeterministicDayPlan(input: BuildDayPlanInput): DayPlan {
 
     if (project) {
       items.push({
-        id: crypto.randomUUID(),
+        ...identity(
+          "pattern",
+          `${project.id}|${normalize(pattern?.description ?? "default")}`,
+        ),
         projectId: project.id,
         projectName: project.name,
         projectColor: project.color,

@@ -11,11 +11,15 @@ import {
   searchParamsOf,
   withAgentAuth,
 } from "@/lib/mcp/http";
-import { listTimeEntries, logTime } from "@/lib/mcp/service";
+import { parseIdempotencyKey } from "@/lib/mcp/idempotency";
+import { listTimeEntries, logTime, logTimeIdempotent } from "@/lib/mcp/service";
 
 /**
  *   GET  /api/v1/me/time-entries?from=&to=&projectId=&limit=
  *   POST /api/v1/me/time-entries   → creates a manual entry
+ *
+ * `idempotencyKey` (optional, a client-minted UUID) makes the POST safe to
+ * retry: the same key with the same body within 24 h returns the first result.
  */
 export const OPTIONS = agentOptions;
 
@@ -84,7 +88,7 @@ export const POST = withAgentAuth(
       );
     }
 
-    return logTime(principal, {
+    const input = {
       project,
       durationMinutes: parseDurationMinutes(
         body.durationMinutes ?? body.duration,
@@ -98,7 +102,15 @@ export const POST = withAgentAuth(
           ? body.azureWorkItemTitle
           : null,
       billable: typeof body.billable === "boolean" ? body.billable : null,
-    });
+    };
+
+    return body.idempotencyKey === undefined || body.idempotencyKey === null
+      ? logTime(principal, input)
+      : logTimeIdempotent(
+          principal,
+          input,
+          parseIdempotencyKey(body.idempotencyKey),
+        );
   },
   { status: 201 },
 );

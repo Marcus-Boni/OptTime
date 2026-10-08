@@ -3,6 +3,7 @@ import { OptSolvClient } from "./client.js";
 import { type OptSolvConfig, SERVER_NAME, SERVER_VERSION } from "./config.js";
 import { registerPrompts } from "./prompts/templates.js";
 import { registerResources } from "./resources/uris.js";
+import { registerAssistantTools } from "./tools/assistant.js";
 import { registerEntryTools } from "./tools/entries.js";
 import { registerProjectTools } from "./tools/projects.js";
 import { registerTimerTools } from "./tools/timer.js";
@@ -51,6 +52,7 @@ export function createServer(config: OptSolvConfig): {
   registerTimerTools(server, client);
   registerEntryTools(server, client);
   registerTimesheetTools(server, client);
+  registerAssistantTools(server, client);
   registerResources(server, client);
   registerPrompts(server);
 

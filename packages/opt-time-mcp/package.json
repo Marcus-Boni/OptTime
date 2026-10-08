@@ -1,6 +1,6 @@
 {
   "name": "opt-time-mcp",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Servidor MCP do OptSolv Time Tracker \u2014 registre horas, controle o timer e feche a semana direto do seu agente de IA.",
   "license": "MIT",
   "private": false,

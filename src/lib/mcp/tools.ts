@@ -1,5 +1,5 @@
 import type { ApiTokenScope } from "@/lib/api-tokens.shared";
-import { todayInAppTimeZone } from "@/lib/timezone";
+import { getAppTimeZone, shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "./auth";
 import { requireAgentScope } from "./auth";
 import { AgentError } from "./errors";
@@ -10,14 +10,32 @@ import {
   resolveLookupDate,
   resolveWeekPeriod,
 } from "./format";
+import { parseIdempotencyKey } from "./idempotency";
 import {
+  AGENDA_OUTPUT_SCHEMA,
+  APPLY_SUGGESTIONS_OUTPUT_SCHEMA,
+  LOG_TIME_OUTPUT_SCHEMA,
+  MY_WORK_ITEMS_OUTPUT_SCHEMA,
+  SUGGEST_OUTPUT_SCHEMA,
+  TODAY_SUMMARY_OUTPUT_SCHEMA,
+  WHOAMI_OUTPUT_SCHEMA,
+} from "./output-schemas";
+import {
+  applySuggestions,
+  buildWhoamiData,
   deleteTimeEntry,
   getActiveTimer,
   getDaySummary,
+  getDaySummaryWithContext,
+  getIntegrationStatus,
+  getMicrosoftConnection,
+  getMyAgenda,
   getTimesheetStatus,
+  listMyWorkItems,
   listProjects,
   listTimeEntries,
   logTime,
+  logTimeIdempotent,
   pauseTimer,
   resumeTimer,
   searchWorkItems,
@@ -27,6 +45,8 @@ import {
   suggestDailyEntries,
   updateTimeEntry,
 } from "./service";
+import { formatAgendaLine } from "./service/agenda-mapping";
+import { formatMyWorkItemLine } from "./service/work-items-mapping";
 
 /**
  * The OptSolv tool catalog.
@@ -62,6 +82,11 @@ export interface ToolDefinition {
   title: string;
   description: string;
   inputSchema: JsonSchemaObject;
+  /**
+   * Shape of `structuredContent` on success. Published in `tools/list` so a
+   * client can parse the result in code instead of reading the prose in `text`.
+   */
+  outputSchema?: JsonSchemaObject;
   scope: ApiTokenScope;
   annotations: {
     readOnlyHint: boolean;
@@ -138,6 +163,32 @@ function int(args: Record<string, unknown>, key: string): number | undefined {
   return undefined;
 }
 
+/**
+ * Reads an integer that must stay inside a documented range.
+ *
+ * Out-of-range values are rejected instead of clamped: an agent that asked for
+ * 30 days and silently got 7 would report a week as a month.
+ */
+function boundedInt(
+  args: Record<string, unknown>,
+  key: string,
+  range: { min: number; max: number; fallback: number },
+): number {
+  const value = args[key];
+  if (value === undefined || value === null || value === "") {
+    return range.fallback;
+  }
+
+  const parsed = int(args, key);
+  if (parsed === undefined || parsed < range.min || parsed > range.max) {
+    throw new AgentError(
+      "VALIDATION_ERROR",
+      `'${key}' deve ser um inteiro entre ${range.min} e ${range.max}.`,
+    );
+  }
+  return parsed;
+}
+
 /** Reads the required project reference, accepting both documented aliases. */
 function requireProjectRef(args: Record<string, unknown>): string {
   const reference = str(args, "projectId") ?? str(args, "project");
@@ -169,7 +220,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_whoami",
     title: "Identificar usuário",
     description:
-      "Retorna o usuário autenticado pelo token, seu papel, escopos concedidos e capacidade semanal. Use para confirmar que a configuração do MCP está correta antes de registrar horas.",
+      "Retorna o usuário autenticado pelo token, seu papel, escopos concedidos, fuso, capacidade semanal e o que está conectado (conta Microsoft, Azure DevOps). Use para confirmar que a configuração do MCP está correta e saber quais ferramentas vão funcionar antes de registrar horas.",
     scope: "time:read",
     annotations: READ_ONLY,
     inputSchema: {
@@ -177,28 +228,33 @@ export const TOOLS: ToolDefinition[] = [
       properties: {},
       additionalProperties: false,
     },
+    outputSchema: WHOAMI_OUTPUT_SCHEMA,
     handler: async (principal) => {
-      const summary = await getDaySummary(principal, todayInAppTimeZone());
+      const [summary, microsoft, integrations] = await Promise.all([
+        getDaySummary(principal, todayInAppTimeZone()),
+        getMicrosoftConnection(principal.userId),
+        getIntegrationStatus(principal.userId),
+      ]);
+
+      const microsoftLine = !microsoft.connected
+        ? "Microsoft: não conectada"
+        : microsoft.needsReconnect
+          ? "Microsoft: precisa reconectar"
+          : "Microsoft: conectada";
 
       return {
         text:
           `Conectado como ${principal.name} (${principal.email}), papel "${principal.role}".\n` +
           `Token: ${principal.tokenName} · escopos: ${principal.scopes.join(", ")}.\n` +
-          `Hoje: ${summary.totalLabel} de ${humanizeMinutes(summary.dailyCapacityMinutes)}.`,
-        data: {
-          userId: principal.userId,
-          name: principal.name,
-          email: principal.email,
-          role: principal.role,
-          scopes: principal.scopes,
-          tokenName: principal.tokenName,
-          weeklyCapacityMinutes: summary.weeklyCapacityMinutes,
-          today: {
-            date: summary.date,
-            totalMinutes: summary.totalMinutes,
-            dailyCapacityMinutes: summary.dailyCapacityMinutes,
-          },
-        },
+          `Hoje: ${summary.totalLabel} de ${humanizeMinutes(summary.dailyCapacityMinutes)}.\n` +
+          `${microsoftLine} · Azure DevOps: ${integrations.azureDevOps.configured ? "configurado" : "não configurado"} · fuso: ${getAppTimeZone()}.`,
+        data: buildWhoamiData({
+          principal,
+          timezone: getAppTimeZone(),
+          summary,
+          microsoft,
+          integrations,
+        }),
       };
     },
   },
@@ -464,15 +520,21 @@ export const TOOLS: ToolDefinition[] = [
           description:
             "Se as horas são faturáveis. Padrão: herda a configuração do projeto.",
         },
+        idempotencyKey: {
+          type: "string",
+          description:
+            "UUID gerado pelo cliente para esta operação. Se a chamada for repetida com a mesma chave e os mesmos dados dentro de 24 h, nada é gravado de novo e o primeiro resultado é devolvido. Opcional.",
+        },
       },
       required: ["projectId", "durationMinutes", "description"],
       additionalProperties: false,
     },
+    outputSchema: LOG_TIME_OUTPUT_SCHEMA,
     handler: async (principal, args) => {
       const durationMinutes = parseDurationMinutes(args.durationMinutes);
       const date = resolveEntryDate(args.date);
 
-      const result = await logTime(principal, {
+      const input = {
         project: requireProjectRef(args),
         durationMinutes,
         description: requireDescription(args),
@@ -480,16 +542,28 @@ export const TOOLS: ToolDefinition[] = [
         azureWorkItemId: int(args, "azureWorkItemId") ?? null,
         azureWorkItemTitle: str(args, "azureWorkItemTitle") ?? null,
         billable: bool(args, "billable") ?? null,
-      });
+      };
+
+      const idempotencyKey =
+        args.idempotencyKey === undefined || args.idempotencyKey === null
+          ? null
+          : parseIdempotencyKey(args.idempotencyKey);
+
+      const result = idempotencyKey
+        ? await logTimeIdempotent(principal, input, idempotencyKey)
+        : await logTime(principal, input);
 
       const workItem = result.entry.azureWorkItemId
         ? ` (Work Item #${result.entry.azureWorkItemId})`
         : "";
+      const replayed = "replayed" in result && result.replayed;
 
       return {
-        text:
-          `✅ ${result.entry.durationLabel} registradas em ${result.entry.project.name} (${result.entry.project.code})${workItem} em ${result.entry.date}.\n` +
-          `Total do dia: ${result.dayTotalLabel}.`,
+        text: replayed
+          ? `♻️ Esta idempotencyKey já havia sido aplicada: nada foi gravado de novo. ` +
+            `O lançamento original é de ${result.entry.durationLabel} em ${result.entry.project.name} (${result.entry.project.code}) em ${result.entry.date}.`
+          : `✅ ${result.entry.durationLabel} registradas em ${result.entry.project.name} (${result.entry.project.code})${workItem} em ${result.entry.date}.\n` +
+            `Total do dia: ${result.dayTotalLabel}.`,
         data: result,
       };
     },
@@ -677,7 +751,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_get_today_summary",
     title: "Resumo do dia",
     description:
-      "Retorna o resumo das horas do dia: total registrado, distribuição por projeto, lançamentos, timer ativo, capacidade diária e quanto falta para fechar o dia.",
+      "Retorna o resumo das horas do dia: total registrado, distribuição por projeto, lançamentos, timer ativo, capacidade diária, quanto falta para fechar o dia, se é dia útil (isWorkday) e a meta do dia (targetMinutes).",
     scope: "time:read",
     annotations: READ_ONLY,
     inputSchema: {
@@ -690,8 +764,9 @@ export const TOOLS: ToolDefinition[] = [
       },
       additionalProperties: false,
     },
+    outputSchema: TODAY_SUMMARY_OUTPUT_SCHEMA,
     handler: async (principal, args) => {
-      const summary = await getDaySummary(
+      const summary = await getDaySummaryWithContext(
         principal,
         resolveLookupDate(args.date),
       );
@@ -705,10 +780,15 @@ export const TOOLS: ToolDefinition[] = [
         ? `\n⏱️ Timer ativo em ${summary.activeTimer.project.name} há ${summary.activeTimer.elapsedLabel}.`
         : "";
 
+      const dayKind = summary.isWorkday
+        ? ""
+        : `\n🌴 Não é dia útil (fim de semana, folga do expediente ou ausência) — meta do dia: ${humanizeMinutes(summary.targetMinutes)}.`;
+
       return {
         text:
           `${summary.date} (${summary.weekday}): ${summary.totalLabel} de ${humanizeMinutes(summary.dailyCapacityMinutes)}` +
           `${summary.isComplete ? " ✅ dia completo" : ` — faltam ${summary.remainingLabel}`}.` +
+          dayKind +
           projects +
           timer +
           `\nSemana até aqui: ${summary.weekTotalLabel} de ${humanizeMinutes(summary.weeklyCapacityMinutes)}.`,
@@ -859,7 +939,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_suggest_daily_entries",
     title: "Sugerir lançamentos do dia",
     description:
-      "Retorna sugestões de preenchimento do dia com base nos commits do Azure DevOps e no histórico recente de lançamentos do usuário. Sempre confirme as sugestões com o usuário antes de registrá-las com opt_time_log_time.",
+      "Sugere como preencher o dia, com a mesma qualidade do 'Preencher meu dia' da web: reuniões do Outlook, chamadas do Teams, sessões de commits e PRs do Azure DevOps, work items atribuídos e o padrão do usuário naquele dia da semana. Cada sugestão tem um 'id' estável. Reuniões e chamadas do Teams só entram se o token tiver o escopo calendar:read. Confirme com o usuário e aplique com opt_time_apply_suggestions (várias de uma vez) ou opt_time_log_time (uma).",
     scope: "time:read",
     annotations: { ...READ_ONLY, openWorldHint: true },
     inputSchema: {
@@ -867,11 +947,13 @@ export const TOOLS: ToolDefinition[] = [
       properties: {
         date: {
           type: "string",
-          description: "Data YYYY-MM-DD a analisar. Padrão: hoje.",
+          description:
+            "Data YYYY-MM-DD a analisar, ou 'hoje'/'ontem'. Padrão: hoje. Não aceita datas futuras nem com mais de 30 dias.",
         },
       },
       additionalProperties: false,
     },
+    outputSchema: SUGGEST_OUTPUT_SCHEMA,
     handler: async (principal, args) => {
       const result = await suggestDailyEntries(
         principal,
@@ -884,20 +966,246 @@ export const TOOLS: ToolDefinition[] = [
           : result.suggestions
               .map(
                 (item, index) =>
-                  `${index + 1}. ${item.durationLabel} · ${item.projectName ?? "projeto não identificado"} [${item.confidence}]\n` +
+                  `${index + 1}. ${item.durationLabel} · ${item.projectName ?? "projeto não identificado"} [${item.confidence}] (${item.source})\n` +
                   `   ${item.description}\n` +
-                  `   Motivo: ${item.reasons.join(" ")}`,
+                  `   Motivo: ${item.evidence}\n` +
+                  `   id: ${item.id}`,
               )
               .join("\n");
 
+      const warnings =
+        result.warnings.length > 0
+          ? `\n\n⚠️ ${result.warnings.join("\n⚠️ ")}`
+          : "";
       const notes =
         result.notes.length > 0 ? `\n\n${result.notes.join("\n")}` : "";
 
       return {
         text:
-          `Sugestões para ${result.date} (já registrado: ${result.alreadyLoggedLabel}, ${result.sources.commits} commit(s) analisado(s)):\n` +
+          `Sugestões para ${result.date} (já registrado: ${result.alreadyLoggedLabel} de ${humanizeMinutes(result.targetMinutes)}):\n` +
           suggestions +
+          warnings +
           notes,
+        data: result,
+      };
+    },
+  },
+
+  {
+    name: "opt_time_get_my_agenda",
+    title: "Minha agenda do Outlook",
+    description:
+      "Lê a agenda do Outlook do próprio usuário (só dele): reuniões, chamadas online, eventos de dia inteiro, resposta ao convite, projeto sugerido pelo assunto e quantos minutos já foram lançados para cada evento. Eventos cancelados são omitidos. Datas e horas saem em ISO 8601 com o offset do fuso do app.",
+    scope: "calendar:read",
+    annotations: { ...READ_ONLY, openWorldHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description:
+            "Primeiro dia: YYYY-MM-DD, 'hoje', 'amanhã' ou 'ontem'. Padrão: hoje.",
+        },
+        days: {
+          type: "integer",
+          minimum: 1,
+          maximum: 7,
+          description: "Quantos dias a partir de 'date' (1 a 7). Padrão: 1.",
+        },
+        includeDeclined: {
+          type: "boolean",
+          description: "Inclui eventos que o usuário recusou. Padrão: false.",
+        },
+        includeDescription: {
+          type: "boolean",
+          description:
+            "Inclui a descrição do evento em texto puro, cortada em 500 caracteres. Padrão: false.",
+        },
+      },
+      additionalProperties: false,
+    },
+    outputSchema: AGENDA_OUTPUT_SCHEMA,
+    handler: async (principal, args) => {
+      const date = resolveLookupDate(args.date);
+      const days = boundedInt(args, "days", { min: 1, max: 7, fallback: 1 });
+
+      const result = await getMyAgenda(principal, {
+        date,
+        days,
+        includeDeclined: bool(args, "includeDeclined") ?? false,
+        includeDescription: bool(args, "includeDescription") ?? false,
+      });
+
+      const range = days === 1 ? date : `${date} a ${shiftDay(date, days - 1)}`;
+
+      if (result.events.length === 0) {
+        return {
+          text: `Nenhum evento na agenda em ${range}.`,
+          data: result,
+        };
+      }
+
+      // One heading per day when the range spans several, so the text reads as
+      // a calendar rather than a flat list.
+      const lines: string[] = [];
+      let currentDay = "";
+      for (const event of result.events) {
+        const day = event.start.slice(0, 10);
+        if (days > 1 && day !== currentDay) {
+          currentDay = day;
+          lines.push(`\n${day}:`);
+        }
+        lines.push(`• ${formatAgendaLine(event)}`);
+      }
+
+      return {
+        text: `Agenda de ${range} — ${result.events.length} evento(s):${days > 1 ? "" : "\n"}${lines.join("\n")}`,
+        data: result,
+      };
+    },
+  },
+
+  {
+    name: "opt_time_list_my_work_items",
+    title: "Meus work items",
+    description:
+      "Lista os work items do Azure DevOps atribuídos ao usuário, do mais recentemente alterado para o mais antigo, com estado, estimativa, projeto do OptTime ligado e quantos minutos já foram lançados em cada um. Use para saber no que o usuário está trabalhando e para achar o azureWorkItemId antes de registrar horas.",
+    scope: "time:read",
+    annotations: { ...READ_ONLY, openWorldHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        includeClosed: {
+          type: "boolean",
+          description:
+            "Inclui itens fechados ou concluídos nos últimos 14 dias. Padrão: false.",
+        },
+        top: {
+          type: "integer",
+          minimum: 1,
+          maximum: 100,
+          description: "Máximo de itens (1 a 100). Padrão: 50.",
+        },
+      },
+      additionalProperties: false,
+    },
+    outputSchema: MY_WORK_ITEMS_OUTPUT_SCHEMA,
+    handler: async (principal, args) => {
+      const result = await listMyWorkItems(principal, {
+        includeClosed: bool(args, "includeClosed") ?? false,
+        top: boundedInt(args, "top", { min: 1, max: 100, fallback: 50 }),
+      });
+
+      return {
+        text:
+          result.items.length === 0
+            ? "Nenhum work item atribuído a você no Azure DevOps."
+            : `${result.items.length} work item(s) atribuído(s) a você:\n${result.items.map(formatMyWorkItemLine).join("\n")}`,
+        data: result,
+      };
+    },
+  },
+
+  {
+    name: "opt_time_apply_suggestions",
+    title: "Aplicar sugestões do dia",
+    description:
+      "Cria de uma vez os lançamentos das sugestões que o usuário aprovou, em uma única transação: se um item falhar, nada é gravado e o erro diz qual. Repetir a chamada com a mesma idempotencyKey não duplica nada. Use os ids de opt_time_suggest_daily_entries; só projeto, duração, descrição e faturável podem ser editados. Confirme com o usuário antes de chamar.",
+    scope: "time:write",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    inputSchema: {
+      type: "object",
+      properties: {
+        date: {
+          type: "string",
+          description:
+            "Dia das sugestões, YYYY-MM-DD (o mesmo usado em opt_time_suggest_daily_entries).",
+        },
+        idempotencyKey: {
+          type: "string",
+          description:
+            "UUID gerado pelo cliente para esta operação. A mesma chave em até 24 h devolve o mesmo resultado sem duplicar lançamentos; reutilize-a só ao repetir exatamente a mesma chamada.",
+        },
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 12,
+          description: "Sugestões aprovadas, com edições opcionais.",
+          items: {
+            type: "object",
+            properties: {
+              suggestionId: {
+                type: "string",
+                description:
+                  "ID da sugestão, vindo de opt_time_suggest_daily_entries.",
+              },
+              projectId: {
+                type: "string",
+                description:
+                  "Projeto a usar no lugar do sugerido (ID, código ou nome). Obrigatório quando a sugestão não tem projeto.",
+              },
+              durationMinutes: {
+                type: "integer",
+                minimum: 1,
+                maximum: 1440,
+                description: "Duração em minutos no lugar da sugerida.",
+              },
+              description: {
+                type: "string",
+                description: "Descrição no lugar da sugerida.",
+              },
+              billable: {
+                type: "boolean",
+                description:
+                  "Se as horas são faturáveis, no lugar do sugerido.",
+              },
+            },
+            required: ["suggestionId"],
+            additionalProperties: false,
+          },
+        },
+        rejectedSuggestionIds: {
+          type: "array",
+          description:
+            "Sugestões que o usuário recusou, para o sistema aprender e não repeti-las.",
+          items: {
+            type: "string",
+            description: "ID de uma sugestão recusada.",
+          },
+        },
+      },
+      required: ["date", "idempotencyKey", "items"],
+      additionalProperties: false,
+    },
+    outputSchema: APPLY_SUGGESTIONS_OUTPUT_SCHEMA,
+    handler: async (principal, args) => {
+      const date = resolveEntryDate(args.date);
+      const idempotencyKey = parseIdempotencyKey(args.idempotencyKey);
+
+      const result = await applySuggestions(principal, {
+        date,
+        idempotencyKey,
+        items: Array.isArray(args.items) ? args.items : [],
+        rejectedSuggestionIds: Array.isArray(args.rejectedSuggestionIds)
+          ? args.rejectedSuggestionIds
+          : [],
+      });
+
+      const closing = result.remainingMinutes
+        ? `faltam ${humanizeMinutes(result.remainingMinutes)}`
+        : "dia completo ✅";
+
+      return {
+        text: result.replayed
+          ? `♻️ Esta idempotencyKey já havia sido aplicada: nenhum lançamento novo foi criado (${result.createdEntryIds.length} existente(s)). ` +
+            `Total do dia: ${humanizeMinutes(result.dayTotalMinutes)} de ${humanizeMinutes(result.dailyCapacityMinutes)}.`
+          : `✅ ${result.createdEntryIds.length} lançamento(s) criado(s) em ${result.date}. ` +
+            `Total do dia: ${humanizeMinutes(result.dayTotalMinutes)} de ${humanizeMinutes(result.dailyCapacityMinutes)} — ${closing}.`,
         data: result,
       };
     },
@@ -937,6 +1245,7 @@ export function describeTools() {
     title: tool.title,
     description: tool.description,
     inputSchema: tool.inputSchema,
+    ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
     annotations: { title: tool.title, ...tool.annotations },
     /** Non-standard but harmless: lets the settings UI render required scopes. */
     _optTime: { scope: tool.scope },

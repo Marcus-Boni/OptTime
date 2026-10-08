@@ -3,12 +3,14 @@ import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { dailyTargetMinutes, weeklyCapacityMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
+import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { isTimesheetLockedStatus } from "@/lib/timesheet-status";
 import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 import type { AgentPrincipal } from "../auth";
 import { AgentError } from "../errors";
 import { humanizeMinutes, weekdayLabel } from "../format";
+import { runIdempotentInTransaction } from "../idempotency";
 import { resolveProject } from "./projects";
 import { type ActiveTimerView, assertUnlocked, getActiveTimer } from "./timer";
 
@@ -93,7 +95,17 @@ export interface LogTimeResult {
   dayTotalLabel: string;
 }
 
-export async function logTime(
+/** Either the pool or an open transaction — both can insert and select. */
+type Executor = typeof db | DbTransaction;
+
+/**
+ * Validates the input, then inserts the entry through `executor`.
+ *
+ * Does not fire the Azure DevOps sync: the caller decides when, because inside
+ * a transaction the entry is not yet visible to the sync that reads it back.
+ */
+async function createEntry(
+  executor: Executor,
   principal: AgentPrincipal,
   input: LogTimeInput,
 ): Promise<LogTimeResult> {
@@ -108,7 +120,7 @@ export async function logTime(
   const targetProject = await resolveProject(principal, input.project);
   await assertUnlocked(principal.userId, input.date);
 
-  const [created] = await db
+  const [created] = await executor
     .insert(timeEntry)
     .values({
       id: crypto.randomUUID(),
@@ -124,9 +136,8 @@ export async function logTime(
     })
     .returning();
 
-  triggerCompletedWorkSync(principal.userId, [created.azureWorkItemId]);
-
   const dayTotalMinutes = await sumMinutes(
+    executor,
     principal.userId,
     input.date,
     input.date,
@@ -153,6 +164,45 @@ export async function logTime(
     dayTotalMinutes,
     dayTotalLabel: humanizeMinutes(dayTotalMinutes),
   };
+}
+
+export async function logTime(
+  principal: AgentPrincipal,
+  input: LogTimeInput,
+): Promise<LogTimeResult> {
+  const result = await createEntry(db, principal, input);
+
+  triggerCompletedWorkSync(principal.userId, [result.entry.azureWorkItemId]);
+
+  return result;
+}
+
+/**
+ * `logTime` that runs at most once per `idempotencyKey`.
+ *
+ * A retry with the same key and input returns the first result and writes
+ * nothing; the same key with different input is refused. Validation runs only
+ * when the key is new, so a replay survives the week having been submitted in
+ * the meantime.
+ */
+export async function logTimeIdempotent(
+  principal: AgentPrincipal,
+  input: LogTimeInput,
+  idempotencyKey: string,
+): Promise<LogTimeResult & { replayed: boolean }> {
+  const { result, replayed } = await runIdempotentInTransaction({
+    userId: principal.userId,
+    scope: "log_time",
+    key: idempotencyKey,
+    input,
+    execute: (tx) => createEntry(tx, principal, input),
+  });
+
+  if (!replayed) {
+    triggerCompletedWorkSync(principal.userId, [result.entry.azureWorkItemId]);
+  }
+
+  return { ...result, replayed };
 }
 
 export interface ListTimeEntriesInput {
@@ -320,11 +370,12 @@ export async function deleteTimeEntry(
 }
 
 async function sumMinutes(
+  executor: Executor,
   userId: string,
   from: string,
   to: string,
 ): Promise<number> {
-  const rows = await db
+  const rows = await executor
     .select({ duration: timeEntry.duration })
     .from(timeEntry)
     .where(
@@ -394,7 +445,7 @@ export async function getDaySummary(
 
   const period = getWeekPeriod(date);
   const { start, end } = getPeriodRange(period, "weekly");
-  const weekTotalMinutes = await sumMinutes(principal.userId, start, end);
+  const weekTotalMinutes = await sumMinutes(db, principal.userId, start, end);
 
   const profileWeeklyCapacityMinutes = weeklyCapacityMinutes(
     profile?.weeklyCapacity,

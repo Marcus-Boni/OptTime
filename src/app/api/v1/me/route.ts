@@ -1,6 +1,10 @@
 import { agentOptions, withAgentAuth } from "@/lib/mcp/http";
-import { getDaySummary } from "@/lib/mcp/service";
-import { todayInAppTimeZone } from "@/lib/timezone";
+import {
+  getDaySummary,
+  getIntegrationStatus,
+  getMicrosoftConnection,
+} from "@/lib/mcp/service";
+import { getAppTimeZone, todayInAppTimeZone } from "@/lib/timezone";
 
 /**
  * GET /api/v1/me
@@ -10,9 +14,17 @@ import { todayInAppTimeZone } from "@/lib/timezone";
 export const OPTIONS = agentOptions;
 
 export const GET = withAgentAuth("GET /api/v1/me", async (principal) => {
-  const today = await getDaySummary(principal, todayInAppTimeZone());
+  const [today, microsoft, integrations] = await Promise.all([
+    getDaySummary(principal, todayInAppTimeZone()),
+    getMicrosoftConnection(principal.userId),
+    getIntegrationStatus(principal.userId),
+  ]);
 
   return {
+    timezone: getAppTimeZone(),
+    microsoft,
+    azureDevOps: integrations.azureDevOps,
+    eveningDigestEnabled: integrations.eveningDigestEnabled,
     user: {
       id: principal.userId,
       name: principal.name,
