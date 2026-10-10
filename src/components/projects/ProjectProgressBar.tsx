@@ -23,6 +23,8 @@ export interface ProjectProgressBarProps {
   endDate?: string | null;
   showSchedule?: boolean;
   compact?: boolean;
+  /** Tighter vertical spacing (used inside fixed-height cards). */
+  dense?: boolean;
   className?: string;
 }
 
@@ -49,6 +51,7 @@ export function ProjectProgressBar({
   endDate,
   showSchedule = false,
   compact = false,
+  dense = false,
   className,
 }: ProjectProgressBarProps) {
   const [state, setState] = useState<LoadState>({ status: "idle" });
@@ -214,9 +217,9 @@ export function ProjectProgressBar({
         : "from-orange-500 to-orange-400";
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn(dense ? "space-y-1.5" : "space-y-2", className)}>
       {/* Progress bar */}
-      <div className="relative pt-3">
+      <div className={cn("relative", !dense && "pt-3")}>
         <div className="flex items-center justify-between mb-1">
           <span
             className="text-[11px] font-medium text-muted-foreground flex items-center gap-1"

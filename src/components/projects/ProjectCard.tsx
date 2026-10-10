@@ -121,12 +121,16 @@ export function ProjectCard({
       exit="exit"
       transition={{ duration: 0.3 }}
       layout
+      className="h-full"
     >
-      <div className="relative group">
-        <Link href={`/dashboard/projects/${proj.id}`}>
+      <div className="relative group h-full">
+        <Link
+          href={`/dashboard/projects/${proj.id}`}
+          className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+        >
           <Card
             className={cn(
-              "h-full cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all",
+              "flex h-full flex-col cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all",
               "hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5",
               isArchived && "opacity-60",
             )}
@@ -185,11 +189,9 @@ export function ProjectCard({
                   </div>
 
                   {/* Client */}
-                  {proj.clientName && (
-                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                      {proj.clientName}
-                    </p>
-                  )}
+                  <p className="mt-0.5 min-h-4 truncate text-[11px] text-muted-foreground">
+                    {proj.clientName}
+                  </p>
 
                   {/* Status + scope stage + azure badges */}
                   <div className="mt-1.5 flex flex-wrap items-center gap-1">
@@ -228,105 +230,139 @@ export function ProjectCard({
               </div>
             </CardHeader>
 
-            <CardContent className="space-y-3 -mt-2">
-              {/* Description */}
-              {proj.description && (
-                <p className="text-xs text-muted-foreground line-clamp-2">
-                  {proj.description}
-                </p>
-              )}
-
-              {/* Commercial info */}
-              <div className="space-y-1">
-                {proj.commercialName && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <User className="h-3 w-3 shrink-0 text-neutral-500" />
-                    <span className="truncate">{proj.commercialName}</span>
-                  </div>
+            <CardContent className="flex flex-1 flex-col gap-2.5 -mt-2">
+              {/* Description — always one line, same slot in every card */}
+              <p
+                className={cn(
+                  "truncate text-xs",
+                  proj.description
+                    ? "text-muted-foreground"
+                    : "italic text-muted-foreground/50",
                 )}
-                {hasDateRange && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <CalendarRange className="h-3 w-3 shrink-0 text-neutral-500" />
+                title={proj.description ?? undefined}
+              >
+                {proj.description || "Sem descrição"}
+              </p>
+
+              {/* Owner + period — single row, both always present */}
+              <div className="flex items-center justify-between gap-3 text-[11px]">
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5",
+                    proj.commercialName
+                      ? "text-muted-foreground"
+                      : "text-muted-foreground/50",
+                  )}
+                  title={proj.commercialName ?? undefined}
+                >
+                  <User className="h-3 w-3 shrink-0 text-neutral-500" />
+                  <span className="truncate">
+                    {proj.commercialName || "Sem responsável"}
+                  </span>
+                </div>
+                <div
+                  className={cn(
+                    "flex shrink-0 items-center gap-1.5",
+                    hasDateRange
+                      ? "text-muted-foreground"
+                      : "text-muted-foreground/50",
+                  )}
+                >
+                  <CalendarRange className="h-3 w-3 shrink-0 text-neutral-500" />
+                  {hasDateRange ? (
                     <span className="font-mono">
                       {formatDate(proj.startDate) ?? "—"}
                       {" → "}
                       {formatDate(proj.endDate) ?? "—"}
                     </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Progress bar (lazy-loaded from Azure DevOps) */}
-              {proj.azureProjectId ? (
-                <ProjectProgressBar
-                  projectId={proj.id}
-                  azureProjectId={proj.azureProjectId}
-                  startDate={proj.startDate}
-                  endDate={proj.endDate}
-                />
-              ) : isPrivileged ? (
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onEdit?.(proj);
-                  }}
-                  className="flex items-center gap-1 text-[10px] text-neutral-600 transition-colors hover:text-orange-400"
-                >
-                  <Link2 className="h-2.5 w-2.5" />
-                  Vincular Azure DevOps
-                </button>
-              ) : null}
-
-              {/* Members */}
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <Folder className="h-3 w-3 shrink-0" />
-                  <span className="whitespace-nowrap">
-                    {memberCount} membro{memberCount !== 1 && "s"}
-                  </span>
-                  {memberCount > 0 && (
-                    <div className="ml-1 flex shrink-0 -space-x-1.5">
-                      {visibleMembers.map((m) => (
-                        <div
-                          key={m.id}
-                          className="h-5 w-5 overflow-hidden rounded-full border border-background"
-                          title={m.user?.name}
-                        >
-                          {m.user.image ? (
-                            // biome-ignore lint/performance/noImgElement: avatar thumbnail
-                            <img
-                              src={m.user.image}
-                              alt={m.user?.name || ""}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div
-                              className="flex h-full w-full items-center justify-center text-[8px] font-semibold text-white"
-                              style={{ backgroundColor: proj.color }}
-                            >
-                              {getInitials(m.user.name)}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {memberCount > 4 && (
-                        <div className="flex h-5 w-5 items-center justify-center rounded-full border border-background bg-muted text-[8px] text-muted-foreground">
-                          +{memberCount - 4}
-                        </div>
-                      )}
-                    </div>
+                  ) : (
+                    <span>Sem período</span>
                   )}
                 </div>
-                {proj.billable && (
-                  <Badge
-                    variant="secondary"
-                    className="bg-green-500/10 text-[10px] text-green-600 dark:text-green-400"
-                  >
-                    Billable
-                  </Badge>
-                )}
+              </div>
+
+              {/* Bottom group: pinned to the card bottom so cards align */}
+              <div className="mt-auto space-y-2.5">
+                {/* Metrics panel — fixed height so every state fills the same slot */}
+                <div className="flex min-h-[4.5rem] flex-col justify-center rounded-lg bg-muted/30 px-3 py-1.5 dark:bg-white/3">
+                  {proj.azureProjectId ? (
+                    <ProjectProgressBar
+                      projectId={proj.id}
+                      azureProjectId={proj.azureProjectId}
+                      startDate={proj.startDate}
+                      endDate={proj.endDate}
+                      dense
+                      className="justify-center"
+                    />
+                  ) : isPrivileged ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onEdit?.(proj);
+                      }}
+                      className="mx-auto flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-brand-500/10 hover:text-orange-400"
+                    >
+                      <Link2 className="h-3 w-3" />
+                      Vincular Azure DevOps
+                    </button>
+                  ) : (
+                    <p className="text-center text-[11px] italic text-muted-foreground/60">
+                      Sem vínculo com Azure DevOps
+                    </p>
+                  )}
+                </div>
+
+                {/* Members */}
+                <div className="flex min-h-6 flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2.5 text-xs text-muted-foreground">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Folder className="h-3 w-3 shrink-0" />
+                    <span className="whitespace-nowrap">
+                      {memberCount} membro{memberCount !== 1 && "s"}
+                    </span>
+                    {memberCount > 0 && (
+                      <div className="ml-1 flex shrink-0 -space-x-1.5">
+                        {visibleMembers.map((m) => (
+                          <div
+                            key={m.id}
+                            className="h-5 w-5 overflow-hidden rounded-full border border-background"
+                            title={m.user?.name}
+                          >
+                            {m.user.image ? (
+                              // biome-ignore lint/performance/noImgElement: avatar thumbnail
+                              <img
+                                src={m.user.image}
+                                alt={m.user?.name || ""}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div
+                                className="flex h-full w-full items-center justify-center text-[8px] font-semibold text-white"
+                                style={{ backgroundColor: proj.color }}
+                              >
+                                {getInitials(m.user.name)}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                        {memberCount > 4 && (
+                          <div className="flex h-5 w-5 items-center justify-center rounded-full border border-background bg-muted text-[8px] text-muted-foreground">
+                            +{memberCount - 4}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {proj.billable && (
+                    <Badge
+                      variant="secondary"
+                      className="bg-green-500/10 text-[10px] text-green-600 dark:text-green-400"
+                    >
+                      Billable
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
