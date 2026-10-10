@@ -25,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import type { Suggestion } from "@/hooks/use-suggestions";
 import type { SuggestionStatus } from "@/lib/db/schema";
@@ -116,12 +115,12 @@ export default function SuggestionCard({
       transition={{ delay: index * 0.05 }}
       className="h-full"
     >
-      <Card className="group flex h-full flex-col border-border/50 bg-card/80 backdrop-blur-sm transition-all duration-200 hover:border-border hover:shadow-md hover:shadow-black/5">
-        <CardHeader className="pb-3">
-          <h3 className="line-clamp-2 min-h-[2.75em] font-semibold text-foreground leading-snug">
+      <Card className="group flex h-full flex-col gap-3 border-border/50 bg-card/80 py-4 backdrop-blur-sm transition-all duration-200 hover:border-border hover:shadow-md hover:shadow-black/5">
+        <CardHeader className="gap-1.5 px-4">
+          <h3 className="line-clamp-2 font-semibold text-foreground leading-snug">
             {suggestion.title}
           </h3>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <SuggestionStatusBadge
               status={suggestion.status as SuggestionStatus}
             />
@@ -139,7 +138,7 @@ export default function SuggestionCard({
           </div>
         </CardHeader>
 
-        <CardContent className="flex flex-1 flex-col gap-3 pt-0">
+        <CardContent className="flex flex-1 flex-col gap-2.5 px-4 pt-0">
           <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
             <p className="text-sm leading-relaxed text-muted-foreground line-clamp-3">
               {suggestion.description}
@@ -150,7 +149,7 @@ export default function SuggestionCard({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="mt-1 h-7 gap-1 px-0 text-xs text-brand-400 hover:bg-transparent hover:text-brand-500"
+                  className="mt-0.5 h-6 gap-1 px-0 text-xs text-brand-400 hover:bg-transparent hover:text-brand-500"
                   aria-expanded={isExpanded}
                   aria-label={
                     isExpanded ? "Recolher descrição" : "Ver descrição completa"
@@ -178,7 +177,7 @@ export default function SuggestionCard({
           )}
 
           {/* Bottom group: pinned so cards in a row stay aligned */}
-          <div className="mt-auto space-y-3">
+          <div className="mt-auto space-y-2.5">
             {/* Team note (read-only for non-admin) */}
             {!isAdmin && suggestion.adminNotes && (
               <div className="rounded-lg border border-border/50 bg-muted/30 p-3">
@@ -194,94 +193,91 @@ export default function SuggestionCard({
 
             {/* Admin controls */}
             {isAdmin && (
-              <>
-                <Separator />
-                <div className="space-y-3">
-                  <div className="flex items-end gap-2">
-                    <div className="min-w-0 flex-1 space-y-1.5">
-                      <label
-                        htmlFor={`status-${suggestion.id}`}
-                        className="block text-xs font-medium text-muted-foreground"
-                      >
-                        Status
-                      </label>
-                      <Select
-                        value={selectedStatus}
-                        onValueChange={(v) =>
-                          setSelectedStatus(v as SuggestionStatus)
-                        }
-                        disabled={isUpdating}
-                      >
-                        <SelectTrigger
-                          id={`status-${suggestion.id}`}
-                          className="h-8 bg-background/50 text-xs"
-                          aria-label="Alterar status da sugestão"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SUGGESTION_STATUSES.map((s) => (
-                            <SelectItem key={s} value={s} className="text-xs">
-                              {STATUS_LABELS[s]}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={handleStatusUpdate}
-                      disabled={isUpdating}
-                      className="h-8 shrink-0 bg-brand-500 text-xs text-white hover:bg-brand-600"
-                      aria-busy={isUpdating}
-                    >
-                      {isUpdating ? (
-                        <>
-                          <Loader2
-                            className="mr-1.5 h-3.5 w-3.5 animate-spin"
-                            aria-hidden="true"
-                          />
-                          Salvando...
-                        </>
-                      ) : (
-                        "Salvar"
-                      )}
-                    </Button>
-                  </div>
-
-                  <div className="space-y-1.5">
+              <div className="space-y-2.5 border-t border-border/40 pt-2.5">
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1 space-y-1.5">
                     <label
-                      htmlFor={`admin-notes-${suggestion.id}`}
+                      htmlFor={`status-${suggestion.id}`}
                       className="block text-xs font-medium text-muted-foreground"
                     >
-                      Nota interna (opcional)
+                      Status
                     </label>
-                    <Textarea
-                      id={`admin-notes-${suggestion.id}`}
-                      value={adminNotes}
-                      onChange={(e) => setAdminNotes(e.target.value)}
-                      placeholder="Adicione uma resposta ou comentário para o autor..."
-                      className="min-h-[64px] resize-none bg-background/50 text-xs"
+                    <Select
+                      value={selectedStatus}
+                      onValueChange={(v) =>
+                        setSelectedStatus(v as SuggestionStatus)
+                      }
                       disabled={isUpdating}
-                      aria-label="Nota administrativa para o autor da sugestão"
-                    />
+                    >
+                      <SelectTrigger
+                        id={`status-${suggestion.id}`}
+                        className="h-8 bg-background/50 text-xs"
+                        aria-label="Alterar status da sugestão"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUGGESTION_STATUSES.map((s) => (
+                          <SelectItem key={s} value={s} className="text-xs">
+                            {STATUS_LABELS[s]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-
-                  <div className="flex items-center gap-2 border-t border-border/40 pt-3 text-xs text-muted-foreground">
-                    <UserAvatar
-                      name={suggestion.user.name}
-                      image={suggestion.user.image}
-                      size="sm"
-                    />
-                    <span className="min-w-0 truncate">
-                      Por{" "}
-                      <span className="font-medium text-foreground/80">
-                        {suggestion.user.name}
-                      </span>
-                    </span>
-                  </div>
+                  <Button
+                    size="sm"
+                    onClick={handleStatusUpdate}
+                    disabled={isUpdating}
+                    className="h-8 shrink-0 bg-brand-500 text-xs text-white hover:bg-brand-600"
+                    aria-busy={isUpdating}
+                  >
+                    {isUpdating ? (
+                      <>
+                        <Loader2
+                          className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                          aria-hidden="true"
+                        />
+                        Salvando...
+                      </>
+                    ) : (
+                      "Salvar"
+                    )}
+                  </Button>
                 </div>
-              </>
+
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor={`admin-notes-${suggestion.id}`}
+                    className="block text-xs font-medium text-muted-foreground"
+                  >
+                    Nota interna (opcional)
+                  </label>
+                  <Textarea
+                    id={`admin-notes-${suggestion.id}`}
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    placeholder="Adicione uma resposta ou comentário para o autor..."
+                    className="min-h-14 resize-none bg-background/50 text-xs"
+                    disabled={isUpdating}
+                    aria-label="Nota administrativa para o autor da sugestão"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 border-t border-border/40 pt-2.5 text-xs text-muted-foreground">
+                  <UserAvatar
+                    name={suggestion.user.name}
+                    image={suggestion.user.image}
+                    size="sm"
+                  />
+                  <span className="min-w-0 truncate">
+                    Por{" "}
+                    <span className="font-medium text-foreground/80">
+                      {suggestion.user.name}
+                    </span>
+                  </span>
+                </div>
+              </div>
             )}
           </div>
         </CardContent>
