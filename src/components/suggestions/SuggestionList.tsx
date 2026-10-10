@@ -62,7 +62,7 @@ export default function SuggestionList({
   if (isLoading) {
     return (
       <output
-        className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
         aria-label="Carregando sugestões..."
       >
         {Array.from({ length: 6 }).map((_, i) => (
@@ -125,7 +125,7 @@ export default function SuggestionList({
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
     >
       {filtered.map((s, i) => (
         <SuggestionCard
