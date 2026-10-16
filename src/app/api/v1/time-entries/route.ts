@@ -21,6 +21,10 @@ import {
   getRateLimitHeaders,
 } from "@/lib/integration/rate-limit";
 import { requireScope, SCOPES } from "@/lib/integration/scopes";
+import {
+  assertWeeklyTimesheetDateUnlocked,
+  LockedTimesheetPeriodError,
+} from "@/lib/time-entry-locks";
 
 const querySchema = z.object({
   cursor: z.string().optional(),
@@ -29,6 +33,7 @@ const querySchema = z.object({
   projectId: z.string().optional(),
   projectCode: z.string().optional(),
   projectIntegrationKey: z.string().optional(),
+  externalId: z.string().optional(),
   from: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
@@ -45,6 +50,8 @@ type EntryStatus = "draft" | "submitted" | "approved" | "rejected";
 
 type TimeEntryDTO = {
   id: string;
+  externalId: string | null;
+  source: string;
   userId: string;
   userEmail: string;
   projectId: string;
@@ -117,6 +124,7 @@ export async function GET(req: Request): Promise<Response> {
       projectId,
       projectCode,
       projectIntegrationKey,
+      externalId,
       from,
       to,
       status,
@@ -131,6 +139,7 @@ export async function GET(req: Request): Promise<Response> {
     if (projectCode) conditions.push(eq(project.code, projectCode));
     if (projectIntegrationKey)
       conditions.push(eq(project.integrationKey, projectIntegrationKey));
+    if (externalId) conditions.push(eq(timeEntry.externalId, externalId));
     if (from) conditions.push(gte(timeEntry.date, from));
     if (to) conditions.push(lte(timeEntry.date, to));
     if (billable !== undefined)
@@ -162,6 +171,8 @@ export async function GET(req: Request): Promise<Response> {
     const rows = await db
       .select({
         id: timeEntry.id,
+        externalId: timeEntry.externalId,
+        source: timeEntry.source,
         userId: timeEntry.userId,
         projectId: timeEntry.projectId,
         description: timeEntry.description,
@@ -191,6 +202,8 @@ export async function GET(req: Request): Promise<Response> {
 
     const dtos: TimeEntryDTO[] = data.map((r) => ({
       id: r.id,
+      externalId: r.externalId,
+      source: r.source,
       userId: r.userId,
       userEmail: r.userEmail,
       projectId: r.projectId,
@@ -242,6 +255,12 @@ const createV1TimeEntrySchema = z.object({
     .string()
     .trim()
     .min(1, "projectIntegrationKey is required"),
+  externalId: z
+    .string()
+    .trim()
+    .min(1, "externalId must not be empty")
+    .max(255, "externalId must be at most 255 characters")
+    .optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
   description: z.string().trim().min(1, "description must not be empty"),
   durationMinutes: z.number().int().min(1).optional(),
@@ -292,6 +311,59 @@ export async function POST(req: Request): Promise<Response> {
 
     const data = parsed.data;
 
+    // Idempotency: replay existing time entry if externalId was already processed
+    if (data.externalId) {
+      const existingByExternalId = await db.query.timeEntry.findFirst({
+        where: and(
+          eq(timeEntry.externalId, data.externalId),
+          isNull(timeEntry.deletedAt),
+        ),
+        with: {
+          project: true,
+          user: true,
+          timesheet: true,
+        },
+      });
+
+      if (existingByExternalId) {
+        const existingDto: TimeEntryDTO = {
+          id: existingByExternalId.id,
+          externalId: existingByExternalId.externalId,
+          source: existingByExternalId.source,
+          userId: existingByExternalId.userId,
+          userEmail: existingByExternalId.user.email,
+          projectId: existingByExternalId.projectId,
+          projectCode: existingByExternalId.project.code,
+          projectIntegrationKey: existingByExternalId.project.integrationKey,
+          date: existingByExternalId.date,
+          durationMinutes: existingByExternalId.duration,
+          billable: existingByExternalId.billable,
+          status: deriveStatus(existingByExternalId.timesheet?.status ?? null),
+          description: existingByExternalId.description,
+          createdAt: new Date(existingByExternalId.createdAt).toISOString(),
+        };
+
+        logRequest({
+          requestId,
+          clientId,
+          route: "POST /api/v1/time-entries (idempotent replay)",
+          durationMs: Date.now() - start,
+          status: 200,
+        });
+
+        return Response.json(
+          { data: existingDto },
+          {
+            status: 200,
+            headers: {
+              "X-Request-Id": requestId,
+              ...getRateLimitHeaders(clientId),
+            },
+          },
+        );
+      }
+    }
+
     // Validate targetUser exists and is active
     const targetUser = await db.query.user.findFirst({
       where: and(eq(user.email, data.email), eq(user.isActive, true)),
@@ -299,10 +371,20 @@ export async function POST(req: Request): Promise<Response> {
 
     if (!targetUser) {
       throw new ApiError(
-        "VALIDATION_ERROR",
+        "NOT_FOUND",
         `User with email ${data.email} not found or inactive`,
-        400,
+        404,
       );
+    }
+
+    // Check Timesheet Lock for targetUser and entry date (returns 409 if week is closed)
+    try {
+      await assertWeeklyTimesheetDateUnlocked(targetUser.id, data.date);
+    } catch (err) {
+      if (err instanceof LockedTimesheetPeriodError) {
+        throw new ApiError("LOCKED_PERIOD", err.message, 409);
+      }
+      throw err;
     }
 
     // Validate targetProject exists and is active/open
@@ -353,6 +435,8 @@ export async function POST(req: Request): Promise<Response> {
       .insert(timeEntry)
       .values({
         id,
+        externalId: data.externalId ?? null,
+        source: "opt-rh",
         userId: targetUser.id,
         projectId: targetProject.id,
         description: data.description,
@@ -365,6 +449,8 @@ export async function POST(req: Request): Promise<Response> {
 
     const dto: TimeEntryDTO = {
       id: entry.id,
+      externalId: entry.externalId,
+      source: entry.source,
       userId: entry.userId,
       userEmail: targetUser.email,
       projectId: entry.projectId,

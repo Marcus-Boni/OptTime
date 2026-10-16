@@ -26,7 +26,9 @@ export function TimeEntryCard({
   onDelete,
   onDuplicate,
 }: TimeEntryCardProps) {
-  const isEditable = isTimesheetEditableStatus(entry.timesheet?.status);
+  const isFromRh = entry.source === "opt-rh";
+  const isEditable =
+    isTimesheetEditableStatus(entry.timesheet?.status) && !isFromRh;
 
   return (
     <div
@@ -47,6 +49,14 @@ export function TimeEntryCard({
             <p className="text-sm font-semibold text-foreground">
               {entry.project.name}
             </p>
+            {isFromRh && (
+              <Badge
+                variant="outline"
+                className="rounded-full border-blue-500/30 bg-blue-500/10 px-2 py-0 text-[10px] font-medium text-blue-600 dark:text-blue-400"
+              >
+                OPT RH
+              </Badge>
+            )}
             {!entry.billable && (
               <Badge
                 variant="outline"

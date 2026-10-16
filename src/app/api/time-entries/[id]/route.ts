@@ -85,6 +85,16 @@ export async function PATCH(
       );
     }
 
+    if (existing.source === "opt-rh" && actor.role !== "admin") {
+      return Response.json(
+        {
+          error:
+            "Lançamentos criados pelo OPT RH não podem ser alterados diretamente pelo colaborador.",
+        },
+        { status: 403 },
+      );
+    }
+
     const body = await req.json();
     const parsed = updateTimeEntrySchema.safeParse(body);
 
@@ -211,6 +221,17 @@ export async function DELETE(
       return Response.json(
         { error: "Entrada não encontrada." },
         { status: 404 },
+      );
+    }
+
+    const actor = getActorContext(session.user);
+    if (existing.source === "opt-rh" && actor.role !== "admin") {
+      return Response.json(
+        {
+          error:
+            "Lançamentos criados pelo OPT RH não podem ser excluídos diretamente pelo colaborador.",
+        },
+        { status: 403 },
       );
     }
 

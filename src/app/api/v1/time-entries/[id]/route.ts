@@ -26,6 +26,8 @@ type EntryStatus = "draft" | "submitted" | "approved" | "rejected";
 
 type TimeEntryDTO = {
   id: string;
+  externalId: string | null;
+  source: string;
   userId: string;
   userEmail: string;
   projectId: string;
@@ -84,6 +86,8 @@ export async function GET(
     const [row] = await db
       .select({
         id: timeEntry.id,
+        externalId: timeEntry.externalId,
+        source: timeEntry.source,
         userId: timeEntry.userId,
         projectId: timeEntry.projectId,
         description: timeEntry.description,
@@ -100,7 +104,12 @@ export async function GET(
       .innerJoin(user, eq(timeEntry.userId, user.id))
       .innerJoin(project, eq(timeEntry.projectId, project.id))
       .leftJoin(timesheet, eq(timeEntry.timesheetId, timesheet.id))
-      .where(and(eq(timeEntry.id, id), isNull(timeEntry.deletedAt)))
+      .where(
+        and(
+          or(eq(timeEntry.id, id), eq(timeEntry.externalId, id)),
+          isNull(timeEntry.deletedAt),
+        ),
+      )
       .limit(1);
 
     if (!row) {
@@ -109,6 +118,8 @@ export async function GET(
 
     const dto: TimeEntryDTO = {
       id: row.id,
+      externalId: row.externalId,
+      source: row.source,
       userId: row.userId,
       userEmail: row.userEmail,
       projectId: row.projectId,
@@ -219,9 +230,12 @@ export async function PUT(
 
     const data = parsed.data;
 
-    // 1. Fetch existing time entry
+    // 1. Fetch existing time entry by internal id or externalId
     const existing = await db.query.timeEntry.findFirst({
-      where: and(eq(timeEntry.id, id), isNull(timeEntry.deletedAt)),
+      where: and(
+        or(eq(timeEntry.id, id), eq(timeEntry.externalId, id)),
+        isNull(timeEntry.deletedAt),
+      ),
     });
 
     if (!existing) {
@@ -320,7 +334,7 @@ export async function PUT(
       }
     } catch (err) {
       if (err instanceof LockedTimesheetPeriodError) {
-        throw new ApiError("VALIDATION_ERROR", err.message, 409);
+        throw new ApiError("LOCKED_PERIOD", err.message, 409);
       }
       throw err;
     }
@@ -354,7 +368,7 @@ export async function PUT(
           data.billable !== undefined ? data.billable : existing.billable,
         azdoSyncStatus: nextAzdoSyncStatus,
       })
-      .where(eq(timeEntry.id, id))
+      .where(eq(timeEntry.id, existing.id))
       .returning();
 
     if (shouldSyncCompletedWork && existing.azureWorkItemId) {
@@ -363,6 +377,8 @@ export async function PUT(
 
     const dto: TimeEntryDTO = {
       id: entry.id,
+      externalId: entry.externalId,
+      source: entry.source,
       userId: entry.userId,
       userEmail: targetUser.email,
       projectId: entry.projectId,
@@ -436,7 +452,10 @@ export async function DELETE(
     const { id } = await params;
 
     const existing = await db.query.timeEntry.findFirst({
-      where: and(eq(timeEntry.id, id), isNull(timeEntry.deletedAt)),
+      where: and(
+        or(eq(timeEntry.id, id), eq(timeEntry.externalId, id)),
+        isNull(timeEntry.deletedAt),
+      ),
     });
 
     if (!existing) {
@@ -447,7 +466,7 @@ export async function DELETE(
       await assertWeeklyTimesheetDateUnlocked(existing.userId, existing.date);
     } catch (err) {
       if (err instanceof LockedTimesheetPeriodError) {
-        throw new ApiError("VALIDATION_ERROR", err.message, 409);
+        throw new ApiError("LOCKED_PERIOD", err.message, 409);
       }
       throw err;
     }
@@ -457,7 +476,7 @@ export async function DELETE(
       .set({
         deletedAt: new Date(),
       })
-      .where(eq(timeEntry.id, id));
+      .where(eq(timeEntry.id, existing.id));
 
     if (existing.azureWorkItemId) {
       triggerCompletedWorkSync(existing.userId, [existing.azureWorkItemId]);

@@ -88,12 +88,33 @@ curl -H "Authorization: Bearer $TOKEN" \
   "https://opt-time.optsolv.com.br/api/v1/time-entries?from=2026-05-01&to=2026-05-31&limit=20"
 ```
 
-### Get a single time entry
+### Get a single time entry (or by externalId)
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
-  "https://opt-time.optsolv.com.br/api/v1/time-entries/<entry-id>"
+  "https://opt-time.optsolv.com.br/api/v1/time-entries/<entry-id-or-external-id>"
 ```
+
+### Create a time entry (requires opt-time.write, supports externalId for idempotency)
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "colaborador@optsolv.com.br",
+    "projectIntegrationKey": "OPTSOLV-FERIAS",
+    "externalId": "optrh:ferias:123:2026-11-13",
+    "date": "2026-11-13",
+    "description": "Férias aprovadas - OPT RH",
+    "durationMinutes": 480,
+    "billable": false
+  }' \
+  "https://opt-time.optsolv.com.br/api/v1/time-entries"
+```
+
+Replaying the same `externalId` is idempotent and returns `200 OK` without duplicating entries. If the weekly timesheet is already locked, it returns `409 Conflict`.
+
 
 ### List active users
 

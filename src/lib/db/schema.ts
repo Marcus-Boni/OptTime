@@ -411,6 +411,10 @@ export const timeEntry = pgTable(
     endTime: timestamp("end_time"),
     /** none | pending | synced | failed */
     azdoSyncStatus: text("azdo_sync_status").notNull().default("none"),
+    /** External ID from integrating systems (e.g. opt-rh) for idempotency */
+    externalId: text("external_id"),
+    /** Origin system of the entry: manual | opt-rh | mcp | azure-devops */
+    source: text("source").notNull().default("manual"),
     /** Soft delete timestamp */
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -429,6 +433,11 @@ export const timeEntry = pgTable(
     index("time_entry_active_date_idx")
       .on(table.date, table.userId)
       .where(sql`${table.deletedAt} is null`),
+    uniqueIndex("time_entry_external_id_idx")
+      .on(table.externalId)
+      .where(
+        sql`${table.deletedAt} is null and ${table.externalId} is not null`,
+      ),
   ],
 );
 

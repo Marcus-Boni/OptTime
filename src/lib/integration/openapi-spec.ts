@@ -43,6 +43,7 @@ const timeEntryDTOSchema = {
   type: "object",
   required: [
     "id",
+    "source",
     "userId",
     "userEmail",
     "projectId",
@@ -57,6 +58,19 @@ const timeEntryDTOSchema = {
   ],
   properties: {
     id: { type: "string", example: "te_abc123" },
+    externalId: {
+      type: "string",
+      nullable: true,
+      description:
+        "Identificador externo único para conciliação e idempotência (ex: optrh:ferias:123:2026-11-13).",
+      example: "optrh:ferias:123:2026-11-13",
+    },
+    source: {
+      type: "string",
+      description:
+        "Origem do lançamento (manual | opt-rh | mcp | azure-devops).",
+      example: "opt-rh",
+    },
     userId: { type: "string", example: "usr_xyz789" },
     userEmail: {
       type: "string",
@@ -722,31 +736,37 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
                   projectIntegrationKey: {
                     type: "string",
                     description: "Chave de integração padronizada do projeto.",
-                    example: "MARCA-AMBIENTAL-INT",
+                    example: "OPTSOLV-FERIAS",
+                  },
+                  externalId: {
+                    type: "string",
+                    description:
+                      "Identificador único no sistema de origem para garantir idempotência em reenvios (ex: optrh:ferias:123:2026-11-13).",
+                    example: "optrh:ferias:123:2026-11-13",
                   },
                   date: {
                     type: "string",
                     format: "date",
                     description: "Data do lançamento (AAAA-MM-DD).",
-                    example: "2026-05-01",
+                    example: "2026-11-13",
                   },
                   description: {
                     type: "string",
                     description: "Descrição da atividade realizada.",
-                    example: "Correção de bugs no processamento de remessas.",
+                    example: "Férias aprovadas - OPT RH",
                   },
                   durationMinutes: {
                     type: "integer",
                     minimum: 1,
                     description:
                       "Duração do lançamento em minutos. Se não informado, utiliza o padrão do colaborador.",
-                    example: 60,
+                    example: 480,
                   },
                   billable: {
                     type: "boolean",
                     description:
                       "Se o lançamento é faturável. Se não informado, utiliza as preferências do colaborador ou projeto.",
-                    example: true,
+                    example: false,
                   },
                 },
               },
@@ -754,6 +774,15 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
           },
         },
         responses: {
+          200: {
+            description:
+              "Reenvio idempotente com sucesso (lançamento com o mesmo externalId já existia).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TimeEntryDTO" },
+              },
+            },
+          },
           201: {
             description: "Entrada de tempo criada com sucesso.",
             content: {
@@ -773,6 +802,23 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
           },
           401: unauthorizedResponse,
           403: forbiddenResponse,
+          404: {
+            description: "Colaborador ou projeto não encontrado ou inativo.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          409: {
+            description:
+              "Período travado (timesheet da semana já submetido ou aprovado).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
           429: rateLimitedResponse,
         },
       },
@@ -788,7 +834,8 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
             in: "path",
             required: true,
             schema: { type: "string" },
-            description: "ID da entrada de tempo.",
+            description:
+              "ID interno (UUID) ou identificador externo (externalId) da entrada de tempo.",
           },
         ],
         responses: {

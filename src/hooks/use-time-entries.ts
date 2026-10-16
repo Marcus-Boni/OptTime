@@ -29,6 +29,8 @@ export interface TimeEntry {
   startTime: string | null;
   endTime: string | null;
   azdoSyncStatus: string;
+  externalId?: string | null;
+  source?: string | null;
   createdAt: string;
   updatedAt: string;
   project: TimeEntryProject;

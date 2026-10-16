@@ -3,6 +3,7 @@ export type ApiErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "VALIDATION_ERROR"
+  | "LOCKED_PERIOD"
   | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
