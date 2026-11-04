@@ -1,0 +1,4 @@
+# Third-party skill packages are tooling, not application language statistics.
+# https://github.com/github-linguist/linguist/blob/main/docs/overrides.md#vendored-code
+/.agents/skills/impeccable/** linguist-vendored
+/.claude/skills/impeccable/** linguist-vendored
