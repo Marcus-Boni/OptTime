@@ -12,6 +12,7 @@ import {
   Lightbulb,
   Pause,
   PieChart,
+  Play,
   Radar,
   Settings,
   Square,
@@ -21,13 +22,14 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { FocusModeButton } from "@/components/focus";
 import { StreakPill } from "@/components/gamification/StreakPill";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { UserAvatar } from "@/components/shared/user-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { KokonutOrbitalLoader } from "@/components/ui/kokonut-loader";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -135,6 +137,16 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
     stopTimer,
     timer,
   } = useTimer();
+  const [isStopping, setIsStopping] = useState(false);
+
+  async function handleStop(): Promise<void> {
+    setIsStopping(true);
+    try {
+      await stopTimer();
+    } finally {
+      setIsStopping(false);
+    }
+  }
 
   if (!hasTimer) return null;
 
@@ -158,9 +170,9 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: "auto" }}
-      exit={{ opacity: 0, height: 0 }}
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -6 }}
       className="mx-3 mb-2 overflow-hidden rounded-xl border border-brand-500/20 bg-brand-500/5 p-3"
       data-tour="sidebar-timer"
     >
@@ -186,17 +198,27 @@ function TimerWidget({ collapsed }: { collapsed: boolean }) {
           onClick={isPaused ? resumeTimer : pauseTimer}
           aria-label={isPaused ? "Retomar timer" : "Pausar timer"}
         >
-          <Pause className="mr-1 h-3 w-3" />
+          {isPaused ? (
+            <Play className="mr-1 h-3 w-3" />
+          ) : (
+            <Pause className="mr-1 h-3 w-3" />
+          )}
           {isPaused ? "Retomar" : "Pausar"}
         </Button>
         <Button
           variant="ghost"
           size="sm"
           className="h-7 flex-1 text-xs text-destructive hover:text-destructive"
-          onClick={() => stopTimer()}
+          onClick={handleStop}
+          disabled={isStopping}
+          aria-busy={isStopping}
           aria-label="Parar timer"
         >
-          <Square className="mr-1 h-3 w-3" />
+          {isStopping ? (
+            <KokonutOrbitalLoader size="sm" className="mr-1 text-destructive" />
+          ) : (
+            <Square className="mr-1 h-3 w-3" />
+          )}
           Parar
         </Button>
       </div>

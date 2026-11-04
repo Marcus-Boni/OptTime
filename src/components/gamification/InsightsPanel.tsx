@@ -30,9 +30,6 @@ export interface InsightsPanelProps {
   windowWeeks: number;
 }
 
-const CLOSED_FILL = "#f97316";
-const OPEN_FILL = "rgba(249, 115, 22, 0.35)";
-
 function InsightCard({ insight }: { insight: PersonalInsight }) {
   const Icon = resolveIcon(insight.icon);
   const delta = insight.deltaPercentage;
@@ -130,7 +127,7 @@ function InsightsChartTooltip({ active, payload }: InsightsChartTooltipProps) {
           />
           Registrado:
         </span>
-        <span className="font-mono font-medium text-foreground dark:text-white">
+        <span className="font-mono font-medium text-foreground tabular-nums dark:text-white">
           {formatDuration(data.minutes)}
         </span>
       </div>
@@ -203,6 +200,44 @@ export function InsightsPanel({
                   data={chartData}
                   margin={{ top: 4, right: 8, bottom: 0, left: 0 }}
                 >
+                  <defs>
+                    <linearGradient
+                      id="insightsClosedWeekGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="#fb923c"
+                        stopOpacity={0.96}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="#ea580c"
+                        stopOpacity={0.35}
+                      />
+                    </linearGradient>
+                    <linearGradient
+                      id="insightsOpenWeekGradient"
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor="#f97316"
+                        stopOpacity={0.55}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor="#f97316"
+                        stopOpacity={0.14}
+                      />
+                    </linearGradient>
+                  </defs>
                   <XAxis
                     dataKey="shortLabel"
                     tick={{ fill: colors.tickFill, fontSize: 11 }}
@@ -218,14 +253,26 @@ export function InsightsPanel({
                     tickFormatter={(value: number) => `${value}h`}
                   />
                   <RechartsTooltip
-                    cursor={{ fill: colors.cursorFill }}
+                    cursor={{ fill: colors.cursorFill, radius: 6 }}
                     content={<InsightsChartTooltip />}
                   />
-                  <Bar dataKey="hours" radius={[6, 6, 0, 0]} maxBarSize={44}>
+                  <Bar
+                    dataKey="hours"
+                    radius={[6, 6, 1, 1]}
+                    maxBarSize={44}
+                    background={{
+                      fill: colors.ghostBarFill,
+                      radius: 6,
+                    }}
+                  >
                     {chartData.map((point) => (
                       <Cell
                         key={point.period}
-                        fill={point.closed ? CLOSED_FILL : OPEN_FILL}
+                        fill={
+                          point.closed
+                            ? "url(#insightsClosedWeekGradient)"
+                            : "url(#insightsOpenWeekGradient)"
+                        }
                       />
                     ))}
                   </Bar>

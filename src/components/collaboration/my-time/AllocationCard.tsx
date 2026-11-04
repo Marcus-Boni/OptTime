@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -8,7 +8,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatDuration } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 import type { ProjectAllocation } from "@/types/collaboration";
 
 /** Slices past this collapse into "Outros" so the donut stays legible. */
@@ -34,6 +34,16 @@ export function AllocationCard({
   allocations,
   totalMinutes,
 }: AllocationCardProps) {
+  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
+  const [pinnedSelection, setPinnedSelection] = useState<{
+    allocations: ProjectAllocation[];
+    projectId: string;
+  } | null>(null);
+  const pinnedProjectId =
+    pinnedSelection?.allocations === allocations
+      ? pinnedSelection.projectId
+      : null;
+
   const slices = useMemo(() => {
     if (allocations.length <= MAX_SLICES) return allocations;
 
@@ -55,6 +65,17 @@ export function AllocationCard({
     ];
   }, [allocations]);
 
+  const hoveredSlice = useMemo(
+    () =>
+      hoveredProjectId || pinnedProjectId
+        ? (slices.find(
+            (slice) =>
+              slice.projectId === (hoveredProjectId ?? pinnedProjectId),
+          ) ?? null)
+        : null,
+    [hoveredProjectId, pinnedProjectId, slices],
+  );
+
   const billableMinutes = allocations.reduce(
     (sum, item) => sum + item.billableMinutes,
     0,
@@ -64,7 +85,7 @@ export function AllocationCard({
 
   return (
     <Card
-      className="h-full border-border/50 bg-card/80"
+      className="h-full min-w-0 border-border/50 bg-card/80"
       data-tour="my-time-projects"
     >
       <CardHeader className="pb-2">
@@ -92,65 +113,156 @@ export function AllocationCard({
                     data={slices}
                     dataKey="minutes"
                     nameKey="name"
-                    innerRadius={50}
+                    innerRadius={52}
                     outerRadius={76}
-                    paddingAngle={2}
+                    paddingAngle={2.5}
                     stroke="none"
                     isAnimationActive={false}
+                    onMouseEnter={(_, index) => {
+                      const target = slices[index];
+                      if (target) setHoveredProjectId(target.projectId);
+                    }}
+                    onMouseLeave={() => setHoveredProjectId(null)}
                   >
-                    {slices.map((slice) => (
-                      <Cell key={slice.projectId} fill={slice.color} />
-                    ))}
+                    {slices.map((slice) => {
+                      const isDimmed =
+                        hoveredSlice !== null &&
+                        hoveredSlice.projectId !== slice.projectId;
+                      return (
+                        <Cell
+                          key={slice.projectId}
+                          fill={slice.color}
+                          fillOpacity={isDimmed ? 0.3 : 1}
+                          className="cursor-pointer transition-opacity duration-200"
+                        />
+                      );
+                    })}
                   </Pie>
                 </PieChart>
               </ResponsiveContainer>
 
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-mono text-base font-bold tabular-nums text-foreground">
-                  {formatDuration(totalMinutes)}
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-3 text-center">
+                {hoveredSlice ? (
+                  <span className="mb-0.5 inline-flex items-center gap-1 font-mono text-[10px] font-semibold text-foreground tabular-nums">
+                    <span
+                      className="size-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: hoveredSlice.color }}
+                      aria-hidden="true"
+                    />
+                    {totalMinutes > 0
+                      ? Math.round((hoveredSlice.minutes / totalMinutes) * 100)
+                      : 0}
+                    %
+                  </span>
+                ) : (
+                  <span className="mb-0.5 text-[9px] font-medium uppercase tracking-wider text-muted-foreground">
+                    Total
+                  </span>
+                )}
+                <span className="font-mono text-base font-bold leading-tight text-foreground tabular-nums">
+                  {formatDuration(
+                    hoveredSlice ? hoveredSlice.minutes : totalMinutes,
+                  )}
                 </span>
-                <span className="text-[10px] text-muted-foreground">
-                  no período
+                <span className="mt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {hoveredSlice
+                    ? `de ${formatDuration(totalMinutes)}`
+                    : "no período"}
                 </span>
               </div>
             </div>
 
-            <ul className="space-y-2.5">
+            {(() => {
+              const spotlightSlice = hoveredSlice ?? slices[0];
+              if (!spotlightSlice) return null;
+              const spotlightShare =
+                totalMinutes > 0
+                  ? Math.round((spotlightSlice.minutes / totalMinutes) * 100)
+                  : 0;
+              return (
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/25 px-3 py-2 text-xs transition-colors">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span
+                      className="size-2.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: spotlightSlice.color }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 break-words [overflow-wrap:anywhere] font-medium text-foreground">
+                      {spotlightSlice.name}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5 font-mono tabular-nums">
+                    <span className="font-semibold text-foreground">
+                      {formatDuration(spotlightSlice.minutes)}
+                    </span>
+                    <span className="rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] text-muted-foreground ring-1 ring-border/60">
+                      {spotlightShare}%
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <ul className="space-y-2">
               {slices.map((slice) => {
                 const share =
                   totalMinutes > 0
                     ? Math.round((slice.minutes / totalMinutes) * 100)
                     : 0;
+                const isHighlighted =
+                  hoveredSlice?.projectId === slice.projectId;
 
                 return (
                   <li key={slice.projectId}>
-                    <div className="flex items-baseline justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-2">
-                        <span
-                          className="size-2.5 shrink-0 rounded-sm"
-                          style={{ backgroundColor: slice.color }}
+                    <button
+                      type="button"
+                      onMouseEnter={() => setHoveredProjectId(slice.projectId)}
+                      onMouseLeave={() => setHoveredProjectId(null)}
+                      onFocus={() => setHoveredProjectId(slice.projectId)}
+                      onBlur={() => setHoveredProjectId(null)}
+                      onClick={() =>
+                        setPinnedSelection(
+                          pinnedProjectId === slice.projectId
+                            ? null
+                            : { allocations, projectId: slice.projectId },
+                        )
+                      }
+                      aria-pressed={pinnedProjectId === slice.projectId}
+                      className={cn(
+                        "min-h-11 w-full min-w-0 rounded-lg px-1.5 py-1 text-left transition-colors",
+                        isHighlighted && "bg-muted/50",
+                      )}
+                    >
+                      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
+                        <span className="flex min-w-0 flex-1 items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-sm"
+                            style={{ backgroundColor: slice.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 break-words [overflow-wrap:anywhere] text-sm text-foreground">
+                            {slice.name}
+                          </span>
+                        </span>
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+                          {formatDuration(slice.minutes)}
+                          <span className="ml-1.5 text-foreground">
+                            {share}%
+                          </span>
+                        </span>
+                      </div>
+
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted/60">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${share}%`,
+                            backgroundColor: slice.color,
+                          }}
                           aria-hidden="true"
                         />
-                        <span className="truncate text-sm text-foreground">
-                          {slice.name}
-                        </span>
-                      </span>
-                      <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
-                        {formatDuration(slice.minutes)}
-                        <span className="ml-1.5 text-foreground">{share}%</span>
-                      </span>
-                    </div>
-
-                    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted/60">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${share}%`,
-                          backgroundColor: slice.color,
-                        }}
-                        aria-hidden="true"
-                      />
-                    </div>
+                      </div>
+                    </button>
                   </li>
                 );
               })}
@@ -162,7 +274,7 @@ export function AllocationCard({
                   <div className="cursor-help rounded-xl border border-border/50 bg-muted/20 px-3 py-2">
                     <div className="flex items-baseline justify-between gap-2 text-xs">
                       <span className="text-muted-foreground">Faturável</span>
-                      <span className="font-mono tabular-nums text-foreground">
+                      <span className="font-mono text-foreground tabular-nums">
                         {formatDuration(billableMinutes)} · {billablePercent}%
                       </span>
                     </div>

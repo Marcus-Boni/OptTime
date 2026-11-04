@@ -19,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { KokonutOrbitalLoader } from "@/components/ui/kokonut-loader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useTimer } from "@/hooks/use-timer";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
@@ -192,7 +194,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
     return (
       <Card>
         <CardContent className="py-4">
-          <div className="h-16 animate-pulse rounded-lg bg-muted" />
+          <Skeleton className="h-16 rounded-lg" />
         </CardContent>
       </Card>
     );
@@ -202,7 +204,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
     <Card
       id="timer-widget"
       className={cn(
-        "overflow-hidden border-border/60 bg-card/80 shadow-none backdrop-blur",
+        "overflow-hidden border-border/60 bg-card/80 shadow-none backdrop-blur transition-colors duration-200",
         isRunning && "border-brand-500/40 bg-brand-500/5",
       )}
     >
@@ -210,8 +212,14 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400">
+              <span className="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-500/10 text-brand-600 dark:text-brand-400">
                 <TimerReset className="h-4 w-4" />
+                {isRunning && (
+                  <span className="absolute -top-0.5 -right-0.5 flex size-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-500 opacity-75 motion-reduce:hidden" />
+                    <span className="relative inline-flex size-2.5 rounded-full bg-brand-500" />
+                  </span>
+                )}
               </span>
               <div>
                 <h3 className="font-display text-base font-semibold text-foreground">
@@ -228,7 +236,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
               <div className="space-y-1">
                 <div
                   className={cn(
-                    "font-mono text-3xl font-bold tabular-nums",
+                    "font-mono text-3xl font-bold tabular-nums tracking-tight",
                     isRunning && "text-brand-500",
                   )}
                 >
@@ -289,6 +297,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                     onClick={() => {
                       void handlePause();
                     }}
+                    aria-label="Pausar timer"
                   >
                     <Pause className="h-4 w-4" />
                   </Button>
@@ -300,6 +309,7 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                     onClick={() => {
                       void handleResume();
                     }}
+                    aria-label="Retomar timer"
                   >
                     <Play className="h-4 w-4" />
                   </Button>
@@ -310,8 +320,14 @@ export function TimerWidget({ projects, onEntrySaved }: TimerWidgetProps) {
                   className="h-9 w-9 text-destructive hover:text-destructive"
                   onClick={handleStop}
                   disabled={stopping}
+                  aria-busy={stopping}
+                  aria-label="Encerrar e salvar timer"
                 >
-                  <Square className="h-4 w-4" />
+                  {stopping ? (
+                    <KokonutOrbitalLoader size="sm" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
                 </Button>
               </>
             ) : null}

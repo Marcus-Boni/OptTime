@@ -14,14 +14,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { BklitChartTooltip } from "@/components/ui/bklit-chart-tooltip";
 import { Button } from "@/components/ui/button";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { WEEKDAY_LABELS } from "@/lib/collaboration/period";
 import { formatDateLabel, formatDuration } from "@/lib/utils";
 import type { PeriodDay } from "@/types/collaboration";
 
-const LOGGED_FILL = "#f97316";
-const MEETING_FILL = "rgba(139, 92, 246, 0.55)";
 const TARGET_STROKE = "#64748b";
 /** Applied to every bar that is not the selected day. */
 const DIMMED_OPACITY = 0.25;
@@ -199,7 +198,7 @@ export function TimeFlowChart({
             {hasCalendar && (
               <li className="flex items-center gap-1.5">
                 <span
-                  className="size-2 rounded-full bg-violet-500/60"
+                  className="size-2 rounded-full bg-violet-500/80"
                   aria-hidden="true"
                 />
                 Reuniões
@@ -214,10 +213,7 @@ export function TimeFlowChart({
       </div>
 
       {hasAnything ? (
-        // `outline-none` on the Recharts surface: globals.css draws a ring on
-        // every `:focus-visible`, and the SVG takes focus on click — which
-        // painted a brand-coloured box around the whole plot.
-        <div className="h-56 w-full cursor-pointer [&_.recharts-surface]:outline-none [&_.recharts-wrapper]:outline-none">
+        <div className="h-56 w-full cursor-pointer">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart
               data={data}
@@ -225,6 +221,29 @@ export function TimeFlowChart({
               margin={{ top: 8, right: 8, bottom: 0, left: -22 }}
               barGap={barGap}
             >
+              <defs>
+                <linearGradient
+                  id="myTimeLoggedGradient"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor="#fb923c" stopOpacity={0.96} />
+                  <stop offset="60%" stopColor="#f97316" stopOpacity={0.82} />
+                  <stop offset="100%" stopColor="#ea580c" stopOpacity={0.28} />
+                </linearGradient>
+                <linearGradient
+                  id="myTimeMeetingsGradient"
+                  x1="0"
+                  y1="0"
+                  x2="0"
+                  y2="1"
+                >
+                  <stop offset="0%" stopColor="#a78bfa" stopOpacity={0.82} />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.22} />
+                </linearGradient>
+              </defs>
               <CartesianGrid
                 vertical={false}
                 stroke={colors.gridStroke}
@@ -245,56 +264,64 @@ export function TimeFlowChart({
                 tickFormatter={(value: number) => `${value}h`}
               />
               <RechartsTooltip
-                cursor={{ fill: colors.cursorFill }}
-                contentStyle={{
-                  backgroundColor: colors.tooltipBg,
-                  border: `1px solid ${colors.tooltipBorder}`,
-                  borderRadius: 12,
-                  color: colors.tooltipColor,
-                  fontSize: 12,
-                }}
-                labelStyle={{
-                  color: colors.tooltipLabelColor,
-                  fontWeight: 600,
-                  marginBottom: 4,
-                }}
-                // Without this, Recharts paints each row in its own series
-                // colour — the dashed "Previsto" line is slate-500, which is
-                // unreadable on the dark card and washed out on the light one.
-                itemStyle={{ color: colors.tooltipColor, padding: "1px 0" }}
-                formatter={(value: number | undefined, name: unknown) => [
-                  formatDuration(Math.round((value ?? 0) * 60)),
-                  name === "logged"
-                    ? "Registrado"
-                    : name === "meetings"
-                      ? "Reuniões"
-                      : "Previsto",
-                ]}
-                labelFormatter={(_label: unknown, payload) => {
-                  const point = payload?.[0]?.payload as ChartPoint | undefined;
-                  if (!point) return "";
-                  if (point.away) return `${point.label} · ausente`;
-                  if (!point.isWorkingDay) return `${point.label} · folga`;
-                  return point.label;
-                }}
+                cursor={{ fill: colors.cursorFill, radius: 6 }}
+                content={
+                  <BklitChartTooltip
+                    colorFormatter={(item) =>
+                      item.dataKey === "logged"
+                        ? "var(--primary)"
+                        : item.dataKey === "meetings"
+                          ? "var(--chart-5)"
+                          : undefined
+                    }
+                    labelFormatter={(_label, payload) => {
+                      const rawPayload = payload[0]?.payload;
+                      if (!rawPayload) return "";
+                      const labelText =
+                        typeof rawPayload.label === "string"
+                          ? rawPayload.label
+                          : "";
+                      if (rawPayload.away === true) {
+                        return `${labelText} · ausente`;
+                      }
+                      if (rawPayload.isWorkingDay === false) {
+                        return `${labelText} · folga`;
+                      }
+                      return labelText;
+                    }}
+                    valueFormatter={(value, name, item) => {
+                      const key = String(item.dataKey ?? name);
+                      const seriesName =
+                        key === "logged"
+                          ? "Registrado"
+                          : key === "meetings"
+                            ? "Reuniões"
+                            : "Previsto";
+                      return [
+                        formatDuration(Math.round(value * 60)),
+                        seriesName,
+                      ];
+                    }}
+                  />
+                }
               />
 
-              <Bar dataKey="logged" radius={[5, 5, 0, 0]} barSize={barSize}>
+              <Bar dataKey="logged" radius={[5, 5, 1, 1]} barSize={barSize}>
                 {data.map((point) => (
                   <Cell
                     key={point.date}
-                    fill={LOGGED_FILL}
+                    fill="url(#myTimeLoggedGradient)"
                     fillOpacity={opacityFor(point.date)}
                   />
                 ))}
               </Bar>
 
               {hasCalendar && (
-                <Bar dataKey="meetings" radius={[5, 5, 0, 0]} barSize={barSize}>
+                <Bar dataKey="meetings" radius={[5, 5, 1, 1]} barSize={barSize}>
                   {data.map((point) => (
                     <Cell
                       key={point.date}
-                      fill={MEETING_FILL}
+                      fill="url(#myTimeMeetingsGradient)"
                       fillOpacity={opacityFor(point.date)}
                     />
                   ))}

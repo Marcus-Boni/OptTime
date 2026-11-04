@@ -24,7 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ChartSkeleton, Skeleton } from "@/components/ui/skeleton";
+import {
+  AnimatedMetric,
+  type AnimatedMetricProps,
+  SpotlightCard,
+} from "@/components/ui/spotlight-card";
 import { useHqHealth } from "@/hooks/use-hq";
 import { summarizeBudgets } from "@/lib/hq/budget-summary";
 import { formatDuration } from "@/lib/utils";
@@ -66,20 +71,28 @@ function entryDelay(index: number): number {
 interface StatCardProps {
   icon: typeof Target;
   label: string;
-  value: string;
+  numericValue: number;
+  formatMode?: AnimatedMetricProps["formatMode"];
   hint: string | null;
   tone?: "default" | "danger";
 }
 
-function StatCard({ icon: Icon, label, value, hint, tone }: StatCardProps) {
+function StatCard({
+  icon: Icon,
+  label,
+  numericValue,
+  formatMode = "integer",
+  hint,
+  tone,
+}: StatCardProps) {
   return (
-    <Card className="gap-0 py-4">
+    <SpotlightCard className="gap-0 border-border/60 bg-card/80 py-4 backdrop-blur">
       <CardContent className="flex items-start gap-3 px-4">
         <div
           className={
             tone === "danger"
-              ? "rounded-lg bg-red-500/10 p-2 text-red-400"
-              : "rounded-lg bg-brand-500/10 p-2 text-brand-500"
+              ? "rounded-lg bg-red-500/10 p-2 text-red-400 ring-1 ring-red-500/20"
+              : "rounded-lg bg-brand-500/10 p-2 text-brand-500 ring-1 ring-brand-500/20"
           }
         >
           <Icon className="size-4" aria-hidden="true" />
@@ -87,14 +100,14 @@ function StatCard({ icon: Icon, label, value, hint, tone }: StatCardProps) {
         <div className="min-w-0">
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
           <p className="font-mono text-xl font-semibold tracking-tight">
-            {value}
+            <AnimatedMetric value={numericValue} formatMode={formatMode} />
           </p>
           {hint ? (
             <p className="truncate text-xs text-muted-foreground">{hint}</p>
           ) : null}
         </div>
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }
 
@@ -114,15 +127,16 @@ function RadarSkeleton() {
       aria-label="Carregando radar de projetos"
       className="block space-y-6"
     >
+      <Skeleton className="h-52 w-full rounded-2xl" />
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
-        <Skeleton className="h-24" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-24 rounded-xl" />
       </div>
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Skeleton className="h-96" />
-        <Skeleton className="h-96" />
+        <ChartSkeleton className="h-96" />
+        <ChartSkeleton className="h-96" />
       </div>
     </output>
   );
@@ -238,13 +252,13 @@ export function HealthRadarTab() {
           {[
             {
               label: "Orçamento contratado",
-              value: formatDuration(budget.budgetMinutes),
+              minutes: budget.budgetMinutes,
               hint: "projetos com orçamento",
               tone: "",
             },
             {
               label: "Horas consumidas",
-              value: formatDuration(budget.consumedMinutes),
+              minutes: budget.consumedMinutes,
               hint:
                 consumedPct !== null
                   ? `${consumedPct}% do contratado`
@@ -253,13 +267,13 @@ export function HealthRadarTab() {
             },
             {
               label: "Saldo disponível",
-              value: formatDuration(budget.remainingMinutes),
+              minutes: budget.remainingMinutes,
               hint: "soma dos saldos positivos",
               tone: "text-emerald-700 dark:text-emerald-400",
             },
             {
               label: "Horas excedentes",
-              value: formatDuration(budget.overrunMinutes),
+              minutes: budget.overrunMinutes,
               hint: "soma dos estouros individuais",
               tone:
                 budget.overrunMinutes > 0
@@ -272,7 +286,7 @@ export function HealthRadarTab() {
               <dd
                 className={`mt-1 font-mono text-2xl font-semibold tracking-tight ${item.tone}`}
               >
-                {item.value}
+                <AnimatedMetric value={item.minutes} formatMode="duration" />
               </dd>
               <p className="mt-1 text-xs text-muted-foreground">{item.hint}</p>
             </div>
@@ -329,13 +343,13 @@ export function HealthRadarTab() {
         <StatCard
           icon={FolderKanban}
           label="Projetos monitorados"
-          value={String(data.totals.projects)}
+          numericValue={data.totals.projects}
           hint="ativos no radar"
         />
         <StatCard
           icon={AlertTriangle}
           label="Em risco"
-          value={String(data.totals.atRisk)}
+          numericValue={data.totals.atRisk}
           hint={
             data.totals.atRisk > 0 ? "exigem atenção" : "sem risco identificado"
           }
@@ -344,13 +358,14 @@ export function HealthRadarTab() {
         <StatCard
           icon={Clock}
           label="Horas nesta semana"
-          value={formatDuration(data.totals.minutesThisWeek)}
+          numericValue={data.totals.minutesThisWeek}
+          formatMode="duration"
           hint="todos os projetos"
         />
         <StatCard
           icon={Target}
           label="Sem orçamento"
-          value={String(budget.unbudgetedCount)}
+          numericValue={budget.unbudgetedCount}
           hint="precisam de um limite de horas"
         />
       </motion.div>

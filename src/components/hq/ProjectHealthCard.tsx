@@ -26,8 +26,9 @@ import {
   YAxis,
 } from "recharts";
 import { Badge } from "@/components/ui/badge";
+import { BklitChartTooltip } from "@/components/ui/bklit-chart-tooltip";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { CardContent, CardHeader } from "@/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedMetric, SpotlightCard } from "@/components/ui/spotlight-card";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { useScopeCreep } from "@/hooks/use-hq";
 import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
@@ -204,9 +206,11 @@ export function ProjectHealthCard({
       : null;
 
   const trend = project.forecast.trendPct;
+  const currentGradId = `hqCurrentGrad-${project.projectId}`;
+  const pastGradId = `hqPastGrad-${project.projectId}`;
 
   return (
-    <Card className="h-full transition-colors duration-150 hover:border-brand-500/30">
+    <SpotlightCard className="h-full border-border/60 bg-card/80 backdrop-blur">
       <CardHeader className="gap-2">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -277,15 +281,23 @@ export function ProjectHealthCard({
             <div>
               <dt className="text-xs text-muted-foreground">Contratado</dt>
               <dd className="mt-1 font-mono text-lg font-semibold sm:text-xl">
-                {project.budgetMinutes !== null
-                  ? formatDuration(project.budgetMinutes)
-                  : "—"}
+                {project.budgetMinutes !== null ? (
+                  <AnimatedMetric
+                    value={project.budgetMinutes}
+                    formatMode="duration"
+                  />
+                ) : (
+                  "—"
+                )}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">Consumido</dt>
               <dd className="mt-1 font-mono text-lg font-semibold sm:text-xl">
-                {formatDuration(project.consumedMinutes)}
+                <AnimatedMetric
+                  value={project.consumedMinutes}
+                  formatMode="duration"
+                />
               </dd>
             </div>
             <div>
@@ -304,11 +316,16 @@ export function ProjectHealthCard({
                     : "text-emerald-700 dark:text-emerald-400",
                 )}
               >
-                {project.budgetMinutes !== null
-                  ? formatDuration(
-                      Math.abs(project.budgetMinutes - project.consumedMinutes),
-                    )
-                  : "—"}
+                {project.budgetMinutes !== null ? (
+                  <AnimatedMetric
+                    value={Math.abs(
+                      project.budgetMinutes - project.consumedMinutes,
+                    )}
+                    formatMode="duration"
+                  />
+                ) : (
+                  "—"
+                )}
               </dd>
             </div>
           </dl>
@@ -354,6 +371,26 @@ export function ProjectHealthCard({
                 margin={{ top: 8, right: 4, left: -24, bottom: 0 }}
                 barSize={chartData.length > 8 ? 14 : 22}
               >
+                <defs>
+                  <linearGradient
+                    id={currentGradId}
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop offset="0%" stopColor="#fb923c" stopOpacity={0.98} />
+                    <stop offset="100%" stopColor="#ea580c" stopOpacity={0.4} />
+                  </linearGradient>
+                  <linearGradient id={pastGradId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f97316" stopOpacity={0.62} />
+                    <stop
+                      offset="100%"
+                      stopColor="#f97316"
+                      stopOpacity={0.14}
+                    />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
@@ -373,17 +410,15 @@ export function ProjectHealthCard({
                   width={44}
                 />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: chartColors.tooltipBg,
-                    border: `1px solid ${chartColors.tooltipBorder}`,
-                    borderRadius: "12px",
-                    color: chartColors.tooltipColor,
-                    fontSize: 12,
-                  }}
-                  itemStyle={{ color: chartColors.tooltipColor }}
-                  cursor={{ fill: chartColors.cursorFill }}
-                  formatter={(value) => [`${value ?? 0}h`, "Horas"]}
-                  labelStyle={{ color: chartColors.tooltipLabelColor }}
+                  cursor={{ fill: chartColors.cursorFill, radius: 5 }}
+                  content={
+                    <BklitChartTooltip
+                      valueFormatter={(value) => [
+                        `${value}h`,
+                        "Consumo semanal",
+                      ]}
+                    />
+                  }
                 />
                 {burnRateHours > 0 ? (
                   <ReferenceLine
@@ -396,14 +431,20 @@ export function ProjectHealthCard({
                 <Bar
                   dataKey="hours"
                   name="Horas"
-                  radius={[5, 5, 0, 0]}
+                  radius={[5, 5, 1, 1]}
+                  background={{
+                    fill: chartColors.ghostBarFill,
+                    radius: 5,
+                  }}
                   isAnimationActive={!reducedMotion}
                 >
                   {chartData.map((point) => (
                     <Cell
                       key={point.label}
                       fill={
-                        point.isCurrent ? "#f97316" : "rgba(249,115,22,0.45)"
+                        point.isCurrent
+                          ? `url(#${currentGradId})`
+                          : `url(#${pastGradId})`
                       }
                     />
                   ))}
@@ -462,6 +503,6 @@ export function ProjectHealthCard({
           <ScopeCreepSection projectId={project.projectId} />
         ) : null}
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }

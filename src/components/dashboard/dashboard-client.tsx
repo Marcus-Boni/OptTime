@@ -1,14 +1,6 @@
 "use client";
 
-import {
-  differenceInCalendarDays,
-  endOfMonth,
-  endOfWeek,
-  format,
-  startOfMonth,
-  startOfWeek,
-  subMonths,
-} from "date-fns";
+import { differenceInCalendarDays, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -16,8 +8,10 @@ import {
   ArrowRight,
   BarChart3,
   CalendarRange,
+  ChevronDown,
   Download,
   FileSpreadsheet,
+  FileText,
   ReceiptText,
   TrendingUp,
 } from "lucide-react";
@@ -40,9 +34,19 @@ import { toast } from "sonner";
 import { AutofillRadar } from "@/components/dashboard/AutofillRadar";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Badge } from "@/components/ui/badge";
+import { BklitChartTooltip } from "@/components/ui/bklit-chart-tooltip";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DatePicker } from "@/components/ui/date-picker";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -51,7 +55,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ChartSkeleton,
+  DonutSkeleton,
+  Skeleton,
+} from "@/components/ui/skeleton";
+import {
+  AnimatedMetric,
+  type AnimatedMetricProps,
+  SpotlightCard,
+} from "@/components/ui/spotlight-card";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { useSession } from "@/lib/auth-client";
 import {
@@ -156,28 +169,34 @@ function getProjectColor(color: string | null, index: number) {
   return color ?? PIE_COLORS[index % PIE_COLORS.length];
 }
 
-function StatCard({
-  icon: Icon,
-  title,
-  value,
-  description,
-  loading,
-  progress,
-}: {
+interface StatCardProps {
   icon: typeof BarChart3;
   title: string;
-  value: string;
+  numericValue: number;
+  formatMode: AnimatedMetricProps["formatMode"];
   description: string;
   loading: boolean;
   progress?: number;
-}) {
+}
+
+function StatCard({
+  icon: Icon,
+  title,
+  numericValue,
+  formatMode,
+  description,
+  loading,
+  progress,
+}: StatCardProps) {
   return (
-    <Card className="flex h-full flex-col justify-between border-border/50 bg-card/80 backdrop-blur">
+    <SpotlightCard className="flex h-full flex-col justify-between border-border/50 bg-card/80 backdrop-blur">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {title}
         </CardTitle>
-        <Icon className="h-4 w-4 text-brand-500" />
+        <span className="flex size-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500 ring-1 ring-brand-500/20">
+          <Icon className="h-4 w-4" aria-hidden="true" />
+        </span>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col justify-between space-y-3">
         {loading ? (
@@ -189,8 +208,8 @@ function StatCard({
         ) : (
           <div className="flex flex-1 flex-col justify-between space-y-3">
             <div className="space-y-1.5">
-              <div className="text-2xl font-semibold text-foreground">
-                {value}
+              <div className="text-2xl font-bold tracking-tight text-foreground">
+                <AnimatedMetric value={numericValue} formatMode={formatMode} />
               </div>
               {typeof progress === "number" ? (
                 <Progress
@@ -203,7 +222,7 @@ function StatCard({
           </div>
         )}
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }
 
@@ -279,6 +298,9 @@ export function DashboardClient() {
   const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(true);
   const [dataError, setDataError] = useState<string | null>(null);
+  const [hoveredProjectId, setHoveredProjectId] = useState<string | null>(null);
+  const [pinnedProjectId, setPinnedProjectId] = useState<string | null>(null);
+
   const {
     from,
     to,
@@ -373,6 +395,8 @@ export function DashboardClient() {
     }
 
     async function loadDashboard() {
+      setHoveredProjectId(null);
+      setPinnedProjectId(null);
       setLoadingDashboard(true);
       setLoadingEntries(true);
       setDataError(null);
@@ -513,23 +537,36 @@ export function DashboardClient() {
     color: getProjectColor(project.projectColor, index),
   }));
 
-  const statCards = [
+  const hoveredSlice = useMemo(
+    () =>
+      hoveredProjectId || pinnedProjectId
+        ? (pieData.find(
+            (item) => item.projectId === (hoveredProjectId ?? pinnedProjectId),
+          ) ?? null)
+        : null,
+    [hoveredProjectId, pinnedProjectId, pieData],
+  );
+
+  const statCards: readonly Omit<StatCardProps, "loading">[] = [
     {
       title: "Total registrado",
-      value: formatDuration(totalMinutes),
+      numericValue: totalMinutes,
+      formatMode: "duration",
       description: `${entryCount} lançamentos no período selecionado.`,
       icon: BarChart3,
     },
     {
       title: "Horas faturáveis",
-      value: `${billableRate}%`,
+      numericValue: billableRate,
+      formatMode: "percent",
       description: `${formatDuration(billableMinutes)} faturáveis e ${formatDuration(Math.max(totalMinutes - billableMinutes, 0))} não faturáveis.`,
       icon: TrendingUp,
       progress: billableRate,
     },
     {
       title: "Média por dia ativo",
-      value: formatDuration(averageDailyMinutes),
+      numericValue: averageDailyMinutes,
+      formatMode: "duration",
       description:
         activeDays > 0
           ? `${activeDays} dias com registro no período.`
@@ -538,14 +575,15 @@ export function DashboardClient() {
     },
     {
       title: "Ritmo de lançamentos",
-      value: `${entryCount}`,
+      numericValue: entryCount,
+      formatMode: "integer",
       description:
         activeDays > 0
           ? `${averageEntriesPerActiveDay.toLocaleString("pt-BR")} lançamentos por dia ativo em ${activeDays} de ${periodDays} dias.`
           : "Sem lançamentos no período.",
       icon: ReceiptText,
     },
-  ] as const;
+  ];
 
   const detailedReportRows = reportEntries.map((entry) => ({
     date: formatDateLabel(entry.date),
@@ -658,6 +696,11 @@ export function DashboardClient() {
     }
   }
 
+  const canExportSummary =
+    isRangeReady && !loadingDashboard && projectSummaries.length > 0;
+  const canExportDetailed =
+    isRangeReady && !loadingDashboard && detailedReportRows.length > 0;
+
   return (
     <motion.div
       variants={containerVariants}
@@ -670,28 +713,14 @@ export function DashboardClient() {
       <AutofillRadar />
 
       <motion.div variants={itemVariants} data-tour="dashboard-hero">
-        <Card className="border-border/50 bg-card/80 backdrop-blur">
+        <SpotlightCard className="border-border/50 bg-card/80 backdrop-blur">
           <CardContent className="flex flex-col gap-6 p-6">
-            <motion.div
-              layout
-              transition={{
-                duration: 0.24,
-                ease: [0.25, 0.46, 0.45, 0.94],
-              }}
-              className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between"
-            >
-              <motion.div
-                layout="position"
-                transition={{
-                  duration: 0.24,
-                  ease: [0.25, 0.46, 0.45, 0.94],
-                }}
-                className="space-y-4"
-              >
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-4">
                 <div>
                   <h1 className="font-display text-2xl font-bold text-foreground md:text-3xl">
                     {getGreeting(dashboardNow)}
-                    {firstName ? `, ${firstName}` : ""}! 👋
+                    {firstName ? `, ${firstName}` : ""}
                   </h1>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
                     Dashboard único para acompanhar produtividade real,
@@ -714,7 +743,7 @@ export function DashboardClient() {
                   </Badge>
                   <Badge
                     variant="secondary"
-                    className="bg-muted text-muted-foreground"
+                    className="bg-muted font-mono text-muted-foreground tabular-nums"
                   >
                     {entryCount} lançamentos
                   </Badge>
@@ -722,24 +751,10 @@ export function DashboardClient() {
                 <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
                   {summaryText}
                 </p>
-              </motion.div>
+              </div>
 
-              <motion.div
-                layout
-                transition={{
-                  duration: 0.24,
-                  ease: [0.25, 0.46, 0.45, 0.94],
-                }}
-                className="flex w-full flex-col gap-3 xl:max-w-xl"
-              >
-                <motion.div
-                  layout
-                  transition={{
-                    duration: 0.24,
-                    ease: [0.25, 0.46, 0.45, 0.94],
-                  }}
-                  className="grid gap-3 sm:grid-cols-2"
-                >
+              <div className="flex w-full flex-col gap-3 xl:max-w-xl">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                       Período
@@ -775,15 +790,14 @@ export function DashboardClient() {
                   <AnimatePresence initial={false}>
                     {range === "custom" ? (
                       <motion.div
-                        layout
-                        initial={{ opacity: 0, height: 0, y: -8 }}
-                        animate={{ opacity: 1, height: "auto", y: 0 }}
-                        exit={{ opacity: 0, height: 0, y: -8 }}
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
                         transition={{
                           duration: 0.2,
                           ease: [0.25, 0.46, 0.45, 0.94],
                         }}
-                        className="space-y-3 overflow-hidden sm:col-span-2"
+                        className="space-y-3 sm:col-span-2"
                       >
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-2">
@@ -834,68 +848,68 @@ export function DashboardClient() {
                       </motion.div>
                     ) : null}
                   </AnimatePresence>
-                </motion.div>
-
-                <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleExportExcel}
-                    disabled={
-                      !isRangeReady ||
-                      loadingDashboard ||
-                      projectSummaries.length === 0
-                    }
-                  >
-                    <FileSpreadsheet className="h-4 w-4" />
-                    Resumo Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleExportPDF}
-                    disabled={
-                      !isRangeReady ||
-                      loadingDashboard ||
-                      projectSummaries.length === 0
-                    }
-                  >
-                    <Download className="h-4 w-4" />
-                    Resumo PDF
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleExportDetailedExcel}
-                    disabled={
-                      !isRangeReady ||
-                      loadingDashboard ||
-                      detailedReportRows.length === 0
-                    }
-                  >
-                    <FileSpreadsheet className="h-4 w-4" />
-                    Detalhado Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleExportDetailedPDF}
-                    disabled={
-                      !isRangeReady ||
-                      loadingDashboard ||
-                      detailedReportRows.length === 0
-                    }
-                  >
-                    <Download className="h-4 w-4" />
-                    Detalhado PDF
-                  </Button>
                 </div>
-              </motion.div>
-            </motion.div>
+
+                {/* Consolidated Export Menu (≤4 controls in hero header) */}
+                <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-2 border-brand-500/30 text-foreground hover:border-brand-500/50 hover:bg-brand-500/10"
+                        disabled={!canExportSummary && !canExportDetailed}
+                      >
+                        <Download className="h-4 w-4 text-brand-500" />
+                        Exportar Relatório
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Resumo por Projeto
+                      </DropdownMenuLabel>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={handleExportExcel}
+                          disabled={!canExportSummary}
+                        >
+                          <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-500" />
+                          <span>Resumo em Excel (.xlsx)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => void handleExportPDF()}
+                          disabled={!canExportSummary}
+                        >
+                          <FileText className="mr-2 h-4 w-4 text-brand-500" />
+                          <span>Resumo em PDF (.pdf)</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs text-muted-foreground">
+                        Lançamentos Detalhados
+                      </DropdownMenuLabel>
+                      <DropdownMenuGroup>
+                        <DropdownMenuItem
+                          onClick={handleExportDetailedExcel}
+                          disabled={!canExportDetailed}
+                        >
+                          <FileSpreadsheet className="mr-2 h-4 w-4 text-emerald-500" />
+                          <span>Detalhado em Excel (.xlsx)</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => void handleExportDetailedPDF()}
+                          disabled={!canExportDetailed}
+                        >
+                          <FileText className="mr-2 h-4 w-4 text-brand-500" />
+                          <span>Detalhado em PDF (.pdf)</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuGroup>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            </div>
 
             {dataError ? (
               <div className="flex items-start gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-muted-foreground">
@@ -909,10 +923,10 @@ export function DashboardClient() {
               </div>
             ) : null}
           </CardContent>
-        </Card>
+        </SpotlightCard>
       </motion.div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 items-stretch">
+      <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
         {statCards.map((card) => (
           <motion.div
             key={card.title}
@@ -940,7 +954,7 @@ export function DashboardClient() {
             </CardHeader>
             <CardContent>
               {loadingDashboard ? (
-                <Skeleton className="h-[280px] w-full rounded-xl" />
+                <ChartSkeleton />
               ) : barData.length === 0 ? (
                 <EmptyState
                   title={emptyStateContent?.title ?? "Nenhuma hora registrada"}
@@ -954,6 +968,31 @@ export function DashboardClient() {
                       barSize={barData.length > 20 ? 10 : 28}
                       margin={{ top: 12, right: 12, left: -20, bottom: 0 }}
                     >
+                      <defs>
+                        <linearGradient
+                          id="dashboardDailyBarGradient"
+                          x1="0"
+                          y1="0"
+                          x2="0"
+                          y2="1"
+                        >
+                          <stop
+                            offset="0%"
+                            stopColor="#fb923c"
+                            stopOpacity={0.95}
+                          />
+                          <stop
+                            offset="55%"
+                            stopColor="#f97316"
+                            stopOpacity={0.78}
+                          />
+                          <stop
+                            offset="100%"
+                            stopColor="#ea580c"
+                            stopOpacity={0.22}
+                          />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid
                         strokeDasharray="3 3"
                         vertical={false}
@@ -977,24 +1016,24 @@ export function DashboardClient() {
                         unit="h"
                       />
                       <Tooltip
-                        contentStyle={{
-                          backgroundColor: chartColors.tooltipBg,
-                          border: `1px solid ${chartColors.tooltipBorder}`,
-                          borderRadius: "12px",
-                          color: chartColors.tooltipColor,
-                        }}
-                        itemStyle={{ color: chartColors.tooltipColor }}
-                        labelStyle={{ color: chartColors.tooltipLabelColor }}
-                        cursor={{ fill: chartColors.cursorFill }}
-                        formatter={(value: number | string | undefined) => [
-                          `${value ?? 0}h`,
-                          "Horas",
-                        ]}
+                        cursor={{ fill: chartColors.cursorFill, radius: 8 }}
+                        content={
+                          <BklitChartTooltip
+                            valueFormatter={(value) => [
+                              `${value}h`,
+                              "Horas registradas",
+                            ]}
+                          />
+                        }
                       />
                       <Bar
                         dataKey="hours"
-                        fill="#f97316"
-                        radius={[8, 8, 0, 0]}
+                        fill="url(#dashboardDailyBarGradient)"
+                        background={{
+                          fill: chartColors.ghostBarFill,
+                          radius: 8,
+                        }}
+                        radius={[8, 8, 2, 2]}
                         name="Horas"
                       />
                     </BarChart>
@@ -1020,7 +1059,7 @@ export function DashboardClient() {
             </CardHeader>
             <CardContent>
               {loadingDashboard ? (
-                <Skeleton className="h-[340px] w-full rounded-xl" />
+                <DonutSkeleton />
               ) : pieData.length === 0 ? (
                 <EmptyState
                   title="Sem distribuição para exibir"
@@ -1028,81 +1067,175 @@ export function DashboardClient() {
                 />
               ) : (
                 <>
-                  <div className="h-[240px]">
+                  <div className="relative h-[220px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsPie>
                         <Pie
                           data={pieData}
                           cx="50%"
                           cy="50%"
-                          innerRadius={60}
+                          innerRadius={64}
                           outerRadius={92}
-                          paddingAngle={4}
+                          paddingAngle={3}
                           dataKey="value"
-                          label={({ percent, x, y, cx }) => {
-                            const value =
-                              typeof percent === "number" ? percent : 0;
-                            if (value < 0.05) return null;
-                            return (
-                              <text
-                                x={x}
-                                y={y}
-                                fill={chartColors.pieLabelFill}
-                                textAnchor={x > cx ? "start" : "end"}
-                                dominantBaseline="central"
-                                fontSize={11}
-                                fontWeight="500"
-                              >
-                                {`${(value * 100).toFixed(0)}%`}
-                              </text>
-                            );
+                          stroke="none"
+                          onMouseEnter={(_, index) => {
+                            const target = pieData[index];
+                            if (target) setHoveredProjectId(target.projectId);
                           }}
-                          labelLine={false}
+                          onMouseLeave={() => setHoveredProjectId(null)}
                         >
-                          {pieData.map((item) => (
-                            <Cell key={item.projectId} fill={item.color} />
-                          ))}
+                          {pieData.map((item) => {
+                            const isDimmed =
+                              hoveredSlice !== null &&
+                              hoveredSlice.projectId !== item.projectId;
+                            return (
+                              <Cell
+                                key={item.projectId}
+                                fill={item.color}
+                                fillOpacity={isDimmed ? 0.3 : 1}
+                                className="cursor-pointer transition-opacity duration-200"
+                              />
+                            );
+                          })}
                         </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: chartColors.tooltipBg,
-                            border: `1px solid ${chartColors.tooltipBorder}`,
-                            borderRadius: "12px",
-                            color: chartColors.tooltipColor,
-                          }}
-                          itemStyle={{ color: chartColors.tooltipColor }}
-                          labelStyle={{ color: chartColors.tooltipLabelColor }}
-                          formatter={(value: number | undefined) => [
-                            formatDuration(value ?? 0),
-                            "Total",
-                          ]}
-                        />
                       </RechartsPie>
                     </ResponsiveContainer>
+
+                    {/* Center numeric readout — never overlaps with project names */}
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+                      {hoveredSlice ? (
+                        <span className="mb-0.5 inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold text-foreground tabular-nums">
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: hoveredSlice.color }}
+                            aria-hidden="true"
+                          />
+                          {totalMinutes > 0
+                            ? Math.round(
+                                (hoveredSlice.value / totalMinutes) * 100,
+                              )
+                            : 0}
+                          %
+                        </span>
+                      ) : (
+                        <span className="mb-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                          Total
+                        </span>
+                      )}
+                      <span className="font-mono text-lg font-bold leading-tight text-foreground tabular-nums">
+                        {formatDuration(
+                          hoveredSlice ? hoveredSlice.value : totalMinutes,
+                        )}
+                      </span>
+                      <span className="mt-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+                        {hoveredSlice
+                          ? `de ${formatDuration(totalMinutes)}`
+                          : `${pieData.length} ${pieData.length === 1 ? "projeto" : "projetos"}`}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="space-y-3">
-                    {pieData.slice(0, 6).map((item) => {
+                  {/* Docked active project bar — replaces floating tooltip so the chart is never obscured */}
+                  {(() => {
+                    const spotlightProject = hoveredSlice ?? pieData[0];
+                    if (!spotlightProject) return null;
+                    const spotlightShare =
+                      totalMinutes > 0
+                        ? Math.round(
+                            (spotlightProject.value / totalMinutes) * 100,
+                          )
+                        : 0;
+                    return (
+                      <div className="mb-3 flex min-w-0 flex-wrap items-center justify-between gap-2.5 rounded-xl border border-border/60 bg-muted/25 px-3 py-2 text-xs transition-colors">
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span
+                            className="size-2.5 shrink-0 rounded-full"
+                            style={{ backgroundColor: spotlightProject.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="min-w-0 break-words [overflow-wrap:anywhere] font-medium text-foreground">
+                            {spotlightProject.name}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2 font-mono tabular-nums">
+                          <span className="font-semibold text-foreground">
+                            {formatDuration(spotlightProject.value)}
+                          </span>
+                          <span className="rounded-md bg-background/80 px-1.5 py-0.5 text-[11px] text-muted-foreground ring-1 ring-border/60">
+                            {spotlightShare}%
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="space-y-2.5">
+                    {pieData.map((item) => {
                       const share =
                         totalMinutes > 0
                           ? Math.round((item.value / totalMinutes) * 100)
                           : 0;
+                      const isHighlighted =
+                        hoveredSlice?.projectId === item.projectId;
                       return (
-                        <div key={item.projectId} className="space-y-1.5">
-                          <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          key={item.projectId}
+                          onMouseEnter={() =>
+                            setHoveredProjectId(item.projectId)
+                          }
+                          onMouseLeave={() => setHoveredProjectId(null)}
+                          onFocus={() => setHoveredProjectId(item.projectId)}
+                          onBlur={() => setHoveredProjectId(null)}
+                          onClick={() =>
+                            setPinnedProjectId((current) =>
+                              current === item.projectId
+                                ? null
+                                : item.projectId,
+                            )
+                          }
+                          aria-pressed={pinnedProjectId === item.projectId}
+                          className={cn(
+                            "min-h-11 w-full min-w-0 space-y-1.5 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                            isHighlighted
+                              ? "bg-muted/60 ring-1 ring-border/70"
+                              : "hover:bg-muted/30",
+                          )}
+                        >
+                          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
                             <div
                               className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: item.color }}
                             />
-                            <span className="flex-1 truncate text-muted-foreground">
+                            <span
+                              className={cn(
+                                "min-w-0 flex-1 break-words [overflow-wrap:anywhere] transition-colors",
+                                isHighlighted
+                                  ? "font-medium text-foreground"
+                                  : "text-muted-foreground",
+                              )}
+                            >
                               {item.name}
                             </span>
-                            <span className="font-medium text-foreground">
+                            <span className="shrink-0 font-mono font-medium text-foreground tabular-nums">
                               {formatDuration(item.value)}
                             </span>
+                            <span className="w-9 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums">
+                              {share}%
+                            </span>
                           </div>
-                          <Progress value={share} className="h-1.5" />
-                        </div>
+                          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
+                            <div
+                              className="h-full rounded-full"
+                              style={{
+                                width: `${share}%`,
+                                backgroundColor: item.color,
+                              }}
+                              aria-hidden="true"
+                            />
+                          </div>
+                        </button>
                       );
                     })}
                   </div>
@@ -1162,7 +1295,7 @@ export function DashboardClient() {
                   >
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span
                             className="h-2.5 w-2.5 shrink-0 rounded-full"
                             style={{
@@ -1174,7 +1307,7 @@ export function DashboardClient() {
                             {entry.project?.name ?? "Projeto removido"}
                           </span>
                         </div>
-                        <span className="shrink-0 font-mono text-xs font-semibold text-foreground">
+                        <span className="shrink-0 font-mono text-xs font-semibold text-foreground tabular-nums">
                           {formatDuration(entry.duration)}
                         </span>
                       </div>
@@ -1191,7 +1324,7 @@ export function DashboardClient() {
                         className={cn(
                           "h-4 rounded px-1.5 text-[9px] uppercase tracking-tighter",
                           entry.billable
-                            ? "bg-green-500/10 text-green-500 border border-green-500/20"
+                            ? "border border-green-500/20 bg-green-500/10 text-green-500"
                             : "bg-muted text-muted-foreground",
                         )}
                       >

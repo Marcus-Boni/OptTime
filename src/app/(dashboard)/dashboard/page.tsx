@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { DashboardClient } from "@/components/dashboard/dashboard-client";
-import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ChartSkeleton,
+  DonutSkeleton,
+  Skeleton,
+} from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -20,8 +24,10 @@ function DashboardSkeleton() {
         <Skeleton className="h-28 w-full rounded-xl" />
       </div>
       <div className="grid gap-6 lg:grid-cols-3">
-        <Skeleton className="h-64 lg:col-span-2 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
+        <ChartSkeleton className="lg:col-span-2" />
+        <div className="rounded-xl border border-border/40 bg-muted/15 p-4">
+          <DonutSkeleton />
+        </div>
       </div>
     </div>
   );

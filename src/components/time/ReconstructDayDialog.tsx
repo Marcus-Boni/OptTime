@@ -50,6 +50,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  KokonutOrbitalLoader,
+  KokonutStepLoader,
+} from "@/components/ui/kokonut-loader";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -129,15 +133,6 @@ const SOURCE_ORDER: ReconstructSourceKind[] = [
   "pattern",
 ];
 
-const LOADING_STEPS = [
-  "Lendo reuniões no calendário Outlook…",
-  "Conferindo presença real nas salas do Teams…",
-  "Verificando chamadas diretas no Teams…",
-  "Procurando documentos recentes no SharePoint e OneDrive…",
-  "Cruzando pull requests do Azure DevOps…",
-  "Compondo descrições profissionais com IA…",
-];
-
 export interface ReconstructDayDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -148,29 +143,11 @@ export interface ReconstructDayDialogProps {
 // ─── Sub-components ──────────────────────────────────────────────────
 
 function LoadingSteps() {
-  const prefersReducedMotion = useReducedMotion();
-
   return (
-    <output
-      className="block space-y-3 px-6 py-10"
-      aria-label="Montando o plano do dia"
-    >
-      {LOADING_STEPS.map((step, index) => (
-        <motion.div
-          key={step}
-          initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.4, duration: 0.3 }}
-          className="flex items-center gap-3 text-muted-foreground text-sm"
-        >
-          <Loader2
-            className="size-4 animate-spin text-brand-500 motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-          {step}
-        </motion.div>
-      ))}
-    </output>
+    <KokonutStepLoader
+      label="Montando o plano do dia"
+      description="Aguarde a preparação do plano. Você poderá revisar as sugestões antes de registrar as horas."
+    />
   );
 }
 
@@ -843,10 +820,7 @@ export function ReconstructDayDialog({
                   className="bg-brand-500 text-white hover:bg-brand-600"
                 >
                   {isApplying ? (
-                    <Loader2
-                      className="size-4 animate-spin motion-reduce:animate-none"
-                      aria-hidden="true"
-                    />
+                    <KokonutOrbitalLoader size="sm" />
                   ) : (
                     <CheckCircle2 className="size-4" aria-hidden="true" />
                   )}
