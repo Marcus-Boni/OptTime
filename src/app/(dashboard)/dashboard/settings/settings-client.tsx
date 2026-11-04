@@ -13,6 +13,7 @@ import {
   Layers3,
   LayoutTemplate,
   Loader2,
+  Monitor,
   Moon,
   Settings2,
   Sparkles,
@@ -50,6 +51,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUpdateProfile } from "@/hooks/use-update-profile";
 import { useSession } from "@/lib/auth-client";
+import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import {
   type UpdateProfileFormInput,
@@ -79,7 +81,7 @@ const itemVariants = {
   },
 };
 
-type ThemeOption = "dark" | "light";
+type ThemeOption = ThemePreference;
 
 type SettingsOverview = {
   directReports: number;
@@ -467,7 +469,10 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                     Esta escolha é aplicada imediatamente na interface atual.
                   </p>
                 </div>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div
+                  className="grid gap-4 md:grid-cols-3"
+                  data-tour="settings-theme"
+                >
                   <ThemeCard
                     value="dark"
                     label="Escuro"
@@ -481,6 +486,14 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
                     label="Claro"
                     description="Mais confortável em ambientes bem iluminados."
                     icon={<Sun className="h-4 w-4" />}
+                    currentTheme={theme}
+                    onSelect={setTheme}
+                  />
+                  <ThemeCard
+                    value="system"
+                    label="Sistema"
+                    description="Acompanhe o tema claro ou escuro do dispositivo."
+                    icon={<Monitor className="h-4 w-4" />}
                     currentTheme={theme}
                     onSelect={setTheme}
                   />

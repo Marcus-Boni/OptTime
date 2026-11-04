@@ -1,7 +1,6 @@
 "use client";
 
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect } from "react";
 import { TimeBotWidget } from "@/components/ai";
 import { FocusModeRoot } from "@/components/focus";
 import { CelebrationHost } from "@/components/gamification/CelebrationHost";
@@ -20,10 +19,6 @@ export interface DashboardShellProps {
 
 export function DashboardShell({ children }: DashboardShellProps) {
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
-
-  useEffect(() => {
-    useUIStore.persist.rehydrate();
-  }, []);
 
   return (
     <div className="fixed inset-0 flex overflow-hidden bg-background">

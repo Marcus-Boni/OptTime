@@ -8,7 +8,8 @@ const themeScript = `
   try {
     var stored = JSON.parse(localStorage.getItem('optsolv-ui') || '{}');
     var theme = stored.state && stored.state.theme ? stored.state.theme : 'dark';
-    document.documentElement.classList.toggle('dark', theme === 'dark');
+    var isDark = theme === 'system' ? window.matchMedia('(prefers-color-scheme: dark)').matches : theme !== 'light';
+    document.documentElement.classList.toggle('dark', isDark);
   } catch (_) {
     document.documentElement.classList.add('dark');
   }

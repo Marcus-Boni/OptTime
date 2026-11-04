@@ -1,25 +1,29 @@
 "use client";
 
 import { useEffect } from "react";
+import { applyTheme, SYSTEM_THEME_QUERY } from "@/lib/theme";
 import { useUIStore } from "@/stores/ui.store";
 
 /**
- * Synchronizes the persisted Zustand theme state with the <html> class attribute.
- * Must be rendered inside the <body> to have access to the DOM.
- * The suppressHydrationWarning on <html> handles the mismatch between SSR "dark"
- * and the client-side value read from localStorage.
+ * Restores the persisted preference after hydration and follows OS changes.
+ * User changes are applied synchronously by the existing store action.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const theme = useUIStore((s) => s.theme);
-
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === "dark") {
-      root.classList.add("dark");
-    } else {
-      root.classList.remove("dark");
-    }
-  }, [theme]);
+    const syncTheme = () => applyTheme(useUIStore.getState().theme);
+    const unsubscribe = useUIStore.persist.onFinishHydration(syncTheme);
+    void useUIStore.persist.rehydrate();
+
+    const systemTheme = window.matchMedia(SYSTEM_THEME_QUERY);
+    const onSystemChange = () => {
+      if (useUIStore.getState().theme === "system") syncTheme();
+    };
+    systemTheme.addEventListener("change", onSystemChange);
+    return () => {
+      unsubscribe();
+      systemTheme.removeEventListener("change", onSystemChange);
+    };
+  }, []);
 
   return <>{children}</>;
 }

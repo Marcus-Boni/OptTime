@@ -38,6 +38,7 @@ import {
   CommandSeparator,
 } from "@/components/ui/command";
 import { useModifierKey } from "@/hooks/use-modifier-key";
+import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
 import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
 import { ONBOARDING_HUB_PATH } from "@/lib/onboarding/routes";
@@ -54,9 +55,9 @@ export function CommandPalette() {
     openQuickTimer,
     openShortcutsModal,
     openWeeklyDigestModal,
-    theme,
     toggleTheme,
   } = useUIStore();
+  const theme = useResolvedTheme();
 
   const [query, setQuery] = useState("");
   const router = useRouter();

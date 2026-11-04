@@ -24,6 +24,14 @@ Reuse semantic card/background/border/text tokens and brand classes. Rounded pan
 ## Components
 Reuse Card, Badge, Button, Input, Select, Progress, Dialog, AlertDialog and Tooltip. Maintain existing charts, allocation editor and approval mutation controllers. Avoid new dependencies and a parallel token system.
 
+## Motion
+
+Theme changes reveal the new root snapshot from left to right behind the OptSolv symbol's chevron (`>`). The View Transition animates only `clip-path`, for 700 ms with expo-out `cubic-bezier(0.16, 1, 0.3, 1)`, without bounce, glow or gradient. This explicitly requested theme reveal is the exception to the default transform/opacity motion guidance. The old snapshot stays beneath the new one; crossfade and blend are disabled only while `html.theme-transition` is present.
+
+The existing Zustand `optsolv-ui` preference remains the source of truth, including light, dark and system choices. The store action commits React state with `flushSync` and updates the root `dark` class inside the View Transition callback. Equivalent resolved themes, reduced motion and missing View Transitions apply instantly. Skipped/interrupted transitions retain the latest choice. System preference changes and initial hydration are instant; the blocking anti-flash script resolves system preference before first paint. Storage failures keep the current session usable.
+
+For visual inspection only, run the same root pseudo-element animation with `duration: 8000` inside `transition.ready` and capture it while the chevron is near the center. Production duration stays at 700 ms.
+
 ## Accessibility
 WCAG AA target: named controls, visible keyboard focus, semantic headings and definition lists, descriptive chart summaries, live result counts and dialog focus handling. Reduced motion disables entrance/chart animations. Every destructive business decision requires existing review and reason semantics.
 

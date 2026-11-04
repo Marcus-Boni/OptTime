@@ -1,13 +1,14 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { changeTheme, resolveTheme, type ThemePreference } from "@/lib/theme";
 
 interface UIState {
   /** Sidebar collapsed state */
   sidebarCollapsed: boolean;
   /** Current theme */
-  theme: "dark" | "light";
+  theme: ThemePreference;
   /** Active modal identifier */
   activeModal: string | null;
   /** Whether mobile sidebar is open */
@@ -43,7 +44,7 @@ interface UIState {
 interface UIActions {
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  setTheme: (theme: "dark" | "light") => void;
+  setTheme: (theme: ThemePreference) => void;
   toggleTheme: () => void;
   openModal: (id: string) => void;
   closeModal: () => void;
@@ -63,7 +64,7 @@ interface UIActions {
 
 export const useUIStore = create<UIState & UIActions>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       sidebarCollapsed: false,
       theme: "dark",
       activeModal: null,
@@ -79,9 +80,16 @@ export const useUIStore = create<UIState & UIActions>()(
       toggleSidebar: () =>
         set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
-      setTheme: (theme) => set({ theme }),
-      toggleTheme: () =>
-        set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
+      setTheme: (theme) => changeTheme(theme, () => set({ theme })),
+      toggleTheme: () => {
+        const current =
+          typeof document === "undefined"
+            ? resolveTheme(get().theme)
+            : document.documentElement.classList.contains("dark")
+              ? "dark"
+              : "light";
+        get().setTheme(current === "dark" ? "light" : "dark");
+      },
       openModal: (id) => set({ activeModal: id }),
       closeModal: () => set({ activeModal: null }),
       setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
@@ -101,6 +109,29 @@ export const useUIStore = create<UIState & UIActions>()(
     }),
     {
       name: "optsolv-ui",
+      storage: createJSONStorage(() => ({
+        getItem: (name) => {
+          try {
+            return localStorage.getItem(name);
+          } catch {
+            return null;
+          }
+        },
+        setItem: (name, value) => {
+          try {
+            localStorage.setItem(name, value);
+          } catch {
+            // Keep the current session usable when storage is blocked or full.
+          }
+        },
+        removeItem: (name) => {
+          try {
+            localStorage.removeItem(name);
+          } catch {
+            // Persistence is optional; the in-memory preference still applies.
+          }
+        },
+      })),
       partialize: (state) => ({
         sidebarCollapsed: state.sidebarCollapsed,
         theme: state.theme,

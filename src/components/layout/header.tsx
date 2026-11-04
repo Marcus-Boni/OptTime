@@ -41,6 +41,7 @@ import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { useModifierKey } from "@/hooks/use-modifier-key";
 import { resetOnboardingCache } from "@/hooks/use-onboarding";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
+import { useResolvedTheme } from "@/hooks/use-resolved-theme";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
@@ -49,7 +50,6 @@ const LOGIN_SUCCESS_TOAST_SESSION_KEY = "auth:show-login-success";
 
 export function Header() {
   const {
-    theme,
     timePageDate,
     toggleTheme,
     setMobileSidebarOpen,
@@ -59,6 +59,7 @@ export function Header() {
     openShortcutsModal,
     openWeeklyDigestModal,
   } = useUIStore();
+  const theme = useResolvedTheme();
   const { data: session, isPending } = useSession();
   const user = isPending
     ? null

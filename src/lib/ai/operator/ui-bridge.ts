@@ -115,16 +115,11 @@ export function executeUiCommand(action: UiCommandAction): UiCommandOutcome {
     case "theme_light":
     case "theme_toggle": {
       const previous = ui.theme;
-      const next =
-        action.command === "theme_toggle"
-          ? previous === "dark"
-            ? "light"
-            : "dark"
-          : action.command === "theme_dark"
-            ? "dark"
-            : "light";
-
-      ui.setTheme(next);
+      if (action.command === "theme_toggle") {
+        ui.toggleTheme();
+      } else {
+        ui.setTheme(action.command === "theme_dark" ? "dark" : "light");
+      }
       return { undo: () => useUIStore.getState().setTheme(previous) };
     }
 

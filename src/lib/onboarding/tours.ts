@@ -67,6 +67,15 @@ export const TOURS: readonly TourDefinition[] = [
         placement: "bottom",
       },
       {
+        id: "theme",
+        title: "Escolha o tema da interface",
+        description:
+          "Em Experiência, escolha Claro, Escuro ou Sistema para acompanhar a aparência do dispositivo. Sua preferência fica salva neste navegador.",
+        target: '[data-tour="settings-theme"]',
+        route: "/dashboard/settings?tab=experience",
+        placement: "bottom",
+      },
+      {
         id: "nav-journey",
         title: "Minha Jornada",
         description:

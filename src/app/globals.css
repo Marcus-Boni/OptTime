@@ -4,6 +4,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Only theme snapshots: leave future route View Transitions independent. */
+/* biome-ignore lint/correctness/noUnknownTypeSelector: root is a snapshot name in the View Transitions API. */
+html.theme-transition::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  z-index: 1;
+}
+
+/* biome-ignore lint/correctness/noUnknownTypeSelector: root is a snapshot name in the View Transitions API. */
+html.theme-transition::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  z-index: 2;
+}
+
 /* === OptSolv Time Tracker Design System === */
 
 @theme inline {
