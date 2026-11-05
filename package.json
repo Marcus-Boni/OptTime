@@ -1,6 +1,6 @@
 {
   "name": "opt-time",
-  "version": "1.12.0",
+  "version": "1.11.0",
   "private": true,
   "packageManager": "pnpm@10.32.1",
   "scripts": {
@@ -35,7 +35,7 @@
     "verify:teams-bot:e2e": "tsx --env-file=.env.local scripts/teams-bot-e2e.ts",
     "verify:split-weeks": "tsx scripts/verify-split-weeks.ts && tsx scripts/verify-mcp-split-weeks.ts && tsx scripts/verify-assistant-split-weeks.ts && tsx scripts/verify-week-reporting.ts && tsx scripts/verify-week-awards.ts",
     "verify:split-weeks:e2e": "tsx scripts/verify-split-weeks-e2e.ts",
-    "release:prepare:1.12": "tsx scripts/prepare-release-v112.ts"
+    "release:prepare:1.11": "tsx scripts/prepare-release-v111.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
