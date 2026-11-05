@@ -183,15 +183,40 @@ export function useTimesheets(
   );
 
   const approveTimesheet = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { force?: boolean }) => {
       const res = await fetch(`/api/timesheets/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve" }),
+        body: JSON.stringify({ action: "approve", force: options?.force }),
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error ?? "Falha ao aprovar timesheet");
+        const error = new Error(
+          err.error ?? "Falha ao aprovar timesheet",
+        ) as Error & {
+          code?: string;
+          periodEnd?: string;
+        };
+        error.code = err.code;
+        error.periodEnd = err.periodEnd;
+        throw error;
+      }
+      await fetchTimesheets();
+      dispatchTimesheetsUpdated();
+    },
+    [fetchTimesheets],
+  );
+
+  const reopenTimesheet = useCallback(
+    async (id: string, reason?: string) => {
+      const res = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Falha ao reabrir timesheet");
       }
       await fetchTimesheets();
       dispatchTimesheetsUpdated();
@@ -224,6 +249,7 @@ export function useTimesheets(
     getOrCreateTimesheet,
     submitTimesheet,
     approveTimesheet,
+    reopenTimesheet,
     rejectTimesheet,
   };
 }
@@ -284,21 +310,51 @@ export function useTimesheetDetail(id: string) {
     dispatchTimesheetsUpdated();
   }, [fetchTimesheet, id]);
 
-  const approveTimesheet = useCallback(async () => {
-    const res = await fetch(`/api/timesheets/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "approve" }),
-    });
+  const approveTimesheet = useCallback(
+    async (options?: { force?: boolean }) => {
+      const res = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve", force: options?.force }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error ?? "Falha ao aprovar timesheet");
-    }
+      if (!res.ok) {
+        const err = await res.json();
+        const error = new Error(
+          err.error ?? "Falha ao aprovar timesheet",
+        ) as Error & {
+          code?: string;
+          periodEnd?: string;
+        };
+        error.code = err.code;
+        error.periodEnd = err.periodEnd;
+        throw error;
+      }
 
-    await fetchTimesheet();
-    dispatchTimesheetsUpdated();
-  }, [fetchTimesheet, id]);
+      await fetchTimesheet();
+      dispatchTimesheetsUpdated();
+    },
+    [fetchTimesheet, id],
+  );
+
+  const reopenTimesheet = useCallback(
+    async (reason?: string) => {
+      const res = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", reason }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Falha ao reabrir timesheet");
+      }
+
+      await fetchTimesheet();
+      dispatchTimesheetsUpdated();
+    },
+    [fetchTimesheet, id],
+  );
 
   const rejectTimesheet = useCallback(
     async (rejectionReason: string) => {
@@ -326,6 +382,7 @@ export function useTimesheetDetail(id: string) {
     refetch: fetchTimesheet,
     submitTimesheet,
     approveTimesheet,
+    reopenTimesheet,
     rejectTimesheet,
   };
 }
@@ -354,15 +411,40 @@ export function useTimesheetApprovals() {
   }, [fetchApprovals]);
 
   const approveTimesheet = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { force?: boolean }) => {
       const res = await fetch(`/api/timesheets/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve" }),
+        body: JSON.stringify({ action: "approve", force: options?.force }),
       });
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.error ?? "Falha ao aprovar timesheet");
+        const error = new Error(
+          err.error ?? "Falha ao aprovar timesheet",
+        ) as Error & {
+          code?: string;
+          periodEnd?: string;
+        };
+        error.code = err.code;
+        error.periodEnd = err.periodEnd;
+        throw error;
+      }
+      await fetchApprovals();
+      dispatchTimesheetsUpdated();
+    },
+    [fetchApprovals],
+  );
+
+  const reopenTimesheet = useCallback(
+    async (id: string, reason?: string) => {
+      const res = await fetch(`/api/timesheets/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reopen", reason }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error ?? "Falha ao reabrir timesheet");
       }
       await fetchApprovals();
       dispatchTimesheetsUpdated();
@@ -393,6 +475,7 @@ export function useTimesheetApprovals() {
     error,
     refetch: fetchApprovals,
     approveTimesheet,
+    reopenTimesheet,
     rejectTimesheet,
     pendingCount: timesheets.length,
   };

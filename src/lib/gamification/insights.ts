@@ -14,6 +14,8 @@ import {
 } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { project, timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import {
   formatDuration,
   getPeriodRange,
@@ -233,7 +235,7 @@ export async function buildPersonalInsights(
     db.query.timesheet.findMany({
       where: and(
         eq(timesheet.userId, userId),
-        inArray(timesheet.period, periods),
+        inArray(timesheet.period, periods.flatMap(getTimesheetPeriodsForWeek)),
       ),
       columns: {
         period: true,
@@ -258,7 +260,17 @@ export async function buildPersonalInsights(
   const projectNameById = new Map(
     rows.map((row) => [row.projectId, row.projectName]),
   );
-  const timesheetByPeriod = new Map(timesheets.map((ts) => [ts.period, ts]));
+  const weeklySheets = periods.map((period) => ({
+    period,
+    ...summarizeTimesheetWeek(
+      period,
+      timesheets,
+      entries.map((entry) => entry.date),
+    ),
+  }));
+  const timesheetByPeriod = new Map(
+    weeklySheets.map((sheet) => [sheet.period, sheet]),
+  );
 
   const minutesByPeriod = new Map<string, number>();
   for (const entry of entries) {
@@ -415,12 +427,12 @@ export async function buildPersonalInsights(
   }
 
   // Punctuality: how long after the deadline each week was actually closed.
-  const submittedSheets = timesheets.filter((ts) => ts.submittedAt);
+  const submittedSheets = weeklySheets.filter((ts) => ts.submittedAt);
   if (submittedSheets.length > 0) {
     let totalLag = 0;
     let onTimeCount = 0;
     for (const ts of submittedSheets) {
-      const { end } = getPeriodRange(ts.period, ts.periodType);
+      const { end } = getPeriodRange(ts.period, "weekly");
       const deadline = submissionDeadline(end);
       const submittedAt = ts.submittedAt as Date;
       totalLag += differenceInCalendarDays(submittedAt, deadline);

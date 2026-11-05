@@ -1,5 +1,5 @@
-import { todayInAppTimeZone, todayInAppTimeZoneAsDate } from "@/lib/timezone";
-import { getWeekPeriod } from "@/lib/utils";
+import { resolveWeekPeriod } from "@/lib/mcp/format";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "./auth";
 import { requireAgentScope } from "./auth";
 import { AgentError } from "./errors";
@@ -146,7 +146,7 @@ export const RESOURCES: ResourceDefinition[] = [
     read: async (principal) => {
       const status = await getTimesheetStatus(
         principal,
-        getWeekPeriod(todayInAppTimeZoneAsDate()),
+        resolveWeekPeriod(undefined),
       );
 
       return json("opt-time://timesheets/current", {

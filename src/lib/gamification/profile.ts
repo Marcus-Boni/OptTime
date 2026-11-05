@@ -1,13 +1,16 @@
 import { subWeeks } from "date-fns";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   gamificationEvent,
+  timeEntry,
   timesheet,
   user,
   userAchievement,
 } from "@/lib/db/schema";
-import { getWeekPeriod } from "@/lib/utils";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
+import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 import { buildAchievementProgress } from "./achievements";
 import { ensureGamificationState, toCounters } from "./engine";
 import { formatPeriodLabel } from "./format";
@@ -30,31 +33,42 @@ export async function getGamificationProfile(
   const now = new Date();
   const currentPeriod = getWeekPeriod(now);
   const previousPeriod = getWeekPeriod(subWeeks(now, 1));
+  const { start, end } = getPeriodRange(currentPeriod, "weekly");
 
   const state = await ensureGamificationState(userId);
 
-  const [userRow, unlockedRows, events, currentSheet] = await Promise.all([
-    db.query.user.findFirst({
-      where: eq(user.id, userId),
-      columns: { name: true },
-    }),
-    db.query.userAchievement.findMany({
-      where: eq(userAchievement.userId, userId),
-      columns: { achievementKey: true, tier: true, unlockedAt: true },
-    }),
-    db.query.gamificationEvent.findMany({
-      where: eq(gamificationEvent.userId, userId),
-      orderBy: [desc(gamificationEvent.createdAt)],
-      limit: ACTIVITY_LIMIT,
-    }),
-    db.query.timesheet.findFirst({
-      where: and(
-        eq(timesheet.userId, userId),
-        eq(timesheet.period, currentPeriod),
-      ),
-      columns: { status: true },
-    }),
-  ]);
+  const [userRow, unlockedRows, events, currentSheets, currentEntries] =
+    await Promise.all([
+      db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { name: true },
+      }),
+      db.query.userAchievement.findMany({
+        where: eq(userAchievement.userId, userId),
+        columns: { achievementKey: true, tier: true, unlockedAt: true },
+      }),
+      db.query.gamificationEvent.findMany({
+        where: eq(gamificationEvent.userId, userId),
+        orderBy: [desc(gamificationEvent.createdAt)],
+        limit: ACTIVITY_LIMIT,
+      }),
+      db.query.timesheet.findMany({
+        where: and(
+          eq(timesheet.userId, userId),
+          inArray(timesheet.period, getTimesheetPeriodsForWeek(currentPeriod)),
+        ),
+        columns: { period: true, status: true },
+      }),
+      db.query.timeEntry.findMany({
+        where: and(
+          eq(timeEntry.userId, userId),
+          gte(timeEntry.date, start),
+          lte(timeEntry.date, end),
+          isNull(timeEntry.deletedAt),
+        ),
+        columns: { date: true },
+      }),
+    ]);
 
   // A stale `current_streak` would keep showing a chain that already broke, so
   // the displayed streak is validated against the last credited week.
@@ -64,8 +78,11 @@ export async function getGamificationProfile(
   const currentStreak = streakAlive ? state.currentStreak : 0;
 
   const currentPeriodStatus =
-    (currentSheet?.status as GamificationProfile["currentPeriodStatus"]) ??
-    "open";
+    summarizeTimesheetWeek(
+      currentPeriod,
+      currentSheets,
+      currentEntries.map((entry) => entry.date),
+    ).status ?? "open";
 
   const counters = { ...toCounters(state), bestStreak: state.bestStreak };
 

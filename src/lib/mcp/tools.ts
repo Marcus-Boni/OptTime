@@ -136,7 +136,7 @@ const DATE_SCHEMA = {
 const PERIOD_SCHEMA = {
   type: "string",
   description:
-    "Semana ISO no formato YYYY-Wnn (ex.: 2026-W33). Também aceita uma data YYYY-MM-DD dentro da semana, 'atual' ou 'semana passada'. Padrão: semana atual.",
+    "Semana ISO YYYY-Wnn ou, na virada do mês, o segmento YYYY-Wnn@YYYY-MM (ex.: 2026-W40@2026-09). Uma data YYYY-MM-DD seleciona o segmento daquele dia. Também aceita 'atual' ou 'semana passada'. Padrão: segmento de hoje.",
 } as const;
 
 function str(args: Record<string, unknown>, key: string): string | undefined {

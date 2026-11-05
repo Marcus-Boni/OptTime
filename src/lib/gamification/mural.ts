@@ -1,15 +1,18 @@
 import { subDays, subWeeks } from "date-fns";
-import { and, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, isNull, lte, or } from "drizzle-orm";
 import type { ActorContext } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import {
+  timeEntry,
   timesheet,
   user,
   userAchievement,
   userGamification,
 } from "@/lib/db/schema";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import { todayInAppTimeZoneAsDate } from "@/lib/timezone";
-import { getWeekPeriod } from "@/lib/utils";
+import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 import { getAchievement, getTierLabel } from "./achievements";
 import { COLLECTIVE_GOAL, MURAL_HISTORY_WEEKS } from "./constants";
 import { formatPeriodLabel } from "./format";
@@ -126,27 +129,42 @@ export async function getTeamMural(actor: ActorContext): Promise<TeamMural> {
   const periods = buildPeriods(now, MURAL_HISTORY_WEEKS);
   const currentPeriod = periods[periods.length - 1] as string;
 
-  const closedRows = await db
-    .select({
-      period: timesheet.period,
-      closed: sql<number>`COUNT(DISTINCT ${timesheet.userId})`,
-    })
-    .from(timesheet)
-    .where(
-      and(
+  const [sheets, entryDates] = await Promise.all([
+    db.query.timesheet.findMany({
+      where: and(
         inArray(timesheet.userId, teamIds),
-        inArray(timesheet.period, periods),
-        inArray(timesheet.status, ["submitted", "approved"]),
+        inArray(timesheet.period, periods.flatMap(getTimesheetPeriodsForWeek)),
       ),
-    )
-    .groupBy(timesheet.period);
-
-  const closedByPeriod = new Map(
-    closedRows.map((row) => [row.period, Number(row.closed)]),
-  );
+      columns: { userId: true, period: true, status: true },
+    }),
+    db
+      .select({ userId: timeEntry.userId, date: timeEntry.date })
+      .from(timeEntry)
+      .where(
+        and(
+          inArray(timeEntry.userId, teamIds),
+          gte(
+            timeEntry.date,
+            getPeriodRange(periods[0] ?? currentPeriod, "weekly").start,
+          ),
+          lte(timeEntry.date, getPeriodRange(currentPeriod, "weekly").end),
+          isNull(timeEntry.deletedAt),
+        ),
+      )
+      .groupBy(timeEntry.userId, timeEntry.date),
+  ]);
 
   const history: MuralWeekPulse[] = periods.map((period) => {
-    const closed = closedByPeriod.get(period) ?? 0;
+    const closed = teamIds.filter((userId) => {
+      const { status } = summarizeTimesheetWeek(
+        period,
+        sheets.filter((sheet) => sheet.userId === userId),
+        entryDates
+          .filter((entry) => entry.userId === userId)
+          .map((entry) => entry.date),
+      );
+      return status === "submitted" || status === "approved";
+    }).length;
     return {
       period,
       label: formatPeriodLabel(period),

@@ -8,6 +8,7 @@ import {
   userAchievement,
   userGamification,
 } from "@/lib/db/schema";
+import { getBaseWeekPeriod } from "@/lib/timesheet-periods";
 import { getPeriodRange, getWeekPeriod, parseLocalDate } from "@/lib/utils";
 import { ACHIEVEMENTS, getTierLabel, highestTierFor } from "./achievements";
 import { QUALITY_THRESHOLDS, XP_RULES } from "./constants";
@@ -65,6 +66,21 @@ export async function ensureGamificationState(
   });
   if (!row) throw new Error("Failed to initialise gamification state");
   return row;
+}
+
+/** Serialize awards for one person so event checks and counters stay atomic. */
+async function lockGamificationState(
+  userId: string,
+  tx: Transaction,
+): Promise<GamificationRow> {
+  await ensureGamificationState(userId, tx);
+  const [state] = await tx
+    .select()
+    .from(userGamification)
+    .where(eq(userGamification.userId, userId))
+    .for("update");
+  if (!state) throw new Error("Failed to lock gamification state");
+  return state;
 }
 
 /** ISO week immediately before `period`. */
@@ -223,16 +239,27 @@ export interface AwardSubmissionInput {
 export async function awardWeekSubmission(
   input: AwardSubmissionInput,
 ): Promise<CelebrationPayload> {
-  const { userId, period, periodType, submittedAt, totalMinutes } = input;
+  const { userId, periodType, submittedAt, totalMinutes } = input;
+  const period =
+    periodType === "weekly" ? getBaseWeekPeriod(input.period) : input.period;
 
   const signals = await loadWeekSignals(userId, period, periodType, db);
 
   return db.transaction(async (tx) => {
-    const state = await ensureGamificationState(userId, tx);
+    const state = await lockGamificationState(userId, tx);
     const previousLevel = resolveLevel(state.xp);
     const periodLabel = formatPeriodLabel(period, periodType);
 
-    if (state.lastSubmittedPeriod === period) {
+    const creditedEvent = await tx.query.gamificationEvent.findFirst({
+      where: and(
+        eq(gamificationEvent.userId, userId),
+        eq(gamificationEvent.kind, "week_submitted"),
+        eq(gamificationEvent.period, period),
+      ),
+      columns: { id: true },
+    });
+
+    if (state.lastSubmittedPeriod === period || creditedEvent) {
       return {
         period,
         periodLabel,
@@ -430,21 +457,24 @@ export async function awardWeekSubmission(
  */
 export async function awardWeekApproval(
   userId: string,
-  period: string,
+  inputPeriod: string,
   periodType = "weekly",
 ): Promise<void> {
-  const alreadyCredited = await db.query.gamificationEvent.findFirst({
-    where: and(
-      eq(gamificationEvent.userId, userId),
-      eq(gamificationEvent.kind, "week_approved"),
-      eq(gamificationEvent.period, period),
-    ),
-    columns: { id: true },
-  });
-  if (alreadyCredited) return;
+  const period =
+    periodType === "weekly" ? getBaseWeekPeriod(inputPeriod) : inputPeriod;
 
   await db.transaction(async (tx) => {
-    const state = await ensureGamificationState(userId, tx);
+    const state = await lockGamificationState(userId, tx);
+    const alreadyCredited = await tx.query.gamificationEvent.findFirst({
+      where: and(
+        eq(gamificationEvent.userId, userId),
+        eq(gamificationEvent.kind, "week_approved"),
+        eq(gamificationEvent.period, period),
+      ),
+      columns: { id: true },
+    });
+    if (alreadyCredited) return;
+
     const counters: CounterMap = {
       ...toCounters(state),
       approvedWeeks: state.approvedWeeks + 1,

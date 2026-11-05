@@ -4,7 +4,6 @@ import {
   endOfISOWeek,
   endOfMonth,
   format,
-  getISOWeek,
   startOfISOWeek,
   startOfMonth,
 } from "date-fns";
@@ -27,7 +26,10 @@ import {
   type TimeView,
   TimeViewTabs,
 } from "@/components/time/TimeViewTabs";
-import { WeekView } from "@/components/time/WeekView";
+import {
+  type WeekTimesheetSegmentState,
+  WeekView,
+} from "@/components/time/WeekView";
 import { Button } from "@/components/ui/button";
 import { TimesheetWorkspaceSkeleton } from "@/components/ui/skeleton";
 import { useQuickLog } from "@/hooks/use-quick-log";
@@ -41,6 +43,10 @@ import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useTimesheets } from "@/hooks/use-timesheets";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
 import { dailyTargetMinutes as getDailyTargetMinutes } from "@/lib/capacity";
+import {
+  getTimesheetPeriodForDate,
+  getWeekSegments,
+} from "@/lib/timesheet-periods";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { getWeekPeriod, parseLocalDate } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
@@ -234,10 +240,9 @@ export function TimeClient() {
     preferences.assistantEnabled,
   );
   const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
-  const [weekTimesheet, setWeekTimesheet] = useState<{
-    id: string;
-    status: string;
-  } | null>(null);
+  const [weekTimesheets, setWeekTimesheets] = useState<
+    WeekTimesheetSegmentState[]
+  >([]);
 
   const dateRange = useMemo(() => {
     if (activeView === "month") {
@@ -262,8 +267,7 @@ export function TimeClient() {
   const { getOrCreateTimesheet, submitTimesheet, timesheets } = useTimesheets();
 
   const pendingSubmitWeeksCount = useMemo(() => {
-    const now = new Date();
-    const currentPeriod = `${format(now, "yyyy")}-W${getISOWeek(now).toString().padStart(2, "0")}`;
+    const currentPeriod = getTimesheetPeriodForDate(new Date());
     return timesheets.filter(
       (timesheet) =>
         (timesheet.status === "open" || timesheet.status === "rejected") &&
@@ -303,26 +307,37 @@ export function TimeClient() {
     let cancelled = false;
 
     if (activeView !== "week") {
-      setWeekTimesheet(null);
+      setWeekTimesheets([]);
       return;
     }
 
     async function syncWeekTimesheet() {
       try {
-        const timesheet = await getOrCreateTimesheet(
-          getWeekPeriod(selectedDate),
-          "weekly",
+        const baseWeekPeriod = getWeekPeriod(selectedDate);
+        const segments = getWeekSegments(baseWeekPeriod);
+
+        const records = await Promise.all(
+          segments.map(async (seg) => {
+            const ts = await getOrCreateTimesheet(seg.period, "weekly");
+            return {
+              id: ts.id,
+              period: seg.period,
+              status: ts.status,
+              start: seg.start,
+              end: seg.end,
+              competence: seg.competence,
+              isSplit: seg.isSplit,
+              totalMinutes: ts.totalMinutes,
+            };
+          }),
         );
 
         if (!cancelled) {
-          setWeekTimesheet({
-            id: timesheet.id,
-            status: timesheet.status,
-          });
+          setWeekTimesheets(records);
         }
       } catch {
         if (!cancelled) {
-          setWeekTimesheet(null);
+          setWeekTimesheets([]);
         }
       }
     }
@@ -915,21 +930,42 @@ export function TimeClient() {
     [createEntry, entries],
   );
 
-  const handleSubmitWeek = useCallback(async () => {
-    if (!weekTimesheet) return;
+  const handleSubmitWeek = useCallback(
+    async (timesheetId?: string) => {
+      const targetId =
+        timesheetId ??
+        weekTimesheets.find(
+          (ts) => ts.status === "open" || ts.status === "rejected",
+        )?.id ??
+        weekTimesheets[0]?.id;
 
-    await submitTimesheet(weekTimesheet.id);
+      if (!targetId) return;
 
-    const refreshed = await getOrCreateTimesheet(
-      getWeekPeriod(selectedDate),
-      "weekly",
-    );
+      await submitTimesheet(targetId);
 
-    setWeekTimesheet({
-      id: refreshed.id,
-      status: refreshed.status,
-    });
-  }, [getOrCreateTimesheet, selectedDate, submitTimesheet, weekTimesheet]);
+      const baseWeekPeriod = getWeekPeriod(selectedDate);
+      const segments = getWeekSegments(baseWeekPeriod);
+
+      const refreshed = await Promise.all(
+        segments.map(async (seg) => {
+          const ts = await getOrCreateTimesheet(seg.period, "weekly");
+          return {
+            id: ts.id,
+            period: seg.period,
+            status: ts.status,
+            start: seg.start,
+            end: seg.end,
+            competence: seg.competence,
+            isSplit: seg.isSplit,
+            totalMinutes: ts.totalMinutes,
+          };
+        }),
+      );
+
+      setWeekTimesheets(refreshed);
+    },
+    [getOrCreateTimesheet, selectedDate, submitTimesheet, weekTimesheets],
+  );
 
   return (
     <motion.div
@@ -1026,7 +1062,8 @@ export function TimeClient() {
             onMoveEntry={handleMoveEntry}
             onDuplicateEntry={handleDuplicateEntry}
             onSubmitWeek={handleSubmitWeek}
-            weekTimesheetStatus={weekTimesheet?.status ?? null}
+            weekTimesheets={weekTimesheets}
+            weekTimesheetStatus={weekTimesheets[0]?.status ?? null}
             weekEntryCount={weekEntryCount}
             weekTotalMinutes={weekTotalMinutes}
             showWeekends={showWeekends}

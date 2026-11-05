@@ -1,5 +1,7 @@
 "use client";
 
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
 import { CalendarDays, ChevronDown, Clock, History, Users } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -14,7 +16,12 @@ import {
   useTimesheetApprovals,
   useTimesheetHistory,
 } from "@/hooks/use-timesheets";
-import { formatDuration } from "@/lib/utils";
+import {
+  formatPeriodRangeLabel,
+  getPeriodCompetence,
+  getPeriodWeekNumber,
+} from "@/lib/timesheet-periods";
+import { formatDuration, getPeriodRange, parseLocalDate } from "@/lib/utils";
 
 // ─── Animation variants ────────────────────────────────────────────────────────
 
@@ -97,78 +104,48 @@ interface WeekGroup {
   billableMinutes: number;
 }
 
-/** Parses a period string and returns the week start date (Monday) as a Date. */
+/** Parses a period string and returns the week start date as a Date. */
 function getWeekStart(period: string): Date {
-  const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch) {
-    const year = parseInt(weekMatch[1], 10);
-    const week = parseInt(weekMatch[2], 10);
-    // ISO 8601: week 1 is the week containing the first Thursday of the year
-    const jan4 = new Date(year, 0, 4);
-    const jan4DayOfWeek = jan4.getDay() === 0 ? 7 : jan4.getDay();
-    const monday = new Date(jan4);
-    monday.setDate(jan4.getDate() - (jan4DayOfWeek - 1) + (week - 1) * 7);
-    return monday;
-  }
-  // For monthly periods, use first day of the month
-  const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
-  if (monthMatch) {
-    return new Date(
-      parseInt(monthMatch[1], 10),
-      parseInt(monthMatch[2], 10) - 1,
-      1,
+  try {
+    const { start } = getPeriodRange(
+      period,
+      period.includes("-W") ? "weekly" : "monthly",
     );
+    return parseLocalDate(start);
+  } catch {
+    return new Date();
   }
-  return new Date();
 }
 
 function formatWeekLabel(period: string): string {
-  const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch) {
-    const weekNum = parseInt(weekMatch[2], 10);
-    return `Semana ${weekNum}`;
+  if (period.includes("-W")) {
+    const weekNum = getPeriodWeekNumber(period);
+    const competence = getPeriodCompetence(period);
+    if (competence) {
+      const monthName = format(parseLocalDate(`${competence}-01`), "MMM", {
+        locale: ptBR,
+      });
+      return `Semana ${parseInt(weekNum, 10)} · ${monthName}`;
+    }
+    return `Semana ${parseInt(weekNum, 10)}`;
   }
   const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
   if (monthMatch) {
-    const months = [
-      "Janeiro",
-      "Fevereiro",
-      "Março",
-      "Abril",
-      "Maio",
-      "Junho",
-      "Julho",
-      "Agosto",
-      "Setembro",
-      "Outubro",
-      "Novembro",
-      "Dezembro",
-    ];
-    return months[parseInt(monthMatch[2], 10) - 1] ?? period;
+    return format(parseLocalDate(`${period}-01`), "MMMM", { locale: ptBR });
   }
   return period;
 }
 
 function formatDateRange(period: string): string {
-  const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch) {
-    const monday = getWeekStart(period);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const fmt = (d: Date): string =>
-      d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
-    return `${fmt(monday)} – ${fmt(sunday)} de ${monday.getFullYear()}`;
-  }
-  const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
-  if (monthMatch) {
-    const d = new Date(
-      parseInt(monthMatch[1], 10),
-      parseInt(monthMatch[2], 10) - 1,
-      1,
+  try {
+    const { start, end } = getPeriodRange(
+      period,
+      period.includes("-W") ? "weekly" : "monthly",
     );
-    return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    return formatPeriodRangeLabel(start, end);
+  } catch {
+    return period;
   }
-  return period;
 }
 
 /** Groups timesheets by their period, sorted newest first. */
@@ -208,8 +185,9 @@ interface WeekGroupSectionProps {
   group: WeekGroup;
   isOpen: boolean;
   onToggle: () => void;
-  onApprove: (id: string) => Promise<void>;
+  onApprove: (id: string, options?: { force?: boolean }) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
+  onReopen?: (id: string, reason?: string) => Promise<void>;
 }
 
 function WeekGroupSection({
@@ -218,6 +196,7 @@ function WeekGroupSection({
   onToggle,
   onApprove,
   onReject,
+  onReopen,
 }: WeekGroupSectionProps) {
   return (
     <motion.div variants={fadeUp} className="overflow-hidden">
@@ -310,6 +289,7 @@ function WeekGroupSection({
                     timesheet={ts}
                     onApprove={onApprove}
                     onReject={onReject}
+                    onReopen={onReopen}
                   />
                 </motion.div>
               ))}
@@ -480,6 +460,7 @@ export default function TimesheetApprovalsPage() {
     timesheets: approvals,
     loading,
     approveTimesheet,
+    reopenTimesheet,
     rejectTimesheet,
   } = useTimesheetApprovals();
 
@@ -547,9 +528,9 @@ export default function TimesheetApprovalsPage() {
   }, []);
 
   const handleApprove = useCallback(
-    async (id: string): Promise<void> => {
+    async (id: string, options?: { force?: boolean }): Promise<void> => {
       try {
-        await approveTimesheet(id);
+        await approveTimesheet(id, options);
         toast.success("Timesheet aprovado com sucesso.");
       } catch (error: unknown) {
         console.error("[TimesheetApprovalsPage] handleApprove:", error);
@@ -562,6 +543,24 @@ export default function TimesheetApprovalsPage() {
       }
     },
     [approveTimesheet],
+  );
+
+  const handleReopen = useCallback(
+    async (id: string, reason?: string): Promise<void> => {
+      try {
+        await reopenTimesheet(id, reason);
+        toast.success("Timesheet reaberto com sucesso.");
+      } catch (error: unknown) {
+        console.error("[TimesheetApprovalsPage] handleReopen:", error);
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível reabrir o timesheet.",
+        );
+        throw error;
+      }
+    },
+    [reopenTimesheet],
   );
 
   const handleReject = useCallback(
@@ -685,6 +684,7 @@ export default function TimesheetApprovalsPage() {
               onToggle={() => toggleGroup(group.key)}
               onApprove={handleApprove}
               onReject={handleReject}
+              onReopen={handleReopen}
             />
           ))}
         </motion.div>

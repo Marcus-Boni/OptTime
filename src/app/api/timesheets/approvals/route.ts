@@ -1,4 +1,4 @@
-import { getISOWeek, getISOWeekYear, startOfISOWeek, subWeeks } from "date-fns";
+import { subWeeks } from "date-fns";
 import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   getActiveSession,
@@ -8,17 +8,27 @@ import {
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { projectMember, timeEntry, timesheet, user } from "@/lib/db/schema";
-import { getPeriodRange } from "@/lib/utils";
+import { getWeekSegments } from "@/lib/timesheet-periods";
+import { todayInAppTimeZone } from "@/lib/timezone";
+import { getPeriodRange, getWeekPeriod, parseLocalDate } from "@/lib/utils";
 
 const APPROVAL_QUEUE_STATUSES = ["submitted", "open", "rejected"];
 const UNSUBMITTED_WEEKS_LOOKBACK = 4;
 
+/**
+ * Timesheet keys of the recent weeks. A week that crosses a month boundary
+ * contributes one key per month, and slices that have not started yet are
+ * left out so the queue never shows days ahead of today.
+ */
 function getRecentWeeklyPeriods(): string[] {
-  const currentWeekStart = startOfISOWeek(new Date());
-  return Array.from({ length: UNSUBMITTED_WEEKS_LOOKBACK }, (_, index) => {
-    const weekDate = subWeeks(currentWeekStart, index);
-    return `${getISOWeekYear(weekDate)}-W${getISOWeek(weekDate).toString().padStart(2, "0")}`;
-  });
+  const today = todayInAppTimeZone();
+  const todayDate = parseLocalDate(today);
+  return Array.from({ length: UNSUBMITTED_WEEKS_LOOKBACK }, (_, index) =>
+    getWeekSegments(getWeekPeriod(subWeeks(todayDate, index))),
+  )
+    .flat()
+    .filter((segment) => segment.start <= today)
+    .map((segment) => segment.period);
 }
 
 async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {

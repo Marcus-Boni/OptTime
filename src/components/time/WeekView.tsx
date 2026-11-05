@@ -62,13 +62,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import type { TimeEntry } from "@/hooks/use-time-entries";
+import { formatPeriodRangeLabel } from "@/lib/timesheet-periods";
 import {
   getTimesheetStatusLabel,
   isTimesheetEditableStatus,
   isTimesheetLockedStatus,
   isTimesheetSubmittableStatus,
 } from "@/lib/timesheet-status";
-import { cn, formatDuration } from "@/lib/utils";
+import { cn, formatDuration, parseLocalDate } from "@/lib/utils";
+
+export interface WeekTimesheetSegmentState {
+  id: string;
+  period: string;
+  status: string;
+  start: string;
+  end: string;
+  competence: string;
+  isSplit: boolean;
+  totalMinutes?: number;
+}
 
 interface WeekViewProps {
   entries: TimeEntry[];
@@ -82,7 +94,8 @@ interface WeekViewProps {
   onDuplicate?: (entry: TimeEntry) => void;
   onMoveEntry?: (entryId: string, newDate: string) => Promise<void>;
   onDuplicateEntry?: (entryId: string, newDate: string) => Promise<void>;
-  onSubmitWeek?: () => Promise<void>;
+  onSubmitWeek?: (timesheetId?: string) => Promise<void>;
+  weekTimesheets?: WeekTimesheetSegmentState[];
   weekTimesheetStatus?: string | null;
   weekEntryCount?: number;
   weekTotalMinutes?: number;
@@ -106,6 +119,7 @@ export function WeekView({
   onMoveEntry,
   onDuplicateEntry,
   onSubmitWeek,
+  weekTimesheets = [],
   weekTimesheetStatus,
   weekEntryCount,
   weekTotalMinutes,
@@ -146,11 +160,21 @@ export function WeekView({
     position: { x: number; y: number };
   } | null>(null);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const [segmentToSubmit, setSegmentToSubmit] =
+    useState<WeekTimesheetSegmentState | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const weekLocked = isTimesheetLockedStatus(weekTimesheetStatus);
-  const weekLockMessage = weekTimesheetStatus
-    ? `A semana está ${getTimesheetStatusLabel(weekTimesheetStatus)} e não aceita novos lançamentos.`
-    : "A semana está bloqueada para novos lançamentos.";
+  const isSplit = Boolean(weekTimesheets && weekTimesheets.length > 1);
+  const weekLocked = isSplit
+    ? weekTimesheets?.every((s) => isTimesheetLockedStatus(s.status))
+    : isTimesheetLockedStatus(weekTimesheetStatus);
+  const anyLocked = isSplit
+    ? weekTimesheets?.some((s) => isTimesheetLockedStatus(s.status))
+    : weekLocked;
+  const weekLockMessage = weekLocked
+    ? "A semana está fechada e não aceita novos lançamentos."
+    : anyLocked
+      ? "Dias de meses já aprovados não aceitam novos lançamentos."
+      : "";
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -164,16 +188,25 @@ export function WeekView({
 
   const isEntryDraggable = useCallback(
     (entry: TimeEntry) => {
-      if (weekLocked) {
+      const entrySegment = weekTimesheets?.find(
+        (s) => entry.date >= s.start && entry.date <= s.end,
+      );
+      const entryStatus = entrySegment
+        ? entrySegment.status
+        : weekTimesheetStatus;
+
+      if (isTimesheetLockedStatus(entryStatus)) {
         return false;
       }
 
       return isTimesheetEditableStatus(entry.timesheet?.status);
     },
-    [weekLocked],
+    [weekTimesheets, weekTimesheetStatus],
   );
 
-  const isResubmission = weekTimesheetStatus === "rejected";
+  const isResubmission = segmentToSubmit
+    ? segmentToSubmit.status === "rejected"
+    : weekTimesheetStatus === "rejected";
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -279,23 +312,24 @@ export function WeekView({
     setSubmitting(true);
 
     try {
-      await onSubmitWeek();
+      await onSubmitWeek(segmentToSubmit?.id);
       toast.success(
         isResubmission
-          ? "Semana submetida novamente com sucesso."
-          : "Semana submetida com sucesso.",
+          ? "Período submetido novamente com sucesso."
+          : "Período submetido com sucesso.",
       );
       setConfirmSubmit(false);
+      setSegmentToSubmit(null);
     } catch {
       toast.error(
         isResubmission
-          ? "Erro ao submeter a semana novamente."
-          : "Erro ao submeter semana.",
+          ? "Erro ao submeter o período novamente."
+          : "Erro ao submeter período.",
       );
     } finally {
       setSubmitting(false);
     }
-  }, [isResubmission, onSubmitWeek]);
+  }, [isResubmission, onSubmitWeek, segmentToSubmit]);
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-border/60 bg-card/90 shadow-sm">
@@ -343,12 +377,85 @@ export function WeekView({
         </div>
 
         <div className="flex flex-col gap-3 sm:items-end">
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="flex flex-wrap items-center gap-2"
+            data-tour="week-timesheet-status"
+          >
             <Badge className="rounded-full bg-brand-500/10 px-3 py-1.5 text-brand-500">
               {formatDuration(weekTotalMinutesValue)} na semana
             </Badge>
 
-            {weekTimesheetStatus === "submitted" ? (
+            {isSplit ? (
+              weekTimesheets?.map((seg) => {
+                const segEntries = entries.filter(
+                  (e) => e.date >= seg.start && e.date <= seg.end,
+                );
+                const segMinutes = segEntries.reduce(
+                  (sum, e) => sum + e.duration,
+                  0,
+                );
+                const segCompetenceLabel = format(
+                  parseLocalDate(`${seg.competence}-01`),
+                  "MMM",
+                  { locale: ptBR },
+                );
+                const startDay = format(parseLocalDate(seg.start), "d");
+                const endDay = format(parseLocalDate(seg.end), "d");
+                const rangeLabel = `${segCompetenceLabel} (${startDay}–${endDay})`;
+                const isApproved = seg.status === "approved";
+                const isSubmitted = seg.status === "submitted";
+                const isSubmittable = isTimesheetSubmittableStatus(seg.status);
+                const isResubmit = seg.status === "rejected";
+
+                return (
+                  <div
+                    key={seg.period}
+                    className="flex items-center gap-1.5 rounded-full border border-border/60 bg-background/50 px-2.5 py-1 text-xs"
+                  >
+                    <span className="font-semibold text-foreground">
+                      {rangeLabel}
+                    </span>
+                    <span className="font-mono text-[11px] text-muted-foreground">
+                      {formatDuration(segMinutes)}
+                    </span>
+                    {isSubmitted ? (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-amber-300 px-2 py-0.5 text-[10px] text-amber-600"
+                      >
+                        Submetida
+                      </Badge>
+                    ) : isApproved ? (
+                      <Badge
+                        variant="outline"
+                        className="rounded-full border-emerald-300 px-2 py-0.5 text-[10px] text-emerald-600"
+                      >
+                        Aprovada
+                      </Badge>
+                    ) : onSubmitWeek && isSubmittable ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 rounded-full px-2 text-[11px] text-brand-500 hover:bg-brand-500/10 hover:text-brand-600"
+                        onClick={() => {
+                          setSegmentToSubmit(seg);
+                          setConfirmSubmit(true);
+                        }}
+                        disabled={segEntries.length === 0}
+                        title={
+                          segEntries.length === 0
+                            ? "Sem registros no mês"
+                            : undefined
+                        }
+                      >
+                        <Send className="mr-1 h-3 w-3" />
+                        {isResubmit ? "Reenviar" : "Submeter"}
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : weekTimesheetStatus === "submitted" ? (
               <Badge
                 variant="outline"
                 className="rounded-full border-amber-300 px-3 py-1.5 text-amber-600"
@@ -367,7 +474,10 @@ export function WeekView({
               <Button
                 variant="outline"
                 className="rounded-full"
-                onClick={() => setConfirmSubmit(true)}
+                onClick={() => {
+                  setSegmentToSubmit(weekTimesheets?.[0] ?? null);
+                  setConfirmSubmit(true);
+                }}
                 disabled={weekEntryCountValue === 0}
                 title={weekEntryCountValue === 0 ? "Sem registros" : undefined}
               >
@@ -377,7 +487,7 @@ export function WeekView({
             ) : null}
           </div>
 
-          {weekLocked ? (
+          {anyLocked ? (
             <p className="max-w-sm text-right text-xs text-muted-foreground">
               {weekLockMessage}
             </p>
@@ -440,6 +550,17 @@ export function WeekView({
             <AnimatePresence initial={false} mode="popLayout">
               {days.map((day) => {
                 const dayKey = format(day, "yyyy-MM-dd");
+                const daySegment = weekTimesheets?.find(
+                  (s) => dayKey >= s.start && dayKey <= s.end,
+                );
+                const dayStatus = daySegment
+                  ? daySegment.status
+                  : weekTimesheetStatus;
+                const isDayLocked = isTimesheetLockedStatus(dayStatus);
+                const dayLockMessage = dayStatus
+                  ? `O período deste dia está ${getTimesheetStatusLabel(dayStatus)} e não aceita novos lançamentos.`
+                  : "O período está bloqueado para novos lançamentos.";
+
                 return (
                   <motion.div
                     key={dayKey}
@@ -462,8 +583,8 @@ export function WeekView({
                       onDayClick={onDayClick}
                       onOpenCreateForDate={onOpenCreateForDate}
                       isEntryDraggable={isEntryDraggable}
-                      isLocked={weekLocked}
-                      lockMessage={weekLockMessage}
+                      isLocked={isDayLocked}
+                      lockMessage={dayLockMessage}
                       onEdit={onEdit}
                       onDelete={onDelete}
                       onDuplicate={onDuplicate}
@@ -494,13 +615,64 @@ export function WeekView({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {isResubmission ? "Submeter novamente" : "Submeter"} semana{" "}
-              {weekNumber} de {weekYear}?
+              {segmentToSubmit?.isSplit
+                ? `${
+                    segmentToSubmit.status === "rejected"
+                      ? "Submeter novamente"
+                      : "Submeter"
+                  } fatia de ${format(
+                    parseLocalDate(`${segmentToSubmit.competence}-01`),
+                    "MMMM",
+                    { locale: ptBR },
+                  )} (Semana ${weekNumber})?`
+                : `${
+                    isResubmission ? "Submeter novamente" : "Submeter"
+                  } semana ${weekNumber} de ${weekYear}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Isso {isResubmission ? "reenviará" : "enviará"}{" "}
-              {weekEntryCountValue} registro(s) (
-              {formatDuration(weekTotalMinutesValue)}) para aprovação.
+              {segmentToSubmit?.isSplit ? (
+                <>
+                  Isso{" "}
+                  {segmentToSubmit.status === "rejected"
+                    ? "reenviará"
+                    : "enviará"}{" "}
+                  {
+                    entries.filter(
+                      (e) =>
+                        e.date >= segmentToSubmit.start &&
+                        e.date <= segmentToSubmit.end,
+                    ).length
+                  }{" "}
+                  registro(s) (
+                  {formatDuration(
+                    entries
+                      .filter(
+                        (e) =>
+                          e.date >= segmentToSubmit.start &&
+                          e.date <= segmentToSubmit.end,
+                      )
+                      .reduce((sum, e) => sum + e.duration, 0),
+                  )}
+                  ) referentes a{" "}
+                  {formatPeriodRangeLabel(
+                    segmentToSubmit.start,
+                    segmentToSubmit.end,
+                  )}{" "}
+                  para aprovação do mês de{" "}
+                  {format(
+                    parseLocalDate(`${segmentToSubmit.competence}-01`),
+                    "MMMM",
+                    { locale: ptBR },
+                  )}
+                  .
+                </>
+              ) : (
+                <>
+                  Isso {isResubmission ? "reenviará" : "enviará"}{" "}
+                  {weekEntryCountValue} registro(s) (
+                  {formatDuration(weekTotalMinutesValue)}) para aprovação.
+                </>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

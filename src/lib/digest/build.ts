@@ -25,6 +25,8 @@ import {
 } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { projectMember, timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import { getWeekPeriod } from "@/lib/utils";
 import { CATEGORY_LABELS, classifyWorkCategory } from "./classify";
 import type {
@@ -40,14 +42,6 @@ import type {
 
 const UNDERLOAD_RATIO = 0.6;
 const OVERLOAD_RATIO = 1.1;
-
-type TimesheetStatus = MemberDigest["timesheetStatus"];
-
-function normalizeStatus(value: string | undefined): TimesheetStatus {
-  return value === "submitted" || value === "approved" || value === "rejected"
-    ? value
-    : "open";
-}
 
 function percentage(part: number, whole: number): number {
   if (whole <= 0) return 0;
@@ -201,7 +195,7 @@ export async function buildMemberDigest(
   const period = resolveDigestPeriod(today);
   const previous = resolvePeriod("last_week", period.from);
 
-  const [entries, previousEntries, sheet] = await Promise.all([
+  const [entries, previousEntries, sheets] = await Promise.all([
     fetchEntries([target.userId], period.from, period.to),
     db
       .select({ duration: timeEntry.duration })
@@ -214,12 +208,12 @@ export async function buildMemberDigest(
           isNull(timeEntry.deletedAt),
         ),
       ),
-    db.query.timesheet.findFirst({
+    db.query.timesheet.findMany({
       where: and(
         eq(timesheet.userId, target.userId),
-        eq(timesheet.period, period.period),
+        inArray(timesheet.period, getTimesheetPeriodsForWeek(period.period)),
       ),
-      columns: { status: true },
+      columns: { period: true, status: true },
     }),
   ]);
 
@@ -274,7 +268,12 @@ export async function buildMemberDigest(
             minutes: mostProductive.minutes,
           }
         : null,
-    timesheetStatus: normalizeStatus(sheet?.status),
+    timesheetStatus:
+      summarizeTimesheetWeek(
+        period.period,
+        sheets,
+        entries.map((entry) => entry.date),
+      ).status ?? "open",
     incompleteDays: businessDays.filter(
       (day) => day.minutes < incompleteThreshold,
     ).length,
@@ -340,15 +339,11 @@ export async function buildManagerDigest(
     db.query.timesheet.findMany({
       where: and(
         inArray(timesheet.userId, teamUserIds),
-        eq(timesheet.period, period.period),
+        inArray(timesheet.period, getTimesheetPeriodsForWeek(period.period)),
       ),
-      columns: { userId: true, status: true },
+      columns: { userId: true, period: true, status: true },
     }),
   ]);
-
-  const statusByUser = new Map(
-    sheets.map((sheet) => [sheet.userId, normalizeStatus(sheet.status)]),
-  );
 
   const minutesByUser = new Map<string, number>();
   for (const entry of entries) {
@@ -364,7 +359,14 @@ export async function buildManagerDigest(
       name: member.name,
       minutes: minutesByUser.get(member.id) ?? 0,
       targetMinutes: weeklyCapacityMinutes(member.weeklyCapacity),
-      timesheetStatus: statusByUser.get(member.id) ?? "open",
+      timesheetStatus:
+        summarizeTimesheetWeek(
+          period.period,
+          sheets.filter((sheet) => sheet.userId === member.id),
+          entries
+            .filter((entry) => entry.userId === member.id)
+            .map((entry) => entry.date),
+        ).status ?? "open",
     }))
     .sort((a, b) => b.minutes - a.minutes);
 

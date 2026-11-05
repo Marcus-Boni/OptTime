@@ -8,6 +8,9 @@ import { syncCompletedWorkToAzDO } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
 import { awardWeekApproval } from "@/lib/gamification";
+import { isPeriodOpenAfter } from "@/lib/timesheet-periods";
+import { resolveClosedWeekAwardPeriod } from "@/lib/timesheet-week-closure";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { batchApprovalSchema } from "@/lib/validations/hq.schema";
 import type { BatchApprovalResult } from "@/types/hq";
 
@@ -89,6 +92,16 @@ export async function POST(req: Request): Promise<Response> {
           continue;
         }
 
+        if (isPeriodOpenAfter(ts.period, ts.periodType, todayInAppTimeZone())) {
+          results.push({
+            timesheetId,
+            status: "failed",
+            error:
+              "O período ainda não terminou. Aprovação antecipada exige confirmação individual.",
+          });
+          continue;
+        }
+
         await db.transaction(async (tx) => {
           await tx
             .update(timesheet)
@@ -132,7 +145,15 @@ export async function POST(req: Request): Promise<Response> {
         }
 
         try {
-          await awardWeekApproval(ts.userId, ts.period, ts.periodType);
+          const awardPeriod = await resolveClosedWeekAwardPeriod(
+            ts.userId,
+            ts.period,
+            ts.periodType,
+            ["approved"],
+          );
+          if (awardPeriod) {
+            await awardWeekApproval(ts.userId, awardPeriod, ts.periodType);
+          }
         } catch (error: unknown) {
           console.error("[POST /api/hq/approvals/batch] gamification:", error);
         }

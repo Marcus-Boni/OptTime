@@ -11,6 +11,7 @@ import {
   Clock3,
   FolderKanban,
   ReceiptText,
+  RotateCcw,
   Send,
   X,
 } from "lucide-react";
@@ -66,7 +67,13 @@ import {
   useTimesheetDetail,
 } from "@/hooks/use-timesheets";
 import { useSession } from "@/lib/auth-client";
+import {
+  getTimesheetPeriodLabel,
+  isPeriodOpenAfter,
+  isSplitPeriod,
+} from "@/lib/timesheet-periods";
 import { isTimesheetSubmittableStatus } from "@/lib/timesheet-status";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { formatDuration, getPeriodRange, parseLocalDate } from "@/lib/utils";
 
 const containerVariants = {
@@ -165,25 +172,8 @@ function hoursTickFormatter(value: number): string {
   return `${value}h`;
 }
 
-function parsePeriodLabel(period: string, periodType: string): string {
-  if (periodType === "weekly") {
-    const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-    if (weekMatch) {
-      return `Semana ${Number.parseInt(weekMatch[2], 10)} de ${weekMatch[1]}`;
-    }
-  }
-
-  const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
-  if (monthMatch) {
-    const date = new Date(
-      Number.parseInt(monthMatch[1], 10),
-      Number.parseInt(monthMatch[2], 10) - 1,
-      1,
-    );
-    return format(date, "MMMM 'de' yyyy", { locale: ptBR });
-  }
-
-  return period;
+function parsePeriodLabel(period: string, periodType = "weekly"): string {
+  return getTimesheetPeriodLabel(period, periodType);
 }
 
 function formatRangeLabel(start: string, end: string): string {
@@ -218,11 +208,13 @@ export default function TimesheetDetailPage() {
     refetch,
     submitTimesheet,
     approveTimesheet,
+    reopenTimesheet,
     rejectTimesheet,
   } = useTimesheetDetail(id);
   const [submitting, setSubmitting] = useState(false);
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -389,16 +381,39 @@ export default function TimesheetDetailPage() {
       timesheet.status === "rejected");
 
   const canReject = canApproveOrReject && timesheet.status === "submitted";
+  const canReopen = canApproveOrReject && timesheet.status === "approved";
+  const isFuture = timesheet
+    ? isPeriodOpenAfter(
+        timesheet.period,
+        timesheet.periodType,
+        todayInAppTimeZone(),
+      )
+    : false;
 
   const handleApprove = async () => {
     setActionLoading(true);
     try {
-      await approveTimesheet();
+      await approveTimesheet({ force: isFuture });
       toast.success("Timesheet aprovado com sucesso!");
       setApproveOpen(false);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "Erro ao aprovar timesheet",
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    setActionLoading(true);
+    try {
+      await reopenTimesheet();
+      toast.success("Timesheet reaberto com sucesso!");
+      setReopenOpen(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao reabrir timesheet",
       );
     } finally {
       setActionLoading(false);
@@ -499,6 +514,14 @@ export default function TimesheetDetailPage() {
                       Semana atual
                     </Badge>
                   )}
+                  {isSplitPeriod(timesheet.period) && (
+                    <Badge
+                      variant="outline"
+                      className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-xs"
+                    >
+                      Semana fracionada
+                    </Badge>
+                  )}
                 </div>
 
                 <p className="max-w-2xl text-sm text-muted-foreground">
@@ -540,6 +563,18 @@ export default function TimesheetDetailPage() {
                   >
                     <X className="h-4 w-4" />
                     Rejeitar
+                  </Button>
+                )}
+
+                {canReopen && (
+                  <Button
+                    variant="outline"
+                    className="gap-1.5 font-medium"
+                    onClick={() => setReopenOpen(true)}
+                    disabled={actionLoading}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Reabrir
                   </Button>
                 )}
 
@@ -1012,14 +1047,24 @@ export default function TimesheetDetailPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Aprovar Timesheet</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja aprovar o timesheet de{" "}
-              <strong>{timesheet.user?.name ?? "Colaborador"}</strong> referente
-              a{" "}
-              <strong>
-                {parsePeriodLabel(timesheet.period, timesheet.periodType)}
-              </strong>{" "}
-              ({formatDuration(timesheet.totalMinutes)})?
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Tem certeza que deseja aprovar o timesheet de{" "}
+                <strong>{timesheet.user?.name ?? "Colaborador"}</strong>{" "}
+                referente a{" "}
+                <strong>
+                  {parsePeriodLabel(timesheet.period, timesheet.periodType)}
+                </strong>{" "}
+                ({formatDuration(timesheet.totalMinutes)})?
+              </p>
+              {isFuture && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                  <strong>Atenção:</strong> Este período ainda não terminou.
+                  Aprovar agora bloqueará os lançamentos até o fim deste período
+                  ({getPeriodRange(timesheet.period, timesheet.periodType).end}
+                  ).
+                </p>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1031,7 +1076,42 @@ export default function TimesheetDetailPage() {
               disabled={actionLoading}
               className="bg-green-600 text-white hover:bg-green-700"
             >
-              {actionLoading ? "Aprovando..." : "Confirmar Aprovação"}
+              {actionLoading
+                ? "Aprovando..."
+                : isFuture
+                  ? "Aprovar antecipadamente"
+                  : "Confirmar Aprovação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reopen Modal */}
+      <AlertDialog open={reopenOpen} onOpenChange={setReopenOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reabrir Timesheet</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja reabrir o timesheet de{" "}
+              <strong>{timesheet.user?.name ?? "Colaborador"}</strong> referente
+              a{" "}
+              <strong>
+                {parsePeriodLabel(timesheet.period, timesheet.periodType)}
+              </strong>
+              ? O status voltará para aberto e novos lançamentos poderão ser
+              feitos no período.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={actionLoading}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleReopen}
+              disabled={actionLoading}
+              className="bg-brand-500 text-white hover:bg-brand-600"
+            >
+              {actionLoading ? "Reabrindo..." : "Confirmar Reabertura"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -29,7 +29,8 @@ import {
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import type { NormalizedCommitActivity } from "@/lib/time-assistant/engine";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
-import { formatLocalDate, getWeekPeriod, parseLocalDate } from "@/lib/utils";
+import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
+import { formatLocalDate, parseLocalDate } from "@/lib/utils";
 import {
   dismissAutofillSchema,
   getAutofillSchema,
@@ -57,8 +58,8 @@ function buildDateWindow(today: string, days: number): string[] {
 }
 
 /**
- * Dates sitting inside a submitted or approved timesheet. Resolved one week at
- * a time, since the lock is a weekly property.
+ * Dates sitting inside a submitted or approved timesheet. Resolve each month
+ * segment independently so one closed month never hides the next month's days.
  */
 async function resolveLockedDates(
   userId: string,
@@ -67,7 +68,7 @@ async function resolveLockedDates(
   const byPeriod = new Map<string, string[]>();
 
   for (const date of dates) {
-    const period = getWeekPeriod(date);
+    const period = getTimesheetPeriodForDate(date);
     const bucket = byPeriod.get(period) ?? [];
     bucket.push(date);
     byPeriod.set(period, bucket);

@@ -6,7 +6,7 @@ import type { UserRole } from "@/types/user";
  * optional tour, a reworded step) do NOT justify a bump — only changes that
  * alter how the product is meant to be used.
  */
-export const ONBOARDING_CONTENT_VERSION = 1;
+export const ONBOARDING_CONTENT_VERSION = 2;
 
 export type OnboardingStatus =
   | "pending"

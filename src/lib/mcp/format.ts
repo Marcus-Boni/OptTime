@@ -1,11 +1,11 @@
 import { isValid, parse } from "date-fns";
+import { AgentError } from "@/lib/mcp/errors";
 import {
-  shiftDay,
-  todayInAppTimeZone,
-  todayInAppTimeZoneAsDate,
-} from "@/lib/timezone";
-import { getWeekPeriod, parseLocalDate } from "@/lib/utils";
-import { AgentError } from "./errors";
+  getTimesheetPeriodForDate,
+  getWeekSegments,
+} from "@/lib/timesheet-periods";
+import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
+import { parseLocalDate } from "@/lib/utils";
 
 /**
  * Input coercion for agent-supplied values.
@@ -13,11 +13,11 @@ import { AgentError } from "./errors";
  * Models write what a human would say — "2h30", "ontem", "semana passada" — so
  * the boundary is deliberately forgiving. Everything below normalises to the
  * canonical shapes the rest of the app already uses: minutes as integers,
- * dates as `YYYY-MM-DD`, periods as `YYYY-Wnn`.
+ * dates as `YYYY-MM-DD`, periods as `YYYY-Wnn` or `YYYY-Wnn@YYYY-MM`.
  */
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-const ISO_WEEK = /^(\d{4})-W(\d{1,2})$/i;
+const ISO_WEEK = /^(\d{4})-W(\d{1,2})(@\d{4}-\d{2})?$/i;
 
 /** Minutes in a day — the hard ceiling for a single entry. */
 export const MAX_ENTRY_MINUTES = 1440;
@@ -183,15 +183,16 @@ const RELATIVE_PERIODS: Record<string, number> = {
 };
 
 /**
- * Resolves a period reference into the canonical `YYYY-Wnn` identifier.
+ * Resolves a period reference into a canonical weekly timesheet identifier.
  *
  * Accepts an ISO week (`2026-W33`), a plain date inside the week
  * (`2026-08-19`), a relative keyword (`atual`, `semana passada`) or nothing,
- * which means the current week.
+ * which means the segment containing today. Weeks crossing a month boundary
+ * require a date or an explicit `YYYY-Wnn@YYYY-MM` segment.
  */
 export function resolveWeekPeriod(input: unknown): string {
   if (input == null || input === "")
-    return getWeekPeriod(todayInAppTimeZoneAsDate());
+    return getTimesheetPeriodForDate(todayInAppTimeZone());
 
   if (typeof input !== "string") {
     throw new AgentError(
@@ -203,8 +204,8 @@ export function resolveWeekPeriod(input: unknown): string {
   const raw = input.trim();
   const relative = RELATIVE_PERIODS[raw.toLowerCase()];
   if (relative !== undefined) {
-    return getWeekPeriod(
-      parseLocalDate(shiftDay(todayInAppTimeZone(), relative * 7)),
+    return getTimesheetPeriodForDate(
+      shiftDay(todayInAppTimeZone(), relative * 7),
     );
   }
 
@@ -218,16 +219,35 @@ export function resolveWeekPeriod(input: unknown): string {
         `Semana ${weekNumber} não existe. Use um valor entre 1 e 53.`,
       );
     }
-    return `${year}-W${String(weekNumber).padStart(2, "0")}`;
+    const base = `${year}-W${String(weekNumber).padStart(2, "0")}`;
+    const period = `${base}${week[3] ?? ""}`;
+    let periods: string[];
+    try {
+      periods = getWeekSegments(base).map((segment) => segment.period);
+    } catch {
+      throw new AgentError("VALIDATION_ERROR", `A semana ${base} não existe.`);
+    }
+    if (!periods.includes(period)) {
+      throw new AgentError(
+        "VALIDATION_ERROR",
+        `O período ${period} não corresponde a um fechamento semanal válido.`,
+        {
+          details: { periods },
+          hint: `Escolha um período: ${periods.join(", ")}. Também pode informar uma data YYYY-MM-DD do mês que deseja fechar.`,
+        },
+      );
+    }
+    return period;
   }
 
   if (ISO_DATE.test(raw)) {
-    return getWeekPeriod(parseLocalDate(raw));
+    const parsed = parse(raw, "yyyy-MM-dd", new Date());
+    if (isValid(parsed)) return getTimesheetPeriodForDate(raw);
   }
 
   throw new AgentError(
     "VALIDATION_ERROR",
-    `Período "${input}" inválido. Use YYYY-Wnn (ex.: 2026-W33), uma data YYYY-MM-DD ou "atual".`,
+    `Período "${input}" inválido. Use YYYY-Wnn, YYYY-Wnn@YYYY-MM, uma data YYYY-MM-DD ou "atual".`,
   );
 }
 

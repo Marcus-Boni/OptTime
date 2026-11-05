@@ -18,6 +18,8 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import { getWeekPeriod } from "@/lib/utils";
 import type { AzureDevOpsAssignedWorkItem } from "@/types/azure-devops";
 import type {
@@ -43,11 +45,6 @@ type TimeEntryRecord = {
   duration: number;
   date: string;
   billable: boolean;
-};
-
-type TimesheetRecord = {
-  userId: string;
-  status: string;
 };
 
 type AzureConfigRecord = {
@@ -400,13 +397,17 @@ export async function getPeoplePerformance(
     db
       .select({
         userId: timesheet.userId,
+        period: timesheet.period,
         status: timesheet.status,
       })
       .from(timesheet)
       .where(
         and(
           inArray(timesheet.userId, userIds),
-          eq(timesheet.period, currentWeekPeriod),
+          inArray(
+            timesheet.period,
+            getTimesheetPeriodsForWeek(currentWeekPeriod),
+          ),
         ),
       ),
   ]);
@@ -451,13 +452,6 @@ export async function getPeoplePerformance(
     const bucket = getOrCreateMapEntry(entriesByUser, entry.userId, () => []);
     bucket.push(entry);
   }
-
-  const timesheetByUser = new Map<string, TimesheetRecord>(
-    currentTimesheets.map((currentTimesheet) => [
-      currentTimesheet.userId,
-      currentTimesheet,
-    ]),
-  );
 
   const rows = await mapWithConcurrency(
     scopedUsers,
@@ -697,7 +691,11 @@ export async function getPeoplePerformance(
         }
       }
 
-      const timesheetStatus = timesheetByUser.get(person.id)?.status ?? null;
+      const timesheetStatus = summarizeTimesheetWeek(
+        currentWeekPeriod,
+        currentTimesheets.filter((sheet) => sheet.userId === person.id),
+        timeEntries.map((entry) => entry.date),
+      ).status;
       const utilizationPercent =
         person.weeklyCapacity > 0
           ? Math.round(

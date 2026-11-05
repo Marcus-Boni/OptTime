@@ -16,19 +16,15 @@ import {
   UI_COMMAND_LIST,
   UI_COMMANDS,
 } from "@/lib/ai/operator/ui-commands";
-import { formatDayLabel, resolvePeriod } from "@/lib/ai/periods";
+import { formatDayLabel } from "@/lib/ai/periods";
 import type { NavigateAction, UiCommandPayload } from "@/lib/ai/types";
 import { incompleteDayThresholdMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry, timesheet } from "@/lib/db/schema";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
+import { getTimesheetSegmentForDate } from "@/lib/timesheet-periods";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
-import {
-  formatDuration,
-  formatLocalDate,
-  getWeekPeriod,
-  parseLocalDate,
-} from "@/lib/utils";
+import { formatDuration, formatLocalDate, parseLocalDate } from "@/lib/utils";
 import { listLoggableProjects, matchProject } from "./read-tools";
 import type { AgentTool, ToolContext } from "./types";
 
@@ -339,6 +335,7 @@ export const prepareTimerStopTool: AgentTool<EmptyArgs> = {
 
 const submitArgsSchema = z.object({
   period: z.enum(["this_week", "last_week"]).optional(),
+  date: z.iso.date().optional(),
 });
 
 export const prepareTimesheetSubmitTool: AgentTool<
@@ -346,7 +343,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
 > = {
   name: "prepare_timesheet_submit",
   description:
-    "Prepara a submissão do timesheet semanal, exibindo um cartão de confirmação com o total de horas e eventuais alertas de dias incompletos. NÃO submete sozinho.",
+    "Prepara a submissão do timesheet da semana e competência do dia escolhido, exibindo um cartão de confirmação com o total de horas e alertas. Em semanas que cruzam meses, prepara somente o mês desse dia. NÃO submete sozinho.",
   parameters: {
     type: "object",
     properties: {
@@ -355,14 +352,24 @@ export const prepareTimesheetSubmitTool: AgentTool<
         enum: ["this_week", "last_week"],
         description: "Semana a submeter. Padrão: this_week.",
       },
+      date: {
+        type: "string",
+        description:
+          "Dia no formato YYYY-MM-DD para selecionar a competência. Padrão: hoje, ou o mesmo dia da semana passada quando period é last_week.",
+      },
     },
   },
   schema: submitArgsSchema,
   actionKind: "submit_timesheet",
   label: () => "Preparando a submissão do timesheet",
   async execute(args, ctx) {
-    const range = resolvePeriod(args.period ?? "this_week", ctx.user.today);
-    const period = getWeekPeriod(range.from);
+    const referenceDate =
+      args.date ??
+      (args.period === "last_week"
+        ? formatLocalDate(subDays(parseLocalDate(ctx.user.today), 7))
+        : ctx.user.today);
+    const segment = getTimesheetSegmentForDate(referenceDate);
+    const period = segment.period;
 
     const [sheet, entries] = await Promise.all([
       db.query.timesheet.findFirst({
@@ -378,8 +385,8 @@ export const prepareTimesheetSubmitTool: AgentTool<
         .where(
           and(
             eq(timeEntry.userId, ctx.user.userId),
-            gte(timeEntry.date, range.from),
-            lte(timeEntry.date, range.to),
+            gte(timeEntry.date, segment.start),
+            lte(timeEntry.date, segment.end),
             isNull(timeEntry.deletedAt),
           ),
         ),
@@ -401,11 +408,11 @@ export const prepareTimesheetSubmitTool: AgentTool<
 
     if (entries.length === 0) {
       return {
-        label: "Semana sem lançamentos",
+        label: "Período sem lançamentos",
         data: {
           status: "empty",
           period,
-          note: "Não há lançamentos nessa semana; não é possível submeter.",
+          note: "Não há lançamentos nesse período; não é possível submeter.",
         },
       };
     }
@@ -427,13 +434,13 @@ export const prepareTimesheetSubmitTool: AgentTool<
 
     const warning =
       lowDays > 0
-        ? `${lowDays} dia(s) da semana estão abaixo de ${formatDuration(incompleteThreshold)} registradas.`
+        ? `${lowDays} dia(s) do período estão abaixo de ${formatDuration(incompleteThreshold)} registradas.`
         : null;
 
     ctx.emitAction({
       kind: "submit_timesheet",
       period,
-      periodLabel: `${formatDayLabel(range.from)} – ${formatDayLabel(range.to)}`,
+      periodLabel: `${formatDayLabel(segment.start)} – ${formatDayLabel(segment.end)}`,
       totalMinutes,
       entryCount: entries.length,
       warning,

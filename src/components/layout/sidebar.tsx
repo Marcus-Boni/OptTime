@@ -1,6 +1,5 @@
 "use client";
 
-import { format, getISOWeek } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   CheckSquare,
@@ -42,6 +41,7 @@ import {
 import { useTimer } from "@/hooks/use-timer";
 import { useTimesheets } from "@/hooks/use-timesheets";
 import { useSession } from "@/lib/auth-client";
+import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import type { User as UserType } from "@/types/user";
@@ -324,8 +324,7 @@ export function Sidebar() {
     !isPending && (user?.role === "manager" || user?.role === "admin");
 
   const currentPeriod = useMemo(() => {
-    const now = new Date();
-    return `${format(now, "yyyy")}-W${getISOWeek(now).toString().padStart(2, "0")}`;
+    return getTimesheetPeriodForDate(new Date());
   }, []);
 
   const pendingSubmitWeeksCount = timesheets.filter(

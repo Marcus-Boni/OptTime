@@ -232,6 +232,13 @@
       "when": 1788291200000,
       "tag": "0032_time_entry_external_id_and_source",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1788377600000,
+      "tag": "0033_split_weekly_timesheets_by_month",
+      "breakpoints": true
     }
   ]
 }

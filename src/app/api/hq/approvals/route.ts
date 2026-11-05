@@ -1,5 +1,3 @@
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   getActiveSession,
@@ -14,24 +12,11 @@ import {
   detectTimesheetAnomalies,
   isConformant,
 } from "@/lib/hq/anomalies";
-import { getPeriodRange, parseLocalDate } from "@/lib/utils";
+import { getTimesheetPeriodLabel } from "@/lib/timesheet-periods";
 import type { ApprovalInsight, HqApprovalsResponse } from "@/types/hq";
 
 function buildPeriodLabel(period: string, periodType: string): string {
-  try {
-    const { start, end } = getPeriodRange(period, periodType);
-
-    if (periodType === "monthly") {
-      return format(parseLocalDate(start), "MMMM yyyy", { locale: ptBR });
-    }
-
-    const weekNumber = period.split("-W")[1] ?? "";
-    const startLabel = format(parseLocalDate(start), "d MMM", { locale: ptBR });
-    const endLabel = format(parseLocalDate(end), "d MMM", { locale: ptBR });
-    return `Semana ${weekNumber} · ${startLabel} – ${endLabel}`;
-  } catch {
-    return period;
-  }
+  return getTimesheetPeriodLabel(period, periodType);
 }
 
 /**

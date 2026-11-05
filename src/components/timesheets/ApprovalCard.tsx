@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X } from "lucide-react";
+import { Check, RotateCcw, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -26,56 +27,48 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import type { Timesheet } from "@/hooks/use-timesheets";
-import { formatDuration } from "@/lib/utils";
+import {
+  getTimesheetPeriodLabel,
+  isPeriodOpenAfter,
+  isSplitPeriod,
+} from "@/lib/timesheet-periods";
+import { todayInAppTimeZone } from "@/lib/timezone";
+import { formatDuration, getPeriodRange } from "@/lib/utils";
 
 interface ApprovalCardProps {
   timesheet: Timesheet;
-  onApprove: (id: string) => Promise<void>;
+  onApprove: (id: string, options?: { force?: boolean }) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
-}
-
-function parsePeriod(period: string): string {
-  // "2025-W10" => "Semana 10 de 2025"
-  // "2025-03"  => "Março de 2025"
-  const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch) {
-    return `Semana ${parseInt(weekMatch[2], 10)} de ${weekMatch[1]}`;
-  }
-  const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
-  if (monthMatch) {
-    const months = [
-      "Janeiro",
-      "Fevereiro",
-      "Março",
-      "Abril",
-      "Maio",
-      "Junho",
-      "Julho",
-      "Agosto",
-      "Setembro",
-      "Outubro",
-      "Novembro",
-      "Dezembro",
-    ];
-    return `${months[parseInt(monthMatch[2], 10) - 1]} de ${monthMatch[1]}`;
-  }
-  return period;
+  onReopen?: (id: string, reason?: string) => Promise<void>;
 }
 
 export function ApprovalCard({
   timesheet,
   onApprove,
   onReject,
+  onReopen,
 }: ApprovalCardProps) {
   const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [reopenOpen, setReopenOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const isFuture = isPeriodOpenAfter(
+    timesheet.period,
+    timesheet.periodType,
+    todayInAppTimeZone(),
+  );
+  const periodLabel = getTimesheetPeriodLabel(
+    timesheet.period,
+    timesheet.periodType,
+  );
+  const isSplit = isSplitPeriod(timesheet.period);
 
   const handleApprove = async () => {
     setLoading(true);
     try {
-      await onApprove(timesheet.id);
+      await onApprove(timesheet.id, { force: isFuture });
       setApproveOpen(false);
     } finally {
       setLoading(false);
@@ -89,6 +82,17 @@ export function ApprovalCard({
       await onReject(timesheet.id, reason.trim());
       setRejectOpen(false);
       setReason("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleReopen = async () => {
+    if (!onReopen) return;
+    setLoading(true);
+    try {
+      await onReopen(timesheet.id);
+      setReopenOpen(false);
     } finally {
       setLoading(false);
     }
@@ -114,12 +118,20 @@ export function ApprovalCard({
               />
             )}
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-foreground leading-snug">
-                {user?.name ?? "Usuário"}
-              </p>
-              <p className="text-[11px] text-muted-foreground">
-                {parsePeriod(timesheet.period)}
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-sm font-medium text-foreground leading-snug">
+                  {user?.name ?? "Usuário"}
+                </p>
+                {isSplit && (
+                  <Badge
+                    variant="outline"
+                    className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px]"
+                  >
+                    Semana fracionada
+                  </Badge>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">{periodLabel}</p>
             </div>
           </div>
 
@@ -178,6 +190,18 @@ export function ApprovalCard({
                 </Button>
               </>
             )}
+            {timesheet.status === "approved" && onReopen && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-3 text-xs"
+                onClick={() => setReopenOpen(true)}
+                disabled={loading}
+              >
+                <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                Reabrir
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -186,13 +210,23 @@ export function ApprovalCard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmar aprovação</AlertDialogTitle>
-            <AlertDialogDescription>
-              Você está prestes a aprovar o timesheet de{" "}
-              <strong className="text-foreground">
-                {user?.name ?? "Usuário"}
-              </strong>{" "}
-              referente a {parsePeriod(timesheet.period)}. Esta ação altera o
-              status para aprovado.
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Você está prestes a aprovar o timesheet de{" "}
+                <strong className="text-foreground">
+                  {user?.name ?? "Usuário"}
+                </strong>{" "}
+                referente a {periodLabel}. Esta ação altera o status para
+                aprovado.
+              </p>
+              {isFuture && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                  <strong>Atenção:</strong> Este período ainda não terminou.
+                  Aprovar agora bloqueará os lançamentos até o fim deste período
+                  ({getPeriodRange(timesheet.period, timesheet.periodType).end}
+                  ).
+                </p>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -205,7 +239,40 @@ export function ApprovalCard({
               disabled={loading}
               className="bg-green-600 text-white hover:bg-green-700 focus:ring-green-600/20"
             >
-              {loading ? "Aprovando..." : "Confirmar aprovação"}
+              {loading
+                ? "Aprovando..."
+                : isFuture
+                  ? "Aprovar antecipadamente"
+                  : "Confirmar aprovação"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={reopenOpen} onOpenChange={setReopenOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reabrir timesheet</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja reabrir o timesheet de{" "}
+              <strong className="text-foreground">
+                {user?.name ?? "Usuário"}
+              </strong>{" "}
+              referente a {periodLabel}? Isso retornará o status para aberto e
+              permitirá novos lançamentos.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={loading}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                void handleReopen();
+              }}
+              disabled={loading}
+              className="bg-brand-500 text-white hover:bg-brand-600"
+            >
+              {loading ? "Reabrindo..." : "Confirmar reabertura"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

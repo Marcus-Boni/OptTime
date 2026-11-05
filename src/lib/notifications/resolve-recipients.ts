@@ -1,6 +1,10 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { timesheet, user } from "@/lib/db/schema";
+import { timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
+import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
+import { todayInAppTimeZoneAsDate } from "@/lib/timezone";
+import { getPeriodRange } from "@/lib/utils";
 
 export interface ReminderRecipient {
   id: string;
@@ -63,22 +67,41 @@ export async function resolveReminderRecipients({
   }
 
   // Filter: keep only users who have NOT submitted their current week timesheet
-  const currentPeriod = getISOWeekPeriod();
+  const currentPeriod = getISOWeekPeriod(todayInAppTimeZoneAsDate());
   const candidateIds = candidates.map((c) => c.id);
 
   if (candidateIds.length === 0) return [];
 
-  const submittedRows = await db
-    .select({ userId: timesheet.userId })
-    .from(timesheet)
-    .where(
-      and(
+  const { start, end } = getPeriodRange(currentPeriod, "weekly");
+  const [sheets, entries] = await Promise.all([
+    db.query.timesheet.findMany({
+      where: and(
         inArray(timesheet.userId, candidateIds),
-        eq(timesheet.period, currentPeriod),
-        inArray(timesheet.status, ["submitted", "approved"] as string[]),
+        inArray(timesheet.period, getTimesheetPeriodsForWeek(currentPeriod)),
       ),
+      columns: { userId: true, period: true, status: true },
+    }),
+    db
+      .select({ userId: timeEntry.userId, date: timeEntry.date })
+      .from(timeEntry)
+      .where(
+        and(
+          inArray(timeEntry.userId, candidateIds),
+          gte(timeEntry.date, start),
+          lte(timeEntry.date, end),
+          isNull(timeEntry.deletedAt),
+        ),
+      )
+      .groupBy(timeEntry.userId, timeEntry.date),
+  ]);
+  return candidates.filter((candidate) => {
+    const { status } = summarizeTimesheetWeek(
+      currentPeriod,
+      sheets.filter((sheet) => sheet.userId === candidate.id),
+      entries
+        .filter((entry) => entry.userId === candidate.id)
+        .map((entry) => entry.date),
     );
-
-  const submittedUserIds = new Set(submittedRows.map((r) => r.userId));
-  return candidates.filter((c) => !submittedUserIds.has(c.id));
+    return status !== "submitted" && status !== "approved";
+  });
 }

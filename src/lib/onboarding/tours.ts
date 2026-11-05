@@ -363,7 +363,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "list",
         title: "Semana a semana",
         description:
-          "Cada cartão mostra o período, o total apontado e alertas proporcionais à capacidade semanal da pessoa, inclusive em jornadas menores.",
+          "Cada cartão mostra o período, as horas e alertas proporcionais à sua capacidade. Quando a semana cruza a virada do mês, cada mês tem seu próprio envio e aprovação: fechar um não bloqueia os dias do outro.",
         target: '[data-tour="timesheets-list"]',
         placement: "top",
       },
@@ -371,7 +371,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "submit",
         title: "Submeter",
         description:
-          "Ao submeter, os lançamentos da semana são travados e enviados ao seu gestor. Se algo for rejeitado, você recebe o motivo e pode editar e reenviar.",
+          "Ao submeter, somente os lançamentos do período escolhido são travados e enviados ao gestor. Confira as datas antes de confirmar. Se houver rejeição, você recebe o motivo e pode editar e reenviar.",
         target: '[data-tour="timesheets-submit"]',
         placement: "left",
       },
@@ -379,7 +379,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "outro",
         title: "Aberto, Submetido, Aprovado",
         description:
-          "Rejeitado devolve tudo para edição com o motivo em destaque. Uma semana aprovada não pode mais ser alterada — é o que garante a conformidade de pagamento.",
+          "Rejeitado devolve o período para edição com o motivo em destaque. Aprovado mantém os registros bloqueados; quando uma correção for necessária, um gestor autorizado ou administrador pode reabrir o período para nova conferência.",
         placement: "center",
         optional: false,
       },
@@ -630,7 +630,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "approval-queue",
         title: "Revise antes de aprovar",
         description:
-          "Busque pessoa, projeto ou período e priorize a fila. Confira os lançamentos e os detalhes dos alertas; devolva para ajuste com uma orientação clara quando necessário.",
+          "Busque pessoa, projeto ou período e revise os lançamentos. Semanas na virada do mês são aprovadas por mês. Aprovar um período ainda em andamento exige confirmação individual; períodos aprovados podem ser reabertos por quem tem permissão.",
         target: '[data-tour="hq-approvals-queue"]',
         placement: "top",
         route: "/dashboard/hq?tab=approvals",

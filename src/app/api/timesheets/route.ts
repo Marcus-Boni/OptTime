@@ -1,9 +1,20 @@
-import { format, getISOWeek } from "date-fns";
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet, user } from "@/lib/db/schema";
-import { getPeriodRange } from "@/lib/utils";
+import {
+  getBaseWeekPeriod,
+  getTimesheetPeriodForDate,
+  isCanonicalTimesheetPeriod,
+} from "@/lib/timesheet-periods";
+import { todayInAppTimeZone } from "@/lib/timezone";
+import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
+
+const createTimesheetSchema = z.object({
+  period: z.string().trim().min(1).max(32),
+  periodType: z.enum(["weekly", "monthly"]).default("weekly"),
+});
 
 /**
  * GET - List timesheets for the current user.
@@ -26,11 +37,9 @@ export async function GET(req: Request): Promise<Response> {
   const status = searchParams.get("status");
 
   try {
-    // Ensure current week's timesheet exists
-    const now = new Date();
-    const week = getISOWeek(now).toString().padStart(2, "0");
-    const year = format(now, "yyyy");
-    const currentPeriod = `${year}-W${week}`;
+    // Ensure the timesheet that owns today exists (a week, or its month
+    // segment when the week crosses a month boundary).
+    const currentPeriod = getTimesheetPeriodForDate(todayInAppTimeZone());
 
     const currentTimesheet = await db.query.timesheet.findFirst({
       where: and(
@@ -121,13 +130,24 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   try {
-    const body = await req.json();
-    const period = body.period as string;
-    const periodType = (body.periodType as string) ?? "weekly";
-
-    if (!period) {
+    const parsed = createTimesheetSchema.safeParse(await req.json());
+    if (!parsed.success) {
       return Response.json(
-        { error: "Período é obrigatório." },
+        { error: "Período é obrigatório.", details: parsed.error.flatten() },
+        { status: 400 },
+      );
+    }
+
+    const { period, periodType } = parsed.data;
+
+    // A week that crosses a month boundary only exists as its two month
+    // segments; a bare week key would span two competences again.
+    if (!isCanonicalTimesheetPeriod(period, periodType)) {
+      return Response.json(
+        {
+          error:
+            "Período inválido. Semanas que cruzam a virada do mês são registradas por mês.",
+        },
         { status: 400 },
       );
     }
@@ -138,13 +158,12 @@ export async function POST(req: Request): Promise<Response> {
       columns: { createdAt: true },
     });
 
-    if (userForValidation) {
-      const joinDate = new Date(userForValidation.createdAt);
-      const joinWeek = `${format(joinDate, "yyyy")}-W${getISOWeek(joinDate).toString().padStart(2, "0")}`;
+    if (userForValidation && periodType === "weekly") {
+      const joinWeek = getWeekPeriod(new Date(userForValidation.createdAt));
 
       // Comparação lexicográfica funciona para formato "YYYY-WNN"
-      // NOTA: .padStart(2, "0") é essencial — sem ele "2026-W9" > "2026-W10" na comparação de string
-      if (period < joinWeek) {
+      // NOTA: o zero à esquerda é essencial — sem ele "2026-W9" > "2026-W10" na comparação de string
+      if (getBaseWeekPeriod(period) < joinWeek) {
         return Response.json(
           { error: "Período anterior ao ingresso no sistema" },
           { status: 403 },

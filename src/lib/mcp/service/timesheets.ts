@@ -1,4 +1,3 @@
-import { format, getISOWeek } from "date-fns";
 import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import {
   incompleteDayThresholdMinutes,
@@ -7,15 +6,20 @@ import {
 import { db } from "@/lib/db";
 import { timeEntry, timesheet, user } from "@/lib/db/schema";
 import { awardWeekSubmission } from "@/lib/gamification";
+import type { AgentPrincipal } from "@/lib/mcp/auth";
+import { AgentError } from "@/lib/mcp/errors";
+import {
+  humanizeMinutes,
+  resolveWeekPeriod,
+  weekdayLabel,
+} from "@/lib/mcp/format";
 import {
   getTimesheetStatusLabel,
   isTimesheetSubmittableStatus,
 } from "@/lib/timesheet-status";
+import { resolveClosedWeekAwardPeriod } from "@/lib/timesheet-week-closure";
 import { todayInAppTimeZone } from "@/lib/timezone";
-import { formatLocalDate, getPeriodRange } from "@/lib/utils";
-import type { AgentPrincipal } from "../auth";
-import { AgentError } from "../errors";
-import { humanizeMinutes, weekdayLabel } from "../format";
+import { formatLocalDate, getPeriodRange, getWeekPeriod } from "@/lib/utils";
 
 /**
  * Weekly timesheet status and submission.
@@ -65,6 +69,7 @@ export async function getTimesheetStatus(
   principal: AgentPrincipal,
   period: string,
 ): Promise<TimesheetStatusView> {
+  period = resolveWeekPeriod(period);
   const { start, end } = getPeriodRange(period, "weekly");
 
   const [record, profile, entries] = await Promise.all([
@@ -200,9 +205,7 @@ async function ensureTimesheet(
   if (profile) {
     const joinDate = new Date(profile.createdAt);
     // Zero-padding matters: without it "2026-W9" sorts above "2026-W10".
-    const joinWeek = `${format(joinDate, "yyyy")}-W${getISOWeek(joinDate)
-      .toString()
-      .padStart(2, "0")}`;
+    const joinWeek = getWeekPeriod(joinDate);
 
     if (period < joinWeek) {
       throw new AgentError(
@@ -247,6 +250,7 @@ export async function submitTimesheet(
   period: string,
   options?: { force?: boolean },
 ): Promise<SubmitTimesheetResult> {
+  period = resolveWeekPeriod(period);
   const preview = await getTimesheetStatus(principal, period);
 
   if (!isTimesheetSubmittableStatus(preview.status)) {
@@ -330,13 +334,21 @@ export async function submitTimesheet(
 
   // Gamification rewards the submission; it must never be able to fail it.
   try {
-    await awardWeekSubmission({
-      userId: principal.userId,
-      period: record.period,
-      periodType: record.periodType,
-      submittedAt: updated.submitted?.submittedAt ?? new Date(),
-      totalMinutes: updated.submitted?.totalMinutes ?? 0,
-    });
+    const awardPeriod = await resolveClosedWeekAwardPeriod(
+      principal.userId,
+      record.period,
+      record.periodType,
+      ["submitted", "approved"],
+    );
+    if (awardPeriod) {
+      await awardWeekSubmission({
+        userId: principal.userId,
+        period: awardPeriod,
+        periodType: record.periodType,
+        submittedAt: updated.submitted?.submittedAt ?? new Date(),
+        totalMinutes: updated.submitted?.totalMinutes ?? 0,
+      });
+    }
   } catch (error: unknown) {
     console.error("[mcp][submit_timesheet] gamification:", error);
   }

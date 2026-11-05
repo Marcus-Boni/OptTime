@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
 import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
+import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
 import { isTimesheetLockedStatus } from "@/lib/timesheet-status";
 import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 import type { AgentPrincipal } from "../auth";
@@ -52,20 +53,19 @@ function toView(row: EntryRow, lockedPeriods: Set<string>): TimeEntryView {
     billable: row.billable,
     azureWorkItemId: row.azureWorkItemId,
     azureWorkItemTitle: row.azureWorkItemTitle,
-    locked: lockedPeriods.has(getWeekPeriod(row.date)),
+    locked: lockedPeriods.has(getTimesheetPeriodForDate(row.date)),
     project: row.project,
   };
 }
 
 /**
- * Resolves the lock state of every week touched by a set of entries in one go,
- * so a 50-entry listing costs one extra query instead of fifty.
+ * Resolves each distinct weekly month segment once, rather than once per entry.
  */
 async function buildLockedPeriodSet(
   userId: string,
   dates: string[],
 ): Promise<Set<string>> {
-  const periods = [...new Set(dates.map((date) => getWeekPeriod(date)))];
+  const periods = [...new Set(dates.map(getTimesheetPeriodForDate))];
   const locked = new Set<string>();
 
   await Promise.all(

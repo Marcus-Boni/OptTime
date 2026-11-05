@@ -1,6 +1,6 @@
 "use client";
 
-import { format, getISOWeek } from "date-fns";
+import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { AlertTriangle, ArrowRight, Send } from "lucide-react";
@@ -21,6 +21,11 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { type Timesheet, useTimesheets } from "@/hooks/use-timesheets";
+import {
+  getTimesheetPeriodForDate,
+  getTimesheetPeriodLabel,
+  isSplitPeriod,
+} from "@/lib/timesheet-periods";
 import { isTimesheetSubmittableStatus } from "@/lib/timesheet-status";
 import { formatDuration, parseLocalDate } from "@/lib/utils";
 
@@ -37,29 +42,8 @@ const itemVariants = {
 
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
-function formatPeriodLabel(period: string): string {
-  const weekMatch = period.match(/^(\d{4})-W(\d{2})$/);
-  if (weekMatch)
-    return `Semana ${parseInt(weekMatch[2], 10)} de ${weekMatch[1]}`;
-  const monthMatch = period.match(/^(\d{4})-(\d{2})$/);
-  if (monthMatch) {
-    const months = [
-      "Janeiro",
-      "Fevereiro",
-      "Março",
-      "Abril",
-      "Maio",
-      "Junho",
-      "Julho",
-      "Agosto",
-      "Setembro",
-      "Outubro",
-      "Novembro",
-      "Dezembro",
-    ];
-    return `${months[parseInt(monthMatch[2], 10) - 1]} de ${monthMatch[1]}`;
-  }
-  return period;
+function formatPeriodLabel(period: string, periodType = "weekly"): string {
+  return getTimesheetPeriodLabel(period, periodType);
 }
 
 function formatDateRange(start: string, end: string): string {
@@ -139,12 +123,20 @@ function CurrentWeekCard({ ts, submitting, onSubmit }: TimesheetCardProps) {
           <div className="min-w-0 flex-1 space-y-3">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-semibold text-foreground">
-                {formatPeriodLabel(ts.period)}
+                {formatPeriodLabel(ts.period, ts.periodType)}
               </p>
               <TimesheetStatusBadge status={ts.status} />
               <Badge className="bg-brand-500 text-white text-xs">
                 Semana atual
               </Badge>
+              {isSplitPeriod(ts.period) && (
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px]"
+                >
+                  Semana fracionada
+                </Badge>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -206,9 +198,17 @@ function PendingTimesheetCard({
           <div className="min-w-0 flex-1 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-medium text-foreground">
-                {formatPeriodLabel(ts.period)}
+                {formatPeriodLabel(ts.period, ts.periodType)}
               </p>
               <TimesheetStatusBadge status={ts.status} />
+              {isSplitPeriod(ts.period) && (
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px]"
+                >
+                  Semana fracionada
+                </Badge>
+              )}
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -263,9 +263,17 @@ function HistoryTimesheetCard({ ts }: { ts: Timesheet }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm font-medium text-foreground">
-              {formatPeriodLabel(ts.period)}
+              {formatPeriodLabel(ts.period, ts.periodType)}
             </p>
             <TimesheetStatusBadge status={ts.status} />
+            {isSplitPeriod(ts.period) && (
+              <Badge
+                variant="outline"
+                className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px]"
+              >
+                Semana fracionada
+              </Badge>
+            )}
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {formatDateRange(ts.periodStart, ts.periodEnd)} ·{" "}
@@ -297,8 +305,7 @@ export function TimesheetsView() {
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(10);
 
   const currentPeriod = useMemo(() => {
-    const now = new Date();
-    return `${format(now, "yyyy")}-W${getISOWeek(now).toString().padStart(2, "0")}`;
+    return getTimesheetPeriodForDate(new Date());
   }, []);
 
   const currentWeekTs = timesheets.find((ts) => ts.period === currentPeriod);

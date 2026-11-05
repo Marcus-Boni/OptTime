@@ -1,4 +1,5 @@
 import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { z } from "zod";
 import {
   canManageUser,
   getActiveSession,
@@ -9,9 +10,24 @@ import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
 import type { CelebrationPayload } from "@/lib/gamification";
 import { awardWeekApproval, awardWeekSubmission } from "@/lib/gamification";
+import {
+  getTimesheetPeriodLabel,
+  isPeriodOpenAfter,
+} from "@/lib/timesheet-periods";
+import { resolveClosedWeekAwardPeriod } from "@/lib/timesheet-week-closure";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { getPeriodRange } from "@/lib/utils";
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+const timesheetActionSchema = z.object({
+  action: z.enum(["submit", "approve", "reject", "reopen"]),
+  rejectionReason: z.string().trim().max(1000).optional(),
+  /** Confirms approving a period that still has days ahead of today. */
+  force: z.boolean().optional(),
+  /** Optional context recorded when a manager reopens an approved period. */
+  reason: z.string().trim().max(500).optional(),
+});
 
 /**
  * GET - Get a timesheet with all its entries.
@@ -124,8 +140,8 @@ export async function GET(
 }
 
 /**
- * PATCH - Submit, approve, or reject a timesheet.
- * Body: { action: "submit" | "approve" | "reject", rejectionReason? }
+ * PATCH - Submit, approve, reject, or reopen a timesheet.
+ * Body: { action: "submit" | "approve" | "reject" | "reopen", rejectionReason?, force?, reason? }
  */
 export async function PATCH(
   req: Request,
@@ -139,6 +155,24 @@ export async function PATCH(
   const { id } = await context.params;
   const actor = getActorContext(session.user);
 
+  let rawBody: unknown;
+  try {
+    rawBody = await req.json();
+  } catch {
+    return Response.json({ error: "JSON inválido." }, { status: 400 });
+  }
+
+  const parsedBody = timesheetActionSchema.safeParse(rawBody);
+  if (!parsedBody.success) {
+    return Response.json(
+      { error: "Ação inválida.", details: parsedBody.error.flatten() },
+      { status: 400 },
+    );
+  }
+
+  const body = parsedBody.data;
+  const action = body.action;
+
   try {
     const ts = await db.query.timesheet.findFirst({
       where: eq(timesheet.id, id),
@@ -150,9 +184,6 @@ export async function PATCH(
         { status: 404 },
       );
     }
-
-    const body = await req.json();
-    const action = body.action as string;
 
     if (action === "submit") {
       const isOwner = ts.userId === session.user.id;
@@ -222,15 +253,25 @@ export async function PATCH(
 
       // Gamification is a reward layer on top of the submission, never a
       // gate for it: a failure here must not fail the week the user closed.
+      // A week split at a month boundary is credited once, when its last
+      // slice with entries closes.
       let celebration: CelebrationPayload | null = null;
       try {
-        celebration = await awardWeekSubmission({
-          userId: ts.userId,
-          period: ts.period,
-          periodType: ts.periodType,
-          submittedAt: updated?.submittedAt ?? new Date(),
-          totalMinutes: updated?.totalMinutes ?? 0,
-        });
+        const awardPeriod = await resolveClosedWeekAwardPeriod(
+          ts.userId,
+          ts.period,
+          ts.periodType,
+          ["submitted", "approved"],
+        );
+        if (awardPeriod) {
+          celebration = await awardWeekSubmission({
+            userId: ts.userId,
+            period: awardPeriod,
+            periodType: ts.periodType,
+            submittedAt: updated?.submittedAt ?? new Date(),
+            totalMinutes: updated?.totalMinutes ?? 0,
+          });
+        }
       } catch (error: unknown) {
         console.error("[PATCH /api/timesheets/:id] gamification:", error);
       }
@@ -267,6 +308,24 @@ export async function PATCH(
         return Response.json(
           { error: "Você não pode aprovar timesheets fora do seu time." },
           { status: 403 },
+        );
+      }
+
+      // Approving locks every day of the period. Days that have not happened
+      // yet are almost always a mistake (closing the month early used to lock
+      // the next month's days), so it needs an explicit confirmation.
+      if (
+        !body.force &&
+        isPeriodOpenAfter(ts.period, ts.periodType, todayInAppTimeZone())
+      ) {
+        const { end } = getPeriodRange(ts.period, ts.periodType);
+        return Response.json(
+          {
+            error: `${getTimesheetPeriodLabel(ts.period, ts.periodType)} ainda não terminou. Aprovar agora bloqueia os lançamentos até ${end}.`,
+            code: "PERIOD_NOT_ENDED",
+            periodEnd: end,
+          },
+          { status: 409 },
         );
       }
 
@@ -348,13 +407,81 @@ export async function PATCH(
       }
 
       try {
-        await awardWeekApproval(ts.userId, ts.period, ts.periodType);
+        const awardPeriod = await resolveClosedWeekAwardPeriod(
+          ts.userId,
+          ts.period,
+          ts.periodType,
+          ["approved"],
+        );
+        if (awardPeriod) {
+          await awardWeekApproval(ts.userId, awardPeriod, ts.periodType);
+        }
       } catch (error: unknown) {
         console.error(
           "[PATCH /api/timesheets/:id] gamification approval:",
           error,
         );
       }
+
+      return Response.json({ timesheet: updated });
+    }
+
+    if (action === "reopen") {
+      if (actor.role !== "manager" && actor.role !== "admin") {
+        return Response.json(
+          { error: "Sem permissão para reabrir." },
+          { status: 403 },
+        );
+      }
+
+      if (ts.status !== "approved") {
+        return Response.json(
+          { error: "Apenas timesheets aprovados podem ser reabertos." },
+          { status: 400 },
+        );
+      }
+
+      if (
+        actor.role === "manager" &&
+        !(await canManageUser(actor, ts.userId))
+      ) {
+        return Response.json(
+          { error: "Você não pode reabrir timesheets fora do seu time." },
+          { status: 403 },
+        );
+      }
+
+      // Entries keep their timesheet link: the next submission re-collects
+      // them and recomputes totals. XP already credited is not clawed back —
+      // reopening is a correction path, not a penalty.
+      const [updated] = await db
+        .update(timesheet)
+        .set({
+          status: "open",
+          approvedBy: null,
+          approvedAt: null,
+          submittedAt: null,
+          rejectionReason: null,
+        })
+        .where(and(eq(timesheet.id, id), eq(timesheet.status, "approved")))
+        .returning();
+
+      if (!updated) {
+        return Response.json(
+          { error: "O timesheet mudou de status. Atualize a página." },
+          { status: 409 },
+        );
+      }
+
+      console.info("[timesheet_reopened]", {
+        timesheetId: id,
+        ownerId: ts.userId,
+        period: ts.period,
+        reopenedBy: session.user.id,
+        previousApprovedBy: ts.approvedBy,
+        previousApprovedAt: ts.approvedAt?.toISOString() ?? null,
+        reason: body.reason ?? null,
+      });
 
       return Response.json({ timesheet: updated });
     }
@@ -384,8 +511,8 @@ export async function PATCH(
         );
       }
 
-      const rejectionReason = body.rejectionReason as string | undefined;
-      if (!rejectionReason?.trim()) {
+      const rejectionReason = body.rejectionReason;
+      if (!rejectionReason) {
         return Response.json(
           { error: "Motivo da rejeição é obrigatório." },
           { status: 400 },

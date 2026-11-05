@@ -152,7 +152,10 @@ export function useHqWorkload(past = 4, future = 4): WorkloadController {
 
 export interface ApprovalsController extends HqResource<HqApprovalsResponse> {
   approveBatch: (timesheetIds: string[]) => Promise<BatchApprovalResult[]>;
-  approveOne: (timesheetId: string) => Promise<void>;
+  approveOne: (
+    timesheetId: string,
+    options?: { force?: boolean },
+  ) => Promise<void>;
   rejectOne: (timesheetId: string, reason: string) => Promise<void>;
 }
 
@@ -183,11 +186,11 @@ export function useHqApprovals(): ApprovalsController {
   );
 
   const approveOne = useCallback(
-    async (timesheetId: string) => {
+    async (timesheetId: string, options?: { force?: boolean }) => {
       const res = await fetch(`/api/timesheets/${timesheetId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "approve" }),
+        body: JSON.stringify({ action: "approve", force: options?.force }),
       });
 
       if (!res.ok) {

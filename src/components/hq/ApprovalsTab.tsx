@@ -64,6 +64,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { ApprovalsController } from "@/hooks/use-hq";
+import { isPeriodOpenAfter } from "@/lib/timesheet-periods";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { cn, formatDuration } from "@/lib/utils";
 import type { AnomalySeverity, ApprovalInsight } from "@/types/hq";
 
@@ -702,10 +704,10 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
   );
 
   const handleApprove = useCallback(
-    async (insight: ApprovalInsight): Promise<void> => {
+    async (insight: ApprovalInsight, force?: boolean): Promise<void> => {
       markBusy(insight.timesheetId, true);
       try {
-        await approveOne(insight.timesheetId);
+        await approveOne(insight.timesheetId, { force });
         toast.success(`Timesheet de ${insight.userName} aprovado.`);
       } catch (err: unknown) {
         console.error("[ApprovalsTab] handleApprove:", err);
@@ -721,8 +723,13 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
 
   const handleRequestApprove = useCallback(
     (insight: ApprovalInsight): void => {
-      if (insight.conformant) {
-        void handleApprove(insight);
+      const isFuture = isPeriodOpenAfter(
+        insight.period,
+        "weekly",
+        todayInAppTimeZone(),
+      );
+      if (insight.conformant && !isFuture) {
+        void handleApprove(insight, false);
       } else {
         setConfirmApprove(insight);
       }
@@ -735,7 +742,7 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
   }, []);
 
   const handleApproveDespiteAnomalies = useCallback((): void => {
-    if (confirmApprove) void handleApprove(confirmApprove);
+    if (confirmApprove) void handleApprove(confirmApprove, true);
     setConfirmApprove(null);
   }, [confirmApprove, handleApprove]);
 
@@ -1264,14 +1271,45 @@ export function ApprovalsTab({ controller }: ApprovalsTabProps) {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Aprovar com alertas?</AlertDialogTitle>
-              <AlertDialogDescription>
-                O timesheet de {confirmApprove?.userName} tem{" "}
-                {confirmApprove?.anomalies.length} alerta
-                {confirmApprove?.anomalies.length === 1 ? "" : "s"} detectado
-                {confirmApprove?.anomalies.length === 1 ? "" : "s"}. Você pode
-                aprovar mesmo assim depois de revisar os lançamentos; a decisão
-                fica registrada no histórico.
+              <AlertDialogTitle>
+                {confirmApprove &&
+                isPeriodOpenAfter(
+                  confirmApprove.period,
+                  "weekly",
+                  todayInAppTimeZone(),
+                )
+                  ? "Aprovar período antecipadamente?"
+                  : "Aprovar com alertas?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="space-y-2">
+                {confirmApprove &&
+                  isPeriodOpenAfter(
+                    confirmApprove.period,
+                    "weekly",
+                    todayInAppTimeZone(),
+                  ) && (
+                    <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-600 dark:text-amber-400">
+                      <strong>Atenção:</strong> Este período ainda não terminou.
+                      Aprovar agora bloqueará os lançamentos até o fim deste
+                      período.
+                    </p>
+                  )}
+                {confirmApprove && confirmApprove.anomalies.length > 0 ? (
+                  <p>
+                    O timesheet de {confirmApprove?.userName} tem{" "}
+                    {confirmApprove?.anomalies.length} alerta
+                    {confirmApprove?.anomalies.length === 1 ? "" : "s"}{" "}
+                    detectado
+                    {confirmApprove?.anomalies.length === 1 ? "" : "s"}. Você
+                    pode aprovar mesmo assim depois de revisar os lançamentos; a
+                    decisão fica registrada no histórico.
+                  </p>
+                ) : (
+                  <p>
+                    Confirma a aprovação antecipada do timesheet de{" "}
+                    {confirmApprove?.userName}?
+                  </p>
+                )}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

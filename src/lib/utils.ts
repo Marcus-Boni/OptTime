@@ -190,7 +190,13 @@ export function getStatusColor(status: string): string {
 
 /**
  * Convert a period string into a date range (ISO strings).
+ *
+ * Weekly periods that cross a month boundary are stored as two segments, one
+ * per competence month, keyed `<ISO week>@<yyyy-MM>`. The segment range is the
+ * ISO week clipped to that month.
+ *
  * @example getPeriodRange("2026-W10", "weekly") => { start: "2026-03-02", end: "2026-03-08" }
+ * @example getPeriodRange("2026-W40@2026-09", "weekly") => { start: "2026-09-28", end: "2026-09-30" }
  * @example getPeriodRange("2026-03", "monthly") => { start: "2026-03-01", end: "2026-03-31" }
  */
 export function getPeriodRange(
@@ -198,6 +204,9 @@ export function getPeriodRange(
   type: string,
 ): { start: string; end: string } {
   if (type === "monthly") {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) {
+      throw new Error(`Invalid period format: ${period}`);
+    }
     const date = parse(period, "yyyy-MM", new Date());
     return {
       start: format(startOfMonth(date), "yyyy-MM-dd"),
@@ -205,20 +214,45 @@ export function getPeriodRange(
     };
   }
 
-  // Weekly: 2026-W10
-  const [year, week] = period.split("-W").map(Number);
+  // Weekly: 2026-W10, or a month segment of it: 2026-W40@2026-09
+  if (!/^\d{4}-W\d{2}(@\d{4}-(0[1-9]|1[0-2]))?$/.test(period)) {
+    throw new Error(`Invalid period format: ${period}`);
+  }
+  const [weekKey = "", competence] = period.split("@");
+  const [year, week] = weekKey.split("-W").map(Number);
   if (!year || !week) throw new Error(`Invalid period format: ${period}`);
 
   // date-fns doesn't have a direct "parse week string", so we find the first day of the year
   // and move to the appropriate week. ISO weeks start on Monday.
   const firstDay = new Date(year, 0, 4); // Jan 4th is always in the first ISO week
   const start = addDays(startOfISOWeek(firstDay), (week - 1) * 7);
+  if (getISOWeek(start) !== week || getISOWeekYear(start) !== year) {
+    throw new Error(`Invalid period format: ${period}`);
+  }
   const end = endOfISOWeek(start);
 
-  return {
-    start: format(start, "yyyy-MM-dd"),
-    end: format(end, "yyyy-MM-dd"),
-  };
+  const weekStart = format(start, "yyyy-MM-dd");
+  const weekEnd = format(end, "yyyy-MM-dd");
+
+  if (competence === undefined) {
+    return { start: weekStart, end: weekEnd };
+  }
+
+  if (!/^\d{4}-\d{2}$/.test(competence)) {
+    throw new Error(`Invalid period format: ${period}`);
+  }
+
+  const month = parse(competence, "yyyy-MM", new Date());
+  const monthStart = format(startOfMonth(month), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(month), "yyyy-MM-dd");
+  const segmentStart = weekStart > monthStart ? weekStart : monthStart;
+  const segmentEnd = weekEnd < monthEnd ? weekEnd : monthEnd;
+
+  if (segmentStart > segmentEnd) {
+    throw new Error(`Invalid period format: ${period}`);
+  }
+
+  return { start: segmentStart, end: segmentEnd };
 }
 
 export function getWeekPeriod(date: Date | string): string {
