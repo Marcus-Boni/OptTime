@@ -6,24 +6,25 @@ import Image from "next/image";
 import { useMemo } from "react";
 import type { SlideProps } from "@/components/portal/presentation/types";
 import { Badge } from "@/components/ui/badge";
-import { formatDuration, getInitials } from "@/lib/utils";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { cn, formatDuration, getInitials } from "@/lib/utils";
 
 const TEAM_PALETTE = [
-  "from-brand-500 to-amber-500",
-  "from-blue-500 to-indigo-500",
-  "from-emerald-500 to-teal-500",
-  "from-violet-500 to-purple-500",
-  "from-rose-500 to-pink-500",
-  "from-cyan-500 to-sky-500",
+  "bg-brand-500/20 text-brand-300 ring-brand-500/35",
+  "bg-sky-500/20 text-sky-300 ring-sky-500/35",
+  "bg-emerald-500/20 text-emerald-300 ring-emerald-500/35",
+  "bg-amber-500/20 text-amber-300 ring-amber-500/35",
+  "bg-teal-500/20 text-teal-300 ring-teal-500/35",
+  "bg-indigo-500/20 text-indigo-300 ring-indigo-500/35",
 ];
 
-const TEAM_COLORS_RAW = [
-  "#f97316", // brand
-  "#3b82f6", // blue
-  "#10b981", // emerald
-  "#8b5cf6", // violet
-  "#f43f5e", // rose
-  "#06b6d4", // cyan
+const TEAM_SEGMENT_CLASSES = [
+  "bg-brand-500",
+  "bg-sky-500",
+  "bg-emerald-500",
+  "bg-amber-500",
+  "bg-teal-500",
+  "bg-indigo-500",
 ];
 
 export function SlideTeam({ snapshot, isDeliverablesMode }: SlideProps) {
@@ -114,14 +115,17 @@ export function SlideTeam({ snapshot, isDeliverablesMode }: SlideProps) {
 
                 if (pct <= 0) return null;
 
-                const color = TEAM_COLORS_RAW[i % TEAM_COLORS_RAW.length];
+                const segmentClass =
+                  TEAM_SEGMENT_CLASSES[i % TEAM_SEGMENT_CLASSES.length];
                 return (
                   <div
                     key={member.name}
-                    className="h-full first:rounded-l-full last:rounded-r-full transition-all duration-500"
+                    className={cn(
+                      "h-full first:rounded-l-full last:rounded-r-full",
+                      segmentClass,
+                    )}
                     style={{
                       width: `${pct}%`,
-                      backgroundColor: color,
                     }}
                     title={`${member.name}: ${pct}%`}
                   />
@@ -162,52 +166,59 @@ export function SlideTeam({ snapshot, isDeliverablesMode }: SlideProps) {
                   initial={prefersReducedMotion ? false : { opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.35, delay: i * 0.05 }}
-                  className="rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-3 hover:border-brand-500/30 transition-all"
                 >
-                  <div className="flex items-center gap-3">
-                    {member.image ? (
-                      <Image
-                        src={member.image}
-                        alt={cleanName}
-                        width={40}
-                        height={40}
-                        unoptimized
-                        className="size-10 shrink-0 rounded-xl object-cover shadow-lg ring-2 ring-white/20"
-                      />
-                    ) : (
-                      <div
-                        className={`flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${gradientClass} text-xs font-bold text-white shadow-lg ring-2 ring-white/20`}
-                      >
-                        {getInitials(cleanName)}
+                  <SpotlightCard
+                    spotlightColor="rgba(249, 115, 22, 0.14)"
+                    className="h-full rounded-xl border border-white/10 bg-neutral-900/60 p-3.5 sm:p-4 backdrop-blur-md space-y-3 hover:border-brand-500/30 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      {member.image ? (
+                        <Image
+                          src={member.image}
+                          alt={cleanName}
+                          width={40}
+                          height={40}
+                          unoptimized
+                          className="size-10 shrink-0 rounded-xl object-cover shadow-lg ring-2 ring-white/20"
+                        />
+                      ) : (
+                        <div
+                          className={cn(
+                            "flex size-10 shrink-0 items-center justify-center rounded-xl text-xs font-bold shadow-lg ring-1",
+                            gradientClass,
+                          )}
+                        >
+                          {getInitials(cleanName)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="font-display text-sm font-semibold text-white truncate">
+                          {cleanName}
+                        </p>
+                        <p className="text-[11px] text-neutral-400 truncate">
+                          Especialista em Soluções
+                        </p>
                       </div>
-                    )}
-                    <div className="min-w-0">
-                      <p className="font-display text-sm font-semibold text-white truncate">
-                        {cleanName}
-                      </p>
-                      <p className="text-[11px] text-neutral-400 truncate">
-                        Especialista em Soluções
-                      </p>
                     </div>
-                  </div>
 
-                  <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs">
-                    <span className="text-neutral-400">Participação:</span>
-                    <span className="font-mono font-semibold text-brand-400">
-                      {pct}% do total
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between border-t border-white/5 pt-3 text-xs">
+                      <span className="text-neutral-400">Participação:</span>
+                      <span className="font-mono font-semibold text-brand-400 tabular-nums">
+                        {pct}% do total
+                      </span>
+                    </div>
 
-                  <div className="flex items-center justify-between text-xs text-neutral-400">
-                    <span>
-                      {isDeliverablesMode ? "Entregas:" : "Dedicação:"}
-                    </span>
-                    <span className="font-mono font-medium text-white">
-                      {isDeliverablesMode
-                        ? `${member.contributionsCount ?? 0} ações concluídas`
-                        : formatDuration(member.minutes)}
-                    </span>
-                  </div>
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <span>
+                        {isDeliverablesMode ? "Entregas:" : "Dedicação:"}
+                      </span>
+                      <span className="font-mono font-medium text-white tabular-nums">
+                        {isDeliverablesMode
+                          ? `${member.contributionsCount ?? 0} ações concluídas`
+                          : formatDuration(member.minutes)}
+                      </span>
+                    </div>
+                  </SpotlightCard>
                 </motion.div>
               );
             })

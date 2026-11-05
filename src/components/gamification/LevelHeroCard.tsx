@@ -1,10 +1,17 @@
 "use client";
 
-import { motion } from "framer-motion";
-import { ArrowRight, Flame, Sparkles, Trophy } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Flame,
+  Sparkles,
+  Trophy,
+} from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
+import { AnimatedMetric, SpotlightCard } from "@/components/ui/spotlight-card";
 import {
   Tooltip,
   TooltipContent,
@@ -19,7 +26,7 @@ export interface LevelHeroCardProps {
 
 interface StatProps {
   label: string;
-  value: string;
+  value: number;
   hint?: string;
   accent?: boolean;
   icon?: React.ReactNode;
@@ -27,10 +34,10 @@ interface StatProps {
 
 function Stat({ label, value, hint, accent, icon }: StatProps) {
   const content = (
-    <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3">
-      <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3.5 transition-colors hover:border-brand-500/25">
+      <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        <span>{label}</span>
         {icon}
-        {label}
       </div>
       <p
         className={cn(
@@ -38,7 +45,7 @@ function Stat({ label, value, hint, accent, icon }: StatProps) {
           accent ? "text-brand-500" : "text-foreground",
         )}
       >
-        {value}
+        <AnimatedMetric value={value} />
       </p>
     </div>
   );
@@ -84,14 +91,19 @@ const STATUS_COPY: Record<
  * action that matters right now — closing the open week.
  */
 export function LevelHeroCard({ profile }: LevelHeroCardProps) {
+  const prefersReducedMotion = useReducedMotion();
   const { level, currentStreak, bestStreak, xp, currentPeriodStatus } = profile;
   const progressPercent = Math.min(100, Math.round(level.progress * 100));
+  const progressRatio = Math.min(1, Math.max(0, level.progress));
   const status = STATUS_COPY[currentPeriodStatus];
   const weekIsOpen =
     currentPeriodStatus === "open" || currentPeriodStatus === "rejected";
 
   return (
-    <Card className="relative overflow-hidden border-brand-500/20 bg-card/80 backdrop-blur">
+    <SpotlightCard
+      className="relative overflow-hidden border-brand-500/20 bg-card/80 backdrop-blur"
+      spotlightColor="rgba(249, 115, 22, 0.14)"
+    >
       <div
         className="pointer-events-none absolute inset-0 bg-gradient-to-br from-brand-500/10 via-transparent to-transparent"
         aria-hidden="true"
@@ -100,17 +112,22 @@ export function LevelHeroCard({ profile }: LevelHeroCardProps) {
       <CardContent className="relative space-y-6 p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-500/15 ring-2 ring-brand-500/25">
+            <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brand-500/15 ring-2 ring-brand-500/25">
               <Trophy className="h-7 w-7 text-brand-500" aria-hidden="true" />
+              <span className="absolute -bottom-1.5 -right-1.5 rounded-full border border-brand-500/40 bg-background px-1.5 py-0.5 font-mono text-[10px] font-bold text-brand-500 tabular-nums shadow-sm">
+                Nv.{level.level}
+              </span>
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wider text-brand-500">
-                Nível {level.level}
-              </p>
-              <h2 className="font-display text-2xl font-bold text-foreground">
-                {level.title}
-              </h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-2xl font-bold text-foreground">
+                  {level.title}
+                </h2>
+                <span className="rounded-md border border-brand-500/25 bg-brand-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-brand-500 tabular-nums">
+                  Nível {level.level}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
                 {level.blurb}
               </p>
             </div>
@@ -129,7 +146,7 @@ export function LevelHeroCard({ profile }: LevelHeroCardProps) {
         <div>
           <div className="mb-2 flex items-baseline justify-between text-sm">
             <span className="font-mono font-semibold text-foreground tabular-nums">
-              {xp.toLocaleString("pt-BR")} XP
+              <AnimatedMetric value={xp} suffix=" XP" />
             </span>
             <span className="text-xs text-muted-foreground">
               {level.xpForNextLevel !== null && level.nextTitle
@@ -148,10 +165,14 @@ export function LevelHeroCard({ profile }: LevelHeroCardProps) {
             aria-label={`Progresso do nível: ${progressPercent}%`}
           >
             <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-brand-500 to-brand-400"
-              initial={{ width: 0 }}
-              animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+              className="h-full w-full origin-left rounded-full bg-gradient-to-r from-brand-500 to-brand-400"
+              initial={{ scaleX: prefersReducedMotion ? progressRatio : 0 }}
+              animate={{ scaleX: progressRatio }}
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : { duration: 0.7, ease: [0.16, 1, 0.3, 1] }
+              }
             />
           </div>
         </div>
@@ -159,21 +180,37 @@ export function LevelHeroCard({ profile }: LevelHeroCardProps) {
         <div className="grid gap-3 sm:grid-cols-3">
           <Stat
             label="Sequência"
-            value={`${currentStreak}`}
+            value={currentStreak}
             accent={currentStreak > 0}
             hint="Semanas seguidas fechadas sem pular nenhuma."
-            icon={<Flame className="h-3.5 w-3.5" aria-hidden="true" />}
+            icon={
+              <Flame
+                className="h-3.5 w-3.5 text-brand-500"
+                aria-hidden="true"
+              />
+            }
           />
           <Stat
             label="Recorde"
-            value={`${bestStreak}`}
+            value={bestStreak}
             hint="Sua maior sequência até hoje."
-            icon={<Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
+            icon={
+              <Sparkles
+                className="h-3.5 w-3.5 text-amber-500"
+                aria-hidden="true"
+              />
+            }
           />
           <Stat
             label="Semanas fechadas"
-            value={`${profile.counters.submittedWeeks}`}
+            value={profile.counters.submittedWeeks}
             hint="Total de semanas submetidas."
+            icon={
+              <CheckCircle2
+                className="h-3.5 w-3.5 text-emerald-500"
+                aria-hidden="true"
+              />
+            }
           />
         </div>
 
@@ -207,6 +244,6 @@ export function LevelHeroCard({ profile }: LevelHeroCardProps) {
           </div>
         ) : null}
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }

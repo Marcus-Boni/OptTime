@@ -1,32 +1,54 @@
 "use client";
 
 import { BriefcaseBusiness, Clock, FolderKanban, Users } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedMetric, SpotlightCard } from "@/components/ui/spotlight-card";
 import { cn, formatDuration } from "@/lib/utils";
 import type { TeamHoursTotals } from "@/types/team-hours";
 
 interface KpiCardProps {
   icon: typeof Clock;
   label: string;
-  value: string;
+  numericValue: number;
+  formatter?: (value: number) => string;
   hint: string;
   /** 0-100. Renders a hairline meter under the value when provided. */
   meter?: number;
   accent: "brand" | "sky" | "indigo" | "amber";
 }
 
-const ACCENTS: Record<KpiCardProps["accent"], { icon: string; bar: string }> = {
-  brand: { icon: "bg-brand-500/10 text-brand-500", bar: "bg-brand-500" },
-  sky: { icon: "bg-sky-500/10 text-sky-500", bar: "bg-sky-500" },
-  indigo: { icon: "bg-indigo-500/10 text-indigo-500", bar: "bg-indigo-500" },
-  amber: { icon: "bg-amber-500/10 text-amber-500", bar: "bg-amber-500" },
+const ACCENTS: Record<
+  KpiCardProps["accent"],
+  { icon: string; bar: string; spotlight: string }
+> = {
+  brand: {
+    icon: "bg-brand-500/10 text-brand-500",
+    bar: "bg-brand-500",
+    spotlight: "rgba(249, 115, 22, 0.14)",
+  },
+  sky: {
+    icon: "bg-sky-500/10 text-sky-500",
+    bar: "bg-sky-500",
+    spotlight: "rgba(14, 165, 233, 0.14)",
+  },
+  indigo: {
+    icon: "bg-indigo-500/10 text-indigo-500",
+    bar: "bg-indigo-500",
+    spotlight: "rgba(99, 102, 241, 0.14)",
+  },
+  amber: {
+    icon: "bg-amber-500/10 text-amber-500",
+    bar: "bg-amber-500",
+    spotlight: "rgba(245, 158, 11, 0.14)",
+  },
 };
 
 function KpiCard({
   icon: Icon,
   label,
-  value,
+  numericValue,
+  formatter,
   hint,
   meter,
   accent,
@@ -34,7 +56,10 @@ function KpiCard({
   const tone = ACCENTS[accent];
 
   return (
-    <Card className="gap-0 rounded-xl border-border/60 py-0 shadow-none transition-colors hover:border-brand-500/25">
+    <SpotlightCard
+      spotlightColor={tone.spotlight}
+      className="gap-0 rounded-xl border-border/60 py-0 shadow-none transition-colors hover:border-brand-500/25"
+    >
       <CardContent className="flex items-center gap-3 px-4 py-3.5">
         <div
           className={cn(
@@ -49,8 +74,11 @@ function KpiCard({
           <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {label}
           </p>
-          <p className="font-mono text-lg font-semibold leading-tight tracking-tight text-foreground">
-            {value}
+          <p className="font-mono text-lg font-semibold leading-tight tracking-tight text-foreground tabular-nums">
+            <AnimatedMetric
+              value={numericValue}
+              formatter={formatter ?? ((v) => String(Math.round(v)))}
+            />
           </p>
           {typeof meter === "number" ? (
             <div
@@ -58,15 +86,20 @@ function KpiCard({
               aria-hidden="true"
             >
               <div
-                className={cn("h-full rounded-full", tone.bar)}
-                style={{ width: `${Math.min(100, Math.max(0, meter))}%` }}
+                className={cn(
+                  "h-full w-full origin-left rounded-full transition-transform duration-500",
+                  tone.bar,
+                )}
+                style={{
+                  transform: `scaleX(${Math.min(1, Math.max(0, meter / 100))})`,
+                }}
               />
             </div>
           ) : null}
           <p className="mt-1 truncate text-xs text-muted-foreground">{hint}</p>
         </div>
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }
 
@@ -102,14 +135,16 @@ export function TeamHoursKpis({ totals, loading }: TeamHoursKpisProps) {
         icon={Clock}
         accent="brand"
         label="Tempo total"
-        value={formatDuration(totals.totalMinutes)}
+        numericValue={totals.totalMinutes}
+        formatter={(v) => formatDuration(Math.round(v))}
         hint={`${totals.entryCount} registros no período`}
       />
       <KpiCard
         icon={BriefcaseBusiness}
         accent="sky"
         label="Faturável"
-        value={formatDuration(totals.billableMinutes)}
+        numericValue={totals.billableMinutes}
+        formatter={(v) => formatDuration(Math.round(v))}
         hint={`${totals.billableRate}% do total`}
         meter={totals.billableRate}
       />
@@ -117,7 +152,7 @@ export function TeamHoursKpis({ totals, loading }: TeamHoursKpisProps) {
         icon={Users}
         accent="indigo"
         label="Pessoas"
-        value={String(totals.activePeople)}
+        numericValue={totals.activePeople}
         hint={
           totals.topContributorName
             ? `Top: ${totals.topContributorName}`
@@ -128,7 +163,7 @@ export function TeamHoursKpis({ totals, loading }: TeamHoursKpisProps) {
         icon={FolderKanban}
         accent="amber"
         label="Projetos"
-        value={String(totals.activeProjects)}
+        numericValue={totals.activeProjects}
         hint="Distribuídos no período"
       />
     </div>

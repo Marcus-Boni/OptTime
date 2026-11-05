@@ -75,6 +75,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatedMetric, SpotlightCard } from "@/components/ui/spotlight-card";
 import {
   Table,
   TableBody,
@@ -168,51 +169,81 @@ function getWorkItemTypeColor(type: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+const SUMMARY_ACCENTS = {
+  teal: {
+    icon: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20",
+    spotlight: "rgba(20, 184, 166, 0.14)",
+  },
+  sky: {
+    icon: "bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20",
+    spotlight: "rgba(14, 165, 233, 0.14)",
+  },
+  brand: {
+    icon: "bg-brand-500/10 text-brand-500 border border-brand-500/20",
+    spotlight: "rgba(249, 115, 22, 0.14)",
+  },
+  amber: {
+    icon: "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20",
+    spotlight: "rgba(245, 158, 11, 0.14)",
+  },
+  emerald: {
+    icon: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+    spotlight: "rgba(16, 185, 129, 0.14)",
+  },
+} as const;
+
 function SummaryCard({
   title,
-  value,
+  numericValue,
+  formatter,
   detail,
   icon,
-  accent,
+  tone,
   actionNode,
 }: {
   title: string;
-  value: string;
+  numericValue: number;
+  formatter?: (value: number) => string;
   detail: string;
   icon: React.ReactNode;
-  accent: string;
+  tone: keyof typeof SUMMARY_ACCENTS;
   actionNode?: React.ReactNode;
 }) {
+  const palette = SUMMARY_ACCENTS[tone];
+
   return (
-    <Card className="overflow-hidden border-border/50 bg-card/80 shadow-sm">
+    <SpotlightCard
+      spotlightColor={palette.spotlight}
+      className="overflow-hidden border-border/50 bg-card/80 shadow-sm transition-colors hover:border-brand-500/25"
+    >
       <CardContent className="relative p-5">
-        <div
-          className={cn("absolute inset-x-0 top-0 h-1 rounded-t-xl", accent)}
-        />
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+              <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                 {title}
               </p>
               {actionNode}
             </div>
-            <p className="mt-2 font-display text-3xl font-bold text-foreground">
-              {value}
+            <p className="mt-2 font-mono text-2xl font-bold text-foreground tabular-nums">
+              <AnimatedMetric
+                value={numericValue}
+                formatter={formatter ?? ((v) => String(Math.round(v)))}
+              />
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
           </div>
           <div
             className={cn(
-              "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm",
-              accent,
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+              palette.icon,
             )}
           >
             {icon}
           </div>
         </div>
       </CardContent>
-    </Card>
+    </SpotlightCard>
   );
 }
 
@@ -1534,42 +1565,44 @@ export default function PeoplePerformanceDashboard({
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <SummaryCard
                 title="Colaboradores"
-                value={`${data.summary.activeUsers ?? activeCount} ativos`}
+                numericValue={data.summary.activeUsers ?? activeCount}
+                formatter={(v) => `${Math.round(v)} ativos`}
                 detail={
                   (data.summary.inactiveUsers ?? inactiveCount) > 0
                     ? `${data.summary.inactiveUsers ?? inactiveCount} inativo(s) · ${data.summary.connectedUsers} no Azure`
                     : `${data.summary.connectedUsers} com Azure ativo`
                 }
                 icon={<UserCog className="h-5 w-5" />}
-                accent="bg-[linear-gradient(135deg,#0f766e,#14b8a6)]"
+                tone="teal"
               />
               <SummaryCard
                 title="Tarefas ativas"
-                value={String(data.summary.activeItems)}
+                numericValue={data.summary.activeItems}
                 detail={`${formatHours(data.summary.remainingHours)} restantes no backlog`}
                 icon={<KanbanSquare className="h-5 w-5" />}
-                accent="bg-[linear-gradient(135deg,#1d4ed8,#38bdf8)]"
+                tone="sky"
               />
               <SummaryCard
                 title="Horas lançadas (semana)"
-                value={formatDuration(data.summary.loggedThisWeekMinutes)}
+                numericValue={data.summary.loggedThisWeekMinutes}
+                formatter={(v) => formatDuration(Math.round(v))}
                 detail={`${data.summary.pendingTimesheets} timesheet(s) pendente(s)`}
                 icon={<Clock3 className="h-5 w-5" />}
-                accent="bg-[linear-gradient(135deg,#7c2d12,#fb923c)]"
+                tone="brand"
               />
               <SummaryCard
                 title="Em atenção"
-                value={String(data.summary.usersWithAlerts)}
+                numericValue={data.summary.usersWithAlerts}
                 detail="Colaboradores ativos com alertas operacionais"
                 icon={<AlertTriangle className="h-5 w-5" />}
-                accent="bg-[linear-gradient(135deg,#b45309,#f59e0b)]"
+                tone="amber"
               />
               <SummaryCard
                 title="Score médio"
-                value={String(data.summary.averagePerformanceScore)}
+                numericValue={data.summary.averagePerformanceScore}
                 detail={`Média da equipe ativa · Atualizado ${getRelativeTime(data.generatedAt)}`}
                 icon={<TrendingUp className="h-5 w-5" />}
-                accent="bg-[linear-gradient(135deg,#166534,#4ade80)]"
+                tone="emerald"
                 actionNode={<ScoreExplanationDialog />}
               />
             </div>
@@ -1625,7 +1658,7 @@ export default function PeoplePerformanceDashboard({
                       }
                       className="shrink-0"
                     >
-                      <TabsList className="h-9 bg-muted/60 p-1">
+                      <TabsList variant="pill" className="min-h-9">
                         <TabsTrigger
                           value="all"
                           className="gap-1.5 text-xs px-2.5"

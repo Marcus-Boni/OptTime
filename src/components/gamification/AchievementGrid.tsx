@@ -10,8 +10,9 @@ import {
   resolveIcon,
   TIER_VISUALS,
 } from "@/components/gamification/achievement-visuals";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -54,16 +55,22 @@ function AchievementCard({
     : LOCKED_VISUAL;
   const isComplete = achievement.nextTier === null;
   const progressPercent = Math.round(achievement.progress * 100);
+  const progressScale = Math.max(progressPercent, 2) / 100;
 
   return (
     <motion.div variants={itemVariants} className="h-full">
-      <div
+      <SpotlightCard
         className={cn(
           "group flex h-full flex-col rounded-xl border bg-background/60 p-4 transition-colors duration-150",
           achievement.unlockedTier
             ? "border-border/60 hover:border-brand-500/30"
             : "border-dashed border-border/60 hover:border-border",
         )}
+        spotlightColor={
+          achievement.unlockedTier
+            ? "rgba(249, 115, 22, 0.12)"
+            : "rgba(148, 163, 184, 0.06)"
+        }
       >
         <div className="flex items-start gap-3">
           <div
@@ -130,10 +137,10 @@ function AchievementCard({
           >
             <div
               className={cn(
-                "h-full rounded-full transition-[width] duration-500",
+                "h-full w-full origin-left rounded-full transition-transform duration-500",
                 isComplete ? "bg-emerald-500" : "bg-brand-500",
               )}
-              style={{ width: `${Math.max(progressPercent, 2)}%` }}
+              style={{ transform: `scaleX(${progressScale})` }}
             />
           </div>
 
@@ -163,7 +170,7 @@ function AchievementCard({
             })}
           </div>
         </div>
-      </div>
+      </SpotlightCard>
     </motion.div>
   );
 }
@@ -218,24 +225,26 @@ export function AchievementGrid({ achievements }: AchievementGridProps) {
           </p>
         </div>
 
-        <fieldset className="m-0 flex flex-wrap gap-1 border-0 p-0">
-          <legend className="sr-only">Filtrar conquistas por categoria</legend>
-          {filters.map((option) => (
-            <Button
-              key={option.value}
-              variant={filter === option.value ? "secondary" : "ghost"}
-              size="sm"
-              className={cn(
-                "h-7 px-3 text-xs",
-                filter === option.value && "text-brand-500",
-              )}
-              onClick={() => setFilter(option.value)}
-              aria-pressed={filter === option.value}
-            >
-              {option.label}
-            </Button>
-          ))}
-        </fieldset>
+        <Tabs
+          value={filter}
+          onValueChange={(value) => setFilter(value as Filter)}
+        >
+          <TabsList
+            variant="pill"
+            aria-label="Filtrar conquistas por categoria"
+            className="flex-wrap"
+          >
+            {filters.map((option) => (
+              <TabsTrigger
+                key={option.value}
+                value={option.value}
+                className="px-3 py-1 text-xs"
+              >
+                {option.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </CardHeader>
 
       <CardContent>

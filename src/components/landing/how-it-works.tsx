@@ -3,9 +3,9 @@
 import {
   motion,
   useInView,
+  useReducedMotion,
   useScroll,
   useSpring,
-  useTransform,
 } from "framer-motion";
 import { CheckCircle2, Clock, ShieldCheck } from "lucide-react";
 import { useRef } from "react";
@@ -59,30 +59,43 @@ function TimelineStep({
   isLast: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const isInView = useInView(ref, { once: true, amount: 0.4 });
+  const prefersReducedMotion = useReducedMotion();
+
+  function handleCardMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    const el = cardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    el.style.setProperty("--mouse-x", `${event.clientX - rect.left}px`);
+    el.style.setProperty("--mouse-y", `${event.clientY - rect.top}px`);
+  }
 
   const cardVariants = {
-    hidden: { opacity: 0, x: -32, filter: "blur(4px)" },
+    hidden: prefersReducedMotion
+      ? { opacity: 1, x: 0 }
+      : { opacity: 0, x: -32 },
     visible: {
       opacity: 1,
       x: 0,
-      filter: "blur(0px)",
       transition: {
-        duration: 0.6,
-        delay: index * 0.18,
+        duration: prefersReducedMotion ? 0 : 0.6,
+        delay: prefersReducedMotion ? 0 : index * 0.18,
         ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number],
       },
     },
   };
 
   const dotVariants = {
-    hidden: { scale: 0, opacity: 0 },
+    hidden: prefersReducedMotion
+      ? { scale: 1, opacity: 1 }
+      : { scale: 0, opacity: 0 },
     visible: {
       scale: 1,
       opacity: 1,
       transition: {
-        duration: 0.4,
-        delay: index * 0.18 + 0.1,
+        duration: prefersReducedMotion ? 0 : 0.4,
+        delay: prefersReducedMotion ? 0 : index * 0.18 + 0.1,
         type: "spring" as const,
         stiffness: 300,
         damping: 20,
@@ -92,16 +105,18 @@ function TimelineStep({
 
   const pulseVariants = {
     hidden: { scale: 1, opacity: 0 },
-    visible: {
-      scale: [1, 1.8, 1],
-      opacity: [0, 0.4, 0],
-      transition: {
-        duration: 2.5,
-        delay: index * 0.18 + 0.5,
-        repeat: Infinity,
-        ease: "easeOut" as const,
-      },
-    },
+    visible: prefersReducedMotion
+      ? { scale: 1, opacity: 0 }
+      : {
+          scale: [1, 1.8, 1],
+          opacity: [0, 0.4, 0],
+          transition: {
+            duration: 2.5,
+            delay: index * 0.18 + 0.5,
+            repeat: Infinity,
+            ease: "easeOut" as const,
+          },
+        },
   };
 
   return (
@@ -137,6 +152,8 @@ function TimelineStep({
 
       {/* Right: card */}
       <motion.div
+        ref={cardRef}
+        onMouseMove={handleCardMouseMove}
         variants={cardVariants}
         initial="hidden"
         animate={isInView ? "visible" : "hidden"}
@@ -147,7 +164,7 @@ function TimelineStep({
           className="pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 group-hover:opacity-100"
           style={{
             background:
-              "radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(249,115,22,0.04), transparent 40%)",
+              "radial-gradient(520px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(249,115,22,0.08), transparent 45%)",
           }}
           aria-hidden="true"
         />
@@ -199,6 +216,7 @@ function TimelineStep({
 
 export function HowItWorks() {
   const sectionRef = useRef<HTMLElement>(null);
+  const prefersReducedMotion = useReducedMotion();
 
   const { scrollYProgress } = useScroll({
     target: sectionRef,
@@ -211,28 +229,26 @@ export function HowItWorks() {
     restDelta: 0.001,
   });
 
-  const progressHeight = useTransform(smoothProgress, [0, 1], ["0%", "100%"]);
-
   const titleVariants = {
-    hidden: { opacity: 0, y: 24 },
+    hidden: prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 24 },
     visible: {
       opacity: 1,
       y: 0,
       transition: {
-        duration: 0.7,
+        duration: prefersReducedMotion ? 0 : 0.7,
         ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
       },
     },
   };
 
   const subtitleVariants = {
-    hidden: { opacity: 0, y: 16 },
+    hidden: prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 },
     visible: {
       opacity: 1,
       y: 0,
       transition: {
-        duration: 0.7,
-        delay: 0.1,
+        duration: prefersReducedMotion ? 0 : 0.7,
+        delay: prefersReducedMotion ? 0 : 0.1,
         ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
       },
     },
@@ -264,17 +280,12 @@ export function HowItWorks() {
             whileInView="visible"
             viewport={{ once: true }}
           >
-            <span className="mb-4 inline-block rounded-full border border-orange-500/20 bg-orange-500/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-widest text-orange-400">
-              Como funciona
-            </span>
             <h2
               id="how-it-works-title"
-              className="font-sora mt-4 text-3xl font-bold text-white md:text-4xl"
+              className="font-sora text-3xl font-bold text-white md:text-4xl"
             >
-              Simples como{" "}
-              <span className="bg-gradient-to-r from-orange-400 to-orange-500 bg-clip-text text-transparent">
-                1, 2, 3
-              </span>
+              Como funciona: simples como{" "}
+              <span className="text-orange-400">1, 2, 3</span>
             </h2>
           </motion.div>
 
@@ -301,8 +312,8 @@ export function HowItWorks() {
             aria-hidden="true"
           >
             <motion.div
-              style={{ height: progressHeight }}
-              className="w-full origin-top bg-gradient-to-b from-orange-500 via-orange-400/60 to-orange-500/10"
+              style={{ scaleY: prefersReducedMotion ? 1 : smoothProgress }}
+              className="h-full w-full origin-top bg-gradient-to-b from-orange-500 via-orange-400/60 to-orange-500/10"
             />
           </div>
 

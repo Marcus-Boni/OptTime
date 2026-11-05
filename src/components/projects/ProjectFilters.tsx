@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -188,7 +189,7 @@ export function ProjectFilters({
               })
             }
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2.5 text-xs font-medium transition-all",
+              "inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition-colors",
               filters.membership === "member"
                 ? "border-brand-500/50 bg-brand-500/10 text-brand-400"
                 : "border-border/60 bg-transparent text-muted-foreground hover:border-brand-500/30 hover:text-foreground",
@@ -224,31 +225,33 @@ export function ProjectFilters({
           </SelectContent>
         </Select>
 
-        <div className="inline-flex h-9 overflow-hidden rounded-lg border border-border/60">
-          {VIEW_OPTIONS.map((option) => {
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                aria-pressed={filters.view === option.value}
-                onClick={() =>
-                  onFiltersChange({ ...filters, view: option.value })
-                }
-                className={cn(
-                  "inline-flex min-w-9 items-center justify-center gap-1.5 px-3 text-xs transition-colors",
-                  filters.view === option.value
-                    ? "bg-brand-500/10 text-brand-400"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                )}
-                title={option.label}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">{option.label}</span>
-              </button>
-            );
-          })}
-        </div>
+        <Tabs
+          value={filters.view}
+          onValueChange={(value) =>
+            onFiltersChange({ ...filters, view: value as ProjectViewMode })
+          }
+        >
+          <TabsList
+            variant="pill"
+            aria-label="Modo de visualização dos projetos"
+            className="min-h-9"
+          >
+            {VIEW_OPTIONS.map((option) => {
+              const Icon = option.icon;
+              return (
+                <TabsTrigger
+                  key={option.value}
+                  value={option.value}
+                  className="gap-1.5 px-3 py-1 text-xs"
+                  title={option.label}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">{option.label}</span>
+                </TabsTrigger>
+              );
+            })}
+          </TabsList>
+        </Tabs>
 
         {/* Active filters indicator */}
         {hasActiveFilters && (

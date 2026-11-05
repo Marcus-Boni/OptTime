@@ -2,14 +2,7 @@
 
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import {
-  ChevronDown,
-  Download,
-  FilterX,
-  Loader2,
-  Search,
-  Users,
-} from "lucide-react";
+import { ChevronDown, Download, FilterX, Search, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { UserAvatar } from "@/components/shared/user-avatar";
@@ -33,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { KokonutOrbitalLoader } from "@/components/ui/kokonut-loader";
 import {
   Select,
   SelectContent,
@@ -344,10 +338,7 @@ export function TeamHoursClient() {
                   data-tour="team-hours-export"
                 >
                   {exporting ? (
-                    <Loader2
-                      className="size-4 animate-spin"
-                      aria-hidden="true"
-                    />
+                    <KokonutOrbitalLoader size="sm" />
                   ) : (
                     <Download className="size-4" aria-hidden="true" />
                   )}
@@ -499,7 +490,11 @@ export function TeamHoursClient() {
               setPage(0);
             }}
           >
-            <TabsList className="mb-3" data-tour="team-hours-views">
+            <TabsList
+              variant="pill"
+              className="mb-3"
+              data-tour="team-hours-views"
+            >
               <TabsTrigger value="people">Por colaborador</TabsTrigger>
               <TabsTrigger value="records">Registros detalhados</TabsTrigger>
             </TabsList>

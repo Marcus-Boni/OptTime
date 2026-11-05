@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Activity,
   AlertCircle,
@@ -11,6 +11,7 @@ import {
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { ProjectProgress } from "./types";
 
@@ -54,6 +55,7 @@ export function ProjectProgressBar({
   dense = false,
   className,
 }: ProjectProgressBarProps) {
+  const prefersReducedMotion = useReducedMotion();
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
   const scheduleData = useMemo(() => {
@@ -141,21 +143,17 @@ export function ProjectProgressBar({
   // ── Loading skeleton ────────────────────────────────────────────────────────
   if (state.status === "loading") {
     return (
-      <div
-        className={cn("space-y-2", className)}
+      <output
+        className={cn("block space-y-2", className)}
         aria-label="Carregando progresso"
-        role="status"
       >
-        <div className="h-1.5 w-full animate-pulse rounded-full bg-muted dark:bg-white/10" />
+        <Skeleton className="h-1.5 w-full rounded-full" />
         <div className="flex gap-3">
           {[1, 2, 3].map((i) => (
-            <div
-              key={i}
-              className="h-3 w-16 animate-pulse rounded bg-muted dark:bg-white/10"
-            />
+            <Skeleton key={i} className="h-3 w-16 rounded" />
           ))}
         </div>
-      </div>
+      </output>
     );
   }
 
@@ -207,7 +205,7 @@ export function ProjectProgressBar({
     );
   }
 
-  const { progressPercent, efficiency, estimated, completed, remaining } = data;
+  const { progressPercent, efficiency, estimated, completed } = data;
 
   const barColor =
     efficiency >= 100
@@ -242,28 +240,42 @@ export function ProjectProgressBar({
             {progressPercent}%
           </span>
         </div>
-        <div className="relative h-1.5 w-full rounded-full bg-muted dark:bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]">
+        <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-white/5 shadow-[inset_0_1px_2px_rgba(0,0,0,0.2)]">
           <motion.div
             className={cn(
-              "h-full rounded-full bg-gradient-to-r overflow-hidden",
+              "h-full w-full origin-left rounded-full bg-gradient-to-r",
               barColor,
             )}
-            initial={{ width: 0 }}
-            animate={{ width: `${progressPercent}%` }}
-            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+            initial={{
+              scaleX: prefersReducedMotion
+                ? Math.min(1, Math.max(0, progressPercent / 100))
+                : 0,
+            }}
+            animate={{
+              scaleX: Math.min(1, Math.max(0, progressPercent / 100)),
+            }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { duration: 1.0, ease: [0.22, 1, 0.36, 1] }
+            }
           />
 
           {/* Ideal Marker */}
           {scheduleData && !scheduleData.isPast && (
             <motion.div
               className="absolute top-[-2px] bottom-[-2px] w-[2px] rounded-full bg-blue-500/80 z-10"
+              style={{ left: `${scheduleData.percent}%` }}
               initial={{ opacity: 0, scaleY: 0 }}
               animate={{
                 opacity: 1,
                 scaleY: 1,
-                left: `${scheduleData.percent}%`,
               }}
-              transition={{ delay: 0.5, duration: 0.6, ease: "easeOut" }}
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : { delay: 0.4, duration: 0.5, ease: "easeOut" }
+              }
               title={`Progresso Ideal: ${scheduleData.percent}%`}
             />
           )}
@@ -291,18 +303,28 @@ export function ProjectProgressBar({
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted dark:bg-white/10">
             <motion.div
               className={cn(
-                "h-full rounded-full bg-gradient-to-r",
+                "h-full w-full origin-left rounded-full bg-gradient-to-r",
                 scheduleData.percent > progressPercent + 15
                   ? "from-red-500/80 to-red-400/80"
                   : "from-blue-500/80 to-blue-400/80",
               )}
-              initial={{ width: 0 }}
-              animate={{ width: `${scheduleData.percent}%` }}
-              transition={{
-                duration: 0.8,
-                delay: 0.2,
-                ease: [0.25, 0.46, 0.45, 0.94],
+              initial={{
+                scaleX: prefersReducedMotion
+                  ? Math.min(1, Math.max(0, scheduleData.percent / 100))
+                  : 0,
               }}
+              animate={{
+                scaleX: Math.min(1, Math.max(0, scheduleData.percent / 100)),
+              }}
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : {
+                      duration: 0.8,
+                      delay: 0.2,
+                      ease: [0.25, 0.46, 0.45, 0.94],
+                    }
+              }
             />
           </div>
         </div>

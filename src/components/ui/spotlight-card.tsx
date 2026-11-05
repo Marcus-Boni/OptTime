@@ -70,6 +70,10 @@ export interface AnimatedMetricProps {
   value: number;
   /** Format mode: "duration" (minutes -> "6h 30m"), "percent" ("84%"), or "integer" ("24"). */
   formatMode?: "duration" | "percent" | "integer";
+  /** Optional custom formatter overriding formatMode. */
+  formatter?: (value: number) => string;
+  /** Optional suffix appended to formatted value. */
+  suffix?: string;
   className?: string;
 }
 
@@ -80,6 +84,8 @@ export interface AnimatedMetricProps {
 export function AnimatedMetric({
   value,
   formatMode = "integer",
+  formatter,
+  suffix = "",
   className,
 }: AnimatedMetricProps): ReactElement {
   const prefersReducedMotion = useReducedMotion();
@@ -124,12 +130,15 @@ export function AnimatedMetric({
     return () => window.cancelAnimationFrame(frameId);
   }, [prefersReducedMotion, value]);
 
-  const formatted =
-    formatMode === "duration"
+  const baseFormatted = formatter
+    ? formatter(displayValue)
+    : formatMode === "duration"
       ? formatDuration(displayValue)
       : formatMode === "percent"
         ? `${displayValue}%`
         : displayValue.toLocaleString("pt-BR");
+
+  const formatted = `${baseFormatted}${suffix}`;
 
   return (
     <span className={cn("font-mono tabular-nums", className)}>{formatted}</span>

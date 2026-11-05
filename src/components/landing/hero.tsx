@@ -4,6 +4,7 @@ import {
   motion,
   useInView,
   useMotionValue,
+  useReducedMotion,
   useSpring,
   useTransform,
 } from "framer-motion";
@@ -22,10 +23,15 @@ function AnimatedNumber({
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const isInView = useInView(ref, { once: true });
+  const prefersReducedMotion = useReducedMotion();
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
     if (!isInView) return;
+    if (prefersReducedMotion) {
+      setDisplay(value);
+      return;
+    }
     let start = 0;
     const duration = 1500;
     const step = (timestamp: number) => {
@@ -37,10 +43,10 @@ function AnimatedNumber({
       if (progress < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
-  }, [isInView, value]);
+  }, [isInView, prefersReducedMotion, value]);
 
   return (
-    <span ref={ref} className="font-mono">
+    <span ref={ref} className="font-mono tabular-nums">
       {display}
       {suffix}
     </span>
@@ -49,6 +55,7 @@ function AnimatedNumber({
 
 export function Hero() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const prefersReducedMotion = useReducedMotion();
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -62,7 +69,7 @@ export function Hero() {
   });
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
+    if (prefersReducedMotion || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     mouseX.set((e.clientX - rect.left) / rect.width - 0.5);
     mouseY.set((e.clientY - rect.top) / rect.height - 0.5);
@@ -101,16 +108,24 @@ export function Hero() {
               top: `${20 + i * 15}%`,
               left: `${10 + i * 20}%`,
             }}
-            animate={{
-              y: [0, -30, 0],
-              opacity: [0.3, 0.6, 0.3],
-            }}
-            transition={{
-              duration: 4 + i,
-              repeat: Number.POSITIVE_INFINITY,
-              ease: "easeInOut",
-              delay: i * 0.5,
-            }}
+            animate={
+              prefersReducedMotion
+                ? { y: 0, opacity: 0.4 }
+                : {
+                    y: [0, -30, 0],
+                    opacity: [0.3, 0.6, 0.3],
+                  }
+            }
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : {
+                    duration: 4 + i,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                    delay: i * 0.5,
+                  }
+            }
           />
         ))}
       </div>
@@ -197,12 +212,16 @@ export function Hero() {
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.8, delay: 0.3 }}
-            style={{ rotateX, rotateY, perspective: 1000 }}
+            style={
+              prefersReducedMotion
+                ? undefined
+                : { rotateX, rotateY, perspective: 1000 }
+            }
             className="relative"
           >
-            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#171717] p-1 shadow-2xl shadow-brand-500/10">
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-neutral-900 p-1 shadow-2xl shadow-brand-500/10">
               {/* Mock browser chrome */}
-              <div className="flex items-center gap-1.5 rounded-t-xl bg-[#0a0a0a] px-4 py-3">
+              <div className="flex items-center gap-1.5 rounded-t-xl bg-neutral-950 px-4 py-3">
                 <div className="h-2.5 w-2.5 rounded-full bg-red-500/60" />
                 <div className="h-2.5 w-2.5 rounded-full bg-yellow-500/60" />
                 <div className="h-2.5 w-2.5 rounded-full bg-green-500/60" />
@@ -212,7 +231,7 @@ export function Hero() {
               </div>
 
               {/* Dashboard mockup content */}
-              <div className="space-y-3 bg-[#0a0a0a] p-4">
+              <div className="space-y-3 bg-neutral-950 p-4">
                 {/* Header bar with live timer badge */}
                 <div className="flex items-center justify-between rounded-lg border border-white/5 bg-white/[0.02] p-2.5">
                   <div className="flex items-center gap-2">
@@ -279,14 +298,14 @@ export function Hero() {
                       task: "Sincronização Azure DevOps Pipelines & MCP Server",
                       time: "3h 30m",
                       tag: "AB#1924",
-                      color: "#f97316",
+                      dotClass: "bg-brand-500",
                     },
                     {
                       project: "Executive HQ · Analytics",
                       task: "Magic Reconstructor & Gestão de Times",
                       time: "2h 45m",
                       tag: "AB#1855",
-                      color: "#3b82f6",
+                      dotClass: "bg-blue-500",
                     },
                   ].map((item) => (
                     <div
@@ -295,8 +314,7 @@ export function Hero() {
                     >
                       <div className="flex items-center gap-2">
                         <div
-                          className="h-2 w-2 rounded-full"
-                          style={{ backgroundColor: item.color }}
+                          className={`h-2 w-2 rounded-full ${item.dotClass}`}
                         />
                         <div>
                           <div className="flex items-center gap-1.5">

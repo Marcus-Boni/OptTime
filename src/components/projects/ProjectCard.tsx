@@ -15,7 +15,8 @@ import { ProjectPhaseBadge } from "@/components/projects/ProjectPhaseBadge";
 import { ProjectProgressBar } from "@/components/projects/ProjectProgressBar";
 import type { ProjectFromAPI } from "@/components/projects/types";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { cn, getInitials } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -92,6 +93,26 @@ function formatDate(date: string | null): string | null {
   return `${day}/${month}/${year?.slice(2)}`;
 }
 
+function hexToRgba(hex: string | null | undefined, alpha: number): string {
+  if (!hex || !hex.startsWith("#")) return `rgba(249, 115, 22, ${alpha})`;
+  const clean = hex.slice(1);
+  const full =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : clean;
+  if (full.length !== 6) return `rgba(249, 115, 22, ${alpha})`;
+  const r = Number.parseInt(full.slice(0, 2), 16);
+  const g = Number.parseInt(full.slice(2, 4), 16);
+  const b = Number.parseInt(full.slice(4, 6), 16);
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) {
+    return `rgba(249, 115, 22, ${alpha})`;
+  }
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────────
 
 export function ProjectCard({
@@ -128,9 +149,10 @@ export function ProjectCard({
           href={`/dashboard/projects/${proj.id}`}
           className="block h-full rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
         >
-          <Card
+          <SpotlightCard
+            spotlightColor={hexToRgba(proj.color, 0.14)}
             className={cn(
-              "flex h-full flex-col cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-all",
+              "flex h-full flex-col cursor-pointer border-border/50 bg-card/80 backdrop-blur transition-colors",
               "hover:border-brand-500/30 hover:shadow-lg hover:shadow-brand-500/5",
               isArchived && "opacity-60",
             )}
@@ -159,12 +181,12 @@ export function ProjectCard({
                             onEdit(proj);
                           }}
                           className={cn(
-                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-                            "opacity-0 group-hover:opacity-100 transition-all bg-card/50",
+                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                            "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity transition-colors bg-card/60",
                             "hover:text-brand-400 hover:bg-brand-500/10",
                           )}
                         >
-                          <Edit2 className="h-3 w-3" />
+                          <Edit2 className="h-3.5 w-3.5" />
                         </button>
                       )}
                       {isAdmin && onDelete && (
@@ -177,12 +199,12 @@ export function ProjectCard({
                             onDelete(proj);
                           }}
                           className={cn(
-                            "flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-muted-foreground",
-                            "opacity-0 group-hover:opacity-100 transition-all bg-card/50",
+                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground",
+                            "opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity transition-colors bg-card/60",
                             "hover:text-red-400 hover:bg-red-500/10",
                           )}
                         >
-                          <Trash2 className="h-3 w-3" />
+                          <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       )}
                     </div>
@@ -365,7 +387,7 @@ export function ProjectCard({
                 </div>
               </div>
             </CardContent>
-          </Card>
+          </SpotlightCard>
         </Link>
       </div>
     </motion.div>
