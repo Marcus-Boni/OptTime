@@ -65,6 +65,7 @@ import {
   type AnimatedMetricProps,
   SpotlightCard,
 } from "@/components/ui/spotlight-card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useChartColors } from "@/hooks/use-chart-colors";
 import { useSession } from "@/lib/auth-client";
 import {
@@ -754,26 +755,48 @@ export function DashboardClient() {
               </div>
 
               <div className="flex w-full flex-col gap-3 xl:max-w-xl">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                       Período
                     </p>
-                    <Select value={range} onValueChange={handleRangeChange}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
+                    <Tabs
+                      value={range}
+                      onValueChange={handleRangeChange}
+                      className="hidden sm:flex"
+                    >
+                      <TabsList
+                        aria-label="Período"
+                        className="grid h-auto w-full grid-cols-2 gap-1 sm:grid-cols-3"
+                      >
                         {RANGE_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
+                          <TabsTrigger
+                            key={option.value}
+                            value={option.value}
+                            className="h-8 w-full px-2.5 text-xs"
+                          >
                             {option.label}
-                          </SelectItem>
+                          </TabsTrigger>
                         ))}
-                      </SelectContent>
-                    </Select>
+                      </TabsList>
+                    </Tabs>
+                    <div className="sm:hidden">
+                      <Select value={range} onValueChange={handleRangeChange}>
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {RANGE_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 sm:col-span-2">
                     <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
                       Projeto
                     </p>

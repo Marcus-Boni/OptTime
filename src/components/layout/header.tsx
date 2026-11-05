@@ -36,6 +36,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ActionTooltip } from "@/components/ui/tooltip";
 import { useGlobalShortcuts } from "@/hooks/use-global-shortcuts";
 import { useModifierKey } from "@/hooks/use-modifier-key";
@@ -139,8 +140,8 @@ export function Header() {
 
   if (isPending || !currentUser) {
     return (
-      <header className="sticky top-0 z-30 flex h-16 items-center px-4 md:px-6 border-b border-border bg-background/80 backdrop-blur-xl">
-        <div className="h-5 w-32 bg-muted/20 animate-pulse rounded-md" />
+      <header className="sticky top-0 z-30 flex h-16 items-center border-b border-border bg-background/80 px-4 backdrop-blur-xl md:px-6">
+        <Skeleton className="h-5 w-32 rounded-md" />
       </header>
     );
   }
@@ -165,16 +166,38 @@ export function Header() {
         {mounted ? (
           <Breadcrumb />
         ) : (
-          <div className="h-4 w-32 bg-muted/20 animate-pulse rounded-md" />
+          <Skeleton className="h-4 w-32 rounded-md" />
         )}
       </div>
 
       {/* Right: Actions */}
       <div className="flex items-center gap-2">
+        {/* Command Trigger Pill (Componentry / Linear style) */}
+        <ActionTooltip
+          label="Buscar ou executar comando"
+          shortcut={`${modifier}+K`}
+          side="bottom"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            className="hidden h-9 items-center gap-2.5 rounded-full border-border/60 bg-muted/35 px-3 text-xs font-normal text-muted-foreground hover:border-brand-500/30 hover:bg-muted/65 hover:text-foreground md:inline-flex"
+            aria-label={`Buscar (${modifier}+K)`}
+            onClick={openCommandPalette}
+            data-tour="header-search"
+          >
+            <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="hidden xl:inline">Buscar ou executar…</span>
+            <kbd className="rounded border border-border/80 bg-background/80 px-1.5 py-0.5 font-mono text-[10px] font-medium text-muted-foreground shadow-2xs">
+              {modifier}K
+            </kbd>
+          </Button>
+        </ActionTooltip>
+
         {/* Quick entry button */}
         <Button
           size="sm"
-          className="hidden gap-1.5 bg-brand-500 text-white hover:bg-brand-600 md:flex"
+          className="hidden gap-1.5 rounded-full bg-brand-500 px-3.5 text-white hover:bg-brand-600 md:flex"
           aria-label="Novo registro de tempo"
           onClick={openRichQuickEntry}
           data-tour="header-quick-entry"
@@ -186,7 +209,7 @@ export function Header() {
         <Button
           size="sm"
           variant="outline"
-          className="hidden gap-1.5 md:flex"
+          className="hidden gap-1.5 rounded-full px-3.5 md:flex"
           aria-label="Novo registro com timer"
           onClick={openTimerQuickStart}
           data-tour="header-quick-timer"
@@ -215,114 +238,100 @@ export function Header() {
           <Hourglass className="h-4 w-4" />
         </Button>
 
-        {/* Search */}
-        <ActionTooltip
-          label="Buscar no sistema"
-          shortcut={`${modifier}+K`}
-          side="bottom"
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:flex"
-            aria-label={`Buscar (${modifier}+K)`}
-            onClick={openCommandPalette}
-            data-tour="header-search"
-          >
-            <Search className="h-4.5 w-4.5" />
-          </Button>
-        </ActionTooltip>
+        {/* Unified Utility Capsule */}
+        <div className="flex items-center gap-0.5 rounded-full border border-border/50 bg-muted/25 p-0.5">
+          {/* Hands-free Voice Trigger */}
+          {operatorSettings.voiceEnabled && (
+            <ActionTooltip
+              label="Comando de voz hands-free"
+              shortcut={`⇧+${modifier}+V`}
+              side="bottom"
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                className="hidden size-8 rounded-full text-orange-500 hover:bg-orange-500/10 hover:text-orange-600 md:flex dark:text-orange-400 dark:hover:bg-orange-500/20 dark:hover:text-orange-300"
+                aria-label={`Comando de voz hands-free (Shift+${modifier}+V)`}
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("timebot:voice"));
+                }}
+                data-tour="header-voice"
+              >
+                <Mic className="h-4 w-4" />
+              </Button>
+            </ActionTooltip>
+          )}
 
-        {/* Hands-free Voice Trigger */}
-        {operatorSettings.voiceEnabled && (
-          <ActionTooltip
-            label="Comando de voz hands-free"
-            shortcut={`⇧+${modifier}+V`}
-            side="bottom"
-          >
+          {/* Weekly AI Digest */}
+          <ActionTooltip label="Resumo semanal por IA" side="bottom">
             <Button
               variant="ghost"
               size="icon"
-              className="hidden md:flex text-orange-500 hover:text-orange-600 hover:bg-orange-500/10 dark:text-orange-400 dark:hover:text-orange-300 dark:hover:bg-orange-500/20"
-              aria-label={`Comando de voz hands-free (Shift+${modifier}+V)`}
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent("timebot:voice"));
-              }}
-              data-tour="header-voice"
+              className="hidden size-8 rounded-full md:flex"
+              aria-label="Ver resumo semanal por IA"
+              onClick={openWeeklyDigestModal}
+              data-tour="header-digest"
             >
-              <Mic className="h-4.5 w-4.5" />
+              <CalendarDays className="h-4 w-4" />
             </Button>
           </ActionTooltip>
-        )}
 
-        {/* Weekly AI Digest */}
-        <ActionTooltip label="Resumo semanal por IA" side="bottom">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:flex"
-            aria-label="Ver resumo semanal por IA"
-            onClick={openWeeklyDigestModal}
-            data-tour="header-digest"
-          >
-            <CalendarDays className="h-4.5 w-4.5" />
-          </Button>
-        </ActionTooltip>
+          {/* Keyboard Shortcuts */}
+          <ActionTooltip label="Atalhos de teclado" shortcut="?" side="bottom">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden size-8 rounded-full md:flex"
+              aria-label="Ver atalhos de teclado (?)"
+              onClick={openShortcutsModal}
+              data-tour="header-shortcuts"
+            >
+              <Keyboard className="h-4 w-4" />
+            </Button>
+          </ActionTooltip>
 
-        {/* Keyboard Shortcuts */}
-        <ActionTooltip label="Atalhos de teclado" shortcut="?" side="bottom">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="hidden md:flex"
-            aria-label="Ver atalhos de teclado (?)"
-            onClick={openShortcutsModal}
-            data-tour="header-shortcuts"
-          >
-            <Keyboard className="h-4.5 w-4.5" />
-          </Button>
-        </ActionTooltip>
+          {/* Changelog / Novidades */}
+          <ChangelogHeaderButton />
 
-        {/* Changelog / Novidades */}
-        <ChangelogHeaderButton />
+          {/* Ajuda, tours guiados e atalhos */}
+          <HelpMenu role={currentUser.role} />
 
-        {/* Ajuda, tours guiados e atalhos */}
-        <HelpMenu role={currentUser.role} />
-
-        {/* Theme toggle */}
-        <ActionTooltip
-          label={
-            mounted
-              ? theme === "dark"
-                ? "Ativar modo claro"
-                : "Ativar modo escuro"
-              : "Alterar tema"
-          }
-          side="bottom"
-        >
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            aria-label={
+          {/* Theme toggle */}
+          <ActionTooltip
+            label={
               mounted
                 ? theme === "dark"
                   ? "Ativar modo claro"
                   : "Ativar modo escuro"
                 : "Alterar tema"
             }
+            side="bottom"
           >
-            {mounted ? (
-              theme === "dark" ? (
-                <Sun className="h-4.5 w-4.5" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-8 rounded-full"
+              onClick={toggleTheme}
+              aria-label={
+                mounted
+                  ? theme === "dark"
+                    ? "Ativar modo claro"
+                    : "Ativar modo escuro"
+                  : "Alterar tema"
+              }
+            >
+              {mounted ? (
+                theme === "dark" ? (
+                  <Sun className="h-4 w-4" />
+                ) : (
+                  <Moon className="h-4 w-4" />
+                )
               ) : (
-                <Moon className="h-4.5 w-4.5" />
-              )
-            ) : (
-              <Sun className="h-4.5 w-4.5 opacity-50" />
-            )}
-          </Button>
-        </ActionTooltip>
+                <Sun className="h-4 w-4 opacity-50" />
+              )}
+            </Button>
+          </ActionTooltip>
+        </div>
 
         {/* User menu */}
         {mounted ? (

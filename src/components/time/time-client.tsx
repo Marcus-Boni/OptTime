@@ -29,7 +29,7 @@ import {
 } from "@/components/time/TimeViewTabs";
 import { WeekView } from "@/components/time/WeekView";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TimesheetWorkspaceSkeleton } from "@/components/ui/skeleton";
 import { useQuickLog } from "@/hooks/use-quick-log";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
 import {
@@ -59,12 +59,6 @@ const itemVariants = {
     transition: { duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] as const },
   },
 } as const;
-
-const viewSkeletonKeys = [
-  "time-view-skeleton-1",
-  "time-view-skeleton-2",
-  "time-view-skeleton-3",
-];
 
 function truncateText(value: string, maxLength: number) {
   if (value.length <= maxLength) {
@@ -984,11 +978,7 @@ export function TimeClient() {
         data-tour="time-workspace"
       >
         {loading ? (
-          <div className="space-y-4">
-            {viewSkeletonKeys.map((key) => (
-              <Skeleton key={key} className="h-24 w-full rounded-lg" />
-            ))}
-          </div>
+          <TimesheetWorkspaceSkeleton />
         ) : activeView === "day" ? (
           <DayView
             entries={entries}

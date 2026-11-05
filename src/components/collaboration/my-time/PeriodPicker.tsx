@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PERIOD_PRESETS, type PeriodPreset } from "@/hooks/use-my-time";
 import { cn } from "@/lib/utils";
 
@@ -45,24 +46,46 @@ export function PeriodPicker({
 }: PeriodPickerProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Select
+      {/* Desktop: 1-click segmented control with sliding pill */}
+      <Tabs
         value={preset}
         onValueChange={(value) => onPresetChange(value as PeriodPreset)}
+        className="hidden xl:flex"
       >
-        <SelectTrigger
-          className="h-9 w-[168px] text-sm"
-          aria-label="Período analisado"
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
+        <TabsList aria-label="Período analisado" className="h-9">
           {PERIOD_PRESETS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
+            <TabsTrigger
+              key={option.value}
+              value={option.value}
+              className="px-3 text-xs"
+            >
               {option.label}
-            </SelectItem>
+            </TabsTrigger>
           ))}
-        </SelectContent>
-      </Select>
+        </TabsList>
+      </Tabs>
+
+      {/* Compact screens: dropdown select */}
+      <div className="xl:hidden">
+        <Select
+          value={preset}
+          onValueChange={(value) => onPresetChange(value as PeriodPreset)}
+        >
+          <SelectTrigger
+            className="h-9 w-[168px] text-sm"
+            aria-label="Período analisado"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {PERIOD_PRESETS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="flex items-center gap-1 rounded-lg border border-border/60 bg-card/60 p-0.5">
         <Button

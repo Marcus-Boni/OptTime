@@ -1,16 +1,35 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { TIME_ENTRIES_UPDATED_EVENT } from "@/lib/time-events";
 import type { AutofillProposal, AutofillRadarResponse } from "@/types/autofill";
 
 const DEFAULT_DAYS = 7;
+const DISMISS_UNDO_MS = 4500;
 
 function resolveTimeZone(): string {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
   } catch {
     return "America/Sao_Paulo";
+  }
+}
+
+async function sendDismissRequest(proposal: AutofillProposal): Promise<void> {
+  try {
+    await fetch("/api/time-suggestions/autofill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fingerprint: proposal.fingerprint,
+        date: proposal.date,
+        signal: proposal.signal,
+        score: proposal.score,
+      }),
+    });
+  } catch (err: unknown) {
+    console.error("[useAutofillRadar] dismiss:", err);
   }
 }
 
@@ -25,7 +44,7 @@ export interface AutofillRadarController {
   refresh: () => Promise<void>;
   /** Removes a proposal locally after it was accepted. */
   resolve: (fingerprint: string) => void;
-  /** Removes it locally and tells the server never to propose it again. */
+  /** Removes it locally with an Undo window before persisting to the server. */
   dismiss: (proposal: AutofillProposal) => Promise<void>;
 }
 
@@ -42,11 +61,24 @@ export function useAutofillRadar(
   const [range, setRange] = useState<{ from: string; to: string } | null>(null);
 
   const mountedRef = useRef(true);
+  const pendingDismissTimersRef = useRef<
+    Map<
+      string,
+      { timerId: ReturnType<typeof setTimeout>; proposal: AutofillProposal }
+    >
+  >(new Map());
 
   useEffect(() => {
     mountedRef.current = true;
+    const timersMap = pendingDismissTimersRef.current;
+
     return () => {
       mountedRef.current = false;
+      for (const entry of timersMap.values()) {
+        clearTimeout(entry.timerId);
+        void sendDismissRequest(entry.proposal);
+      }
+      timersMap.clear();
     };
   }, []);
 
@@ -81,7 +113,14 @@ export function useAutofillRadar(
 
       if (!mountedRef.current) return;
 
-      setProposals(payload.proposals ?? []);
+      const pendingFingerprints = new Set(
+        pendingDismissTimersRef.current.keys(),
+      );
+      const incoming = (payload.proposals ?? []).filter(
+        (item) => !pendingFingerprints.has(item.fingerprint),
+      );
+
+      setProposals(incoming);
       setIntegrationReady(payload.integrationReady);
       setWarnings(payload.warnings ?? []);
       setRange({ from: payload.from, to: payload.to });
@@ -121,28 +160,66 @@ export function useAutofillRadar(
     );
   }, []);
 
-  const dismiss = useCallback(
-    async (proposal: AutofillProposal) => {
-      // Optimistic: the card disappears immediately, the server catches up.
-      resolve(proposal.fingerprint);
+  const dismiss = useCallback(async (proposal: AutofillProposal) => {
+    let removedIndex = -1;
 
-      try {
-        await fetch("/api/time-suggestions/autofill", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fingerprint: proposal.fingerprint,
-            date: proposal.date,
-            signal: proposal.signal,
-            score: proposal.score,
-          }),
-        });
-      } catch (err: unknown) {
-        console.error("[useAutofillRadar] dismiss:", err);
-      }
-    },
-    [resolve],
-  );
+    setProposals((current) => {
+      removedIndex = current.findIndex(
+        (item) => item.fingerprint === proposal.fingerprint,
+      );
+      return current.filter(
+        (item) => item.fingerprint !== proposal.fingerprint,
+      );
+    });
+
+    const existing = pendingDismissTimersRef.current.get(proposal.fingerprint);
+    if (existing) {
+      clearTimeout(existing.timerId);
+    }
+
+    const timerId = setTimeout(() => {
+      pendingDismissTimersRef.current.delete(proposal.fingerprint);
+      void sendDismissRequest(proposal);
+    }, DISMISS_UNDO_MS);
+
+    pendingDismissTimersRef.current.set(proposal.fingerprint, {
+      timerId,
+      proposal,
+    });
+
+    toast("Sugestão descartada", {
+      description: `${proposal.projectName} · ${proposal.description}`,
+      duration: DISMISS_UNDO_MS,
+      action: {
+        label: "Desfazer",
+        onClick: () => {
+          const pending = pendingDismissTimersRef.current.get(
+            proposal.fingerprint,
+          );
+          if (pending) {
+            clearTimeout(pending.timerId);
+            pendingDismissTimersRef.current.delete(proposal.fingerprint);
+          }
+
+          if (!mountedRef.current) return;
+          setProposals((current) => {
+            if (
+              current.some((item) => item.fingerprint === proposal.fingerprint)
+            ) {
+              return current;
+            }
+            const next = [...current];
+            const insertAt =
+              removedIndex >= 0 && removedIndex <= next.length
+                ? removedIndex
+                : 0;
+            next.splice(insertAt, 0, proposal);
+            return next;
+          });
+        },
+      },
+    });
+  }, []);
 
   return useMemo(
     () => ({

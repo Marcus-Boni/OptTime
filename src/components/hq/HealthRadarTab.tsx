@@ -30,6 +30,7 @@ import {
   type AnimatedMetricProps,
   SpotlightCard,
 } from "@/components/ui/spotlight-card";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useHqHealth } from "@/hooks/use-hq";
 import { summarizeBudgets } from "@/lib/hq/budget-summary";
 import { formatDuration } from "@/lib/utils";
@@ -389,28 +390,48 @@ export function HealthRadarTab() {
           />
         </div>
 
-        <Select
+        <Tabs
           value={riskFilter}
           onValueChange={(value) => setRiskFilter(value as RiskFilter)}
+          className="hidden xl:flex"
         >
-          <SelectTrigger
-            className="h-10 w-auto min-w-[130px] text-sm"
-            aria-label="Filtrar por nível de risco"
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
+          <TabsList aria-label="Filtrar por nível de risco" className="h-10">
             {RISK_FILTER_OPTIONS.map((option) => (
-              <SelectItem
+              <TabsTrigger
                 key={option.value}
                 value={option.value}
-                className="text-xs"
+                className="px-3 text-xs"
               >
                 {option.label}
-              </SelectItem>
+              </TabsTrigger>
             ))}
-          </SelectContent>
-        </Select>
+          </TabsList>
+        </Tabs>
+
+        <div className="xl:hidden">
+          <Select
+            value={riskFilter}
+            onValueChange={(value) => setRiskFilter(value as RiskFilter)}
+          >
+            <SelectTrigger
+              className="h-10 w-auto min-w-[130px] text-sm"
+              aria-label="Filtrar por nível de risco"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {RISK_FILTER_OPTIONS.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  className="text-xs"
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <Select value={sort} onValueChange={setSort}>
           <SelectTrigger

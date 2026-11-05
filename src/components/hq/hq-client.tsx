@@ -16,8 +16,7 @@ export type HqTab = "radar" | "capacity" | "approvals" | "portal";
 
 const VALID_TABS: HqTab[] = ["radar", "capacity", "approvals", "portal"];
 
-const TAB_TRIGGER_CLASS =
-  "gap-2 rounded-full px-5 transition-all data-[state=active]:bg-white data-[state=active]:text-orange-600 data-[state=active]:shadow-sm data-[state=active]:ring-1 data-[state=active]:ring-black/5 dark:data-[state=active]:bg-neutral-800 dark:data-[state=active]:text-orange-400 dark:data-[state=active]:ring-white/10";
+const TAB_TRIGGER_CLASS = "gap-2 px-5";
 
 export interface HqClientProps {
   initialTab?: string;
@@ -83,7 +82,8 @@ export function HqClient({ initialTab }: HqClientProps) {
       <Tabs value={tab} onValueChange={handleTabChange} className="gap-6">
         <div className="overflow-x-auto">
           <TabsList
-            className="h-11 w-full min-w-max rounded-full border border-neutral-300/50 bg-neutral-200/60 p-1 sm:min-w-0 dark:border-white/5 dark:bg-neutral-900/80"
+            variant="pill"
+            className="w-full min-w-max sm:min-w-0"
             data-tour="hq-tabs"
           >
             <TabsTrigger

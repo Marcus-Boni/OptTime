@@ -390,7 +390,8 @@ export function MyTimeClient() {
 
               <Tabs defaultValue="delivery" className="gap-4">
                 <TabsList
-                  className="h-auto w-full flex-wrap justify-start gap-1 sm:w-fit"
+                  variant="pill"
+                  className="h-auto w-full flex-wrap justify-start gap-1 sm:h-11 sm:w-fit"
                   data-tour="my-time-tabs"
                 >
                   <TabsTrigger

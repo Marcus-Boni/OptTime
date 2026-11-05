@@ -202,7 +202,7 @@ export function CommandPalette() {
           <CommandItem onSelect={handleNewEntry}>
             <Plus className="mr-2 h-4 w-4 text-orange-500" />
             <span className="flex-1">Novo Registro de Tempo</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               N
             </kbd>
           </CommandItem>
@@ -210,7 +210,7 @@ export function CommandPalette() {
           <CommandItem onSelect={handleNewTimerEntry}>
             <Hourglass className="mr-2 h-4 w-4 text-orange-500" />
             <span className="flex-1">Iniciar Timer com Projeto</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               T
             </kbd>
           </CommandItem>
@@ -218,7 +218,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => handleFocusMode(25)}>
             <Sparkles className="mr-2 h-4 w-4 text-orange-500" />
             <span className="flex-1">Iniciar Bloco de Foco (25 min)</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               F
             </kbd>
           </CommandItem>
@@ -259,7 +259,7 @@ export function CommandPalette() {
           >
             <Mic className="mr-2 h-4 w-4 text-orange-400" />
             <span className="flex-1">Ativar Comando de Voz (Hands-free)</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               ⇧ {modifier} V
             </kbd>
           </CommandItem>
@@ -272,7 +272,7 @@ export function CommandPalette() {
           >
             <Bot className="mr-2 h-4 w-4 text-orange-400" />
             <span className="flex-1">Abrir TimeBot Chat</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               {modifier} J
             </kbd>
           </CommandItem>
@@ -305,7 +305,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate("/dashboard")}>
             <Home className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Dashboard</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G D
             </kbd>
           </CommandItem>
@@ -313,7 +313,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate("/dashboard/time")}>
             <Clock className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Registrar Tempo</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G T
             </kbd>
           </CommandItem>
@@ -323,7 +323,7 @@ export function CommandPalette() {
           >
             <Layers className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Timesheets & Submissões</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G S
             </kbd>
           </CommandItem>
@@ -333,7 +333,7 @@ export function CommandPalette() {
             <span className="flex-1">
               Meu Tempo · Para onde foram suas horas
             </span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G M
             </kbd>
           </CommandItem>
@@ -343,7 +343,7 @@ export function CommandPalette() {
             <span className="flex-1">
               Minha Jornada · Conquistas & Insights
             </span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G J
             </kbd>
           </CommandItem>
@@ -351,7 +351,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate("/dashboard/projects")}>
             <Folder className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Projetos</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G P
             </kbd>
           </CommandItem>
@@ -359,7 +359,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => navigate("/dashboard/reports")}>
             <FileText className="mr-2 h-4 w-4 text-neutral-400" />
             <span className="flex-1">Relatórios & Exportação</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               G R
             </kbd>
           </CommandItem>
@@ -405,12 +405,39 @@ export function CommandPalette() {
           <CommandItem onSelect={handleOpenShortcuts}>
             <Keyboard className="mr-2 h-4 w-4 text-orange-400" />
             <span className="flex-1">Atalhos de Teclado</span>
-            <kbd className="rounded border border-white/10 bg-neutral-800 px-1.5 py-0.5 font-mono text-[10px] text-neutral-400">
+            <kbd className="rounded border border-border/80 bg-muted/70 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground dark:border-white/10 dark:bg-neutral-800 dark:text-neutral-400">
               ?
             </kbd>
           </CommandItem>
         </CommandGroup>
       </CommandList>
+
+      <div className="flex items-center justify-between border-t border-border/60 bg-muted/30 px-3.5 py-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-border/80 bg-background px-1 py-0.5 font-mono text-[10px] text-foreground/80">
+              ↑↓
+            </kbd>
+            navegar
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-border/80 bg-background px-1 py-0.5 font-mono text-[10px] text-foreground/80">
+              ↵
+            </kbd>
+            executar
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <kbd className="rounded border border-border/80 bg-background px-1 py-0.5 font-mono text-[10px] text-foreground/80">
+              Esc
+            </kbd>
+            fechar
+          </span>
+        </div>
+        <span className="hidden items-center gap-1 font-mono text-[10px] text-brand-500 sm:inline-flex">
+          <Sparkles className="size-3" aria-hidden="true" />
+          TimeBot integrado
+        </span>
+      </div>
     </CommandDialog>
   );
 }

@@ -5,6 +5,7 @@ import {
   type BklitTooltipPayloadItem,
 } from "@/components/ui/bklit-chart-tooltip";
 import { KokonutStepLoader } from "@/components/ui/kokonut-loader";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function renderTooltip(item: BklitTooltipPayloadItem): string {
   return renderToStaticMarkup(
@@ -77,6 +78,23 @@ assert.ok(
 const status = loading.match(/<output\b[\s\S]*?<\/output>/)?.[0] ?? "";
 assert.ok(status.includes("Montando o plano do dia"));
 assert.ok(!status.includes("revisar as sugestões"));
+
+const segmentedTabs = renderToStaticMarkup(
+  <Tabs defaultValue="week">
+    <TabsList variant="pill">
+      <TabsTrigger value="day">Dia</TabsTrigger>
+      <TabsTrigger value="week">Semana</TabsTrigger>
+      <TabsTrigger value="month">Mês</TabsTrigger>
+    </TabsList>
+  </Tabs>,
+);
+assert.equal(
+  (segmentedTabs.match(/data-slot="tabs-indicator"/g) ?? []).length,
+  1,
+  "Exactly one active tab indicator pill must render for the active tab",
+);
+assert.ok(segmentedTabs.includes('data-variant="pill"'));
+
 console.info(
-  "Visual components: solid series colors, values and indeterminate status verified.",
+  "Visual components: solid series colors, values, indeterminate status and sliding tabs verified.",
 );

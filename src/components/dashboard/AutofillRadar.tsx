@@ -23,7 +23,6 @@ import {
   GitPullRequest,
   GitPullRequestDraft,
   Info,
-  Loader2,
   Pencil,
   RefreshCw,
   Sparkles,
@@ -37,6 +36,8 @@ import { ProjectCombobox } from "@/components/time/ProjectCombobox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { KokonutOrbitalLoader } from "@/components/ui/kokonut-loader";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ActionTooltip } from "@/components/ui/tooltip";
@@ -283,11 +284,10 @@ function ProposalRow({
       <AnimatePresence initial={false}>
         {isEditing && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.2 }}
-            className="overflow-hidden"
           >
             <div className="mt-3 space-y-3 border-border/60 border-t pt-3">
               <div className="space-y-1">
@@ -406,10 +406,7 @@ function ProposalRow({
           className="h-7 cursor-pointer gap-1 bg-orange-500 text-[11px] text-white hover:bg-orange-600"
         >
           {isSubmitting ? (
-            <Loader2
-              className="h-3 w-3 animate-spin motion-reduce:animate-none"
-              aria-hidden="true"
-            />
+            <KokonutOrbitalLoader size="sm" />
           ) : (
             <Check className="h-3 w-3" aria-hidden="true" />
           )}
@@ -527,11 +524,11 @@ export function AutofillRadar({ controller }: AutofillRadarProps) {
   if (radar.isLoading) {
     return (
       <output
-        className="block animate-pulse rounded-xl border border-border/50 bg-card/60 p-4 motion-reduce:animate-none"
+        className="block rounded-xl border border-border/50 bg-card/60 p-4"
         aria-label="Procurando atividade sem apontamento"
       >
-        <div className="h-4 w-52 rounded bg-neutral-200 dark:bg-neutral-800" />
-        <div className="mt-2 h-3 w-72 rounded bg-neutral-200/70 dark:bg-neutral-800/60" />
+        <Skeleton className="h-4 w-52 rounded" />
+        <Skeleton className="mt-2 h-3 w-72 rounded" />
       </output>
     );
   }
@@ -597,7 +594,7 @@ export function AutofillRadar({ controller }: AutofillRadarProps) {
           )}
 
           <ul className="mt-3 space-y-2">
-            <AnimatePresence initial={false}>
+            <AnimatePresence initial={false} mode="popLayout">
               {radar.proposals.map((proposal) => (
                 <motion.li
                   key={proposal.fingerprint}
@@ -611,9 +608,12 @@ export function AutofillRadar({ controller }: AutofillRadarProps) {
                   exit={
                     prefersReducedMotion
                       ? undefined
-                      : { opacity: 0, scale: 0.98 }
+                      : { opacity: 0, scale: 0.96, y: -4 }
                   }
-                  transition={{ duration: 0.2 }}
+                  transition={{
+                    duration: 0.22,
+                    layout: { type: "spring", stiffness: 380, damping: 30 },
+                  }}
                 >
                   <ProposalRow
                     proposal={proposal}
@@ -645,10 +645,7 @@ export function AutofillRadar({ controller }: AutofillRadarProps) {
                 className="h-8 cursor-pointer gap-1.5 border-orange-500/40 text-[11px] text-orange-600 hover:bg-orange-500/10 dark:text-orange-300"
               >
                 {isBatchRunning ? (
-                  <Loader2
-                    className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-                    aria-hidden="true"
-                  />
+                  <KokonutOrbitalLoader size="sm" />
                 ) : (
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
                 )}

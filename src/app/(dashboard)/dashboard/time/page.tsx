@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { TimeClient } from "@/components/time/time-client";
-import { Skeleton } from "@/components/ui/skeleton";
+import { TimesheetWorkspaceSkeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
   title: "Registro de Tempo",
@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function TimePage() {
   return (
-    <Suspense fallback={<Skeleton className="h-96 w-full rounded-xl" />}>
+    <Suspense fallback={<TimesheetWorkspaceSkeleton />}>
       <TimeClient />
     </Suspense>
   );

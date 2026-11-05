@@ -668,7 +668,7 @@ function DroppableColumn({
             onOpenCreateForDate ? onOpenCreateForDate(day) : onDayClick(day)
           }
           disabled={isLocked}
-          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2 text-xs text-muted-foreground transition hover:border-[#16a34a]/40 hover:bg-[#16a34a]/5 hover:text-[#16a34a]"
+          className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/60 py-2 text-xs text-muted-foreground transition hover:border-emerald-500/40 hover:bg-emerald-500/5 hover:text-emerald-600 dark:hover:text-emerald-400"
           title={isLocked ? lockMessage : undefined}
         >
           <Plus className="h-3.5 w-3.5" />
@@ -787,7 +787,8 @@ function EntryCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-5 w-5 rounded-full text-muted-foreground/70 opacity-60 transition hover:bg-transparent hover:text-foreground md:opacity-0 md:group-hover:opacity-100"
+                  aria-label="Opções do registro"
+                  className="h-7 w-7 rounded-full text-muted-foreground/70 opacity-60 transition hover:bg-muted/60 hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   onClick={(event) => event.stopPropagation()}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
