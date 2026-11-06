@@ -90,7 +90,6 @@ html.theme-transition::view-transition-new(root) {
   /* Typography */
   --font-sans: var(--font-dm-sans);
   --font-display: var(--font-sora);
-  --font-sora: var(--font-sora);
   --font-mono: var(--font-jetbrains-mono);
 }
 
@@ -219,6 +218,10 @@ html.theme-transition::view-transition-new(root) {
 
 /* === Utility Classes === */
 @layer utilities {
+  .font-sora {
+    font-family: var(--font-sora), sans-serif;
+  }
+
   /* Glassmorphism card */
   .glass-card {
     background: color-mix(in srgb, var(--card) 60%, transparent);
