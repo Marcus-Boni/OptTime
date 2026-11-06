@@ -637,6 +637,16 @@ export const TOURS: readonly TourDefinition[] = [
         roles: LEADERSHIP,
       },
       {
+        id: "timesheets-approvals-filters",
+        title: "Fila completa e histórico de aprovações",
+        description:
+          "Na tela de Aprovações você filtra por colaborador, mês, status ou semanas fracionadas, e alterna para a aba Aprovados / Histórico para reabrir períodos já aprovados quando precisar ajustar lançamentos.",
+        target: '[data-tour="approvals-filters"]',
+        placement: "bottom",
+        route: "/dashboard/timesheets/approvals",
+        roles: LEADERSHIP,
+      },
+      {
         id: "portal",
         title: "Portal do Cliente",
         description:

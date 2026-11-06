@@ -3,13 +3,31 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { AnimatePresence, motion, type Variants } from "framer-motion";
-import { CalendarDays, ChevronDown, Clock, History, Users } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Clock,
+  FilterX,
+  History,
+  Search,
+  Users,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { ApprovalCard } from "@/components/timesheets/ApprovalCard";
 import { HistoryCard } from "@/components/timesheets/HistoryCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Timesheet } from "@/hooks/use-timesheets";
 import {
@@ -20,8 +38,14 @@ import {
   formatPeriodRangeLabel,
   getPeriodCompetence,
   getPeriodWeekNumber,
+  isSplitPeriod,
 } from "@/lib/timesheet-periods";
-import { formatDuration, getPeriodRange, parseLocalDate } from "@/lib/utils";
+import {
+  cn,
+  formatDuration,
+  getPeriodRange,
+  parseLocalDate,
+} from "@/lib/utils";
 
 // ─── Animation variants ────────────────────────────────────────────────────────
 
@@ -93,6 +117,11 @@ const collapseVariants: Variants = {
 const SKELETON_GROUPS = ["group-1", "group-2", "group-3"];
 const SKELETON_ITEMS = ["item-1", "item-2"];
 
+type ApprovalTab = "pending" | "history";
+type PendingStatusFilter = "all" | "submitted" | "open" | "rejected";
+type HistoryStatusFilter = "all" | "approved" | "rejected";
+type SplitFilter = "all" | "split" | "regular";
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 interface WeekGroup {
@@ -114,6 +143,29 @@ function getWeekStart(period: string): Date {
     return parseLocalDate(start);
   } catch {
     return new Date();
+  }
+}
+
+/** Extracts competence month YYYY-MM for a timesheet period. */
+function resolveTimesheetMonthKey(ts: Timesheet): string {
+  const explicitCompetence = getPeriodCompetence(ts.period);
+  if (explicitCompetence) return explicitCompetence;
+  try {
+    const { start } = getPeriodRange(ts.period, ts.periodType);
+    return start.slice(0, 7);
+  } catch {
+    return "";
+  }
+}
+
+function formatMonthOptionLabel(monthKey: string): string {
+  try {
+    const label = format(parseLocalDate(`${monthKey}-01`), "MMMM 'de' yyyy", {
+      locale: ptBR,
+    });
+    return label.charAt(0).toUpperCase() + label.slice(1);
+  } catch {
+    return monthKey;
   }
 }
 
@@ -199,7 +251,12 @@ function WeekGroupSection({
   onReopen,
 }: WeekGroupSectionProps) {
   return (
-    <motion.div variants={fadeUp} className="overflow-hidden">
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      className="overflow-hidden"
+    >
       {/* Week header */}
       <button
         type="button"
@@ -221,6 +278,14 @@ function WeekGroupSection({
             <span className="text-xs text-muted-foreground">
               {group.dateRange}
             </span>
+            {isSplitPeriod(group.key) && (
+              <Badge
+                variant="outline"
+                className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px] py-0 px-2"
+              >
+                Semana fracionada
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -284,7 +349,12 @@ function WeekGroupSection({
               className="mt-1.5 space-y-1.5 pl-1.5"
             >
               {group.timesheets.map((ts) => (
-                <motion.div key={ts.id} variants={cardVariants}>
+                <motion.div
+                  key={ts.id}
+                  variants={cardVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
                   <ApprovalCard
                     timesheet={ts}
                     onApprove={onApprove}
@@ -343,15 +413,22 @@ interface HistoryWeekSectionProps {
   group: HistoryWeekGroup;
   isOpen: boolean;
   onToggle: () => void;
+  onReopen?: (id: string, reason?: string) => Promise<void>;
 }
 
 function HistoryWeekSection({
   group,
   isOpen,
   onToggle,
+  onReopen,
 }: HistoryWeekSectionProps) {
   return (
-    <motion.div variants={fadeUp} className="overflow-hidden">
+    <motion.div
+      variants={fadeUp}
+      initial="hidden"
+      animate="visible"
+      className="overflow-hidden"
+    >
       <button
         type="button"
         onClick={onToggle}
@@ -372,6 +449,14 @@ function HistoryWeekSection({
             <span className="text-xs text-muted-foreground">
               {group.dateRange}
             </span>
+            {isSplitPeriod(group.key) && (
+              <Badge
+                variant="outline"
+                className="rounded-full border-blue-500/30 bg-blue-500/10 text-blue-500 text-[10px] py-0 px-2"
+              >
+                Semana fracionada
+              </Badge>
+            )}
           </div>
         </div>
 
@@ -441,8 +526,13 @@ function HistoryWeekSection({
               className="mt-2 space-y-1.5 pl-2"
             >
               {group.timesheets.map((ts) => (
-                <motion.div key={ts.id} variants={cardVariants}>
-                  <HistoryCard timesheet={ts} />
+                <motion.div
+                  key={ts.id}
+                  variants={cardVariants}
+                  initial="hidden"
+                  animate="visible"
+                >
+                  <HistoryCard timesheet={ts} onReopen={onReopen} />
                 </motion.div>
               ))}
             </motion.div>
@@ -464,12 +554,21 @@ export default function TimesheetApprovalsPage() {
     rejectTimesheet,
   } = useTimesheetApprovals();
 
-  // History section is opt-in (lazy load)
-  const [showHistory, setShowHistory] = useState(false);
+  const [activeTab, setActiveTab] = useState<ApprovalTab>("pending");
   const { timesheets: historyTimesheets, loading: historyLoading } =
-    useTimesheetHistory({ enabled: showHistory });
+    useTimesheetHistory({ enabled: true });
 
-  const pending = useMemo(
+  // Filters state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [pendingStatusFilter, setPendingStatusFilter] =
+    useState<PendingStatusFilter>("all");
+  const [historyStatusFilter, setHistoryStatusFilter] =
+    useState<HistoryStatusFilter>("all");
+  const [userFilter, setUserFilter] = useState<string>("all");
+  const [monthFilter, setMonthFilter] = useState<string>("all");
+  const [splitFilter, setSplitFilter] = useState<SplitFilter>("all");
+
+  const allPending = useMemo(
     () =>
       approvals.filter(
         (ts) =>
@@ -481,18 +580,133 @@ export default function TimesheetApprovalsPage() {
     [approvals],
   );
 
-  const weekGroups = useMemo(() => groupByWeek(pending), [pending]);
+  // Extract unique collaborator options & month options from currently active tab source
+  const sourceTimesheets =
+    activeTab === "pending" ? allPending : historyTimesheets;
+
+  const userOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ts of sourceTimesheets) {
+      if (ts.userId && ts.user?.name) {
+        map.set(ts.userId, ts.user.name);
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [sourceTimesheets]);
+
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const ts of sourceTimesheets) {
+      const monthKey = resolveTimesheetMonthKey(ts);
+      if (monthKey) set.add(monthKey);
+    }
+    return Array.from(set).sort((a, b) => b.localeCompare(a));
+  }, [sourceTimesheets]);
+
+  const matchesCommonFilters = useCallback(
+    (ts: Timesheet): boolean => {
+      if (userFilter !== "all" && ts.userId !== userFilter) {
+        return false;
+      }
+      if (monthFilter !== "all") {
+        const tsMonth = resolveTimesheetMonthKey(ts);
+        if (tsMonth !== monthFilter) return false;
+      }
+      if (splitFilter === "split" && !isSplitPeriod(ts.period)) {
+        return false;
+      }
+      if (splitFilter === "regular" && isSplitPeriod(ts.period)) {
+        return false;
+      }
+      if (searchQuery.trim() !== "") {
+        const q = searchQuery.trim().toLowerCase();
+        const name = (ts.user?.name ?? "").toLowerCase();
+        const email = (ts.user?.email ?? "").toLowerCase();
+        const dept = (ts.user?.department ?? "").toLowerCase();
+        const periodLabel = formatWeekLabel(ts.period).toLowerCase();
+        const rangeLabel = formatDateRange(ts.period).toLowerCase();
+        if (
+          !name.includes(q) &&
+          !email.includes(q) &&
+          !dept.includes(q) &&
+          !ts.period.toLowerCase().includes(q) &&
+          !periodLabel.includes(q) &&
+          !rangeLabel.includes(q)
+        ) {
+          return false;
+        }
+      }
+      return true;
+    },
+    [monthFilter, searchQuery, splitFilter, userFilter],
+  );
+
+  const filteredPending = useMemo(
+    () =>
+      allPending.filter((ts) => {
+        if (
+          pendingStatusFilter !== "all" &&
+          ts.status !== pendingStatusFilter
+        ) {
+          return false;
+        }
+        return matchesCommonFilters(ts);
+      }),
+    [allPending, matchesCommonFilters, pendingStatusFilter],
+  );
+
+  const filteredHistory = useMemo(
+    () =>
+      historyTimesheets.filter((ts) => {
+        if (
+          historyStatusFilter !== "all" &&
+          ts.status !== historyStatusFilter
+        ) {
+          return false;
+        }
+        return matchesCommonFilters(ts);
+      }),
+    [historyStatusFilter, historyTimesheets, matchesCommonFilters],
+  );
+
+  const weekGroups = useMemo(
+    () => groupByWeek(filteredPending),
+    [filteredPending],
+  );
 
   const totalMinutes = useMemo(
-    () => pending.reduce((acc, ts) => acc + ts.totalMinutes, 0),
-    [pending],
+    () => filteredPending.reduce((acc, ts) => acc + ts.totalMinutes, 0),
+    [filteredPending],
   );
 
-  // History groups (only computed when showHistory)
   const historyGroups = useMemo(
-    () => (showHistory ? groupHistoryByWeek(historyTimesheets) : []),
-    [showHistory, historyTimesheets],
+    () => groupHistoryByWeek(filteredHistory),
+    [filteredHistory],
   );
+
+  const historyTotalMinutes = useMemo(
+    () => filteredHistory.reduce((acc, ts) => acc + ts.totalMinutes, 0),
+    [filteredHistory],
+  );
+
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    userFilter !== "all" ||
+    monthFilter !== "all" ||
+    splitFilter !== "all" ||
+    (activeTab === "pending" && pendingStatusFilter !== "all") ||
+    (activeTab === "history" && historyStatusFilter !== "all");
+
+  const handleResetFilters = useCallback(() => {
+    setSearchQuery("");
+    setPendingStatusFilter("all");
+    setHistoryStatusFilter("all");
+    setUserFilter("all");
+    setMonthFilter("all");
+    setSplitFilter("all");
+  }, []);
 
   // Track collapsed state per group key; default all open
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(
@@ -527,6 +741,29 @@ export default function TimesheetApprovalsPage() {
     });
   }, []);
 
+  const activeGroups = activeTab === "pending" ? weekGroups : historyGroups;
+  const activeCollapsedSet =
+    activeTab === "pending" ? collapsedGroups : collapsedHistoryGroups;
+  const allCollapsed =
+    activeGroups.length > 0 &&
+    activeGroups.every((g) => activeCollapsedSet.has(g.key));
+
+  const handleToggleAllGroups = useCallback(() => {
+    if (activeTab === "pending") {
+      if (allCollapsed) {
+        setCollapsedGroups(new Set());
+      } else {
+        setCollapsedGroups(new Set(weekGroups.map((g) => g.key)));
+      }
+    } else {
+      if (allCollapsed) {
+        setCollapsedHistoryGroups(new Set());
+      } else {
+        setCollapsedHistoryGroups(new Set(historyGroups.map((g) => g.key)));
+      }
+    }
+  }, [activeTab, allCollapsed, historyGroups, weekGroups]);
+
   const handleApprove = useCallback(
     async (id: string, options?: { force?: boolean }): Promise<void> => {
       try {
@@ -549,7 +786,9 @@ export default function TimesheetApprovalsPage() {
     async (id: string, reason?: string): Promise<void> => {
       try {
         await reopenTimesheet(id, reason);
-        toast.success("Timesheet reaberto com sucesso.");
+        toast.success(
+          "Timesheet reaberto com sucesso. O colaborador já pode editar os lançamentos.",
+        );
       } catch (error: unknown) {
         console.error("[TimesheetApprovalsPage] handleReopen:", error);
         toast.error(
@@ -581,52 +820,139 @@ export default function TimesheetApprovalsPage() {
     [rejectTimesheet],
   );
 
+  const submittedCount = useMemo(
+    () => allPending.filter((ts) => ts.status === "submitted").length,
+    [allPending],
+  );
+  const openWithHoursCount = useMemo(
+    () => allPending.filter((ts) => ts.status === "open").length,
+    [allPending],
+  );
+
   return (
     <motion.div
       variants={pageVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-8"
+      className="space-y-6"
     >
-      {/* ── Header ── */}
-      <motion.div variants={fadeUp} className="space-y-1">
-        <h1 className="font-display text-2xl font-bold text-foreground">
-          Aprovação de Timesheets
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {loading
-            ? "Carregando…"
-            : `${pending.length} timesheet${pending.length !== 1 ? "s" : ""} aguardando aprovação${weekGroups.length > 0 ? `, distribuídos em ${weekGroups.length} semana${weekGroups.length !== 1 ? "s" : ""}` : "."}`}
-        </p>
+      {/* ── Header & View Switcher ── */}
+      <motion.div
+        variants={fadeUp}
+        className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="space-y-1">
+          <h1 className="font-display text-2xl font-bold text-foreground">
+            Aprovação de Timesheets
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {activeTab === "pending"
+              ? loading
+                ? "Carregando…"
+                : `${filteredPending.length} timesheet${filteredPending.length !== 1 ? "s" : ""} aguardando aprovação${weekGroups.length > 0 ? `, distribuídos em ${weekGroups.length} período${weekGroups.length !== 1 ? "s" : ""}` : "."}`
+              : historyLoading
+                ? "Carregando histórico…"
+                : `${filteredHistory.length} timesheet${filteredHistory.length !== 1 ? "s" : ""} no histórico de aprovações — você pode reabrir qualquer período aprovado se precisar editar.`}
+          </p>
+        </div>
+
+        {/* Top-level tab switcher */}
+        <div
+          className="inline-flex items-center rounded-xl border border-border/50 bg-card/60 p-1 self-start sm:self-auto"
+          role="tablist"
+          aria-label="Alternar entre pendentes e histórico"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "pending"}
+            onClick={() => setActiveTab("pending")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              activeTab === "pending"
+                ? "bg-orange-500 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+            Pendentes
+            <Badge
+              variant="secondary"
+              className={cn(
+                "px-1.5 py-0 text-[10px]",
+                activeTab === "pending"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {allPending.length}
+            </Badge>
+          </button>
+
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "history"}
+            onClick={() => setActiveTab("history")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              activeTab === "history"
+                ? "bg-orange-500 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <History className="h-3.5 w-3.5" aria-hidden="true" />
+            Aprovados / Histórico
+            <Badge
+              variant="secondary"
+              className={cn(
+                "px-1.5 py-0 text-[10px]",
+                activeTab === "history"
+                  ? "bg-white/20 text-white"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {historyTimesheets.length}
+            </Badge>
+          </button>
+        </div>
       </motion.div>
 
       {/* ── Summary stats ── */}
-      {!loading && pending.length > 0 && (
+      {activeTab === "pending" && !loading && allPending.length > 0 && (
         <motion.div
           variants={fadeUp}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+          className="grid grid-cols-2 gap-3 sm:grid-cols-4"
         >
           <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
             <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Pendentes
+              Submetidos
             </p>
-            <p className="mt-1 font-mono text-xl font-semibold text-foreground">
-              {pending.length}
+            <p className="mt-1 font-mono text-xl font-semibold text-orange-400">
+              {submittedCount}
             </p>
           </div>
           <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
             <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Total de Horas
+              Em Aberto (com horas)
+            </p>
+            <p className="mt-1 font-mono text-xl font-semibold text-foreground">
+              {openWithHoursCount}
+            </p>
+          </div>
+          <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+              Total de Horas (filtro)
             </p>
             <p className="mt-1 font-mono text-xl font-semibold text-foreground">
               {formatDuration(totalMinutes)}
             </p>
           </div>
-          <div className="col-span-2 rounded-xl border border-border/40 bg-card/50 px-4 py-3 sm:col-span-1">
+          <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
             <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Semanas
+              Períodos Exibidos
             </p>
             <p className="mt-1 font-mono text-xl font-semibold text-foreground">
               {weekGroups.length}
@@ -635,170 +961,338 @@ export default function TimesheetApprovalsPage() {
         </motion.div>
       )}
 
+      {activeTab === "history" &&
+        !historyLoading &&
+        historyTimesheets.length > 0 && (
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+          >
+            <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                Aprovados / Rejeitados
+              </p>
+              <p className="mt-1 font-mono text-xl font-semibold text-green-400">
+                {filteredHistory.length}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border/40 bg-card/50 px-4 py-3">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                Total de Horas (filtro)
+              </p>
+              <p className="mt-1 font-mono text-xl font-semibold text-foreground">
+                {formatDuration(historyTotalMinutes)}
+              </p>
+            </div>
+            <div className="col-span-2 rounded-xl border border-border/40 bg-card/50 px-4 py-3 sm:col-span-1">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                Períodos Exibidos
+              </p>
+              <p className="mt-1 font-mono text-xl font-semibold text-foreground">
+                {historyGroups.length}
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+      {/* ── Filters & Organization Bar ── */}
+      <motion.div
+        variants={fadeUp}
+        data-tour="approvals-filters"
+        className="rounded-xl border border-border/40 bg-card/60 p-3.5 backdrop-blur-sm space-y-3"
+      >
+        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+          {/* Search input */}
+          <div className="relative sm:col-span-2 lg:col-span-2">
+            <Search
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar colaborador, departamento ou semana…"
+              aria-label="Buscar por colaborador, departamento ou semana"
+              className="pl-9 h-9 text-xs bg-background/60"
+            />
+          </div>
+
+          {/* Collaborator select */}
+          <Select value={userFilter} onValueChange={setUserFilter}>
+            <SelectTrigger
+              aria-label="Filtrar por colaborador"
+              className="h-9 text-xs bg-background/60"
+            >
+              <SelectValue placeholder="Todos os colaboradores" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os colaboradores</SelectItem>
+              {userOptions.map((person) => (
+                <SelectItem key={person.id} value={person.id}>
+                  {person.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Month select */}
+          <Select value={monthFilter} onValueChange={setMonthFilter}>
+            <SelectTrigger
+              aria-label="Filtrar por mês de competência"
+              className="h-9 text-xs bg-background/60"
+            >
+              <SelectValue placeholder="Todos os meses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os meses</SelectItem>
+              {monthOptions.map((monthKey) => (
+                <SelectItem key={monthKey} value={monthKey}>
+                  {formatMonthOptionLabel(monthKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Split week filter */}
+          <Select
+            value={splitFilter}
+            onValueChange={(v) => setSplitFilter(v as SplitFilter)}
+          >
+            <SelectTrigger
+              aria-label="Filtrar por tipo de período"
+              className="h-9 text-xs bg-background/60"
+            >
+              <SelectValue placeholder="Todos os tipos" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os tipos de semana</SelectItem>
+              <SelectItem value="regular">Apenas semanas completas</SelectItem>
+              <SelectItem value="split">Apenas semanas fracionadas</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Status pills + Expand/Collapse & Reset */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-border/30">
+          {activeTab === "pending" ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: "all", label: "Todos" },
+                  { id: "submitted", label: "Submetidos" },
+                  { id: "open", label: "Em aberto (com horas)" },
+                  { id: "rejected", label: "Rejeitados" },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setPendingStatusFilter(item.id)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    pendingStatusFilter === item.id
+                      ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border border-transparent",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {(
+                [
+                  { id: "all", label: "Todos do histórico" },
+                  { id: "approved", label: "Aprovados" },
+                  { id: "rejected", label: "Rejeitados" },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setHistoryStatusFilter(item.id)}
+                  className={cn(
+                    "rounded-full px-3 py-1 text-xs font-medium transition-colors cursor-pointer",
+                    historyStatusFilter === item.id
+                      ? "bg-orange-500/15 text-orange-400 border border-orange-500/30"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground border border-transparent",
+                  )}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 ml-auto">
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleResetFilters}
+                className="h-7 gap-1.5 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <FilterX className="h-3.5 w-3.5" aria-hidden="true" />
+                Limpar filtros
+              </Button>
+            )}
+
+            {activeGroups.length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggleAllGroups}
+                className="h-7 gap-1.5 px-2.5 text-xs"
+              >
+                {allCollapsed ? (
+                  <>
+                    <ChevronsUpDown
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                    Expandir todas
+                  </>
+                ) : (
+                  <>
+                    <ChevronsDownUp
+                      className="h-3.5 w-3.5"
+                      aria-hidden="true"
+                    />
+                    Recolher todas
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
       {/* ── Content ── */}
-      {loading ? (
-        <output className="space-y-4" aria-label="Carregando aprovações">
-          {SKELETON_GROUPS.slice(0, 2).map((groupKey) => (
-            <div key={groupKey} className="space-y-2">
-              <Skeleton className="h-14 w-full rounded-xl" />
+      {activeTab === "pending" ? (
+        loading ? (
+          <output className="space-y-4" aria-label="Carregando aprovações">
+            {SKELETON_GROUPS.slice(0, 2).map((groupKey) => (
+              <div key={groupKey} className="space-y-2">
+                <Skeleton className="h-14 w-full rounded-xl" />
+                {SKELETON_ITEMS.map((itemKey) => (
+                  <Skeleton
+                    key={`${groupKey}-${itemKey}`}
+                    className="ml-2 h-20 w-full rounded-lg"
+                  />
+                ))}
+              </div>
+            ))}
+          </output>
+        ) : weekGroups.length === 0 ? (
+          <motion.div
+            variants={fadeUp}
+            initial="hidden"
+            animate="visible"
+            className="rounded-xl border border-dashed border-border py-16 text-center"
+          >
+            <CalendarDays
+              className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40"
+              aria-hidden="true"
+            />
+            <p className="text-sm font-medium text-muted-foreground">
+              {hasActiveFilters
+                ? "Nenhum timesheet encontrado para os filtros selecionados."
+                : "Nenhum timesheet aguardando aprovação."}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground/60">
+              {hasActiveFilters
+                ? "Tente ajustar a busca ou limpar os filtros ativos."
+                : "Quando colaboradores registrarem horas ou submeterem seus timesheets, eles aparecerão aqui."}
+            </p>
+            {hasActiveFilters && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetFilters}
+                className="mt-4 text-xs"
+              >
+                Limpar filtros
+              </Button>
+            )}
+          </motion.div>
+        ) : (
+          <motion.div
+            variants={pageVariants}
+            initial="hidden"
+            animate="visible"
+            className="space-y-3"
+          >
+            {weekGroups.map((group) => (
+              <WeekGroupSection
+                key={group.key}
+                group={group}
+                isOpen={!collapsedGroups.has(group.key)}
+                onToggle={() => toggleGroup(group.key)}
+                onApprove={handleApprove}
+                onReject={handleReject}
+                onReopen={handleReopen}
+              />
+            ))}
+          </motion.div>
+        )
+      ) : historyLoading ? (
+        <output className="space-y-2" aria-label="Carregando histórico">
+          {SKELETON_GROUPS.map((groupKey) => (
+            <div key={groupKey} className="space-y-1.5">
+              <Skeleton className="h-12 w-full rounded-xl" />
               {SKELETON_ITEMS.map((itemKey) => (
                 <Skeleton
-                  key={`${groupKey}-${itemKey}`}
-                  className="ml-2 h-20 w-full rounded-lg"
+                  key={`hist-${groupKey}-${itemKey}`}
+                  className="ml-2 h-16 w-full rounded-lg"
                 />
               ))}
             </div>
           ))}
         </output>
-      ) : pending.length === 0 ? (
-        <motion.div
-          variants={fadeUp}
-          initial="hidden"
-          animate="visible"
-          className="rounded-xl border border-dashed border-border py-20 text-center"
-        >
-          <CalendarDays
-            className="mx-auto mb-3 h-8 w-8 text-muted-foreground/40"
+      ) : historyGroups.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border/50 py-16 text-center">
+          <History
+            className="mx-auto mb-2 h-7 w-7 text-muted-foreground/30"
             aria-hidden="true"
           />
           <p className="text-sm font-medium text-muted-foreground">
-            Nenhum timesheet aguardando aprovação.
+            {hasActiveFilters
+              ? "Nenhum timesheet aprovado ou rejeitado encontrado para os filtros selecionados."
+              : "Nenhum timesheet aprovado ou rejeitado encontrado."}
           </p>
-          <p className="mt-1 text-xs text-muted-foreground/60">
-            Quando colaboradores submeterem seus timesheets, eles aparecerão
-            aqui.
-          </p>
-        </motion.div>
+          {hasActiveFilters && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleResetFilters}
+              className="mt-4 text-xs"
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
       ) : (
         <motion.div
-          variants={pageVariants}
+          variants={groupVariants}
           initial="hidden"
           animate="visible"
           className="space-y-3"
         >
-          {weekGroups.map((group) => (
-            <WeekGroupSection
+          {historyGroups.map((group) => (
+            <HistoryWeekSection
               key={group.key}
               group={group}
-              isOpen={!collapsedGroups.has(group.key)}
-              onToggle={() => toggleGroup(group.key)}
-              onApprove={handleApprove}
-              onReject={handleReject}
+              isOpen={!collapsedHistoryGroups.has(group.key)}
+              onToggle={() => toggleHistoryGroup(group.key)}
               onReopen={handleReopen}
             />
           ))}
         </motion.div>
       )}
-
-      {/* ── Approved History (optional) ── */}
-      <motion.div variants={fadeUp} className="space-y-4">
-        {/* Toggle button */}
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border/40" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowHistory((v) => !v)}
-            aria-expanded={showHistory}
-            aria-controls="history-section"
-            className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <History className="h-3.5 w-3.5" aria-hidden="true" />
-            {showHistory ? "Ocultar histórico" : "Ver histórico de aprovações"}
-            <motion.span
-              animate={{ rotate: showHistory ? 180 : 0 }}
-              transition={{ duration: 0.2 }}
-              className="inline-flex"
-            >
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-            </motion.span>
-          </Button>
-          <div className="h-px flex-1 bg-border/40" />
-        </div>
-
-        {/* History content */}
-        <AnimatePresence initial={false}>
-          {showHistory && (
-            <motion.div
-              id="history-section"
-              key="history"
-              initial="closed"
-              animate="open"
-              exit="closed"
-              variants={collapseVariants}
-              className="overflow-hidden"
-            >
-              <div className="space-y-3 pb-4">
-                {/* Section label */}
-                <div className="flex items-center gap-2">
-                  <History
-                    className="h-4 w-4 text-muted-foreground"
-                    aria-hidden="true"
-                  />
-                  <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-widest">
-                    Histórico
-                  </h2>
-                  {!historyLoading && historyTimesheets.length > 0 && (
-                    <Badge
-                      variant="secondary"
-                      className="text-[11px] bg-muted/60"
-                    >
-                      {historyTimesheets.length} timesheet
-                      {historyTimesheets.length !== 1 ? "s" : ""}
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Skeleton */}
-                {historyLoading ? (
-                  <output
-                    className="space-y-2"
-                    aria-label="Carregando histórico"
-                  >
-                    {SKELETON_GROUPS.map((groupKey) => (
-                      <div key={groupKey} className="space-y-1.5">
-                        <Skeleton className="h-12 w-full rounded-xl" />
-                        {SKELETON_ITEMS.map((itemKey) => (
-                          <Skeleton
-                            key={`hist-${groupKey}-${itemKey}`}
-                            className="ml-2 h-16 w-full rounded-lg"
-                          />
-                        ))}
-                      </div>
-                    ))}
-                  </output>
-                ) : historyGroups.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-border/50 py-12 text-center">
-                    <History
-                      className="mx-auto mb-2 h-6 w-6 text-muted-foreground/30"
-                      aria-hidden="true"
-                    />
-                    <p className="text-sm text-muted-foreground">
-                      Nenhum timesheet aprovado ou rejeitado encontrado.
-                    </p>
-                  </div>
-                ) : (
-                  <motion.div
-                    variants={groupVariants}
-                    initial="hidden"
-                    animate="visible"
-                    className="space-y-2"
-                  >
-                    {historyGroups.map((group) => (
-                      <HistoryWeekSection
-                        key={group.key}
-                        group={group}
-                        isOpen={!collapsedHistoryGroups.has(group.key)}
-                        onToggle={() => toggleHistoryGroup(group.key)}
-                      />
-                    ))}
-                  </motion.div>
-                )}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
     </motion.div>
   );
 }
