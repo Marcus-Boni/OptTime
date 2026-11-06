@@ -3,7 +3,7 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowRight, Send } from "lucide-react";
+import { AlertTriangle, ArrowRight, RotateCcw, Send } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
@@ -21,6 +21,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { type Timesheet, useTimesheets } from "@/hooks/use-timesheets";
+import { useSession } from "@/lib/auth-client";
 import {
   getTimesheetPeriodForDate,
   getTimesheetPeriodLabel,
@@ -113,9 +114,17 @@ interface TimesheetCardProps {
   ts: Timesheet;
   submitting: string | null;
   onSubmit: (id: string) => Promise<void>;
+  reopening?: string | null;
+  onReopen?: (id: string) => Promise<void>;
 }
 
-function CurrentWeekCard({ ts, submitting, onSubmit }: TimesheetCardProps) {
+function CurrentWeekCard({
+  ts,
+  submitting,
+  onSubmit,
+  reopening,
+  onReopen,
+}: TimesheetCardProps) {
   return (
     <Card className="border-brand-500/40 bg-brand-500/5 backdrop-blur">
       <CardContent className="py-4">
@@ -170,6 +179,18 @@ function CurrentWeekCard({ ts, submitting, onSubmit }: TimesheetCardProps) {
                 submitting={submitting}
                 onSubmit={onSubmit}
               />
+            )}
+            {ts.status === "approved" && onReopen && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5"
+                disabled={reopening === ts.id}
+                onClick={() => onReopen(ts.id)}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {reopening === ts.id ? "Reabrindo..." : "Reabrir"}
+              </Button>
             )}
             <Button variant="ghost" size="icon" asChild>
               <Link
@@ -256,7 +277,15 @@ function PendingTimesheetCard({
   );
 }
 
-function HistoryTimesheetCard({ ts }: { ts: Timesheet }) {
+function HistoryTimesheetCard({
+  ts,
+  reopening,
+  onReopen,
+}: {
+  ts: Timesheet;
+  reopening?: string | null;
+  onReopen?: (id: string) => Promise<void>;
+}) {
   return (
     <Card className="border-border/30 bg-card/70 backdrop-blur transition-colors hover:border-border/50">
       <CardContent className="flex items-center gap-4 py-3">
@@ -281,14 +310,28 @@ function HistoryTimesheetCard({ ts }: { ts: Timesheet }) {
           </p>
         </div>
 
-        <Button variant="ghost" size="icon" className="shrink-0" asChild>
-          <Link
-            href={`/dashboard/timesheets/${ts.id}`}
-            aria-label="Ver detalhes do timesheet"
-          >
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {ts.status === "approved" && onReopen && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 px-3 text-xs"
+              disabled={reopening === ts.id}
+              onClick={() => onReopen(ts.id)}
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              {reopening === ts.id ? "Reabrindo..." : "Reabrir"}
+            </Button>
+          )}
+          <Button variant="ghost" size="icon" className="shrink-0" asChild>
+            <Link
+              href={`/dashboard/timesheets/${ts.id}`}
+              aria-label="Ver detalhes do timesheet"
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -298,9 +341,19 @@ function HistoryTimesheetCard({ ts }: { ts: Timesheet }) {
 
 export function TimesheetsView() {
   const router = useRouter();
-  const { timesheets, loading, getOrCreateTimesheet, submitTimesheet } =
-    useTimesheets();
+  const { data: session } = useSession();
+  const sessionUser = session?.user as { role?: string } | undefined;
+  const isManagerOrAdmin =
+    sessionUser?.role === "admin" || sessionUser?.role === "manager";
+  const {
+    timesheets,
+    loading,
+    getOrCreateTimesheet,
+    reopenTimesheet,
+    submitTimesheet,
+  } = useTimesheets();
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [reopening, setReopening] = useState<string | null>(null);
   const [openingCurrentWeek, setOpeningCurrentWeek] = useState(false);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(10);
 
@@ -312,7 +365,8 @@ export function TimesheetsView() {
   const pendingTimesheets = timesheets.filter(
     (ts) =>
       ts.period < currentPeriod &&
-      (ts.status === "open" || ts.status === "rejected"),
+      (ts.status === "open" || ts.status === "rejected") &&
+      (ts.status === "rejected" || ts.totalMinutes > 0),
   );
   const historyTimesheets = timesheets.filter(
     (ts) => ts.status === "submitted" || ts.status === "approved",
@@ -353,6 +407,27 @@ export function TimesheetsView() {
       }
     },
     [submitTimesheet],
+  );
+
+  const handleReopen = useCallback(
+    async (id: string) => {
+      setReopening(id);
+      try {
+        await reopenTimesheet(id);
+        toast.success(
+          "Período reaberto com sucesso. Você já pode editar os lançamentos.",
+        );
+      } catch (err) {
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Não foi possível reabrir o período.",
+        );
+      } finally {
+        setReopening(null);
+      }
+    },
+    [reopenTimesheet],
   );
 
   return (
@@ -417,6 +492,8 @@ export function TimesheetsView() {
                   ts={currentWeekTs}
                   submitting={submitting}
                   onSubmit={handleSubmit}
+                  reopening={reopening}
+                  onReopen={isManagerOrAdmin ? handleReopen : undefined}
                 />
               </motion.div>
             )}
@@ -458,7 +535,12 @@ export function TimesheetsView() {
                 </div>
                 <div className="space-y-2">
                   {visibleHistory.map((ts) => (
-                    <HistoryTimesheetCard key={ts.id} ts={ts} />
+                    <HistoryTimesheetCard
+                      key={ts.id}
+                      ts={ts}
+                      reopening={reopening}
+                      onReopen={isManagerOrAdmin ? handleReopen : undefined}
+                    />
                   ))}
                 </div>
                 {remainingHistory > 0 && (

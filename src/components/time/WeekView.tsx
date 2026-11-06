@@ -36,6 +36,7 @@ import {
   Edit2,
   MoreVertical,
   Plus,
+  RotateCcw,
   Send,
   Trash2,
 } from "lucide-react";
@@ -95,6 +96,7 @@ interface WeekViewProps {
   onMoveEntry?: (entryId: string, newDate: string) => Promise<void>;
   onDuplicateEntry?: (entryId: string, newDate: string) => Promise<void>;
   onSubmitWeek?: (timesheetId?: string) => Promise<void>;
+  onReopenWeek?: (timesheetId?: string) => Promise<void>;
   weekTimesheets?: WeekTimesheetSegmentState[];
   weekTimesheetStatus?: string | null;
   weekEntryCount?: number;
@@ -119,6 +121,7 @@ export function WeekView({
   onMoveEntry,
   onDuplicateEntry,
   onSubmitWeek,
+  onReopenWeek,
   weekTimesheets = [],
   weekTimesheetStatus,
   weekEntryCount,
@@ -163,6 +166,10 @@ export function WeekView({
   const [segmentToSubmit, setSegmentToSubmit] =
     useState<WeekTimesheetSegmentState | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmReopen, setConfirmReopen] = useState(false);
+  const [segmentToReopen, setSegmentToReopen] =
+    useState<WeekTimesheetSegmentState | null>(null);
+  const [reopening, setReopening] = useState(false);
   const isSplit = Boolean(weekTimesheets && weekTimesheets.length > 1);
   const weekLocked = isSplit
     ? weekTimesheets?.every((s) => isTimesheetLockedStatus(s.status))
@@ -331,6 +338,27 @@ export function WeekView({
     }
   }, [isResubmission, onSubmitWeek, segmentToSubmit]);
 
+  const handleReopenWeekClick = useCallback(async () => {
+    if (!onReopenWeek) {
+      return;
+    }
+
+    setReopening(true);
+
+    try {
+      await onReopenWeek(segmentToReopen?.id);
+      toast.success(
+        "Período reaberto com sucesso. Você já pode editar os lançamentos.",
+      );
+      setConfirmReopen(false);
+      setSegmentToReopen(null);
+    } catch {
+      toast.error("Erro ao reabrir o período.");
+    } finally {
+      setReopening(false);
+    }
+  }, [onReopenWeek, segmentToReopen]);
+
   return (
     <section className="overflow-hidden rounded-[28px] border border-border/60 bg-card/90 shadow-sm">
       {/* Header */}
@@ -426,12 +454,29 @@ export function WeekView({
                         Submetida
                       </Badge>
                     ) : isApproved ? (
-                      <Badge
-                        variant="outline"
-                        className="rounded-full border-emerald-300 px-2 py-0.5 text-[10px] text-emerald-600"
-                      >
-                        Aprovada
-                      </Badge>
+                      <>
+                        <Badge
+                          variant="outline"
+                          className="rounded-full border-emerald-300 px-2 py-0.5 text-[10px] text-emerald-600"
+                        >
+                          Aprovada
+                        </Badge>
+                        {onReopenWeek && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 rounded-full px-2 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"
+                            onClick={() => {
+                              setSegmentToReopen(seg);
+                              setConfirmReopen(true);
+                            }}
+                            title="Reabrir este período para edição"
+                          >
+                            <RotateCcw className="mr-1 h-3 w-3" />
+                            Reabrir
+                          </Button>
+                        )}
+                      </>
                     ) : onSubmitWeek && isSubmittable ? (
                       <Button
                         variant="ghost"
@@ -463,12 +508,28 @@ export function WeekView({
                 Submetida
               </Badge>
             ) : weekTimesheetStatus === "approved" ? (
-              <Badge
-                variant="outline"
-                className="rounded-full border-emerald-300 px-3 py-1.5 text-emerald-600"
-              >
-                Aprovada
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge
+                  variant="outline"
+                  className="rounded-full border-emerald-300 px-3 py-1.5 text-emerald-600"
+                >
+                  Aprovada
+                </Badge>
+                {onReopenWeek && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-full gap-1.5 px-3 text-xs"
+                    onClick={() => {
+                      setSegmentToReopen(weekTimesheets?.[0] ?? null);
+                      setConfirmReopen(true);
+                    }}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    Reabrir semana
+                  </Button>
+                )}
+              </div>
             ) : onSubmitWeek &&
               isTimesheetSubmittableStatus(weekTimesheetStatus) ? (
               <Button
@@ -694,6 +755,49 @@ export function WeekView({
                 : isResubmission
                   ? "Submeter novamente"
                   : "Submeter"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reopen confirmation */}
+      <AlertDialog
+        open={confirmReopen}
+        onOpenChange={(open) => {
+          setConfirmReopen(open);
+          if (!open) setSegmentToReopen(null);
+        }}
+      >
+        <AlertDialogContent className="rounded-2xl border-border/60">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="font-display">
+              {segmentToReopen?.isSplit
+                ? `Reabrir período de ${formatPeriodRangeLabel(
+                    segmentToReopen.start,
+                    segmentToReopen.end,
+                  )}?`
+                : `Reabrir semana ${weekNumber} de ${weekYear}?`}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Ao reabrir este período, ele voltará para o status{" "}
+              <strong>Em aberto</strong>, permitindo adicionar, editar ou
+              excluir apontamentos. Após concluir os ajustes, basta submeter e
+              aprovar novamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-full" disabled={reopening}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
+              disabled={reopening}
+              onClick={(event) => {
+                event.preventDefault();
+                void handleReopenWeekClick();
+              }}
+            >
+              {reopening ? "Reabrindo..." : "Confirmar reabertura"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

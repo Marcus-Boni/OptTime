@@ -240,9 +240,6 @@ export function TimeClient() {
     preferences.assistantEnabled,
   );
   const [showWeekends, setShowWeekends] = useState(preferences.showWeekends);
-  const [weekTimesheets, setWeekTimesheets] = useState<
-    WeekTimesheetSegmentState[]
-  >([]);
 
   const dateRange = useMemo(() => {
     if (activeView === "month") {
@@ -264,14 +261,43 @@ export function TimeClient() {
       to: dateRange.to,
     });
 
-  const { getOrCreateTimesheet, submitTimesheet, timesheets } = useTimesheets();
+  const { getOrCreateTimesheet, reopenTimesheet, submitTimesheet, timesheets } =
+    useTimesheets();
+
+  const isManagerOrAdmin = user?.role === "admin" || user?.role === "manager";
+
+  const weekTimesheets = useMemo<WeekTimesheetSegmentState[]>(() => {
+    if (activeView !== "week") return [];
+
+    const baseWeekPeriod = getWeekPeriod(selectedDate);
+    const segments = getWeekSegments(baseWeekPeriod);
+
+    return segments.map((seg) => {
+      const existing = timesheets.find((ts) => ts.period === seg.period);
+      const segMinutes = entries
+        .filter((e) => e.date >= seg.start && e.date <= seg.end)
+        .reduce((sum, e) => sum + e.duration, 0);
+
+      return {
+        id: existing?.id ?? seg.period,
+        period: seg.period,
+        status: existing?.status ?? "open",
+        start: seg.start,
+        end: seg.end,
+        competence: seg.competence,
+        isSplit: seg.isSplit,
+        totalMinutes: existing ? existing.totalMinutes : segMinutes,
+      };
+    });
+  }, [activeView, entries, selectedDate, timesheets]);
 
   const pendingSubmitWeeksCount = useMemo(() => {
     const currentPeriod = getTimesheetPeriodForDate(new Date());
     return timesheets.filter(
       (timesheet) =>
         (timesheet.status === "open" || timesheet.status === "rejected") &&
-        timesheet.period < currentPeriod,
+        timesheet.period < currentPeriod &&
+        (timesheet.status === "rejected" || timesheet.totalMinutes > 0),
     ).length;
   }, [timesheets]);
 
@@ -302,52 +328,6 @@ export function TimeClient() {
     },
     [setTimePageDate],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (activeView !== "week") {
-      setWeekTimesheets([]);
-      return;
-    }
-
-    async function syncWeekTimesheet() {
-      try {
-        const baseWeekPeriod = getWeekPeriod(selectedDate);
-        const segments = getWeekSegments(baseWeekPeriod);
-
-        const records = await Promise.all(
-          segments.map(async (seg) => {
-            const ts = await getOrCreateTimesheet(seg.period, "weekly");
-            return {
-              id: ts.id,
-              period: seg.period,
-              status: ts.status,
-              start: seg.start,
-              end: seg.end,
-              competence: seg.competence,
-              isSplit: seg.isSplit,
-              totalMinutes: ts.totalMinutes,
-            };
-          }),
-        );
-
-        if (!cancelled) {
-          setWeekTimesheets(records);
-        }
-      } catch {
-        if (!cancelled) {
-          setWeekTimesheets([]);
-        }
-      }
-    }
-
-    void syncWeekTimesheet();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [activeView, getOrCreateTimesheet, selectedDate]);
 
   const latestEntry = entries[0];
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
@@ -931,40 +911,48 @@ export function TimeClient() {
   );
 
   const handleSubmitWeek = useCallback(
-    async (timesheetId?: string) => {
-      const targetId =
-        timesheetId ??
-        weekTimesheets.find(
-          (ts) => ts.status === "open" || ts.status === "rejected",
-        )?.id ??
-        weekTimesheets[0]?.id;
+    async (timesheetIdOrPeriod?: string) => {
+      const targetSeg = timesheetIdOrPeriod
+        ? weekTimesheets.find(
+            (ts) =>
+              ts.id === timesheetIdOrPeriod ||
+              ts.period === timesheetIdOrPeriod,
+          )
+        : (weekTimesheets.find(
+            (ts) => ts.status === "open" || ts.status === "rejected",
+          ) ?? weekTimesheets[0]);
 
-      if (!targetId) return;
+      if (!targetSeg) return;
 
-      await submitTimesheet(targetId);
+      const existing = timesheets.find((ts) => ts.period === targetSeg.period);
+      const realId = existing
+        ? existing.id
+        : (await getOrCreateTimesheet(targetSeg.period, "weekly")).id;
 
-      const baseWeekPeriod = getWeekPeriod(selectedDate);
-      const segments = getWeekSegments(baseWeekPeriod);
-
-      const refreshed = await Promise.all(
-        segments.map(async (seg) => {
-          const ts = await getOrCreateTimesheet(seg.period, "weekly");
-          return {
-            id: ts.id,
-            period: seg.period,
-            status: ts.status,
-            start: seg.start,
-            end: seg.end,
-            competence: seg.competence,
-            isSplit: seg.isSplit,
-            totalMinutes: ts.totalMinutes,
-          };
-        }),
-      );
-
-      setWeekTimesheets(refreshed);
+      await submitTimesheet(realId);
     },
-    [getOrCreateTimesheet, selectedDate, submitTimesheet, weekTimesheets],
+    [getOrCreateTimesheet, submitTimesheet, timesheets, weekTimesheets],
+  );
+
+  const handleReopenWeek = useCallback(
+    async (timesheetIdOrPeriod?: string) => {
+      const targetSeg = timesheetIdOrPeriod
+        ? weekTimesheets.find(
+            (ts) =>
+              ts.id === timesheetIdOrPeriod ||
+              ts.period === timesheetIdOrPeriod,
+          )
+        : (weekTimesheets.find((ts) => ts.status === "approved") ??
+          weekTimesheets[0]);
+
+      if (!targetSeg) return;
+
+      const existing = timesheets.find((ts) => ts.period === targetSeg.period);
+      if (!existing) return;
+
+      await reopenTimesheet(existing.id);
+    },
+    [reopenTimesheet, timesheets, weekTimesheets],
   );
 
   return (
@@ -1062,6 +1050,7 @@ export function TimeClient() {
             onMoveEntry={handleMoveEntry}
             onDuplicateEntry={handleDuplicateEntry}
             onSubmitWeek={handleSubmitWeek}
+            onReopenWeek={isManagerOrAdmin ? handleReopenWeek : undefined}
             weekTimesheets={weekTimesheets}
             weekTimesheetStatus={weekTimesheets[0]?.status ?? null}
             weekEntryCount={weekEntryCount}
