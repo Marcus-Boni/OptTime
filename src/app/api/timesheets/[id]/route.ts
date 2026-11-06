@@ -359,6 +359,10 @@ export async function PATCH(
               and(eq(timeEntry.timesheetId, id), isNull(timeEntry.deletedAt)),
             );
 
+          if (Number(totals?.totalMinutes ?? 0) === 0) {
+            throw new Error("EMPTY_TIMESHEET");
+          }
+
           await tx
             .update(timesheet)
             .set({

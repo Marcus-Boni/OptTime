@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, or } from "drizzle-orm";
 import {
   getActiveSession,
   getActorContext,
-  getDirectReportIds,
+  getApprovalScopeUserIds,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { timesheet } from "@/lib/db/schema";
@@ -10,7 +10,7 @@ import { timesheet } from "@/lib/db/schema";
 /**
  * GET /api/timesheets/history
  * Returns approved and rejected timesheets within the actor's scope.
- * Admin → all users. Manager → direct reports only.
+ * Admin → all users. Manager → self, direct reports, and managed project members.
  */
 export async function GET(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
@@ -33,12 +33,11 @@ export async function GET(req: Request): Promise<Response> {
       actor.role === "admin"
         ? statusFilter
         : await (async () => {
-            const directReportIds = await getDirectReportIds(actor.userId);
-            if (directReportIds.length === 0) return null;
-            return and(
-              statusFilter,
-              inArray(timesheet.userId, directReportIds),
-            );
+            const scopedUserIds = await getApprovalScopeUserIds(actor, {
+              includeInactive: true,
+            });
+            if (scopedUserIds.length === 0) return null;
+            return and(statusFilter, inArray(timesheet.userId, scopedUserIds));
           })();
 
     if (!where) {

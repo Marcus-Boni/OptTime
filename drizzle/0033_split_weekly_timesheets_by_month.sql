@@ -79,12 +79,13 @@ SELECT
   'weekly',
   s."total_minutes",
   s."billable_minutes",
-  CASE WHEN s."entry_count" > 0 THEN s."status" ELSE 'open' END,
-  CASE WHEN s."entry_count" > 0 THEN s."submitted_at" END,
-  CASE WHEN s."entry_count" > 0 THEN s."approved_by" END,
-  CASE WHEN s."entry_count" > 0 THEN s."approved_at" END,
-  CASE WHEN s."entry_count" > 0 THEN s."rejection_reason" END
+  s."status",
+  s."submitted_at",
+  s."approved_by",
+  s."approved_at",
+  s."rejection_reason"
 FROM "_split_week_segment" s
+WHERE s."entry_count" > 0
 ON CONFLICT ("user_id", "period") DO NOTHING;
 --> statement-breakpoint
 UPDATE "time_entry" te

@@ -1,13 +1,12 @@
-import { subWeeks } from "date-fns";
-import { and, eq, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { eachDayOfInterval, isWeekend, subWeeks } from "date-fns";
+import { and, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import {
   getActiveSession,
   getActorContext,
-  getDirectReportIds,
-  getManagedProjectIds,
+  getApprovalScopeUserIds,
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
-import { projectMember, timeEntry, timesheet, user } from "@/lib/db/schema";
+import { timeEntry, timesheet } from "@/lib/db/schema";
 import { getWeekSegments } from "@/lib/timesheet-periods";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { getPeriodRange, getWeekPeriod, parseLocalDate } from "@/lib/utils";
@@ -15,10 +14,22 @@ import { getPeriodRange, getWeekPeriod, parseLocalDate } from "@/lib/utils";
 const APPROVAL_QUEUE_STATUSES = ["submitted", "open", "rejected"];
 const UNSUBMITTED_WEEKS_LOOKBACK = 4;
 
+function segmentHasWeekday(start: string, end: string): boolean {
+  try {
+    const days = eachDayOfInterval({
+      start: parseLocalDate(start),
+      end: parseLocalDate(end),
+    });
+    return days.some((day) => !isWeekend(day));
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Timesheet keys of the recent weeks. A week that crosses a month boundary
- * contributes one key per month, and slices that have not started yet are
- * left out so the queue never shows days ahead of today.
+ * contributes one key per month, and slices that have not started yet or only
+ * cover weekend days are left out so the queue never provisions empty noise.
  */
 function getRecentWeeklyPeriods(): string[] {
   const today = todayInAppTimeZone();
@@ -27,46 +38,19 @@ function getRecentWeeklyPeriods(): string[] {
     getWeekSegments(getWeekPeriod(subWeeks(todayDate, index))),
   )
     .flat()
-    .filter((segment) => segment.start <= today)
+    .filter(
+      (segment) =>
+        segment.start <= today && segmentHasWeekday(segment.start, segment.end),
+    )
     .map((segment) => segment.period);
-}
-
-async function getApprovalUserIds(actor: ReturnType<typeof getActorContext>) {
-  if (actor.role === "admin") {
-    const users = await db
-      .select({ id: user.id })
-      .from(user)
-      .where(eq(user.isActive, true));
-    return users.map((person) => person.id);
-  }
-
-  const directReportIds = await getDirectReportIds(actor.userId);
-  const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
-
-  let memberIds: string[] = [];
-  if (managedProjectIds.length > 0) {
-    const members = await db.query.projectMember.findMany({
-      where: inArray(projectMember.projectId, managedProjectIds),
-      columns: { userId: true },
-    });
-    memberIds = members.map((m) => m.userId);
-  }
-
-  const candidateIds = Array.from(new Set([...directReportIds, ...memberIds]));
-  if (candidateIds.length === 0) return [];
-
-  const activeUsers = await db
-    .select({ id: user.id })
-    .from(user)
-    .where(and(inArray(user.id, candidateIds), eq(user.isActive, true)));
-
-  return activeUsers.map((person) => person.id);
 }
 
 async function ensureRecentUnsubmittedWeeks(userIds: string[]) {
   if (userIds.length === 0) return;
 
   const periods = getRecentWeeklyPeriods();
+  if (periods.length === 0) return;
+
   await db
     .insert(timesheet)
     .values(
@@ -85,7 +69,7 @@ async function ensureRecentUnsubmittedWeeks(userIds: string[]) {
 }
 
 /**
- * GET - List submitted timesheets pending approval inside the actor scope.
+ * GET - List timesheets pending approval inside the actor scope.
  */
 export async function GET(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
@@ -99,7 +83,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   try {
-    const scopedUserIds = await getApprovalUserIds(actor);
+    const scopedUserIds = await getApprovalScopeUserIds(actor);
     if (scopedUserIds.length === 0) {
       return Response.json({ timesheets: [] });
     }
@@ -127,14 +111,26 @@ export async function GET(req: Request): Promise<Response> {
       orderBy: (ts, { desc, asc }) => [desc(ts.period), asc(ts.submittedAt)],
     });
 
-    const activePending = pending.filter(
-      (ts) => Boolean(ts.user) && ts.user?.isActive !== false,
-    );
+    const today = todayInAppTimeZone();
+
+    const activePending = pending.filter((ts) => {
+      if (!ts.user || ts.user.isActive === false) return false;
+      try {
+        const { start } = getPeriodRange(ts.period, ts.periodType);
+        // Never surface periods that have not started yet in the approval queue
+        if (start > today) return false;
+      } catch {
+        return false;
+      }
+      return true;
+    });
 
     // Enriquecer timesheets em aberto ou rejeitados com os totais de horas das entradas
     const openOrRejected = activePending.filter(
       (ts) => ts.status === "open" || ts.status === "rejected",
     );
+
+    let enrichedPending = activePending;
 
     if (openOrRejected.length > 0) {
       const periodMap = new Map<
@@ -214,22 +210,28 @@ export async function GET(req: Request): Promise<Response> {
         }),
       );
 
-      const enrichedPending = activePending.map((ts) => {
+      enrichedPending = activePending.map((ts) => {
         if (ts.status === "open" || ts.status === "rejected") {
           const totals = totalsMap.get(`${ts.userId}:${ts.period}`);
           return {
             ...ts,
-            totalMinutes: totals?.totalMinutes ?? ts.totalMinutes,
-            billableMinutes: totals?.billableMinutes ?? ts.billableMinutes,
+            totalMinutes: totals?.totalMinutes ?? 0,
+            billableMinutes: totals?.billableMinutes ?? 0,
           };
         }
         return ts;
       });
-
-      return Response.json({ timesheets: enrichedPending });
     }
 
-    return Response.json({ timesheets: activePending });
+    // Only surface unsubmitted ("open") timesheets in the approval queue when
+    // the collaborator actually logged hours in that period (totalMinutes > 0).
+    // Empty "open" periods (especially split-week slices with 0h) have nothing
+    // to approve and would prematurely lock the period if approved.
+    const actionablePending = enrichedPending.filter(
+      (ts) => ts.status !== "open" || ts.totalMinutes > 0,
+    );
+
+    return Response.json({ timesheets: actionablePending });
   } catch (error) {
     console.error("[GET /api/timesheets/approvals]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

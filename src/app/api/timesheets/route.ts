@@ -7,6 +7,7 @@ import {
   getBaseWeekPeriod,
   getTimesheetPeriodForDate,
   isCanonicalTimesheetPeriod,
+  isSplitPeriod,
 } from "@/lib/timesheet-periods";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
@@ -112,7 +113,20 @@ export async function GET(req: Request): Promise<Response> {
       }),
     );
 
-    return Response.json({ timesheets: enrichedTimesheets });
+    const today = todayInAppTimeZone();
+    const visibleTimesheets = enrichedTimesheets.filter((ts) => {
+      if (ts.period === currentPeriod) return true;
+      if (
+        ts.status === "open" &&
+        ts.totalMinutes === 0 &&
+        (ts.periodStart > today || isSplitPeriod(ts.period))
+      ) {
+        return false;
+      }
+      return true;
+    });
+
+    return Response.json({ timesheets: visibleTimesheets });
   } catch (error) {
     console.error("[GET /api/timesheets]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

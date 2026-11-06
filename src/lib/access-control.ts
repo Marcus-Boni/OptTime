@@ -138,11 +138,77 @@ export async function canManageUser(
     return true;
   }
 
-  if (actor.role !== "manager") {
-    return actor.userId === targetUserId;
+  if (actor.userId === targetUserId) {
+    return true;
   }
 
-  return isDirectReport(actor.userId, targetUserId);
+  if (actor.role !== "manager") {
+    return false;
+  }
+
+  if (await isDirectReport(actor.userId, targetUserId)) {
+    return true;
+  }
+
+  const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
+  if (managedProjectIds.length === 0) {
+    return false;
+  }
+
+  const membership = await db.query.projectMember.findFirst({
+    where: and(
+      inArray(projectMember.projectId, managedProjectIds),
+      eq(projectMember.userId, targetUserId),
+    ),
+    columns: { id: true },
+  });
+
+  return Boolean(membership);
+}
+
+export async function getApprovalScopeUserIds(
+  actor: ActorContext,
+  options?: { includeInactive?: boolean },
+): Promise<string[]> {
+  if (actor.role === "admin") {
+    const users = await db
+      .select({ id: user.id })
+      .from(user)
+      .where(options?.includeInactive ? undefined : eq(user.isActive, true));
+    return users.map((person) => person.id);
+  }
+
+  if (actor.role !== "manager") {
+    return [actor.userId];
+  }
+
+  const directReportIds = await getDirectReportIds(actor.userId, options);
+  const managedProjectIds = (await getManagedProjectIds(actor)) ?? [];
+
+  let memberIds: string[] = [];
+  if (managedProjectIds.length > 0) {
+    const members = await db.query.projectMember.findMany({
+      where: inArray(projectMember.projectId, managedProjectIds),
+      columns: { userId: true },
+    });
+    memberIds = members.map((m) => m.userId);
+  }
+
+  const candidateIds = Array.from(
+    new Set([actor.userId, ...directReportIds, ...memberIds]),
+  );
+  if (candidateIds.length === 0) return [];
+
+  const activeUsers = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(
+      options?.includeInactive
+        ? inArray(user.id, candidateIds)
+        : and(inArray(user.id, candidateIds), eq(user.isActive, true)),
+    );
+
+  return activeUsers.map((person) => person.id);
 }
 
 export async function ensureManagerAssignableUsers(
