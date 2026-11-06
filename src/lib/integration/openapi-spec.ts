@@ -179,6 +179,202 @@ const webhookSubscriptionDTOSchema = {
   },
 };
 
+const timeEntriesReportDTOSchema = {
+  type: "object",
+  required: [
+    "user",
+    "period",
+    "filter",
+    "summary",
+    "byProject",
+    "byDate",
+    "entries",
+    "meta",
+  ],
+  properties: {
+    user: {
+      type: "object",
+      required: ["id", "name", "email"],
+      properties: {
+        id: { type: "string", example: "usr_123" },
+        name: { type: "string", example: "João Silva" },
+        email: { type: "string", example: "joao.silva@optsolv.com" },
+        jobTitle: {
+          type: "string",
+          nullable: true,
+          example: "Engenheiro de Software",
+        },
+        department: { type: "string", nullable: true, example: "Tecnologia" },
+      },
+    },
+    period: {
+      type: "object",
+      required: ["from", "to", "label"],
+      properties: {
+        from: { type: "string", example: "2026-10-01" },
+        to: { type: "string", example: "2026-10-31" },
+        label: { type: "string", example: "01/10/2026 a 31/10/2026" },
+      },
+    },
+    filter: {
+      type: "object",
+      required: ["status", "approvedOnly", "statusLabel", "description"],
+      properties: {
+        status: {
+          type: "string",
+          enum: ["approved", "submitted", "draft", "rejected", "all"],
+          example: "approved",
+        },
+        approvedOnly: { type: "boolean", example: true },
+        statusLabel: { type: "string", example: "Aprovados" },
+        description: {
+          type: "string",
+          example:
+            "Considerando exclusivamente lançamentos em timesheets aprovadas.",
+        },
+      },
+    },
+    summary: {
+      type: "object",
+      required: [
+        "totalMinutes",
+        "totalHoursFormatted",
+        "totalDecimalHours",
+        "billableMinutes",
+        "billableHoursFormatted",
+        "nonBillableMinutes",
+        "nonBillableHoursFormatted",
+        "billablePercentage",
+        "entryCount",
+        "activeDaysCount",
+        "projectCount",
+      ],
+      properties: {
+        totalMinutes: { type: "integer", example: 9600 },
+        totalHoursFormatted: { type: "string", example: "160h" },
+        totalDecimalHours: { type: "number", example: 160 },
+        billableMinutes: { type: "integer", example: 8160 },
+        billableHoursFormatted: { type: "string", example: "136h" },
+        nonBillableMinutes: { type: "integer", example: 1440 },
+        nonBillableHoursFormatted: { type: "string", example: "24h" },
+        billablePercentage: { type: "number", example: 85 },
+        entryCount: { type: "integer", example: 42 },
+        activeDaysCount: { type: "integer", example: 20 },
+        projectCount: { type: "integer", example: 3 },
+      },
+    },
+    byProject: {
+      type: "array",
+      items: {
+        type: "object",
+        required: [
+          "projectId",
+          "projectName",
+          "projectCode",
+          "color",
+          "totalMinutes",
+          "totalHoursFormatted",
+          "totalDecimalHours",
+          "billableMinutes",
+          "billablePercentage",
+          "entryCount",
+          "sharePercentage",
+        ],
+        properties: {
+          projectId: { type: "string", example: "proj_123" },
+          projectName: { type: "string", example: "OptSolv Platform" },
+          projectCode: { type: "string", example: "OPT-PLAT" },
+          clientName: { type: "string", nullable: true, example: "Interno" },
+          color: { type: "string", example: "#f97316" },
+          totalMinutes: { type: "integer", example: 6000 },
+          totalHoursFormatted: { type: "string", example: "100h" },
+          totalDecimalHours: { type: "number", example: 100 },
+          billableMinutes: { type: "integer", example: 6000 },
+          billablePercentage: { type: "number", example: 100 },
+          entryCount: { type: "integer", example: 25 },
+          sharePercentage: { type: "number", example: 62.5 },
+        },
+      },
+    },
+    byDate: {
+      type: "array",
+      items: {
+        type: "object",
+        required: [
+          "date",
+          "dateFormatted",
+          "dayOfWeek",
+          "totalMinutes",
+          "totalHoursFormatted",
+          "billableMinutes",
+          "entryCount",
+        ],
+        properties: {
+          date: { type: "string", example: "2026-10-01" },
+          dateFormatted: { type: "string", example: "01/10/2026" },
+          dayOfWeek: { type: "string", example: "Quinta-feira" },
+          totalMinutes: { type: "integer", example: 480 },
+          totalHoursFormatted: { type: "string", example: "8h" },
+          billableMinutes: { type: "integer", example: 480 },
+          entryCount: { type: "integer", example: 2 },
+        },
+      },
+    },
+    entries: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", example: "te_123" },
+          date: { type: "string", example: "2026-10-01" },
+          dateFormatted: { type: "string", example: "01/10/2026" },
+          durationMinutes: { type: "integer", example: 240 },
+          durationFormatted: { type: "string", example: "4h" },
+          billable: { type: "boolean", example: true },
+          status: { type: "string", example: "approved" },
+          description: {
+            type: "string",
+            example: "Desenvolvimento do módulo de relatórios",
+          },
+          projectId: { type: "string", example: "proj_123" },
+          projectName: { type: "string", example: "OptSolv Platform" },
+          projectCode: { type: "string", example: "OPT-PLAT" },
+          clientName: { type: "string", nullable: true, example: "Interno" },
+          azureWorkItemId: { type: "integer", nullable: true, example: 4321 },
+          azureWorkItemTitle: {
+            type: "string",
+            nullable: true,
+            example: "Endpoint de integração M2M",
+          },
+          externalId: { type: "string", nullable: true },
+          source: { type: "string", example: "manual" },
+          createdAt: {
+            type: "string",
+            format: "date-time",
+            example: "2026-10-01T17:00:00.000Z",
+          },
+        },
+      },
+    },
+    meta: {
+      type: "object",
+      required: ["generatedAt", "pdfUrl"],
+      properties: {
+        generatedAt: {
+          type: "string",
+          format: "date-time",
+          example: "2026-11-06T13:00:00.000Z",
+        },
+        pdfUrl: {
+          type: "string",
+          example:
+            "/api/v1/reports/time-entries/pdf?userEmail=joao%40optsolv.com&from=2026-10-01&to=2026-10-31&status=approved",
+        },
+      },
+    },
+  },
+};
+
 // ─── Reusable parameters ─────────────────────────────────────────────────────
 
 const cursorParam = {
@@ -453,6 +649,7 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
       UserDTO: userDTOSchema,
       ProjectDTO: projectDTOSchema,
       WebhookSubscriptionDTO: webhookSubscriptionDTOSchema,
+      TimeEntriesReportDTO: timeEntriesReportDTOSchema,
     },
   },
   paths: {
@@ -990,6 +1187,179 @@ As rotas da tag **Assistente pessoal** não usam o token de máquina: elas perte
           409: {
             description:
               "Período bloqueado (timesheet fechado). Não é possível excluir a entrada de tempo.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          429: rateLimitedResponse,
+        },
+      },
+    },
+    "/reports/time-entries": {
+      get: {
+        operationId: "getTimeEntriesReport",
+        summary: "Relatório de lançamentos de horas (JSON ou PDF)",
+        description:
+          "Retorna o relatório consolidado de lançamentos de horas de um colaborador no período especificado, com totais por projeto, por dia e lançamentos detalhados. Informa explicitamente se considera apenas lançamentos aprovados (`approvedOnly: true`). Por padrão retorna JSON (`application/json`), mas também suporta `Accept: application/pdf` ou `?format=pdf` para obter diretamente o documento em PDF. Requer o escopo `opt-time.read`.",
+        tags: ["Relatórios"],
+        parameters: [
+          {
+            name: "userEmail",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "email" },
+            description: "E-mail do colaborador.",
+            example: "colaborador@optsolv.com",
+          },
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date" },
+            description: "Data inicial inclusiva (formato YYYY-MM-DD).",
+            example: "2026-10-01",
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date" },
+            description: "Data final inclusiva (formato YYYY-MM-DD).",
+            example: "2026-10-31",
+          },
+          {
+            name: "status",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["approved", "submitted", "draft", "rejected", "all"],
+              default: "approved",
+            },
+            description:
+              "Filtro de status das horas. Padrão: `approved` (apenas lançamentos aprovados). Use `all` para considerar todos os status.",
+            example: "approved",
+          },
+          {
+            name: "format",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["json", "pdf"],
+              default: "json",
+            },
+            description: "Formato da resposta: `json` ou `pdf`.",
+            example: "json",
+          },
+        ],
+        responses: {
+          200: {
+            description:
+              "Relatório de horas do colaborador em JSON ou PDF conforme parâmetro format / cabeçalho Accept.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TimeEntriesReportDTO" },
+              },
+              "application/pdf": {
+                schema: { type: "string", format: "binary" },
+              },
+            },
+          },
+          400: {
+            description: "Parâmetros de busca inválidos.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          401: unauthorizedResponse,
+          403: forbiddenResponse,
+          404: {
+            description:
+              "Colaborador não encontrado ou nenhum lançamento de horas encontrado para os filtros e período informados.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          429: rateLimitedResponse,
+        },
+      },
+    },
+    "/reports/time-entries/pdf": {
+      get: {
+        operationId: "getTimeEntriesReportPDF",
+        summary: "Relatório de lançamentos de horas em PDF",
+        description:
+          "Gera e retorna o documento oficial em PDF do relatório de horas do colaborador para o período especificado, equivalente ao relatório exportado pelo colaborador na interface web do OptSolv Time. Requer o escopo `opt-time.read`.",
+        tags: ["Relatórios"],
+        parameters: [
+          {
+            name: "userEmail",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "email" },
+            description: "E-mail do colaborador.",
+            example: "colaborador@optsolv.com",
+          },
+          {
+            name: "from",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date" },
+            description: "Data inicial inclusiva (formato YYYY-MM-DD).",
+            example: "2026-10-01",
+          },
+          {
+            name: "to",
+            in: "query",
+            required: true,
+            schema: { type: "string", format: "date" },
+            description: "Data final inclusiva (formato YYYY-MM-DD).",
+            example: "2026-10-31",
+          },
+          {
+            name: "status",
+            in: "query",
+            required: false,
+            schema: {
+              type: "string",
+              enum: ["approved", "submitted", "draft", "rejected", "all"],
+              default: "approved",
+            },
+            description:
+              "Filtro de status das horas. Padrão: `approved` (apenas lançamentos aprovados).",
+            example: "approved",
+          },
+        ],
+        responses: {
+          200: {
+            description:
+              "Documento PDF do relatório de horas formatado para visualização/download.",
+            content: {
+              "application/pdf": {
+                schema: { type: "string", format: "binary" },
+              },
+            },
+          },
+          400: {
+            description: "Parâmetros de busca inválidos.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/Error" },
+              },
+            },
+          },
+          401: unauthorizedResponse,
+          403: forbiddenResponse,
+          404: {
+            description:
+              "Colaborador não encontrado ou nenhum lançamento de horas encontrado para os filtros e período informados.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/Error" },

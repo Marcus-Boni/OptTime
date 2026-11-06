@@ -876,19 +876,22 @@ export async function exportTimeEntriesToPDF({
   doc.save(`${filename}.pdf`);
 }
 
-export async function exportCollaboratorHoursToPDF({
-  userName,
-  userEmail,
-  entries,
-  period,
-  filename = "relatorio-colaborador",
-}: {
+export interface CollaboratorHoursPDFOptions {
   userName: string;
   userEmail: string;
   entries: TeamHourEntry[];
   period?: string;
+  statusLabel?: string;
   filename?: string;
-}) {
+}
+
+export async function buildCollaboratorHoursPDFDoc({
+  userName,
+  userEmail,
+  entries,
+  period,
+  statusLabel,
+}: CollaboratorHoursPDFOptions): Promise<jsPDF> {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const generatedAt = formatGeneratedAt();
   const logoDataUrl = await getBrandLogoDataUrl();
@@ -932,12 +935,18 @@ export async function exportCollaboratorHoursToPDF({
     (a, b) => b.totalMinutes - a.totalMinutes,
   );
 
-  const title = `Relatório de Horas - Colaborador`;
+  const title = "Relatório de Horas - Colaborador";
   configureDocument(doc, title);
+
+  const displayPeriod = period
+    ? `${period}${statusLabel ? ` • Status: ${statusLabel}` : ""}`
+    : statusLabel
+      ? `Todo o período • Status: ${statusLabel}`
+      : "Todo o período";
 
   let y = drawHeader(doc, {
     title,
-    period: period || "Todo o período",
+    period: displayPeriod,
     logoDataUrl,
   });
 
@@ -961,7 +970,10 @@ export async function exportCollaboratorHoursToPDF({
     {
       label: "Lançamentos",
       value: String(entries.length),
-      meta: "Lançamentos registrados no período",
+      meta:
+        statusLabel === "Aprovados"
+          ? "Lançamentos aprovados no período"
+          : "Lançamentos registrados no período",
     },
   ];
 
@@ -977,7 +989,11 @@ export async function exportCollaboratorHoursToPDF({
       y = 18;
     }
 
-    const rows = group.entries.map((entry) => [
+    const sortedEntries = [...group.entries].sort((a, b) =>
+      a.date.localeCompare(b.date),
+    );
+
+    const rows = sortedEntries.map((entry) => [
       format(parseLocalDate(entry.date), "dd/MM/yyyy"),
       normalizePdfText(entry.description || "Sem descrição"),
       minutesToHours(entry.duration),
@@ -1005,7 +1021,22 @@ export async function exportCollaboratorHoursToPDF({
   }
 
   drawFooter(doc, { title: userName, generatedAt });
-  doc.save(`${filename}.pdf`);
+  return doc;
+}
+
+export async function exportCollaboratorHoursToPDF(
+  options: CollaboratorHoursPDFOptions,
+): Promise<void> {
+  const doc = await buildCollaboratorHoursPDFDoc(options);
+  doc.save(`${options.filename ?? "relatorio-colaborador"}.pdf`);
+}
+
+export async function generateCollaboratorHoursPDFBuffer(
+  options: CollaboratorHoursPDFOptions,
+): Promise<Uint8Array> {
+  const doc = await buildCollaboratorHoursPDFDoc(options);
+  const arrayBuffer = doc.output("arraybuffer");
+  return new Uint8Array(arrayBuffer);
 }
 
 export async function exportTeamHoursGroupedToPDF({
