@@ -179,8 +179,12 @@ export async function executeTeamsCommand(
         const today = todayInAppTimeZone();
         const summary = await getDaySummary(principal, today);
 
+        const targetSuffix = summary.holidayName
+          ? `🏖️ Feriado (${summary.holidayName}) · meta 0h`
+          : `de ${formatDuration(summary.dailyCapacityMinutes)}`;
+
         const lines = [
-          `**Hoje (${summary.weekday})** — ${summary.totalLabel} de ${formatDuration(summary.dailyCapacityMinutes)}`,
+          `**Hoje (${summary.weekday})** — ${summary.totalLabel} ${targetSuffix}`,
         ];
 
         if (summary.byProject.length > 0) {

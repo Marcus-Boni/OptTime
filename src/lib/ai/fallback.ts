@@ -242,8 +242,13 @@ export async function runFallbackAssistant(
 }
 
 function buildBriefing(snapshot: AssistantSnapshot): string {
+  const weekHolidays = snapshot.weekHolidays ?? [];
+  const holidaySuffix =
+    weekHolidays.length > 0
+      ? ` (meta reduzida pelo feriado de ${weekHolidays.map((holiday) => holiday.name).join(", ")})`
+      : "";
   const lines = [
-    `Hoje você registrou **${formatDuration(snapshot.todayMinutes)}** e nesta semana **${formatDuration(snapshot.weekMinutes)}** de ${formatDuration(snapshot.weekTargetMinutes)}.`,
+    `Hoje você registrou **${formatDuration(snapshot.todayMinutes)}** e nesta semana **${formatDuration(snapshot.weekMinutes)}** de ${formatDuration(snapshot.weekTargetMinutes)}${holidaySuffix}.`,
   ];
 
   if (snapshot.timer.running) {

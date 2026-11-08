@@ -13,7 +13,7 @@ import { getAccessibleProjectIds } from "@/lib/access-control";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
 import { buildCommitAuthorCandidates } from "@/lib/azure-devops/commit-author";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
-import { dailyTargetMinutes } from "@/lib/capacity";
+import { adjustedDailyTargetMinutes } from "@/lib/capacity";
 import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { db } from "@/lib/db";
 import {
@@ -23,6 +23,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { isHolidayDate } from "@/lib/holidays/service";
 import {
   fetchMicrosoftObjectId,
   getMicrosoftAccountSnapshot,
@@ -511,19 +512,28 @@ export async function buildDayPlanForUser({
   }
 
   // ── Dismissed fingerprints keep rejected ideas away ──
-  const dismissals = await db.query.timeSuggestionFeedback.findMany({
-    where: and(
-      eq(timeSuggestionFeedback.userId, userId),
-      eq(timeSuggestionFeedback.action, "rejected"),
-      like(timeSuggestionFeedback.suggestionFingerprint, "autofill:%"),
-    ),
-    columns: { suggestionFingerprint: true },
-    orderBy: [desc(timeSuggestionFeedback.createdAt)],
-    limit: 200,
-  });
+  const [dismissals, holiday] = await Promise.all([
+    db.query.timeSuggestionFeedback.findMany({
+      where: and(
+        eq(timeSuggestionFeedback.userId, userId),
+        eq(timeSuggestionFeedback.action, "rejected"),
+        like(timeSuggestionFeedback.suggestionFingerprint, "autofill:%"),
+      ),
+      columns: { suggestionFingerprint: true },
+      orderBy: [desc(timeSuggestionFeedback.createdAt)],
+      limit: 200,
+    }),
+    isHolidayDate(date),
+  ]);
 
-  const targetMinutes = dailyTargetMinutes(
+  if (holiday) {
+    warnings.push(`Feriado (${holiday.name}) — sem meta de horas neste dia.`);
+  }
+
+  const targetMinutes = adjustedDailyTargetMinutes(
     profile?.weeklyCapacity,
+    date,
+    holiday ? new Set([date]) : new Set<string>(),
     WORKING_DAYS_PER_WEEK,
   );
   const existingMinutes = existingEntries.reduce(

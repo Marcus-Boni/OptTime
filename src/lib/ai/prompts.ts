@@ -55,7 +55,7 @@ Além dos dados, você conduz o app: \`navigate_to\` abre telas e \`run_ui_comma
 
 ## O produto (conhecimento de domínio)
 
-- **Capacidade**: use sempre a capacidade semanal atual do perfil. O padrão é 40h/semana, mas pessoas estagiárias ou com jornada reduzida podem ter metas menores.
+- **Capacidade e Feriados**: use sempre a meta da semana já ajustada no estado atual ou retornada pelas ferramentas. O padrão é 40h/semana (ou menor para estagiários/jornada reduzida), mas feriados ativos (Brasil, ES, Vila Velha e pontes da empresa) têm meta diária 0h, descontam um dia útil da meta semanal (ex.: 40h → 32h) e nunca contam como dia incompleto.
 - **Formatos de tempo aceitos**: \`2h30\`, \`2.5h\`, \`2,5h\`, \`90m\`, \`150min\`, \`2:30\`.
 - **Fluxo do timesheet semanal**: \`open\` → \`submitted\` → \`approved\`; se rejeitado (\`rejected\`), volta a editável com o motivo registrado.
 - **Trava de edição**: semanas \`submitted\` ou \`approved\` ficam bloqueadas — não é possível criar nem editar lançamentos nelas.
@@ -116,6 +116,6 @@ export function renderAutonomyForPrompt(
   return lines.join("\n");
 }
 
-/** Guidance appended when no LLM provider is configured. */
+/** Guidance appended when the remote provider is unavailable or unconfigured. */
 export const TIMEBOT_OFFLINE_NOTICE =
-  "Estou operando em **modo offline** (sem provedor de IA configurado), então respondo com base direta nos seus dados do sistema.";
+  "Estou operando em **modo local** (IA indisponível no momento), então respondo com base direta nos seus dados do sistema.";

@@ -46,6 +46,7 @@ import {
 } from "@/lib/collaboration/source-status";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
   fetchMicrosoftObjectId,
   fetchOutlookEvents,
@@ -128,7 +129,7 @@ export async function buildCollaborationPeriod({
   const warnings: string[] = [];
   const dates = enumerateDates(from, to);
 
-  const [entries, profile, acceptedCallIds] = await Promise.all([
+  const [entries, profile, acceptedCallIds, holidays] = await Promise.all([
     db
       .select({
         date: timeEntry.date,
@@ -154,7 +155,10 @@ export async function buildCollaborationPeriod({
       columns: { weeklyCapacity: true },
     }),
     getAcceptedCallIds(userId, from, to),
+    getHolidaysInRange(from, to),
   ]);
+
+  const holidayDates = new Set(holidays.map((holiday) => holiday.date));
 
   const weeklyCapacityHours =
     profile?.weeklyCapacity ?? DEFAULT_WEEKLY_CAPACITY_HOURS;
@@ -279,7 +283,12 @@ export async function buildCollaborationPeriod({
       0,
     );
 
-    const target = resolveDailyTarget(weeklyCapacityHours, workingHours, date);
+    const target = resolveDailyTarget(
+      weeklyCapacityHours,
+      workingHours,
+      date,
+      holidayDates.has(date),
+    );
     const away = mailboxOk && isAwayOn(mailbox?.away ?? null, date);
 
     // `keepLogged` on purpose: the ledger has to count a meeting that already

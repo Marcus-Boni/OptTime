@@ -20,11 +20,13 @@ import {
   resolvePeriod,
 } from "@/lib/ai/periods";
 import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
   incompleteDayThresholdMinutes,
-  weeklyCapacityMinutes,
 } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { projectMember, timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
 import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import { getWeekPeriod } from "@/lib/utils";
@@ -195,7 +197,7 @@ export async function buildMemberDigest(
   const period = resolveDigestPeriod(today);
   const previous = resolvePeriod("last_week", period.from);
 
-  const [entries, previousEntries, sheets] = await Promise.all([
+  const [entries, previousEntries, sheets, holidays] = await Promise.all([
     fetchEntries([target.userId], period.from, period.to),
     db
       .select({ duration: timeEntry.duration })
@@ -215,8 +217,15 @@ export async function buildMemberDigest(
       ),
       columns: { period: true, status: true },
     }),
+    getHolidaysInRange(period.from, period.to),
   ]);
 
+  const holidayDates = new Set(holidays.map((holiday) => holiday.date));
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    period.from,
+    period.to,
+    holidayDates,
+  );
   const totalMinutes = entries.reduce((sum, entry) => sum + entry.duration, 0);
   const previousTotalMinutes = previousEntries.reduce(
     (sum, entry) => sum + entry.duration,
@@ -224,8 +233,13 @@ export async function buildMemberDigest(
   );
 
   const days = buildDaySlices(entries, period.from, period.to);
-  const businessDays = days.filter((day) => !day.isWeekend);
-  const targetMinutes = weeklyCapacityMinutes(target.weeklyCapacity);
+  const businessDays = days.filter(
+    (day) => !day.isWeekend && !holidayDates.has(day.date),
+  );
+  const targetMinutes = adjustedWeeklyCapacityMinutes(
+    target.weeklyCapacity,
+    weekdayHolidayCount,
+  );
   const incompleteThreshold = incompleteDayThresholdMinutes(
     target.weeklyCapacity,
   );
@@ -330,7 +344,7 @@ export async function buildManagerDigest(
 
   if (teamUserIds.length === 0) return null;
 
-  const [members, entries, sheets] = await Promise.all([
+  const [members, entries, sheets, holidays] = await Promise.all([
     db.query.user.findMany({
       where: and(inArray(user.id, teamUserIds), eq(user.isActive, true)),
       columns: { id: true, name: true, weeklyCapacity: true },
@@ -343,7 +357,14 @@ export async function buildManagerDigest(
       ),
       columns: { userId: true, period: true, status: true },
     }),
+    getHolidaysInRange(period.from, period.to),
   ]);
+
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    period.from,
+    period.to,
+    holidays.map((holiday) => holiday.date),
+  );
 
   const minutesByUser = new Map<string, number>();
   for (const entry of entries) {
@@ -358,7 +379,10 @@ export async function buildManagerDigest(
       userId: member.id,
       name: member.name,
       minutes: minutesByUser.get(member.id) ?? 0,
-      targetMinutes: weeklyCapacityMinutes(member.weeklyCapacity),
+      targetMinutes: adjustedWeeklyCapacityMinutes(
+        member.weeklyCapacity,
+        weekdayHolidayCount,
+      ),
       timesheetStatus:
         summarizeTimesheetWeek(
           period.period,

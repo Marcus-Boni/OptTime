@@ -8,7 +8,11 @@ import {
 } from "@/lib/access-control";
 import { resolvePeriod } from "@/lib/ai/periods";
 import type { AgentUserContext } from "@/lib/ai/types";
-import { incompleteDayThresholdMinutes } from "@/lib/capacity";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+  incompleteDayThresholdMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import {
   activeTimer,
@@ -16,15 +20,18 @@ import {
   timeEntry,
   timesheet,
 } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { formatDuration, getWeekPeriod, parseLocalDate } from "@/lib/utils";
 
 export interface AssistantSnapshot {
   todayLabel: string;
   todayMinutes: number;
+  todayHoliday?: string | null;
   weekMinutes: number;
   weekTargetMinutes: number;
   weekPeriod: string;
   weekStatus: string;
+  weekHolidays?: Array<{ date: string; weekday: string; name: string }>;
   previousWeekPeriod: string;
   previousWeekStatus: string;
   previousWeekMinutes: number;
@@ -61,52 +68,77 @@ export async function buildAssistantSnapshot(
   const weekPeriod = getWeekPeriod(thisWeek.from);
   const previousWeekPeriod = getWeekPeriod(lastWeek.from);
 
-  const [weekEntries, lastWeekEntries, sheets, timer, memberships] =
-    await Promise.all([
-      db
-        .select({ date: timeEntry.date, duration: timeEntry.duration })
-        .from(timeEntry)
-        .where(
-          and(
-            eq(timeEntry.userId, user.userId),
-            gte(timeEntry.date, thisWeek.from),
-            lte(timeEntry.date, thisWeek.to),
-            isNull(timeEntry.deletedAt),
-          ),
+  const [
+    weekEntries,
+    lastWeekEntries,
+    sheets,
+    timer,
+    memberships,
+    weekHolidaysRaw,
+  ] = await Promise.all([
+    db
+      .select({ date: timeEntry.date, duration: timeEntry.duration })
+      .from(timeEntry)
+      .where(
+        and(
+          eq(timeEntry.userId, user.userId),
+          gte(timeEntry.date, thisWeek.from),
+          lte(timeEntry.date, thisWeek.to),
+          isNull(timeEntry.deletedAt),
         ),
-      db
-        .select({ duration: timeEntry.duration })
-        .from(timeEntry)
-        .where(
-          and(
-            eq(timeEntry.userId, user.userId),
-            gte(timeEntry.date, lastWeek.from),
-            lte(timeEntry.date, lastWeek.to),
-            isNull(timeEntry.deletedAt),
-          ),
+      ),
+    db
+      .select({ duration: timeEntry.duration })
+      .from(timeEntry)
+      .where(
+        and(
+          eq(timeEntry.userId, user.userId),
+          gte(timeEntry.date, lastWeek.from),
+          lte(timeEntry.date, lastWeek.to),
+          isNull(timeEntry.deletedAt),
         ),
-      db.query.timesheet.findMany({
-        where: and(
-          eq(timesheet.userId, user.userId),
-          inArray(timesheet.period, [weekPeriod, previousWeekPeriod]),
-        ),
-        columns: { period: true, status: true, rejectionReason: true },
-      }),
-      db.query.activeTimer.findFirst({
-        where: eq(activeTimer.userId, user.userId),
-        with: { project: { columns: { name: true } } },
-      }),
-      db.query.projectMember.findMany({
-        where: eq(projectMember.userId, user.userId),
-        columns: { projectId: true },
-        with: {
-          project: {
-            columns: { id: true, name: true, code: true, status: true },
-          },
+      ),
+    db.query.timesheet.findMany({
+      where: and(
+        eq(timesheet.userId, user.userId),
+        inArray(timesheet.period, [weekPeriod, previousWeekPeriod]),
+      ),
+      columns: { period: true, status: true, rejectionReason: true },
+    }),
+    db.query.activeTimer.findFirst({
+      where: eq(activeTimer.userId, user.userId),
+      with: { project: { columns: { name: true } } },
+    }),
+    db.query.projectMember.findMany({
+      where: eq(projectMember.userId, user.userId),
+      columns: { projectId: true },
+      with: {
+        project: {
+          columns: { id: true, name: true, code: true, status: true },
         },
-        limit: 20,
-      }),
-    ]);
+      },
+      limit: 20,
+    }),
+    getHolidaysInRange(thisWeek.from, thisWeek.to),
+  ]);
+
+  const holidayByDate = new Map(
+    weekHolidaysRaw.map((holiday) => [holiday.date, holiday]),
+  );
+  const weekHolidays = weekHolidaysRaw.map((holiday) => ({
+    date: holiday.date,
+    weekday: format(parseLocalDate(holiday.date), "EEEE", { locale: ptBR }),
+    name: holiday.name,
+  }));
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    thisWeek.from,
+    thisWeek.to,
+    weekHolidaysRaw.map((holiday) => holiday.date),
+  );
+  const weekTargetMinutes = adjustedWeeklyCapacityMinutes(
+    user.weeklyCapacityHours,
+    weekdayHolidayCount,
+  );
 
   const minutesByDate = new Map<string, number>();
   for (const entry of weekEntries) {
@@ -135,6 +167,7 @@ export async function buildAssistantSnapshot(
     thisWeek.to,
     user.today,
   )) {
+    if (holidayByDate.has(date)) continue;
     const minutes = minutesByDate.get(date) ?? 0;
     if (minutes < incompleteThreshold) {
       incompleteDays.push({
@@ -160,10 +193,12 @@ export async function buildAssistantSnapshot(
       },
     ),
     todayMinutes,
+    todayHoliday: holidayByDate.get(user.today)?.name ?? null,
     weekMinutes,
-    weekTargetMinutes: user.weeklyCapacityHours * 60,
+    weekTargetMinutes,
     weekPeriod,
     weekStatus: currentSheet?.status ?? "open",
+    weekHolidays,
     previousWeekPeriod,
     previousWeekStatus: previousSheet?.status ?? "open",
     previousWeekMinutes,
@@ -261,15 +296,26 @@ export function renderSnapshotForPrompt(
   user: AgentUserContext,
   snapshot: AssistantSnapshot,
 ): string {
+  const weekHolidays = snapshot.weekHolidays ?? [];
   const lines: string[] = [
     "## Estado atual do usuário (dados reais, já consultados)",
     `- Nome: ${user.name} · Função: ${translateRole(user.role)}`,
-    `- Hoje: ${snapshot.todayLabel} (${user.today})`,
+    `- Hoje: ${snapshot.todayLabel} (${user.today})${snapshot.todayHoliday ? ` · FERIADO (${snapshot.todayHoliday} — meta 0h)` : ""}`,
     `- Horas hoje: ${formatDuration(snapshot.todayMinutes)}`,
-    `- Horas nesta semana (${snapshot.weekPeriod}): ${formatDuration(snapshot.weekMinutes)} de ${formatDuration(snapshot.weekTargetMinutes)}`,
+    `- Horas nesta semana (${snapshot.weekPeriod}): ${formatDuration(snapshot.weekMinutes)} de ${formatDuration(snapshot.weekTargetMinutes)}${weekHolidays.length > 0 ? ` (meta ajustada por feriado)` : ""}`,
     `- Timesheet desta semana: ${snapshot.weekStatus}`,
     `- Semana passada (${snapshot.previousWeekPeriod}): ${formatDuration(snapshot.previousWeekMinutes)} · status ${snapshot.previousWeekStatus}`,
   ];
+
+  if (weekHolidays.length > 0) {
+    lines.push(
+      `- Feriados/pontes nesta semana (meta 0h, sem necessidade de registro): ${weekHolidays
+        .map(
+          (holiday) => `${holiday.weekday} (${holiday.date}) — ${holiday.name}`,
+        )
+        .join("; ")}`,
+    );
+  }
 
   if (snapshot.rejectionReason) {
     lines.push(`- Motivo da última rejeição: "${snapshot.rejectionReason}"`);

@@ -6,10 +6,15 @@ import {
   getActorContext,
 } from "@/lib/access-control";
 import { syncCompletedWorkToAzDO } from "@/lib/azure-devops/sync";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
 import type { CelebrationPayload } from "@/lib/gamification";
 import { awardWeekApproval, awardWeekSubmission } from "@/lib/gamification";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
   getTimesheetPeriodLabel,
   isPeriodOpenAfter,
@@ -91,9 +96,24 @@ export async function GET(
       );
     }
 
-    if (ts.status === "open" || ts.status === "rejected") {
-      const { start, end } = getPeriodRange(ts.period, ts.periodType);
+    const { start, end } = getPeriodRange(ts.period, ts.periodType);
+    const holidays = await getHolidaysInRange(start, end);
+    const weekdayHolidayCount =
+      ts.periodType === "weekly"
+        ? countWeekdayHolidaysInRange(
+            start,
+            end,
+            holidays.map((h) => h.date),
+          )
+        : 0;
+    const adjustedWeeklyCapacityHours = Math.round(
+      adjustedWeeklyCapacityMinutes(
+        ts.user?.weeklyCapacity ?? 40,
+        weekdayHolidayCount,
+      ) / 60,
+    );
 
+    if (ts.status === "open" || ts.status === "rejected") {
       const result = await db
         .select({
           totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)`,
@@ -131,7 +151,7 @@ export async function GET(
     }
 
     return Response.json({
-      timesheet: { ...ts, weeklyCapacity: ts.user?.weeklyCapacity ?? 40 },
+      timesheet: { ...ts, weeklyCapacity: adjustedWeeklyCapacityHours },
     });
   } catch (error) {
     console.error("[GET /api/timesheets/:id]:", error);

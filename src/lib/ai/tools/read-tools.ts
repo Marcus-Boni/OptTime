@@ -25,6 +25,8 @@ import {
 } from "@/lib/azure-devops/client";
 import { findAzureDevopsConfigByUserId } from "@/lib/azure-devops/config";
 import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
   dailyTargetMinutes,
   incompleteDayThresholdMinutes,
 } from "@/lib/capacity";
@@ -38,6 +40,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { formatDuration, getWeekPeriod } from "@/lib/utils";
 import type { AgentTool, ToolContext } from "./types";
 
@@ -273,11 +276,21 @@ export const getWorkSummaryTool: AgentTool<
       args.from,
       args.to,
     );
-    const entries = await fetchEntries(
-      ctx.user.userId,
+    const [entries, holidays] = await Promise.all([
+      fetchEntries(ctx.user.userId, range.from, range.to, args.projectId),
+      getHolidaysInRange(range.from, range.to),
+    ]);
+    const holidayByDate = new Map(
+      holidays.map((holiday) => [holiday.date, holiday]),
+    );
+    const weekdayHolidayCount = countWeekdayHolidaysInRange(
       range.from,
       range.to,
-      args.projectId,
+      holidays.map((holiday) => holiday.date),
+    );
+    const effectiveBusinessDays = Math.max(
+      0,
+      range.businessDays - weekdayHolidayCount,
     );
 
     const totalMinutes = entries.reduce((sum, e) => sum + e.duration, 0);
@@ -287,7 +300,7 @@ export const getWorkSummaryTool: AgentTool<
     const projects = buildProjectSlices(entries, totalMinutes);
     const days = buildDaySlices(entries, range.from, range.to);
     const targetMinutes =
-      range.businessDays * dailyTargetMinutes(ctx.user.weeklyCapacityHours);
+      effectiveBusinessDays * dailyTargetMinutes(ctx.user.weeklyCapacityHours);
 
     ctx.emitCard({
       kind: "work_summary",
@@ -316,7 +329,12 @@ export const getWorkSummaryTool: AgentTool<
         targetMinutes,
         balanceMinutes: totalMinutes - targetMinutes,
         entryCount: entries.length,
-        businessDays: range.businessDays,
+        businessDays: effectiveBusinessDays,
+        holidays: holidays.map((holiday) => ({
+          date: holiday.date,
+          name: holiday.name,
+          scope: holiday.scope,
+        })),
         byProject: projects.slice(0, 8).map((p) => ({
           name: p.name,
           code: p.code,
@@ -329,6 +347,7 @@ export const getWorkSummaryTool: AgentTool<
             date: d.date,
             weekday: d.weekday,
             formatted: formatDuration(d.minutes),
+            holiday: holidayByDate.get(d.date)?.name ?? null,
           })),
       },
     };
@@ -466,7 +485,7 @@ export const getTimesheetStatusTool: AgentTool<
     const range = resolvePeriod(args.period ?? "this_week", ctx.user.today);
     const period = getWeekPeriod(range.from);
 
-    const [sheet, entries] = await Promise.all([
+    const [sheet, entries, holidays] = await Promise.all([
       db.query.timesheet.findFirst({
         where: and(
           eq(timesheet.userId, ctx.user.userId),
@@ -475,8 +494,21 @@ export const getTimesheetStatusTool: AgentTool<
         columns: { status: true, rejectionReason: true },
       }),
       fetchEntries(ctx.user.userId, range.from, range.to),
+      getHolidaysInRange(range.from, range.to),
     ]);
 
+    const holidayByDate = new Map(
+      holidays.map((holiday) => [holiday.date, holiday]),
+    );
+    const weekdayHolidayCount = countWeekdayHolidaysInRange(
+      range.from,
+      range.to,
+      holidays.map((holiday) => holiday.date),
+    );
+    const targetMinutes = adjustedWeeklyCapacityMinutes(
+      ctx.user.weeklyCapacityHours,
+      weekdayHolidayCount,
+    );
     const totalMinutes = entries.reduce((sum, e) => sum + e.duration, 0);
     const status = (sheet?.status ?? "open") as
       | "open"
@@ -492,6 +524,7 @@ export const getTimesheetStatusTool: AgentTool<
       .filter(
         (day) =>
           !day.isWeekend &&
+          !holidayByDate.has(day.date) &&
           day.date <= ctx.user.today &&
           day.minutes < incompleteThreshold,
       )
@@ -510,7 +543,7 @@ export const getTimesheetStatusTool: AgentTool<
       periodLabel: `${formatDayLabel(range.from)} – ${formatDayLabel(range.to)}`,
       status,
       totalMinutes,
-      targetMinutes: ctx.user.weeklyCapacityHours * 60,
+      targetMinutes,
       from: range.from,
       to: range.to,
       rejectionReason: sheet?.rejectionReason ?? null,
@@ -524,10 +557,14 @@ export const getTimesheetStatusTool: AgentTool<
         period,
         status,
         totalFormatted: formatDuration(totalMinutes),
-        targetFormatted: formatDuration(ctx.user.weeklyCapacityHours * 60),
+        targetFormatted: formatDuration(targetMinutes),
         entryCount: entries.length,
         canSubmit,
         rejectionReason: sheet?.rejectionReason ?? null,
+        holidays: holidays.map((holiday) => ({
+          date: holiday.date,
+          name: holiday.name,
+        })),
         incompleteDays: incompleteDays.map((day) => ({
           date: day.date,
           weekday: day.weekday,
@@ -796,7 +833,7 @@ export const getTeamOverviewTool: AgentTool<PeriodArgs> = {
     const memberIds = members.map((m) => m.id);
     const period = getWeekPeriod(range.from);
 
-    const [entries, sheets] = await Promise.all([
+    const [entries, sheets, holidays] = await Promise.all([
       db
         .select({
           userId: timeEntry.userId,
@@ -818,7 +855,18 @@ export const getTeamOverviewTool: AgentTool<PeriodArgs> = {
         ),
         columns: { userId: true, status: true },
       }),
+      getHolidaysInRange(range.from, range.to),
     ]);
+
+    const weekdayHolidayCount = countWeekdayHolidaysInRange(
+      range.from,
+      range.to,
+      holidays.map((holiday) => holiday.date),
+    );
+    const effectiveBusinessDays = Math.max(
+      0,
+      range.businessDays - weekdayHolidayCount,
+    );
 
     const minutesByUser = new Map<string, number>();
     for (const entry of entries) {
@@ -836,7 +884,7 @@ export const getTeamOverviewTool: AgentTool<PeriodArgs> = {
         name: member.name,
         minutes: minutesByUser.get(member.id) ?? 0,
         targetMinutes:
-          range.businessDays * dailyTargetMinutes(member.weeklyCapacity),
+          effectiveBusinessDays * dailyTargetMinutes(member.weeklyCapacity),
         timesheetStatus: statusByUser.get(member.id) ?? "open",
       }))
       .sort((a, b) => b.minutes - a.minutes);

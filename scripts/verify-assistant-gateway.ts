@@ -1031,6 +1031,7 @@ async function main(): Promise<void> {
       {
         date: day,
         weekday: "quarta",
+        holidayName: null,
         totalMinutes: 60,
         totalLabel: "1h",
         billableMinutes: 60,

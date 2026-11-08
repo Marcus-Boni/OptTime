@@ -8,6 +8,10 @@ import {
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { type ActorContext, buildScopedUserWhere } from "@/lib/access-control";
 import { createAzureDevOpsClient } from "@/lib/azure-devops/client";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import {
   azureDevopsConfig,
@@ -18,6 +22,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
 import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import { getWeekPeriod } from "@/lib/utils";
@@ -342,6 +347,12 @@ export async function getPeoplePerformance(
   }
 
   const userIds = scopedUsers.map((person) => person.id);
+  const weekHolidays = await getHolidaysInRange(weekStart, weekEnd);
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    weekStart,
+    weekEnd,
+    weekHolidays.map((h) => h.date),
+  );
 
   const [
     activeProjects,
@@ -696,11 +707,13 @@ export async function getPeoplePerformance(
         currentTimesheets.filter((sheet) => sheet.userId === person.id),
         timeEntries.map((entry) => entry.date),
       ).status;
+      const adjustedCapacityMinutes = adjustedWeeklyCapacityMinutes(
+        person.weeklyCapacity,
+        weekdayHolidayCount,
+      );
       const utilizationPercent =
-        person.weeklyCapacity > 0
-          ? Math.round(
-              (loggedThisWeekMinutes / (person.weeklyCapacity * 60)) * 100,
-            )
+        adjustedCapacityMinutes > 0
+          ? Math.round((loggedThisWeekMinutes / adjustedCapacityMinutes) * 100)
           : 0;
 
       const lastLoggedAt =

@@ -4,15 +4,20 @@ import {
   getActorContext,
   getScopedUserIds,
 } from "@/lib/access-control";
-import { weeklyCapacityMinutes } from "@/lib/capacity";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
   type AnomalyEntryInput,
   detectTimesheetAnomalies,
   isConformant,
 } from "@/lib/hq/anomalies";
 import { getTimesheetPeriodLabel } from "@/lib/timesheet-periods";
+import { getPeriodRange } from "@/lib/utils";
 import type { ApprovalInsight, HqApprovalsResponse } from "@/types/hq";
 
 function buildPeriodLabel(period: string, periodType: string): string {
@@ -105,6 +110,24 @@ export async function GET(req: Request): Promise<Response> {
       (ts) => Boolean(ts.user) && ts.user?.isActive !== false,
     );
 
+    const periodRanges = new Map<string, { start: string; end: string }>();
+    let minDate: string | null = null;
+    let maxDate: string | null = null;
+    for (const ts of activePendingTimesheets) {
+      try {
+        const range = getPeriodRange(ts.period, ts.periodType);
+        periodRanges.set(ts.id, range);
+        if (!minDate || range.start < minDate) minDate = range.start;
+        if (!maxDate || range.end > maxDate) maxDate = range.end;
+      } catch {
+        // Ignore invalid period key
+      }
+    }
+
+    const holidays =
+      minDate && maxDate ? await getHolidaysInRange(minDate, maxDate) : [];
+    const holidayDateList = holidays.map((h) => h.date);
+
     const insights: ApprovalInsight[] = activePendingTimesheets.map((ts) => {
       const anomalyEntries: AnomalyEntryInput[] = ts.entries.map((entry) => ({
         id: entry.id,
@@ -117,9 +140,17 @@ export async function GET(req: Request): Promise<Response> {
         createdAt: entry.createdAt,
       }));
 
+      const range = periodRanges.get(ts.id);
+      const weekdayHolidayCount = range
+        ? countWeekdayHolidaysInRange(range.start, range.end, holidayDateList)
+        : 0;
+
       const anomalies = detectTimesheetAnomalies({
         entries: anomalyEntries,
-        weeklyCapacityMinutes: weeklyCapacityMinutes(ts.user?.weeklyCapacity),
+        weeklyCapacityMinutes: adjustedWeeklyCapacityMinutes(
+          ts.user?.weeklyCapacity,
+          weekdayHolidayCount,
+        ),
       });
 
       const minutesByProject = new Map<

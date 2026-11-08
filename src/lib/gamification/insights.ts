@@ -14,6 +14,7 @@ import {
 } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { project, timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { getTimesheetPeriodsForWeek } from "@/lib/timesheet-periods";
 import { summarizeTimesheetWeek } from "@/lib/timesheet-week-status";
 import {
@@ -212,7 +213,7 @@ export async function buildPersonalInsights(
   const windowStart = getPeriodRange(firstPeriod, "weekly").start;
   const windowEnd = getPeriodRange(lastPeriod, "weekly").end;
 
-  const [rows, timesheets, profile] = await Promise.all([
+  const [rows, timesheets, profile, holidays] = await Promise.all([
     db
       .select({
         date: timeEntry.date,
@@ -248,7 +249,9 @@ export async function buildPersonalInsights(
       where: eq(user.id, userId),
       columns: { weeklyCapacity: true },
     }),
+    getHolidaysInRange(windowStart, windowEnd),
   ]);
+  const holidayDates = new Set(holidays.map((holiday) => holiday.date));
 
   const entries: InsightEntry[] = rows.map((row) => ({
     date: row.date,
@@ -378,11 +381,13 @@ export async function buildPersonalInsights(
     deltaPercentage: null,
   });
 
-  // Business-day coverage across the window, ignoring days still in the future.
+  // Business-day coverage across the window, ignoring days still in the future and holidays.
   const businessDays = eachDayOfInterval({
     start: parseLocalDate(windowStart),
     end: parseLocalDate(format(now, "yyyy-MM-dd")),
-  }).filter((day) => !isWeekend(day));
+  }).filter(
+    (day) => !isWeekend(day) && !holidayDates.has(format(day, "yyyy-MM-dd")),
+  );
   const loggedDays = new Set(entries.map((entry) => entry.date));
   const coveredBusinessDays = businessDays.filter((day) =>
     loggedDays.has(format(day, "yyyy-MM-dd")),

@@ -21,6 +21,7 @@ import type { NavigateAction, UiCommandPayload } from "@/lib/ai/types";
 import { incompleteDayThresholdMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry, timesheet } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { getTimesheetSegmentForDate } from "@/lib/timesheet-periods";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
@@ -371,7 +372,7 @@ export const prepareTimesheetSubmitTool: AgentTool<
     const segment = getTimesheetSegmentForDate(referenceDate);
     const period = segment.period;
 
-    const [sheet, entries] = await Promise.all([
+    const [sheet, entries, holidays] = await Promise.all([
       db.query.timesheet.findFirst({
         where: and(
           eq(timesheet.userId, ctx.user.userId),
@@ -390,7 +391,9 @@ export const prepareTimesheetSubmitTool: AgentTool<
             isNull(timeEntry.deletedAt),
           ),
         ),
+      getHolidaysInRange(segment.start, segment.end),
     ]);
+    const holidayDates = new Set(holidays.map((holiday) => holiday.date));
 
     const status = sheet?.status ?? "open";
     const totalMinutes = entries.reduce((sum, e) => sum + e.duration, 0);
@@ -429,7 +432,8 @@ export const prepareTimesheetSubmitTool: AgentTool<
       ctx.user.weeklyCapacityHours,
     );
     const lowDays = [...minutesByDate.entries()].filter(
-      ([, minutes]) => minutes < incompleteThreshold,
+      ([date, minutes]) =>
+        !holidayDates.has(date) && minutes < incompleteThreshold,
     ).length;
 
     const warning =

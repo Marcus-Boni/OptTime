@@ -1,8 +1,13 @@
 import { and, desc, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
   getBaseWeekPeriod,
   getTimesheetPeriodForDate,
@@ -69,10 +74,33 @@ export async function GET(req: Request): Promise<Response> {
       orderBy: [desc(timesheet.period)],
     });
 
+    const ranges = new Map<string, { start: string; end: string }>();
+    let minStart: string | null = null;
+    let maxEnd: string | null = null;
+    for (const ts of timesheets) {
+      const range = getPeriodRange(ts.period, ts.periodType);
+      ranges.set(ts.id, range);
+      if (!minStart || range.start < minStart) minStart = range.start;
+      if (!maxEnd || range.end > maxEnd) maxEnd = range.end;
+    }
+
+    const holidays =
+      minStart && maxEnd ? await getHolidaysInRange(minStart, maxEnd) : [];
+    const holidayDates = holidays.map((h) => h.date);
+
     // Enriquecer timesheets abertos/rejeitados com os totais atuais baseados nas entradas
     const enrichedTimesheets = await Promise.all(
       timesheets.map(async (ts) => {
-        const { start, end } = getPeriodRange(ts.period, ts.periodType);
+        const { start, end } =
+          ranges.get(ts.id) ?? getPeriodRange(ts.period, ts.periodType);
+        const weekdayHolidayCount =
+          ts.periodType === "weekly"
+            ? countWeekdayHolidaysInRange(start, end, holidayDates)
+            : 0;
+        const periodWeeklyCapacity = Math.round(
+          adjustedWeeklyCapacityMinutes(weeklyCapacity, weekdayHolidayCount) /
+            60,
+        );
 
         if (ts.status === "open" || ts.status === "rejected") {
           const result = await db
@@ -98,7 +126,7 @@ export async function GET(req: Request): Promise<Response> {
             ...ts,
             totalMinutes: Number(result[0]?.totalMinutes || 0),
             billableMinutes: Number(result[0]?.billableMinutes || 0),
-            weeklyCapacity,
+            weeklyCapacity: periodWeeklyCapacity,
             periodStart: start,
             periodEnd: end,
           };
@@ -106,7 +134,7 @@ export async function GET(req: Request): Promise<Response> {
 
         return {
           ...ts,
-          weeklyCapacity,
+          weeklyCapacity: periodWeeklyCapacity,
           periodStart: start,
           periodEnd: end,
         };

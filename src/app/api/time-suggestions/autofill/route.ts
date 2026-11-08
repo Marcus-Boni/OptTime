@@ -18,6 +18,7 @@ import {
   user,
 } from "@/lib/db/schema";
 import { decrypt } from "@/lib/encryption";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
   type AutofillProject,
   buildAutofillProposals,
@@ -176,34 +177,36 @@ export async function GET(req: Request): Promise<Response> {
       azureProjectId: row.azureProjectId,
     }));
 
-    const [existingEntries, dismissals, lockedDates] = await Promise.all([
-      db.query.timeEntry.findMany({
-        where: and(
-          eq(timeEntry.userId, session.user.id),
-          gte(timeEntry.date, from),
-          lte(timeEntry.date, today),
-          isNull(timeEntry.deletedAt),
-        ),
-        columns: {
-          date: true,
-          projectId: true,
-          duration: true,
-          azureWorkItemId: true,
-          description: true,
-        },
-      }),
-      db.query.timeSuggestionFeedback.findMany({
-        where: and(
-          eq(timeSuggestionFeedback.userId, session.user.id),
-          eq(timeSuggestionFeedback.action, "rejected"),
-          like(timeSuggestionFeedback.suggestionFingerprint, "autofill:%"),
-        ),
-        columns: { suggestionFingerprint: true },
-        orderBy: [desc(timeSuggestionFeedback.createdAt)],
-        limit: 200,
-      }),
-      resolveLockedDates(session.user.id, dates),
-    ]);
+    const [existingEntries, dismissals, lockedDates, holidays] =
+      await Promise.all([
+        db.query.timeEntry.findMany({
+          where: and(
+            eq(timeEntry.userId, session.user.id),
+            gte(timeEntry.date, from),
+            lte(timeEntry.date, today),
+            isNull(timeEntry.deletedAt),
+          ),
+          columns: {
+            date: true,
+            projectId: true,
+            duration: true,
+            azureWorkItemId: true,
+            description: true,
+          },
+        }),
+        db.query.timeSuggestionFeedback.findMany({
+          where: and(
+            eq(timeSuggestionFeedback.userId, session.user.id),
+            eq(timeSuggestionFeedback.action, "rejected"),
+            like(timeSuggestionFeedback.suggestionFingerprint, "autofill:%"),
+          ),
+          columns: { suggestionFingerprint: true },
+          orderBy: [desc(timeSuggestionFeedback.createdAt)],
+          limit: 200,
+        }),
+        resolveLockedDates(session.user.id, dates),
+        getHolidaysInRange(from, today),
+      ]);
 
     // ── Azure DevOps signals ──
     const pullRequests: AzureDevOpsPullRequest[] = [];
@@ -316,6 +319,7 @@ export async function GET(req: Request): Promise<Response> {
       commits,
       existingEntries,
       lockedDates,
+      holidayDates: holidays.map((holiday) => holiday.date),
       dismissedFingerprints: dismissals.map((row) => row.suggestionFingerprint),
       defaults: {
         durationMinutes: profile?.timeDefaultDuration ?? 60,

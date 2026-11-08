@@ -5,9 +5,14 @@ import {
   getManagedProjectIds,
   getScopedUserIds,
 } from "@/lib/access-control";
-import { weeklyCapacityMinutes } from "@/lib/capacity";
+import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+  weeklyCapacityMinutes,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { allocation, project, timeEntry, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import { buildWeekWindow, classifyUtilization } from "@/lib/hq/workload";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { getWeekPeriod } from "@/lib/utils";
@@ -53,11 +58,21 @@ export async function GET(req: Request): Promise<Response> {
     const today = todayInAppTimeZone();
     const weeks = buildWeekWindow(today, past, future);
     const windowStart = weeks[0]?.start ?? today;
+    const windowEnd = weeks[weeks.length - 1]?.end ?? today;
     const weekIds = weeks.map((week) => week.week);
     const futureWeekIds = new Set(
       weeks.filter((week) => week.isFuture).map((week) => week.week),
     );
     const currentWeekId = weeks.find((week) => week.isCurrent)?.week ?? null;
+    const windowHolidays = await getHolidaysInRange(windowStart, windowEnd);
+    const windowHolidayDates = windowHolidays.map((h) => h.date);
+    const holidayCountByWeek = new Map<string, number>();
+    for (const week of weeks) {
+      holidayCountByWeek.set(
+        week.week,
+        countWeekdayHolidaysInRange(week.start, week.end, windowHolidayDates),
+      );
+    }
 
     // Managers plan for themselves too, so the scope always includes the actor.
     const scopedUserIds = await getScopedUserIds(actor);
@@ -182,12 +197,18 @@ export async function GET(req: Request): Promise<Response> {
           0,
         );
 
+        const weekHolidayCount = holidayCountByWeek.get(week.week) ?? 0;
+        const weekCapacityMinutes = adjustedWeeklyCapacityMinutes(
+          person.weeklyCapacity,
+          weekHolidayCount,
+        );
+
         const relevantMinutes = isFuture ? plannedMinutes : actualMinutes;
-        const level = classifyUtilization(relevantMinutes, capacityMinutes);
+        const level = classifyUtilization(relevantMinutes, weekCapacityMinutes);
 
         if (!isFuture && !week.isCurrent) {
           pastUtilizationSum +=
-            capacityMinutes > 0 ? actualMinutes / capacityMinutes : 0;
+            weekCapacityMinutes > 0 ? actualMinutes / weekCapacityMinutes : 0;
           pastWeekCount += 1;
         }
 

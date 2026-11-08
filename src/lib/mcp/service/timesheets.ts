@@ -1,11 +1,13 @@
 import { and, eq, gte, isNull, lte, or, sql } from "drizzle-orm";
 import {
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
   incompleteDayThresholdMinutes,
-  weeklyCapacityMinutes,
 } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet, user } from "@/lib/db/schema";
 import { awardWeekSubmission } from "@/lib/gamification";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 import type { AgentPrincipal } from "@/lib/mcp/auth";
 import { AgentError } from "@/lib/mcp/errors";
 import {
@@ -72,7 +74,7 @@ export async function getTimesheetStatus(
   period = resolveWeekPeriod(period);
   const { start, end } = getPeriodRange(period, "weekly");
 
-  const [record, profile, entries] = await Promise.all([
+  const [record, profile, entries, holidays] = await Promise.all([
     db.query.timesheet.findFirst({
       where: and(
         eq(timesheet.userId, principal.userId),
@@ -93,12 +95,20 @@ export async function getTimesheetStatus(
       ),
       columns: { date: true, duration: true, billable: true },
     }),
+    getHolidaysInRange(start, end),
   ]);
 
+  const holidayDates = new Set(holidays.map((h) => h.date));
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    start,
+    end,
+    holidayDates,
+  );
   const status = (record?.status ?? "open") as TimesheetStatusView["status"];
   const totalMinutes = entries.reduce((total, row) => total + row.duration, 0);
-  const profileWeeklyCapacityMinutes = weeklyCapacityMinutes(
+  const profileWeeklyCapacityMinutes = adjustedWeeklyCapacityMinutes(
     profile?.weeklyCapacity,
+    weekdayHolidayCount,
   );
   const incompleteThreshold = incompleteDayThresholdMinutes(
     profile?.weeklyCapacity,
@@ -124,6 +134,7 @@ export async function getTimesheetStatus(
     const date = formatLocalDate(cursor);
     const minutes = minutesByDate.get(date) ?? 0;
     const weekend = isWeekend(date);
+    const isHoliday = holidayDates.has(date);
 
     days.push({
       date,
@@ -131,9 +142,13 @@ export async function getTimesheetStatus(
       minutes,
       label: humanizeMinutes(minutes),
       isWeekend: weekend,
-      // Only past and current days can be "missing" — a Friday in the future is
-      // not a gap, and flagging it would train users to ignore the warnings.
-      isBelowTarget: !weekend && date <= today && minutes < incompleteThreshold,
+      // Only past and current working days can be "missing" — weekends, holidays,
+      // and future days are not gaps.
+      isBelowTarget:
+        !weekend &&
+        !isHoliday &&
+        date <= today &&
+        minutes < incompleteThreshold,
     });
 
     cursor.setDate(cursor.getDate() + 1);

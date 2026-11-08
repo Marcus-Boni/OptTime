@@ -80,6 +80,8 @@ export interface BuildAutofillInput {
   existingEntries: AutofillExistingEntry[];
   /** Dates inside a submitted/approved timesheet — never proposable. */
   lockedDates: string[];
+  /** Active corporate holidays — no logging obligation on these dates. */
+  holidayDates?: string[];
   /** Fingerprints the user already dismissed. */
   dismissedFingerprints: string[];
   defaults: AutofillDefaults;
@@ -235,7 +237,7 @@ export function buildAutofillProposals(
   if (projects.length === 0) return [];
 
   const allowedDates = new Set(dates);
-  const locked = new Set(lockedDates);
+  const locked = new Set([...lockedDates, ...(input.holidayDates ?? [])]);
   const dismissed = new Set(dismissedFingerprints);
 
   // Indexes of what is already logged, so nothing is proposed twice.

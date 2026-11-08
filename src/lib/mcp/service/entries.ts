@@ -1,20 +1,35 @@
 import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
-import { dailyTargetMinutes, weeklyCapacityMinutes } from "@/lib/capacity";
+import {
+  adjustedDailyTargetMinutes,
+  adjustedWeeklyCapacityMinutes,
+  countWeekdayHolidaysInRange,
+} from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { project, timeEntry, user } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
+import type { AgentPrincipal } from "@/lib/mcp/auth";
+import { AgentError } from "@/lib/mcp/errors";
+import { humanizeMinutes, weekdayLabel } from "@/lib/mcp/format";
+import {
+  peekIdempotency,
+  runIdempotentInTransaction,
+} from "@/lib/mcp/idempotency";
+import { clearAgendaCache } from "@/lib/mcp/service/agenda-cache";
+import {
+  type ProjectSummary,
+  resolveProject,
+} from "@/lib/mcp/service/projects";
+import {
+  type ActiveTimerView,
+  assertUnlocked,
+  getActiveTimer,
+} from "@/lib/mcp/service/timer";
 import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
 import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
 import { isTimesheetLockedStatus } from "@/lib/timesheet-status";
 import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
-import type { AgentPrincipal } from "../auth";
-import { AgentError } from "../errors";
-import { humanizeMinutes, weekdayLabel } from "../format";
-import { peekIdempotency, runIdempotentInTransaction } from "../idempotency";
-import { clearAgendaCache } from "./agenda-cache";
-import { type ProjectSummary, resolveProject } from "./projects";
-import { type ActiveTimerView, assertUnlocked, getActiveTimer } from "./timer";
 
 /**
  * Time entry CRUD plus the day/week roll-ups agents read before answering
@@ -444,6 +459,7 @@ export interface ProjectBreakdown {
 export interface DaySummary {
   date: string;
   weekday: string;
+  holidayName: string | null;
   totalMinutes: number;
   totalLabel: string;
   billableMinutes: number;
@@ -467,7 +483,10 @@ export async function getDaySummary(
   principal: AgentPrincipal,
   date: string,
 ): Promise<DaySummary> {
-  const [profile, rows, activeTimer] = await Promise.all([
+  const period = getWeekPeriod(date);
+  const { start, end } = getPeriodRange(period, "weekly");
+
+  const [profile, rows, activeTimer, holidays] = await Promise.all([
     db.query.user.findFirst({
       where: eq(user.id, principal.userId),
       columns: { weeklyCapacity: true },
@@ -484,17 +503,26 @@ export async function getDaySummary(
       orderBy: [desc(timeEntry.createdAt)],
     }),
     getActiveTimer(principal),
+    getHolidaysInRange(start, end),
   ]);
 
-  const period = getWeekPeriod(date);
-  const { start, end } = getPeriodRange(period, "weekly");
   const weekTotalMinutes = await sumMinutes(db, principal.userId, start, end);
 
-  const profileWeeklyCapacityMinutes = weeklyCapacityMinutes(
-    profile?.weeklyCapacity,
+  const dayHoliday = holidays.find((h) => h.date === date) ?? null;
+  const holidayDates = new Set(holidays.map((h) => h.date));
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    start,
+    end,
+    holidayDates,
   );
-  const dailyCapacityMinutes = dailyTargetMinutes(
+  const profileWeeklyCapacityMinutes = adjustedWeeklyCapacityMinutes(
     profile?.weeklyCapacity,
+    weekdayHolidayCount,
+  );
+  const dailyCapacityMinutes = adjustedDailyTargetMinutes(
+    profile?.weeklyCapacity,
+    date,
+    holidayDates,
     WORKING_DAYS_PER_WEEK,
   );
 
@@ -526,6 +554,7 @@ export async function getDaySummary(
   return {
     date,
     weekday: weekdayLabel(date),
+    holidayName: dayHoliday?.name ?? null,
     totalMinutes,
     totalLabel: humanizeMinutes(totalMinutes),
     billableMinutes,

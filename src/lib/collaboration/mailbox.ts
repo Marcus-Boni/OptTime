@@ -234,6 +234,10 @@ export function resolveDailyTarget(
   const workingDaysPerWeek =
     workingHours?.daysOfWeek.length ?? DEFAULT_WORKING_DAYS_PER_WEEK;
 
+  // `YYYY-MM-DD` at UTC noon dodges any DST edge when reading the weekday.
+  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
+  const isoWeekday = weekday === 0 ? 7 : weekday;
+
   if (isHoliday) {
     return {
       minutes: 0,
@@ -244,16 +248,17 @@ export function resolveDailyTarget(
   }
 
   if (!workingHours) {
+    const isWeekday = isoWeekday >= 1 && isoWeekday <= 5;
     return {
-      minutes: Math.round(weeklyMinutes / DEFAULT_WORKING_DAYS_PER_WEEK),
-      basis: "weekly_capacity",
-      isWorkingDay: true,
+      minutes: isWeekday
+        ? Math.round(weeklyMinutes / DEFAULT_WORKING_DAYS_PER_WEEK)
+        : 0,
+      basis: isWeekday ? "weekly_capacity" : "non_working_day",
+      isWorkingDay: isWeekday,
       workingDaysPerWeek: DEFAULT_WORKING_DAYS_PER_WEEK,
     };
   }
-  // `YYYY-MM-DD` at UTC noon dodges any DST edge when reading the weekday.
-  const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
-  const isoWeekday = weekday === 0 ? 7 : weekday;
+
   const isWorkingDay = workingHours.daysOfWeek.includes(isoWeekday);
 
   if (!isWorkingDay) {

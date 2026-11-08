@@ -15,6 +15,7 @@ import {
   buildPeriodInsights,
   resolveRhythm,
 } from "../src/lib/collaboration/insights";
+import { resolveDailyTarget } from "../src/lib/collaboration/mailbox";
 import {
   buildDeterministicNarrative,
   buildFactSheet,
@@ -1114,6 +1115,30 @@ function verifySourceStatus(): void {
   );
 }
 
+function verifyHolidayWeekShape(): void {
+  const finadosDates = new Set(["2026-11-02"]);
+  const weekDates = enumerateDates("2026-11-02", "2026-11-08");
+  const days = weekDates.map((d) => {
+    const target = resolveDailyTarget(40, null, d, finadosDates.has(d));
+    return day(d, {
+      isWorkingDay: target.isWorkingDay,
+      targetMinutes: target.minutes,
+    });
+  });
+
+  const shape = buildTimeShape({
+    meetings: [],
+    days,
+    workingHours: null,
+    timeZone: TZ,
+  });
+  check(
+    "week with Finados (2026-11-02) has 32h (1920m) contracted capacity",
+    shape.contractedMinutes === 1920,
+    `got ${shape.contractedMinutes}`,
+  );
+}
+
 // ─── Entry point ──────────────────────────────────────────────────────
 
 function main(): void {
@@ -1129,6 +1154,7 @@ function main(): void {
   verifyRhythm();
   verifySourceStatus();
   verifyNarrative();
+  verifyHolidayWeekShape();
 
   if (problems.length > 0) {
     console.error("\nMeu Tempo — regras quebradas:");
