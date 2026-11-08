@@ -31,6 +31,7 @@ import {
 import { buildCallRecordsStatus } from "@/lib/collaboration/source-status";
 import { db } from "@/lib/db";
 import { timeEntry, user } from "@/lib/db/schema";
+import { isHolidayDate } from "@/lib/holidays/service";
 import {
   fetchMicrosoftObjectId,
   fetchOutlookEvents,
@@ -111,7 +112,7 @@ export async function buildCollaborationDay({
 }: BuildCollaborationDayInput): Promise<CollaborationDay> {
   const warnings: string[] = [];
 
-  const [entries, profile, acceptedCallIds] = await Promise.all([
+  const [entries, profile, acceptedCallIds, holiday] = await Promise.all([
     db
       .select({
         description: timeEntry.description,
@@ -130,18 +131,21 @@ export async function buildCollaborationDay({
       columns: { weeklyCapacity: true },
     }),
     getAcceptedCallIds(userId, date, date),
+    isHolidayDate(date),
   ]);
 
   const weeklyCapacityHours =
     profile?.weeklyCapacity ?? DEFAULT_WEEKLY_CAPACITY_HOURS;
   const loggedMinutes = entries.reduce((sum, row) => sum + row.duration, 0);
   const existingDescriptions = entries.map((row) => row.description);
+  const isHoliday = Boolean(holiday);
 
   /** Used whenever the mailbox is unreachable — the historical behaviour. */
   const fallbackTarget: DailyTarget = resolveDailyTarget(
     weeklyCapacityHours,
     null,
     date,
+    isHoliday,
   );
 
   const empty: CollaborationDay = {
@@ -189,7 +193,12 @@ export async function buildCollaborationDay({
 
   const target =
     mailbox.availability === "ok"
-      ? resolveDailyTarget(weeklyCapacityHours, mailbox.workingHours, date)
+      ? resolveDailyTarget(
+          weeklyCapacityHours,
+          mailbox.workingHours,
+          date,
+          isHoliday,
+        )
       : fallbackTarget;
 
   const away =

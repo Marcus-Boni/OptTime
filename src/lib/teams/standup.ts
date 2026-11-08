@@ -18,6 +18,7 @@ import {
   timeEntry,
   user,
 } from "@/lib/db/schema";
+import { isHolidayDate } from "@/lib/holidays/service";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { parseLocalDate } from "@/lib/utils";
 import { buildStandupCard, type StandupRow } from "./cards";
@@ -37,6 +38,22 @@ export function previousBusinessDay(today: string): string {
   if (weekday === 1) return shiftDay(today, -3); // Monday → Friday
   if (weekday === 0) return shiftDay(today, -2); // Sunday → Friday
   return shiftDay(today, -1);
+}
+
+/**
+ * Previous business day skipping both weekends and active corporate holidays
+ * (up to 10 days back so post-Carnaval or post-Finados reports the last workday).
+ */
+async function resolvePreviousBusinessDay(today: string): Promise<string> {
+  let cursor = previousBusinessDay(today);
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const holiday = await isHolidayDate(cursor);
+    if (!holiday) {
+      return cursor;
+    }
+    cursor = previousBusinessDay(cursor);
+  }
+  return cursor;
 }
 
 async function alreadyDelivered(dateKey: string): Promise<boolean> {
@@ -77,6 +94,16 @@ async function writeLog(
 export async function runStandupDigest(): Promise<StandupRunResult> {
   const today = todayInAppTimeZone();
 
+  const todayHoliday = await isHolidayDate(today);
+  if (todayHoliday) {
+    return {
+      status: "skipped",
+      reason: `Feriado (${todayHoliday.name}) — sem standup hoje.`,
+      referenceDate: null,
+      people: 0,
+    };
+  }
+
   const settings = await getTeamsSettings();
   if (!settings.enabled || !settings.standupEnabled) {
     return {
@@ -105,7 +132,7 @@ export async function runStandupDigest(): Promise<StandupRunResult> {
     };
   }
 
-  const referenceDate = previousBusinessDay(today);
+  const referenceDate = await resolvePreviousBusinessDay(today);
 
   const activeUsers = await db.query.user.findMany({
     where: eq(user.isActive, true),

@@ -1,4 +1,4 @@
-import { eachDayOfInterval, isWeekend } from "date-fns";
+import { eachDayOfInterval, format, isWeekend } from "date-fns";
 import {
   overworkDayThresholdMinutes,
   sustainableWeeklyThresholdMinutes,
@@ -14,12 +14,20 @@ export interface WeekSignalEntry {
   description: string;
 }
 
-function countBusinessDays(start: string, end: string): number {
+function countBusinessDays(
+  start: string,
+  end: string,
+  holidayDates?: ReadonlySet<string>,
+): number {
   try {
     return eachDayOfInterval({
       start: parseLocalDate(start),
       end: parseLocalDate(end),
-    }).filter((day) => !isWeekend(day)).length;
+    }).filter((day) => {
+      if (isWeekend(day)) return false;
+      if (holidayDates?.has(format(day, "yyyy-MM-dd"))) return false;
+      return true;
+    }).length;
   } catch {
     return 5;
   }
@@ -37,6 +45,7 @@ export function computeWeekSignals(
   end: string,
   entries: WeekSignalEntry[],
   weeklyCapacityHours?: number | null,
+  holidayDates?: ReadonlySet<string>,
 ): WeekSignals {
   const minutesByDay = new Map<string, number>();
   let totalMinutes = 0;
@@ -75,7 +84,7 @@ export function computeWeekSignals(
     }
   }
 
-  const businessDaysInPeriod = countBusinessDays(start, end);
+  const businessDaysInPeriod = countBusinessDays(start, end, holidayDates);
   const entryCount = entries.length;
   const richDescriptionRatio =
     entryCount > 0 ? richDescriptions / entryCount : 0;

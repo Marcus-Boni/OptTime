@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { HolidaySummary } from "@/lib/holidays";
 import { cn } from "@/lib/utils";
 
 interface DaySummary {
@@ -32,6 +33,7 @@ interface MonthViewProps {
   onReferenceDateChange: (date: Date) => void;
   onDayClick: (date: Date) => void;
   onOpenCreate: () => void;
+  holidays?: HolidaySummary[];
 }
 
 const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"];
@@ -50,9 +52,11 @@ export function MonthView({
   dailyTargetMinutes,
   onReferenceDateChange,
   onDayClick,
-  onOpenCreate,
+  onOpenCreate: _onOpenCreate,
+  holidays = [],
 }: MonthViewProps) {
   const [daySummaries, setDaySummaries] = useState<DaySummary[]>([]);
+  const [fetchedHolidays, setFetchedHolidays] = useState<HolidaySummary[]>([]);
   const [loading, setLoading] = useState(true);
 
   const firstDayOfMonth = startOfMonth(referenceDate);
@@ -72,18 +76,26 @@ export function MonthView({
     })
       .then(async (response) => {
         if (!response.ok) {
-          return { data: [] as DaySummary[] };
+          return {
+            data: [] as DaySummary[],
+            holidays: [] as HolidaySummary[],
+          };
         }
-        return (await response.json()) as { data?: DaySummary[] };
+        return (await response.json()) as {
+          data?: DaySummary[];
+          holidays?: HolidaySummary[];
+        };
       })
       .then((payload) => {
         if (!active) return;
         setDaySummaries(payload.data ?? []);
+        setFetchedHolidays(payload.holidays ?? []);
       })
       .catch((err: unknown) => {
         if (!active) return;
         console.error("[MonthView] load summaries:", err);
         setDaySummaries([]);
+        setFetchedHolidays([]);
       })
       .finally(() => {
         if (!active) return;
@@ -94,6 +106,16 @@ export function MonthView({
       active = false;
     };
   }, [fromStr, toStr]);
+
+  const holidayByDate = useMemo(() => {
+    const map = new Map<string, HolidaySummary>();
+    for (const holiday of [...holidays, ...fetchedHolidays]) {
+      if (holiday.isActive !== false) {
+        map.set(holiday.date, holiday);
+      }
+    }
+    return map;
+  }, [fetchedHolidays, holidays]);
 
   const minutesByDate = useMemo(() => {
     const map = new Map<string, number>();
@@ -193,8 +215,9 @@ export function MonthView({
               const inCurrentMonth = isSameMonth(day, referenceDate);
               const isTodayDate = isToday(day);
               const isWeekendDay = isWeekend(day);
+              const dayHoliday = holidayByDate.get(dayKey) ?? null;
 
-              const isDayOff = isWeekendDay;
+              const isDayOff = isWeekendDay || Boolean(dayHoliday);
               const actualTarget = isDayOff ? 0 : dailyTargetMinutes;
 
               const hasEntries = totalMinutes > 0;
@@ -225,19 +248,29 @@ export function MonthView({
                     "hover:border-brand-500/40 hover:shadow-md",
                   )}
                 >
-                  <div className="flex w-full items-start justify-between">
+                  <div className="flex w-full items-start justify-between gap-1">
                     <span
                       className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded-full font-mono text-xs font-semibold sm:text-sm",
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold sm:text-sm",
                         isTodayDate
                           ? "bg-brand-500 text-white"
-                          : isWeekendDay
-                            ? "text-muted-foreground/60"
-                            : "text-foreground/80",
+                          : dayHoliday
+                            ? "text-amber-600 dark:text-amber-400"
+                            : isWeekendDay
+                              ? "text-muted-foreground/60"
+                              : "text-foreground/80",
                       )}
                     >
                       {format(day, "d")}
                     </span>
+                    {dayHoliday ? (
+                      <span
+                        title={`Feriado: ${dayHoliday.name}`}
+                        className="truncate rounded-full border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium text-amber-600 dark:text-amber-400"
+                      >
+                        Feriado
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="mt-auto flex w-full flex-col gap-1.5">
@@ -263,6 +296,13 @@ export function MonthView({
                           />
                         </div>
                       </>
+                    ) : dayHoliday ? (
+                      <span
+                        title={dayHoliday.name}
+                        className="truncate text-[10px] font-medium text-amber-600/90 dark:text-amber-400/90"
+                      >
+                        {dayHoliday.name}
+                      </span>
                     ) : (
                       <div className="flex items-center opacity-40 transition-opacity group-hover:opacity-100">
                         <span className="font-mono text-xs font-medium text-muted-foreground">

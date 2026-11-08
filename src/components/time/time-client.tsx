@@ -32,6 +32,7 @@ import {
 } from "@/components/time/WeekView";
 import { Button } from "@/components/ui/button";
 import { TimesheetWorkspaceSkeleton } from "@/components/ui/skeleton";
+import { useHolidaysRange } from "@/hooks/use-holidays";
 import { useQuickLog } from "@/hooks/use-quick-log";
 import { type TimeEntry, useTimeEntries } from "@/hooks/use-time-entries";
 import {
@@ -260,6 +261,11 @@ export function TimeClient() {
       from: dateRange.from,
       to: dateRange.to,
     });
+
+  const { holidays } = useHolidaysRange({
+    from: dateRange.from,
+    to: dateRange.to,
+  });
 
   const { getOrCreateTimesheet, reopenTimesheet, submitTimesheet, timesheets } =
     useTimesheets();
@@ -1033,6 +1039,7 @@ export function TimeClient() {
             onIgnoreSuggestion={handleIgnoreSuggestion}
             showWeekends={showWeekends}
             onShowWeekendsChange={handleShowWeekendsChange}
+            holidays={holidays}
           />
         ) : activeView === "week" ? (
           <WeekView
@@ -1057,6 +1064,7 @@ export function TimeClient() {
             weekTotalMinutes={weekTotalMinutes}
             showWeekends={showWeekends}
             onShowWeekendsChange={handleShowWeekendsChange}
+            holidays={holidays}
           />
         ) : activeView === "timesheets" ? (
           <TimesheetsView />
@@ -1067,6 +1075,7 @@ export function TimeClient() {
             onReferenceDateChange={setSelectedDate}
             onDayClick={handleDayClick}
             onOpenCreate={() => openCreate()}
+            holidays={holidays}
           />
         )}
       </motion.div>

@@ -24,6 +24,7 @@ import {
 } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/email";
 import { decrypt } from "@/lib/encryption";
+import { isHolidayDate } from "@/lib/holidays/service";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { formatDuration, parseLocalDate } from "@/lib/utils";
@@ -236,6 +237,17 @@ export async function runEveningDigest(): Promise<EveningRunResult> {
     return {
       status: "skipped",
       reason: "Fim de semana — sem lembrete.",
+      sent: 0,
+      skipped: 0,
+      failed: 0,
+    };
+  }
+
+  const holiday = await isHolidayDate(today);
+  if (holiday) {
+    return {
+      status: "skipped",
+      reason: `Feriado (${holiday.name}) — sem lembrete.`,
       sent: 0,
       skipped: 0,
       failed: 0,

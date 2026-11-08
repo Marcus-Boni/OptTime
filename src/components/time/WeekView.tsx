@@ -63,6 +63,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import type { TimeEntry } from "@/hooks/use-time-entries";
+import type { HolidaySummary } from "@/lib/holidays";
 import { formatPeriodRangeLabel } from "@/lib/timesheet-periods";
 import {
   getTimesheetStatusLabel,
@@ -104,6 +105,8 @@ interface WeekViewProps {
   /** When false, Saturday and Sunday columns are hidden */
   showWeekends?: boolean;
   onShowWeekendsChange?: (show: boolean) => void;
+  /** Active corporate/national/local holidays in the displayed week */
+  holidays?: HolidaySummary[];
 }
 
 type DraggableEntryListeners = ReturnType<typeof useDraggable>["listeners"];
@@ -128,6 +131,7 @@ export function WeekView({
   weekTotalMinutes,
   showWeekends = true,
   onShowWeekendsChange,
+  holidays = [],
 }: WeekViewProps) {
   const weekStart = startOfISOWeek(referenceDate);
   const weekEnd = endOfISOWeek(referenceDate);
@@ -135,10 +139,33 @@ export function WeekView({
   const days = showWeekends ? allDays : allDays.filter((d) => !isWeekend(d));
   const weekNumber = getISOWeek(weekStart);
   const weekYear = getISOWeekYear(weekStart);
+
+  const holidayByDate = useMemo(() => {
+    const map = new Map<string, HolidaySummary>();
+    for (const holiday of holidays) {
+      if (holiday.isActive !== false) {
+        map.set(holiday.date, holiday);
+      }
+    }
+    return map;
+  }, [holidays]);
+
+  const weekdayHolidayCount = useMemo(
+    () =>
+      allDays.filter(
+        (day) =>
+          !isWeekend(day) && holidayByDate.has(format(day, "yyyy-MM-dd")),
+      ).length,
+    [allDays, holidayByDate],
+  );
+
   const weekTotalMinutesValue =
     weekTotalMinutes ?? entries.reduce((sum, entry) => sum + entry.duration, 0);
   const weekEntryCountValue = weekEntryCount ?? entries.length;
-  const weekTargetMinutes = dailyTargetMinutes * 5;
+  const weekTargetMinutes = Math.max(
+    0,
+    dailyTargetMinutes * (5 - weekdayHolidayCount),
+  );
   const weekPercentage =
     weekTargetMinutes > 0
       ? Math.min(weekTotalMinutesValue / weekTargetMinutes, 1)
@@ -641,6 +668,7 @@ export function WeekView({
                       dayKey={dayKey}
                       entries={entriesByDate.get(dayKey) ?? []}
                       dailyTargetMinutes={dailyTargetMinutes}
+                      holiday={holidayByDate.get(dayKey) ?? null}
                       onDayClick={onDayClick}
                       onOpenCreateForDate={onOpenCreateForDate}
                       isEntryDraggable={isEntryDraggable}
@@ -811,6 +839,7 @@ function DroppableColumn({
   dayKey,
   entries,
   dailyTargetMinutes,
+  holiday,
   onDayClick,
   onOpenCreateForDate,
   isEntryDraggable,
@@ -824,6 +853,7 @@ function DroppableColumn({
   dayKey: string;
   entries: TimeEntry[];
   dailyTargetMinutes: number;
+  holiday: HolidaySummary | null;
   onDayClick: (date: Date) => void;
   onOpenCreateForDate?: (date: Date) => void;
   isEntryDraggable: (entry: TimeEntry) => boolean;
@@ -836,11 +866,14 @@ function DroppableColumn({
   const { isOver, setNodeRef } = useDroppable({ id: dayKey });
 
   const totalMinutes = entries.reduce((sum, entry) => sum + entry.duration, 0);
-  const percentage =
-    dailyTargetMinutes > 0
-      ? Math.min(Math.round((totalMinutes / dailyTargetMinutes) * 100), 100)
-      : 0;
   const weekend = isWeekend(day);
+  const effectiveDailyTarget = holiday || weekend ? 0 : dailyTargetMinutes;
+  const percentage =
+    effectiveDailyTarget > 0
+      ? Math.min(Math.round((totalMinutes / effectiveDailyTarget) * 100), 100)
+      : totalMinutes > 0
+        ? 100
+        : 0;
   const today = isToday(day);
 
   return (
@@ -851,9 +884,11 @@ function DroppableColumn({
         "flex flex-col rounded-2xl border transition",
         today
           ? "border-brand-500/40 bg-brand-500/[0.02]"
-          : weekend
-            ? "border-border/40 bg-muted/20"
-            : "border-border/60 bg-background/70 hover:border-brand-500/20",
+          : holiday
+            ? "border-amber-500/30 bg-amber-500/[0.03]"
+            : weekend
+              ? "border-border/40 bg-muted/20"
+              : "border-border/60 bg-background/70 hover:border-brand-500/20",
         isOver && "border-brand-500/60 bg-brand-500/5",
       )}
     >
@@ -882,7 +917,23 @@ function DroppableColumn({
               {format(day, "EEE", { locale: ptBR })}
             </span>
           </div>
+          {holiday ? (
+            <span
+              title={`Feriado: ${holiday.name}`}
+              className="max-w-[88px] truncate rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+            >
+              Feriado
+            </span>
+          ) : null}
         </div>
+        {holiday ? (
+          <p
+            title={holiday.name}
+            className="mt-1 truncate text-[11px] font-medium text-amber-600/90 dark:text-amber-400/90"
+          >
+            {holiday.name}
+          </p>
+        ) : null}
 
         <div className="mt-2">
           <div className="flex items-baseline justify-between">

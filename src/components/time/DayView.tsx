@@ -44,6 +44,7 @@ import type {
   TimeSuggestion,
   TimeSuggestionCommit,
 } from "@/hooks/use-time-suggestions";
+import type { HolidaySummary } from "@/lib/holidays";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { cn, formatDuration } from "@/lib/utils";
 import type { MeetingSignal } from "@/types/collaboration";
@@ -78,6 +79,8 @@ interface DayViewProps {
   /** When false, Saturday and Sunday are hidden from the week strip */
   showWeekends?: boolean;
   onShowWeekendsChange?: (show: boolean) => void;
+  /** Active corporate/national/local holidays in the displayed week */
+  holidays?: HolidaySummary[];
 }
 
 function MiniMonthCalendar({
@@ -241,6 +244,7 @@ export function DayView({
   onIgnoreSuggestion,
   showWeekends = true,
   onShowWeekendsChange,
+  holidays = [],
 }: DayViewProps) {
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
   const allWeekDays = eachDayOfInterval({
@@ -251,6 +255,19 @@ export function DayView({
     ? allWeekDays
     : allWeekDays.filter((d) => !isWeekend(d));
 
+  const holidayByDate = useMemo(() => {
+    const map = new Map<string, HolidaySummary>();
+    for (const holiday of holidays) {
+      if (holiday.isActive !== false) {
+        map.set(holiday.date, holiday);
+      }
+    }
+    return map;
+  }, [holidays]);
+
+  const selectedHoliday = holidayByDate.get(selectedDateStr) ?? null;
+  const effectiveDailyTarget = selectedHoliday ? 0 : dailyTarget;
+
   const dayEntries = useMemo(
     () => entries.filter((entry) => entry.date === selectedDateStr),
     [entries, selectedDateStr],
@@ -260,8 +277,12 @@ export function DayView({
     0,
   );
   const percentage =
-    dailyTarget > 0 ? Math.min(totalMinutes / dailyTarget, 1) : 0;
-  const remainingMinutes = dailyTarget - totalMinutes;
+    effectiveDailyTarget > 0
+      ? Math.min(totalMinutes / effectiveDailyTarget, 1)
+      : totalMinutes > 0
+        ? 1
+        : 0;
+  const remainingMinutes = effectiveDailyTarget - totalMinutes;
   const isComplete = remainingMinutes <= 0;
   const lockMessage = selectedDateLockStatus
     ? `A semana deste dia já foi ${getTimesheetStatusLabel(selectedDateLockStatus)}.`
@@ -375,6 +396,18 @@ export function DayView({
           </div>
         ) : null}
 
+        {selectedHoliday ? (
+          <div className="px-6 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
+              <span>
+                <strong>Feriado · {selectedHoliday.name}</strong> — Não há
+                obrigatoriedade de registrar horas neste dia.
+              </span>
+              <span className="font-mono text-xs font-semibold">Meta: 0h</span>
+            </div>
+          </div>
+        ) : null}
+
         {/* Week strip */}
         <div className="mt-5 px-6">
           <motion.div
@@ -394,9 +427,12 @@ export function DayView({
                 const selected = isSameDay(day, selectedDate);
                 const today = isToday(day);
                 const weekend = isWeekend(day);
+                const dayHoliday = holidayByDate.get(dayKey) ?? null;
+                const dayTarget = dayHoliday || weekend ? 0 : dailyTarget;
                 const dayPct =
-                  dailyTarget > 0 ? Math.min(dayMinutes / dailyTarget, 1) : 0;
-                const dayComplete = dayPct >= 1;
+                  dayTarget > 0 ? Math.min(dayMinutes / dayTarget, 1) : 0;
+                const dayComplete =
+                  dayTarget > 0 ? dayPct >= 1 : dayMinutes > 0;
 
                 return (
                   <motion.div
@@ -444,14 +480,23 @@ export function DayView({
 
                       {/* Duration */}
                       <span
+                        title={
+                          dayHoliday ? `Feriado: ${dayHoliday.name}` : undefined
+                        }
                         className={cn(
                           "text-[10px] font-medium",
                           dayMinutes > 0
                             ? "text-foreground/70"
-                            : "text-muted-foreground/40",
+                            : dayHoliday
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground/40",
                         )}
                       >
-                        {dayMinutes > 0 ? formatDuration(dayMinutes) : "—"}
+                        {dayMinutes > 0
+                          ? formatDuration(dayMinutes)
+                          : dayHoliday
+                            ? "Feriado"
+                            : "—"}
                       </span>
 
                       {/* Progress bar */}
@@ -486,7 +531,7 @@ export function DayView({
               <span className="min-w-fit text-sm font-medium text-foreground">
                 {formatDuration(totalMinutes)}
                 <span className="ml-1 font-normal text-muted-foreground">
-                  / {formatDuration(dailyTarget)}
+                  / {formatDuration(effectiveDailyTarget)}
                 </span>
               </span>
               <div className="relative h-1.5 flex-1 overflow-hidden rounded-full bg-muted/50">

@@ -1,13 +1,15 @@
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getServerAppUrl } from "@/lib/app-url";
 import { db } from "@/lib/db";
 import { reminderLog, reminderSchedule } from "@/lib/db/schema";
 import { sendHoursReminderBatch } from "@/lib/email";
+import { isHolidayDate } from "@/lib/holidays/service";
 import {
   getISOWeekPeriod,
   resolveReminderRecipients,
 } from "@/lib/notifications/resolve-recipients";
+import { dateOfInstantInTimeZone } from "@/lib/timezone";
 
 /** Returns current day-of-week (0=Sun…6=Sat), hour, minute in a given timezone. */
 function getLocalTime(tz: string): {
@@ -43,8 +45,11 @@ function getLocalTime(tz: string): {
   const parts = timeFormatter.formatToParts(now);
   const rawHour = parts.find((p) => p.type === "hour")?.value ?? "0";
   // hour12: false can produce "24" for midnight in some environments; normalize
-  const hour = parseInt(rawHour) % 24;
-  const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0");
+  const hour = Number.parseInt(rawHour, 10) % 24;
+  const minute = Number.parseInt(
+    parts.find((p) => p.type === "minute")?.value ?? "0",
+    10,
+  );
 
   return { dayOfWeek, hour, minute };
 }
@@ -101,6 +106,16 @@ export async function POST(req: Request): Promise<Response> {
       triggered: 0,
       skipped: 1,
       message: "Not scheduled for this time",
+    });
+  }
+
+  const todayStr = dateOfInstantInTimeZone(new Date(), schedule.timezone);
+  const holiday = await isHolidayDate(todayStr);
+  if (holiday) {
+    return Response.json({
+      triggered: 0,
+      skipped: 1,
+      message: `Skipped on holiday: ${holiday.name}`,
     });
   }
 

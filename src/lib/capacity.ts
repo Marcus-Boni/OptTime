@@ -66,3 +66,52 @@ export function capacityPercentage(
     ? Math.round((loggedMinutes / targetMinutes) * 100)
     : 0;
 }
+
+export function isWeekdayDateString(dateStr: string): boolean {
+  const clean = dateStr.split("T")[0] ?? dateStr;
+  const parsed = new Date(`${clean}T12:00:00.000Z`);
+  if (Number.isNaN(parsed.getTime())) return true;
+  const day = parsed.getUTCDay();
+  return day >= 1 && day <= 5;
+}
+
+export function countWeekdayHolidaysInRange(
+  start: string,
+  end: string,
+  holidayDates: Iterable<string>,
+): number {
+  const uniqueDates = new Set<string>();
+  for (const raw of holidayDates) {
+    const clean = raw.split("T")[0] ?? raw;
+    if (clean >= start && clean <= end && isWeekdayDateString(clean)) {
+      uniqueDates.add(clean);
+    }
+  }
+  return uniqueDates.size;
+}
+
+export function adjustedWeeklyCapacityMinutes(
+  weeklyCapacityHours: number | null | undefined,
+  weekdayHolidayCount = 0,
+  workingDaysPerWeek = DEFAULT_WORKING_DAYS_PER_WEEK,
+): number {
+  const baseWeekly = weeklyCapacityMinutes(weeklyCapacityHours);
+  const safeHolidays = Math.max(0, Math.round(weekdayHolidayCount));
+  if (safeHolidays === 0) return baseWeekly;
+
+  const dailyBase = dailyTargetMinutes(weeklyCapacityHours, workingDaysPerWeek);
+  return Math.max(0, baseWeekly - safeHolidays * dailyBase);
+}
+
+export function adjustedDailyTargetMinutes(
+  weeklyCapacityHours: number | null | undefined,
+  dateStr: string,
+  holidayDates: ReadonlySet<string>,
+  workingDaysPerWeek = DEFAULT_WORKING_DAYS_PER_WEEK,
+): number {
+  const clean = dateStr.split("T")[0] ?? dateStr;
+  if (!isWeekdayDateString(clean) || holidayDates.has(clean)) {
+    return 0;
+  }
+  return dailyTargetMinutes(weeklyCapacityHours, workingDaysPerWeek);
+}

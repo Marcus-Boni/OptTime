@@ -228,8 +228,20 @@ export function resolveDailyTarget(
   weeklyCapacityHours: number,
   workingHours: WorkingHours | null,
   date: string,
+  isHoliday = false,
 ): DailyTarget {
   const weeklyMinutes = Math.max(0, weeklyCapacityHours) * 60;
+  const workingDaysPerWeek =
+    workingHours?.daysOfWeek.length ?? DEFAULT_WORKING_DAYS_PER_WEEK;
+
+  if (isHoliday) {
+    return {
+      minutes: 0,
+      basis: "non_working_day",
+      isWorkingDay: false,
+      workingDaysPerWeek,
+    };
+  }
 
   if (!workingHours) {
     return {
@@ -239,8 +251,6 @@ export function resolveDailyTarget(
       workingDaysPerWeek: DEFAULT_WORKING_DAYS_PER_WEEK,
     };
   }
-
-  const workingDaysPerWeek = workingHours.daysOfWeek.length;
   // `YYYY-MM-DD` at UTC noon dodges any DST edge when reading the weekday.
   const weekday = new Date(`${date}T12:00:00.000Z`).getUTCDay();
   const isoWeekday = weekday === 0 ? 7 : weekday;

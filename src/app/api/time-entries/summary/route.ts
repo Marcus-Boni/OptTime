@@ -6,6 +6,7 @@ import {
 } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { project, timeEntry } from "@/lib/db/schema";
+import { getHolidaysInRange } from "@/lib/holidays/service";
 
 /**
  * GET - Aggregated time summary for reports and calendar.
@@ -99,17 +100,20 @@ export async function GET(req: Request): Promise<Response> {
         .orderBy(timeEntry.date);
     }
 
-    // Overall totals
-    const [totals] = await db
-      .select({
-        totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::integer`,
-        billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)::integer`,
-        entryCount: sql<number>`COUNT(*)::integer`,
-      })
-      .from(timeEntry)
-      .where(and(...conditions));
+    // Overall totals + active holidays in range
+    const [[totals], holidays] = await Promise.all([
+      db
+        .select({
+          totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)::integer`,
+          billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)::integer`,
+          entryCount: sql<number>`COUNT(*)::integer`,
+        })
+        .from(timeEntry)
+        .where(and(...conditions)),
+      from && to ? getHolidaysInRange(from, to) : Promise.resolve([]),
+    ]);
 
-    return Response.json({ data, totals });
+    return Response.json({ data, totals, holidays });
   } catch (error) {
     console.error("[GET /api/time-entries/summary]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });

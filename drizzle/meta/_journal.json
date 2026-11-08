@@ -239,6 +239,13 @@
       "when": 1788377600000,
       "tag": "0033_split_weekly_timesheets_by_month",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1788464000000,
+      "tag": "0034_company_holiday",
+      "breakpoints": true
     }
   ]
 }

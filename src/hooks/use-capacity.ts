@@ -3,10 +3,13 @@
 import { endOfISOWeek, format, startOfISOWeek } from "date-fns";
 import { useCallback, useEffect, useState } from "react";
 import {
+  adjustedDailyTargetMinutes,
+  adjustedWeeklyCapacityMinutes,
   capacityPercentage,
+  countWeekdayHolidaysInRange,
   dailyTargetMinutes,
-  weeklyCapacityMinutes,
 } from "@/lib/capacity";
+import type { HolidaySummary } from "@/lib/holidays";
 import { TIME_ENTRIES_UPDATED_EVENT } from "@/lib/time-events";
 
 interface DaySummary {
@@ -26,6 +29,8 @@ interface CapacityData {
   weeklyRemainingMinutes: number;
   dailyRemainingMinutes: number;
   daySummaries: DaySummary[];
+  holidays: HolidaySummary[];
+  todayHoliday: HolidaySummary | null;
 }
 
 interface UseCapacityOptions {
@@ -37,10 +42,30 @@ export function buildCapacityData(
   summaries: DaySummary[],
   referenceDate: Date,
   weeklyCapacityHours: number,
+  holidays: HolidaySummary[] = [],
 ): CapacityData {
-  const weekTargetMinutes = weeklyCapacityMinutes(weeklyCapacityHours);
-  const dayTargetMinutes = dailyTargetMinutes(weeklyCapacityHours);
+  const weekStartStr = format(startOfISOWeek(referenceDate), "yyyy-MM-dd");
+  const weekEndStr = format(endOfISOWeek(referenceDate), "yyyy-MM-dd");
   const todayStr = format(referenceDate, "yyyy-MM-dd");
+
+  const activeHolidays = holidays.filter((h) => h.isActive !== false);
+  const holidayDates = new Set(activeHolidays.map((h) => h.date));
+  const todayHoliday = activeHolidays.find((h) => h.date === todayStr) ?? null;
+
+  const weekdayHolidayCount = countWeekdayHolidaysInRange(
+    weekStartStr,
+    weekEndStr,
+    holidayDates,
+  );
+
+  const weekTargetMinutes = adjustedWeeklyCapacityMinutes(
+    weeklyCapacityHours,
+    weekdayHolidayCount,
+  );
+  const dayTargetMinutes =
+    activeHolidays.length > 0
+      ? adjustedDailyTargetMinutes(weeklyCapacityHours, todayStr, holidayDates)
+      : dailyTargetMinutes(weeklyCapacityHours);
 
   const weeklyLoggedMinutes = summaries.reduce(
     (sum, summary) => sum + (Number(summary.totalMinutes) || 0),
@@ -66,6 +91,8 @@ export function buildCapacityData(
     weeklyRemainingMinutes: weekTargetMinutes - weeklyLoggedMinutes,
     dailyRemainingMinutes: dayTargetMinutes - dailyLoggedMinutes,
     daySummaries: summaries,
+    holidays: activeHolidays,
+    todayHoliday,
   };
 }
 
@@ -93,11 +120,22 @@ export function useCapacity({
         throw new Error("Failed to fetch summary");
       }
 
-      const json = (await res.json()) as { data?: DaySummary[] };
+      const json = (await res.json()) as {
+        data?: DaySummary[];
+        holidays?: HolidaySummary[];
+      };
       const summaries = json.data ?? [];
-      setData(buildCapacityData(summaries, referenceDate, weeklyCapacityHours));
+      const holidays = json.holidays ?? [];
+      setData(
+        buildCapacityData(
+          summaries,
+          referenceDate,
+          weeklyCapacityHours,
+          holidays,
+        ),
+      );
     } catch {
-      setData(buildCapacityData([], referenceDate, weeklyCapacityHours));
+      setData(buildCapacityData([], referenceDate, weeklyCapacityHours, []));
     } finally {
       setLoading(false);
     }

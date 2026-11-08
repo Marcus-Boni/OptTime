@@ -1570,3 +1570,54 @@ export const userOnboardingRelations = relations(userOnboarding, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+// ─── Company Holidays (BrasilAPI + Vila Velha/ES + Bridges) ──────────
+export type HolidayScope = "national" | "state" | "municipal" | "bridge";
+export type HolidaySource = "brasilapi" | "local_rule" | "manual";
+
+/**
+ * Corporate holiday calendar: national holidays synced from BrasilAPI, state/municipal
+ * holidays for Vila Velha - ES, and company bridge days ("emendas"/"recessos").
+ *
+ * `isActive` lets admins toggle an optional holiday or bridge day without losing
+ * the entry on the next annual sync.
+ */
+export const companyHoliday = pgTable(
+  "company_holiday",
+  {
+    id: text("id").primaryKey(),
+    /** Calendar day in YYYY-MM-DD format */
+    date: text("date").notNull(),
+    /** Official or internal holiday name, e.g. "Finados" */
+    name: text("name").notNull(),
+    /** national | state | municipal | bridge */
+    scope: text("scope").notNull().default("national"),
+    /** State UF when applicable, e.g. "ES" */
+    stateCode: text("state_code"),
+    /** Municipality name when applicable, e.g. "Vila Velha" */
+    cityName: text("city_name"),
+    /** brasilapi | local_rule | manual */
+    source: text("source").notNull().default("manual"),
+    /** When true, day target is 0h and reminders/bots skip the day */
+    isActive: boolean("is_active").notNull().default(true),
+    createdById: text("created_by_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("company_holiday_date_unique").on(table.date),
+    index("company_holiday_active_date_idx").on(table.isActive, table.date),
+  ],
+);
+
+export const companyHolidayRelations = relations(companyHoliday, ({ one }) => ({
+  createdBy: one(user, {
+    fields: [companyHoliday.createdById],
+    references: [user.id],
+  }),
+}));

@@ -2,6 +2,7 @@ import { addDays, subDays } from "date-fns";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
+  companyHoliday,
   gamificationEvent,
   timeEntry,
   user,
@@ -109,7 +110,7 @@ async function loadWeekSignals(
 ): Promise<WeekSignals> {
   const { start, end } = getPeriodRange(period, periodType);
 
-  const [entries, profile] = await Promise.all([
+  const [entries, profile, holidays] = await Promise.all([
     executor
       .select({
         date: timeEntry.date,
@@ -129,7 +130,19 @@ async function loadWeekSignals(
       where: eq(user.id, userId),
       columns: { weeklyCapacity: true },
     }),
+    executor
+      .select({ date: companyHoliday.date })
+      .from(companyHoliday)
+      .where(
+        and(
+          eq(companyHoliday.isActive, true),
+          sql`${companyHoliday.date} >= ${start}`,
+          sql`${companyHoliday.date} <= ${end}`,
+        ),
+      ),
   ]);
+
+  const holidayDates = new Set(holidays.map((h) => h.date));
 
   return computeWeekSignals(
     period,
@@ -137,6 +150,7 @@ async function loadWeekSignals(
     end,
     entries,
     profile?.weeklyCapacity,
+    holidayDates,
   );
 }
 

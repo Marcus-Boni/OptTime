@@ -26,6 +26,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import EmailSettingsCard from "@/components/admin/email-settings-card";
+import HolidayCalendarCard from "@/components/admin/holiday-calendar-card";
 import { WeeklyDigestCard } from "@/components/ai/digest/WeeklyDigestCard";
 import { OperatorHistoryPanel } from "@/components/ai/operator/OperatorHistoryPanel";
 import { OperatorSettingsCard } from "@/components/ai/operator/OperatorSettingsCard";
@@ -932,6 +933,7 @@ export function SettingsClient({ initialTab }: SettingsClientProps) {
 
           {isPrivileged ? (
             <TabsContent value="operations" className="space-y-6">
+              <HolidayCalendarCard userRole={user.role} />
               {user.role === "admin" ? (
                 <>
                   <EmailSettingsCard userRole={user.role} />

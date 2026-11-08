@@ -802,6 +802,16 @@ export const TOURS: readonly TourDefinition[] = [
         allowInteraction: true,
       },
       {
+        id: "operations-holidays",
+        title: "Calendário de feriados e emendas",
+        description:
+          "Na aba Operações, sincronize os feriados nacionais (BrasilAPI) junto aos feriados do Espírito Santo e de Vila Velha (como 23 de maio e Nossa Senhora da Penha), ou cadastre emendas da empresa. Feriados ativos zeram a meta do dia e silenciam cobranças.",
+        target: '[data-tour="operations-holidays"]',
+        placement: "top",
+        route: "/dashboard/settings?tab=operations",
+        roles: ADMIN_ONLY,
+      },
+      {
         id: "outro",
         title: "Antes de liberar para todos",
         description:
