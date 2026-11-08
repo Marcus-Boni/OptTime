@@ -21,13 +21,6 @@ const MAX_THREADS = 20;
 const HISTORY_WINDOW = 12;
 /** Delay before flushing the conversation to localStorage. */
 const PERSIST_DEBOUNCE_MS = 400;
-/**
- * Window in which an identical spoken command is treated as a redelivery of the
- * same utterance rather than a deliberate repeat. Only voice input is guarded —
- * typing the same question twice is a legitimate thing to do.
- */
-const VOICE_REDELIVERY_WINDOW_MS = 5_000;
-
 export const NEW_THREAD_TITLE = "Nova conversa";
 
 export interface ToolActivityItem {
@@ -235,11 +228,6 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
   const abortRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<string>("");
-  /** Last spoken command accepted, so a redelivered utterance is dropped. */
-  const lastVoiceSubmitRef = useRef<{ text: string; timestamp: number }>({
-    text: "",
-    timestamp: 0,
-  });
   const threadsRef = useRef<TimeBotThread[]>([]);
   const activeThreadIdRef = useRef<string>("");
   const isStreamingRef = useRef(false);
@@ -413,26 +401,12 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   }, []);
 
   const send = useCallback(
-    async (text: string, inputMode: OperatorInputMode = "text") => {
+    async (
+      text: string,
+      inputMode: OperatorInputMode = "text",
+    ): Promise<void> => {
       const trimmed = text.trim();
       if (!trimmed) return;
-
-      // The overlay, the recognition engine and the panel hand-off can each
-      // replay the same utterance. Guarding voice only keeps a deliberate
-      // repeat typed by the user working as expected.
-      if (inputMode === "voice") {
-        const now = Date.now();
-        const last = lastVoiceSubmitRef.current;
-
-        if (
-          trimmed === last.text &&
-          now - last.timestamp < VOICE_REDELIVERY_WINDOW_MS
-        ) {
-          return;
-        }
-
-        lastVoiceSubmitRef.current = { text: trimmed, timestamp: now };
-      }
 
       if (abortRef.current) {
         abortRef.current.abort();

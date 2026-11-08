@@ -123,6 +123,7 @@ export function VoiceCommandOverlay({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [isSending, setIsSending] = useState(false);
   const hasSubmittedRef = useRef(false);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Latest props for the recognition callback, which is created once. */
   const submitRef = useRef(onSubmit);
@@ -144,7 +145,8 @@ export function VoiceCommandOverlay({
     submitRef.current(command);
 
     // Brief pause so the user sees what was understood before the overlay goes.
-    window.setTimeout(() => {
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
       closeRef.current();
       setIsSending(false);
     }, 550);
@@ -196,6 +198,12 @@ export function VoiceCommandOverlay({
     controls.start();
 
     return () => {
+      // Closing cancels the pending utterance, including late final results.
+      hasSubmittedRef.current = true;
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
       controls.stop();
     };
   }, [open]);
@@ -260,8 +268,8 @@ export function VoiceCommandOverlay({
 
   function handleManualSend() {
     if (!spoken) return;
-    stop();
-    handleResult(spoken);
+    if (speech.isListening) stop();
+    else handleResult(spoken);
   }
 
   return (

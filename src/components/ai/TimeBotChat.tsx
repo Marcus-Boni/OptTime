@@ -567,38 +567,39 @@ export function TimeBotChat({
     if (!isFullscreen) setShowHistory(false);
   }, [isFullscreen]);
 
-  /** Latest handlers for the voice hand-off, which must not re-subscribe. */
+  /** Latest sender for the voice hand-off, which must not re-subscribe. */
   const sendRef = useRef(send);
-  const stopRef = useRef(stop);
 
   useEffect(() => {
     sendRef.current = send;
-    stopRef.current = stop;
-  }, [send, stop]);
+  }, [send]);
 
   // A command spoken in the voice overlay is parked while this chat is still
   // mounting, so it is drained here and on every later hand-off.
   //
-  // The subscription is keyed on `isOpen` alone. Keying it on `send` as well
-  // re-ran the whole effect — drain included — whenever that callback changed
-  // identity, which replayed the hand-off; the parked command carries an id so
-  // a replay cannot deliver the same utterance twice either way.
+  // Wait for the session before consuming the command: resolving a user id
+  // restores that user's history and would discard a request sent as a guest.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !user?.id) return;
 
     function drain() {
       const command = consumePendingVoiceCommand();
       if (!command) return;
 
-      stopRef.current();
+      // send() preempts a previous stream only after accepting the new input.
       sendRef.current(command.text, "voice");
     }
 
-    drain();
+    // StrictMode replays mount effects. Deferring this irreversible consume
+    // lets its first cleanup cancel the drain before a request is started.
+    const timer = setTimeout(drain, 0);
 
     window.addEventListener(VOICE_COMMAND_EVENT, drain);
-    return () => window.removeEventListener(VOICE_COMMAND_EVENT, drain);
-  }, [isOpen]);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener(VOICE_COMMAND_EVENT, drain);
+    };
+  }, [isOpen, user?.id]);
 
   const {
     settings,

@@ -194,6 +194,8 @@ export function ChatComposer({
   const dictationBaseRef = useRef("");
   /** Marks the next submit as voice-originated for the audit log. */
   const cameFromVoiceRef = useRef(false);
+  /** Only the current dictation may replace the draft; manual edits take over. */
+  const acceptsDictationRef = useRef(false);
 
   const isFullscreen = variant === "fullscreen";
 
@@ -257,6 +259,7 @@ export function ChatComposer({
     () => ({
       focus: () => textareaRef.current?.focus(),
       setDraft: (text: string) => {
+        acceptsDictationRef.current = false;
         updateValue(text);
         const element = textareaRef.current;
         if (!element) return;
@@ -274,12 +277,20 @@ export function ChatComposer({
   const speech = useSpeechRecognition({
     locale: voiceLocale,
     continuous: true,
+    onResult: (spoken) => {
+      // An explicit send may have already cleared this draft while the engine
+      // was still finalizing. Its late result must not repopulate the composer.
+      if (!acceptsDictationRef.current) return;
+      acceptsDictationRef.current = false;
+      const base = dictationBaseRef.current;
+      updateValue(base ? `${base} ${spoken}` : spoken);
+    },
   });
 
   // Live transcript flows straight into the draft, appended to whatever the
   // user had already typed.
   useEffect(() => {
-    if (!speech.isListening) return;
+    if (!speech.isListening || !acceptsDictationRef.current) return;
 
     const spoken = `${speech.transcript} ${speech.interim}`.trim();
     if (!spoken) return;
@@ -298,6 +309,7 @@ export function ChatComposer({
     const trimmed = text.trim();
     if (!trimmed) return;
 
+    acceptsDictationRef.current = false;
     if (speech.isListening) speech.stop();
 
     onSend(trimmed, cameFromVoiceRef.current ? "voice" : "text");
@@ -381,6 +393,7 @@ export function ChatComposer({
     playEarcon("voice_start");
     dictationBaseRef.current = value.trim();
     cameFromVoiceRef.current = true;
+    acceptsDictationRef.current = true;
     speech.reset();
     speech.start();
   }
@@ -460,7 +473,11 @@ export function ChatComposer({
           id="timebot-composer"
           ref={textareaRef}
           value={value}
-          onChange={(event) => updateValue(event.target.value)}
+          onChange={(event) => {
+            acceptsDictationRef.current = false;
+            if (speech.isListening) speech.stop();
+            updateValue(event.target.value);
+          }}
           onKeyDown={handleKeyDown}
           placeholder={
             speech.isListening

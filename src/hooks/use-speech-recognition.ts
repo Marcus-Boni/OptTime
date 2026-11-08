@@ -50,14 +50,17 @@ const ERROR_MESSAGES: Record<string, string> = {
   "not-allowed": "Permissão de microfone negada.",
 };
 
+/** Browsers normally finish with `result` then `end`; never wait indefinitely. */
+const FINAL_RESULT_TIMEOUT_MS = 2000;
+
 function resolveConstructor(): SpeechRecognitionConstructor | null {
   if (typeof window === "undefined") return null;
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
 /**
- * Voice input for the operator, built on the browser's own recognition engine —
- * no audio ever leaves the device for a third-party service.
+ * Voice input through the browser's recognition engine. The browser controls
+ * whether recognition happens locally or through its own speech service.
  */
 export function useSpeechRecognition(
   options: UseSpeechRecognitionOptions = {},
@@ -81,6 +84,9 @@ export function useSpeechRecognition(
   const interimRef = useRef("");
   const hasDeliveredResultRef = useRef(false);
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finalResultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   /** Latest callback, so restarts never call a stale closure. */
   const onResultRef = useRef(onResult);
 
@@ -104,7 +110,18 @@ export function useSpeechRecognition(
     }
   }, []);
 
+  const clearFinalResultTimer = useCallback(() => {
+    if (finalResultTimerRef.current) {
+      clearTimeout(finalResultTimerRef.current);
+      finalResultTimerRef.current = null;
+    }
+  }, []);
+
   const finish = useCallback(() => {
+    clearSilenceTimer();
+    clearFinalResultTimer();
+    wantsToListenRef.current = false;
+    setStatus((current) => (current === "listening" ? "idle" : current));
     if (hasDeliveredResultRef.current) return;
 
     const full = [transcriptRef.current, interimRef.current]
@@ -112,29 +129,47 @@ export function useSpeechRecognition(
       .join(" ")
       .trim();
 
+    hasDeliveredResultRef.current = true;
+    setTranscript(full);
+    setInterim("");
     if (full) {
-      hasDeliveredResultRef.current = true;
       transcriptRef.current = "";
       interimRef.current = "";
       onResultRef.current?.(full);
     }
-  }, []);
+  }, [clearFinalResultTimer, clearSilenceTimer]);
 
   const stop = useCallback(() => {
+    if (hasDeliveredResultRef.current || finalResultTimerRef.current) return;
     wantsToListenRef.current = false;
     clearSilenceTimer();
 
     const recognition = recognitionRef.current;
     if (recognition) {
+      // stop() requests a final result asynchronously. Delivering here would
+      // submit the interim text and discard the corrected last words.
+      finalResultTimerRef.current = setTimeout(() => {
+        recognition.onresult = null;
+        recognition.onend = null;
+        recognition.onstart = null;
+        recognition.onerror = null;
+        recognition.onspeechstart = null;
+        recognition.onspeechend = null;
+        try {
+          recognition.abort();
+        } catch {
+          // It may already be disconnected without an end event.
+        }
+        finish();
+      }, FINAL_RESULT_TIMEOUT_MS);
       try {
         recognition.stop();
+        return;
       } catch (error: unknown) {
         console.error("[useSpeechRecognition] stop:", error);
       }
     }
 
-    setStatus((current) => (current === "listening" ? "idle" : current));
-    setInterim("");
     finish();
   }, [clearSilenceTimer, finish]);
 
@@ -147,6 +182,7 @@ export function useSpeechRecognition(
     }
 
     if (wantsToListenRef.current) return;
+    clearFinalResultTimer();
 
     // Release the previous session before opening a new one. Its `onend` reads
     // the shared "wants to listen" flag, so an instance left alive restarts
@@ -158,6 +194,8 @@ export function useSpeechRecognition(
       previous.onerror = null;
       previous.onend = null;
       previous.onstart = null;
+      previous.onspeechstart = null;
+      previous.onspeechend = null;
       recognitionRef.current = null;
 
       try {
@@ -186,7 +224,17 @@ export function useSpeechRecognition(
       setStatus("listening");
     };
 
+    recognition.onspeechstart = clearSilenceTimer;
+    recognition.onspeechend = () => {
+      // Some engines only produce their final transcript after stop().
+      // Silence must be detected even if no result has arrived yet.
+      if (!silenceTimeoutMs || !wantsToListenRef.current) return;
+      clearSilenceTimer();
+      silenceTimerRef.current = setTimeout(stop, silenceTimeoutMs);
+    };
+
     recognition.onresult = (event) => {
+      if (hasDeliveredResultRef.current) return;
       let finalChunk = "";
       let interimChunk = "";
 
@@ -213,7 +261,14 @@ export function useSpeechRecognition(
       interimRef.current = interimChunk;
       setInterim(interimChunk);
 
-      if (silenceTimeoutMs && (finalChunk || interimChunk)) {
+      // Continuous recognition may omit speechend while keeping the service
+      // connected. Transcript inactivity must still trigger hands-free send;
+      // ongoing transcript updates postpone it until the user pauses.
+      if (
+        silenceTimeoutMs &&
+        wantsToListenRef.current &&
+        (finalChunk || interimChunk)
+      ) {
         clearSilenceTimer();
         silenceTimerRef.current = setTimeout(stop, silenceTimeoutMs);
       }
@@ -225,12 +280,15 @@ export function useSpeechRecognition(
       if (event.error === "aborted") return;
 
       if (event.error === "no-speech") {
+        wantsToListenRef.current = false;
         setErrorMessage(ERROR_MESSAGES["no-speech"] ?? null);
         return;
       }
 
       wantsToListenRef.current = false;
       clearSilenceTimer();
+      clearFinalResultTimer();
+      hasDeliveredResultRef.current = true;
       setInterim("");
       setErrorMessage(
         ERROR_MESSAGES[event.error] ?? "Não foi possível ouvir o microfone.",
@@ -245,7 +303,12 @@ export function useSpeechRecognition(
     recognition.onend = () => {
       // The engine stops on its own after a pause; resume while the user is
       // still holding the session open.
-      if (wantsToListenRef.current) {
+      const hasContent = Boolean(transcriptRef.current || interimRef.current);
+      if (
+        wantsToListenRef.current &&
+        continuous &&
+        !(silenceTimeoutMs && hasContent)
+      ) {
         try {
           recognition.start();
           return;
@@ -255,8 +318,6 @@ export function useSpeechRecognition(
         }
       }
 
-      setStatus((current) => (current === "listening" ? "idle" : current));
-      setInterim("");
       finish();
     };
 
@@ -270,7 +331,15 @@ export function useSpeechRecognition(
       setStatus("error");
       setErrorMessage("Não foi possível iniciar o microfone.");
     }
-  }, [clearSilenceTimer, continuous, finish, locale, silenceTimeoutMs, stop]);
+  }, [
+    clearFinalResultTimer,
+    clearSilenceTimer,
+    continuous,
+    finish,
+    locale,
+    silenceTimeoutMs,
+    stop,
+  ]);
 
   const toggle = useCallback(() => {
     if (wantsToListenRef.current) {
@@ -299,6 +368,10 @@ export function useSpeechRecognition(
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
+      if (finalResultTimerRef.current) {
+        clearTimeout(finalResultTimerRef.current);
+        finalResultTimerRef.current = null;
+      }
 
       const recognition = recognitionRef.current;
       if (recognition) {
@@ -306,6 +379,8 @@ export function useSpeechRecognition(
         recognition.onerror = null;
         recognition.onend = null;
         recognition.onstart = null;
+        recognition.onspeechstart = null;
+        recognition.onspeechend = null;
 
         try {
           recognition.abort();
