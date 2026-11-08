@@ -132,12 +132,26 @@ BETTER_AUTH_URL="http://localhost:3000"
 MICROSOFT_CLIENT_ID="..."
 MICROSOFT_CLIENT_SECRET="..."
 
+# IA Microsoft Foundry (servidor; chave opcional para desenvolvimento local)
+
+AZURE_FOUNDRY_ENDPOINT="https://ai-painel-estrategico.services.ai.azure.com/openai/v1"
+AZURE_FOUNDRY_DEPLOYMENT="gpt-6-luna"
+AZURE_FOUNDRY_API_KEY=""
+
 # Fuso horario da organizacao (opcional)
 # Define em qual fuso o servidor resolve "hoje". O processo em producao roda em
 # UTC, entao sem isso as datas viram no fim da tarde. Padrao: America/Sao_Paulo.
 
 APP_TIMEZONE="America/Sao_Paulo"
 ```
+
+O chat TimeBot e os fluxos de IA do Teams, digests, colaboração, reconstrução
+do dia e resumos usam o mesmo deployment do Microsoft Foundry. Em produção,
+configure a identidade gerenciada do App Service e o acesso ao recurso; as
+chaves pessoais dos provedores anteriores deixaram de ser utilizadas. Sem
+configuração ou quando o serviço falha, permanecem os fallbacks locais.
+Veja [configuração e validação do Foundry](docs/azure-foundry.md), incluindo
+`pnpm verify:ai` (offline) e `pnpm verify:ai:live` (inferência com dados fictícios).
 
 ### Passo 3: Inicie o Banco de Dados e Migrations (Drizzle)
 

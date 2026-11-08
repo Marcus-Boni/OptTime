@@ -1,17 +1,15 @@
 /**
- * Circuit breaker for the provider chain.
- *
- * Every call walks the chain in order, so a provider that is down — no
- * billing (402), a retired model (404), a revoked key (401/403) — used to
- * cost each request a full round-trip before the next one was tried. A
- * provider that fails like that is benched for a while; rate limits and
- * outages get a short pause instead. Per process and in memory: a restart
- * simply gives everyone a fresh chance.
+ * Process-local circuit breaker. Authentication/model errors pause Foundry
+ * for ten minutes; rate limits, timeouts and outages pause it for one minute.
+ * Callers use their deterministic fallbacks while the pause is active.
  */
 
+import {
+  type ChatProvider,
+  ProviderError,
+  type ProviderStreamChunk,
+} from "@/lib/ai/providers/base";
 import type { ProviderName } from "@/lib/ai/types";
-import type { ChatProvider } from "./base";
-import { ProviderError } from "./base";
 
 /** Billing, auth or model problems don't fix themselves within seconds. */
 const PERMANENT_COOLDOWN_MS = 10 * 60_000;
@@ -25,7 +23,8 @@ const benchedUntil = new Map<ProviderName, number>();
 export function cooldownFor(status: number | undefined): number | null {
   if (status === undefined) return null;
   if (PERMANENT_STATUSES.has(status)) return PERMANENT_COOLDOWN_MS;
-  if (status === 429 || status >= 500) return TRANSIENT_COOLDOWN_MS;
+  if (status === 408 || status === 429 || status >= 500)
+    return TRANSIENT_COOLDOWN_MS;
   return null;
 }
 
@@ -57,13 +56,16 @@ export function withHealthTracking(provider: ChatProvider): ChatProvider {
   return {
     name: provider.name,
     model: provider.model,
-    async *streamChat(request) {
+    async *streamChat(request): AsyncGenerator<ProviderStreamChunk> {
       try {
         yield* provider.streamChat(request);
         benchedUntil.delete(provider.name);
       } catch (error: unknown) {
-        if (error instanceof ProviderError) {
-          recordProviderFailure(provider.name, error.status);
+        if (!request.signal.aborted) {
+          recordProviderFailure(
+            provider.name,
+            error instanceof ProviderError ? (error.status ?? 503) : 503,
+          );
         }
         throw error;
       }

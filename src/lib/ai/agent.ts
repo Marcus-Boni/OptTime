@@ -323,6 +323,7 @@ async function* runProvider(
     if (signal.aborted) return;
 
     const toolCalls: ToolCall[] = [];
+    let providerOutput: Record<string, unknown>[] | undefined;
     let assistantText = "";
 
     for await (const chunk of provider.streamChat({
@@ -332,6 +333,11 @@ async function* runProvider(
       signal,
     })) {
       if (signal.aborted) return;
+
+      if (chunk.type === "continuation") {
+        providerOutput = chunk.items;
+        continue;
+      }
 
       if (chunk.type === "text") {
         assistantText += chunk.text;
@@ -351,6 +357,7 @@ async function* runProvider(
       role: "assistant",
       content: assistantText || undefined,
       toolCalls,
+      providerOutput,
     });
 
     for (const call of toolCalls) {

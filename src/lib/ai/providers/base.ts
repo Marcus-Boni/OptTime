@@ -1,6 +1,5 @@
 import type {
   AgentTurn,
-  JsonSchemaObject,
   ProviderName,
   ToolCall,
   ToolSpec,
@@ -22,6 +21,7 @@ export interface ProviderRequest {
 
 export type ProviderStreamChunk =
   | { type: "text"; text: string }
+  | { type: "continuation"; items: Record<string, unknown>[] }
   | { type: "tool_call"; call: ToolCall };
 
 export interface ChatProvider {
@@ -39,11 +39,6 @@ export class ProviderError extends Error {
     super(message);
     this.name = "ProviderError";
   }
-}
-
-/** True when another provider in the chain should be tried. */
-export function isRetryableStatus(status: number): boolean {
-  return status === 408 || status === 429 || status >= 500;
 }
 
 /**
@@ -64,9 +59,7 @@ export async function* readSseData(
 
       buffer += decoder.decode(value, { stream: true });
 
-      // Gemini streams CRLF while OpenAI-compatible APIs stream LF; normalise
-      // first so a single blank-line rule works for both. A trailing lone "\r"
-      // simply waits for its "\n" in the next chunk.
+      // Normalise SSE line endings, including CRLF split between chunks.
       buffer = buffer.replace(/\r\n/g, "\n");
 
       // SSE events are separated by a blank line.
@@ -90,15 +83,8 @@ export async function* readSseData(
       }
     }
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
-  }
-}
-
-export function safeJsonParse<T>(raw: string): T | null {
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
   }
 }
 
@@ -106,9 +92,3 @@ export function safeJsonParse<T>(raw: string): T | null {
 export function withTimeout(signal: AbortSignal, ms: number): AbortSignal {
   return AbortSignal.any([signal, AbortSignal.timeout(ms)]);
 }
-
-export function toolSpecHasParameters(spec: ToolSpec): boolean {
-  return Object.keys(spec.parameters.properties).length > 0;
-}
-
-export type { JsonSchemaObject };

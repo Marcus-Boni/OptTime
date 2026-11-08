@@ -14,6 +14,8 @@ variables:
   webAppName: prd-opt-time
   resourceGroupName: rsg-opt-time-prd
   publicAppUrl: https://opt-time.optsolv.com.br
+  foundryEndpoint: https://ai-painel-estrategico.services.ai.azure.com/openai/v1
+  foundryDeployment: gpt-6-luna
   buildDatabaseUrlFallback: postgresql://build:build@127.0.0.1:5432/build?sslmode=require
   packagePath: $(Build.ArtifactStagingDirectory)/app.zip
   deployFolder: $(Build.ArtifactStagingDirectory)/deploy
@@ -47,6 +49,9 @@ stages:
 
     - script: pnpm install --frozen-lockfile
       displayName: Install dependencies
+
+    - script: pnpm verify:ai
+      displayName: Verify Foundry transport and agent contracts (offline)
 
     - script: |
         set -e
@@ -156,7 +161,9 @@ stages:
               package: $(Pipeline.Workspace)/drop/app.zip
               runtimeStack: $(runtimeStack)
               startUpCommand: node node_modules/next/dist/bin/next start -p $PORT
-              appSettings: '-GEMINI_API_KEY "$(GEMINI_API_KEY)" -GROQ_API_KEY "$(GROQ_API_KEY)" -OPENROUTER_API_KEY "$(OPENROUTER_API_KEY)" -NVIDIA_API_KEY "$(NVIDIA_API_KEY)"'
+              # Managed identity and Foundry RBAC must be provisioned first;
+              # no optional secret macros are injected into the app settings.
+              appSettings: '-AZURE_FOUNDRY_ENDPOINT "$(foundryEndpoint)" -AZURE_FOUNDRY_DEPLOYMENT "$(foundryDeployment)"'
 
           - script: |
               set -e

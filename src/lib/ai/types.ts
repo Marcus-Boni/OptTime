@@ -6,12 +6,7 @@
 import type { AppRole } from "@/lib/access-control";
 import type { UiCommandId } from "@/lib/ai/operator/ui-commands";
 
-export type ProviderName =
-  | "gemini"
-  | "groq"
-  | "nvidia"
-  | "openrouter"
-  | "local_fallback";
+export type ProviderName = "foundry" | "local_fallback";
 
 /** JSON-Schema (draft-07 subset) used to declare tool parameters. */
 export interface JsonSchemaProperty {
@@ -42,11 +37,6 @@ export interface ToolCall {
   name: string;
   /** Raw arguments object as produced by the model (unvalidated). */
   args: Record<string, unknown>;
-  /**
-   * Provider-opaque token that must be echoed back with the tool result.
-   * Gemini thinking models reject the follow-up turn without it.
-   */
-  signature?: string;
 }
 
 /** Result of executing a tool, fed back into the model. */
@@ -67,6 +57,8 @@ export interface AgentTurn {
   content?: string;
   /** Present on assistant turns that requested tools. */
   toolCalls?: ToolCall[];
+  /** Ephemeral Responses output replayed with tool results; never stored in chat history. */
+  providerOutput?: Record<string, unknown>[];
   /** Present on tool turns. */
   toolCallId?: string;
   toolName?: string;
