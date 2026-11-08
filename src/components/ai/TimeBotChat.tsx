@@ -15,7 +15,6 @@ import {
   Download,
   History,
   Keyboard,
-  Loader2,
   Maximize2,
   MessageSquarePlus,
   Minimize2,
@@ -25,11 +24,14 @@ import {
   SlidersHorizontal,
   Sparkles,
   Trash2,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { AiAgentTrace, AiTextLoading } from "@/components/ai/AiAgentTrace";
 import { AssistantActionView } from "@/components/ai/AssistantActions";
 import { AssistantCardView } from "@/components/ai/AssistantCards";
 import { BriefingPanel } from "@/components/ai/BriefingPanel";
@@ -65,11 +67,7 @@ import type { AssistantPanelMode } from "@/hooks/use-assistant-panel";
 import { useModifierKey } from "@/hooks/use-modifier-key";
 import { useOperatorPolicy } from "@/hooks/use-operator-policy";
 import { useSpeechSynthesis } from "@/hooks/use-speech-synthesis";
-import {
-  type TimeBotMessage,
-  type ToolActivityItem,
-  useTimeBot,
-} from "@/hooks/use-timebot";
+import { type TimeBotMessage, useTimeBot } from "@/hooks/use-timebot";
 import type { AppRole } from "@/lib/access-control";
 import { OPERATOR_MODE_META } from "@/lib/ai/operator/policy";
 import { OPERATOR_SETTINGS_PATH } from "@/lib/ai/operator/routes";
@@ -110,45 +108,6 @@ function formatDayLabel(timestamp: number): string {
   if (isYesterday(date)) return "Ontem";
 
   return format(date, "d 'de' MMMM", { locale: ptBR });
-}
-
-function ThinkingIndicator({ label = "Pensando..." }: { label?: string }) {
-  return (
-    <div className="flex items-center gap-2 py-0.5 text-neutral-400 dark:text-neutral-400">
-      <div className="flex items-center gap-1">
-        <motion.span
-          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
-          transition={{
-            duration: 0.8,
-            repeat: Number.POSITIVE_INFINITY,
-            delay: 0,
-          }}
-          className="h-1.5 w-1.5 rounded-full bg-orange-500 shadow-xs shadow-orange-500/50"
-        />
-        <motion.span
-          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
-          transition={{
-            duration: 0.8,
-            repeat: Number.POSITIVE_INFINITY,
-            delay: 0.18,
-          }}
-          className="h-1.5 w-1.5 rounded-full bg-orange-500/80 shadow-xs shadow-orange-500/40"
-        />
-        <motion.span
-          animate={{ scale: [0.8, 1.25, 0.8], opacity: [0.3, 1, 0.3] }}
-          transition={{
-            duration: 0.8,
-            repeat: Number.POSITIVE_INFINITY,
-            delay: 0.36,
-          }}
-          className="h-1.5 w-1.5 rounded-full bg-orange-400/60"
-        />
-      </div>
-      <span className="font-medium text-[11px] text-neutral-400 dark:text-neutral-400">
-        {label}
-      </span>
-    </div>
-  );
 }
 
 function BriefingSkeleton() {
@@ -207,48 +166,6 @@ function BriefingSkeleton() {
   );
 }
 
-function ToolActivity({ tools }: { tools: ToolActivityItem[] }) {
-  if (tools.length === 0) return null;
-
-  return (
-    <ul className="mb-2 space-y-1.5" aria-label="Consultas realizadas">
-      {tools.map((tool) => (
-        <motion.li
-          key={tool.id}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          className={cn(
-            "flex items-center gap-2 rounded-lg px-2 py-1 text-[10px] transition-all",
-            tool.status === "running"
-              ? "border border-orange-500/30 bg-orange-500/10 font-medium text-orange-600 dark:text-orange-300"
-              : tool.status === "failed"
-                ? "border border-red-500/30 bg-red-500/10 text-red-500 dark:text-red-400"
-                : "border border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-          )}
-        >
-          {tool.status === "running" ? (
-            <Loader2
-              className="h-3 w-3 shrink-0 animate-spin text-orange-500 motion-reduce:animate-none dark:text-orange-400"
-              aria-hidden="true"
-            />
-          ) : tool.status === "failed" ? (
-            <AlertCircle
-              className="h-3 w-3 shrink-0 text-red-500"
-              aria-hidden="true"
-            />
-          ) : (
-            <Check
-              className="h-3 w-3 shrink-0 text-emerald-500"
-              aria-hidden="true"
-            />
-          )}
-          <span className="truncate">{tool.label}</span>
-        </motion.li>
-      ))}
-    </ul>
-  );
-}
-
 function IconAction({
   icon: Icon,
   label,
@@ -287,14 +204,20 @@ function MessageActions({
   message,
   onRetry,
   canRetry,
+  canSpeak,
+  isSpeaking,
+  onToggleSpeak,
 }: {
   message: TimeBotMessage;
   onRetry: () => void;
   canRetry: boolean;
+  canSpeak: boolean;
+  isSpeaking: boolean;
+  onToggleSpeak: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
-  async function handleCopy() {
+  async function handleCopy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(message.content);
       setCopied(true);
@@ -306,7 +229,7 @@ function MessageActions({
   }
 
   return (
-    <div className="mt-1.5 flex items-center gap-1">
+    <div className="mt-2 flex items-center gap-1 border-border/30 border-t pt-1.5 dark:border-white/[0.06]">
       <ActionTooltip
         label={copied ? "Copiado!" : "Copiar mensagem"}
         side="bottom"
@@ -315,7 +238,7 @@ function MessageActions({
           type="button"
           onClick={handleCopy}
           aria-label="Copiar mensagem"
-          className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+          className="cursor-pointer rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-200/70 hover:text-foreground dark:hover:bg-neutral-800"
         >
           {copied ? (
             <Check className="h-3 w-3 text-emerald-500" aria-hidden="true" />
@@ -325,13 +248,41 @@ function MessageActions({
         </button>
       </ActionTooltip>
 
+      {canSpeak && (
+        <ActionTooltip
+          label={isSpeaking ? "Parar leitura em voz alta" : "Ouvir resposta"}
+          side="bottom"
+        >
+          <button
+            type="button"
+            onClick={onToggleSpeak}
+            aria-label={
+              isSpeaking ? "Parar leitura em voz alta" : "Ouvir resposta"
+            }
+            aria-pressed={isSpeaking}
+            className={cn(
+              "cursor-pointer rounded-md p-1 transition-colors",
+              isSpeaking
+                ? "bg-orange-500/15 text-orange-500 dark:text-orange-400"
+                : "text-neutral-400 hover:bg-neutral-200/70 hover:text-foreground dark:hover:bg-neutral-800",
+            )}
+          >
+            {isSpeaking ? (
+              <VolumeX className="h-3 w-3" aria-hidden="true" />
+            ) : (
+              <Volume2 className="h-3 w-3" aria-hidden="true" />
+            )}
+          </button>
+        </ActionTooltip>
+      )}
+
       {canRetry && (
         <ActionTooltip label="Gerar resposta novamente" side="bottom">
           <button
             type="button"
             onClick={onRetry}
             aria-label="Gerar novamente"
-            className="cursor-pointer rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-foreground dark:hover:bg-neutral-800"
+            className="cursor-pointer rounded-md p-1 text-neutral-400 transition-colors hover:bg-neutral-200/70 hover:text-foreground dark:hover:bg-neutral-800"
           >
             <RefreshCw className="h-3 w-3" aria-hidden="true" />
           </button>
@@ -343,7 +294,7 @@ function MessageActions({
           label={`Provedor de IA: ${message.provider.toUpperCase()}`}
           side="bottom"
         >
-          <span className="ml-1 cursor-default rounded px-1 py-0.5 font-mono text-[9px] text-neutral-400 uppercase dark:text-neutral-500">
+          <span className="ml-auto cursor-default rounded-md bg-neutral-200/50 px-1.5 py-0.5 font-mono text-[9px] text-neutral-500 uppercase dark:bg-white/[0.04] dark:text-neutral-400">
             {message.provider}
           </span>
         </ActionTooltip>
@@ -359,6 +310,9 @@ function MessageBubble({
   isLast,
   isStreaming,
   isFullscreen,
+  canSpeak,
+  isSpeakingThis,
+  onToggleSpeak,
   onRetry,
   onEdit,
 }: {
@@ -368,11 +322,19 @@ function MessageBubble({
   isLast: boolean;
   isStreaming: boolean;
   isFullscreen: boolean;
+  canSpeak: boolean;
+  isSpeakingThis: boolean;
+  onToggleSpeak: () => void;
   onRetry: () => void;
   onEdit: (content: string) => void;
 }) {
   const isUser = message.role === "user";
   const isThinking = !isUser && isLast && isStreaming && message.content === "";
+  const hasProseSurface =
+    isUser ||
+    isThinking ||
+    message.content.trim().length > 0 ||
+    Boolean(message.error);
 
   return (
     <motion.div
@@ -380,7 +342,7 @@ function MessageBubble({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
       className={cn(
-        "group flex gap-2.5",
+        "group flex gap-3",
         isUser ? "flex-row-reverse" : "flex-row",
       )}
     >
@@ -394,7 +356,7 @@ function MessageBubble({
       ) : (
         <div
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-sm transition-all",
+            "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-sm transition-all",
             isLast &&
               isStreaming &&
               "shadow-md shadow-orange-500/30 ring-2 ring-orange-500/40",
@@ -405,74 +367,103 @@ function MessageBubble({
       )}
 
       <div
-        className={cn("min-w-0", isFullscreen ? "max-w-[78%]" : "max-w-[88%]")}
+        className={cn(
+          "min-w-0 space-y-2.5",
+          isUser
+            ? isFullscreen
+              ? "max-w-[72%]"
+              : "max-w-[85%]"
+            : isFullscreen
+              ? "w-full max-w-[90%]"
+              : "w-full max-w-[90%]",
+        )}
       >
-        <div
-          className={cn(
-            "rounded-2xl px-3.5 py-2.5 shadow-sm transition-all",
-            isFullscreen ? "text-[13px]" : "text-xs",
-            isUser
-              ? "bg-orange-500 text-white dark:bg-orange-600"
-              : "border border-border/40 bg-neutral-100 text-neutral-800 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-200",
-          )}
-        >
-          {!isUser && <ToolActivity tools={message.tools} />}
+        {/* KokonutUI Collapsible Agent Step Trace (outside the prose bubble) */}
+        {!isUser && message.tools.length > 0 && (
+          <AiAgentTrace tools={message.tools} />
+        )}
 
-          {isUser ? (
-            <p className="whitespace-pre-wrap break-words leading-relaxed">
-              {message.content}
-            </p>
-          ) : isThinking ? (
-            <ThinkingIndicator
-              label={
-                message.tools.some((tool) => tool.status === "running")
-                  ? "Consultando..."
-                  : "Pensando..."
-              }
-            />
-          ) : (
-            <>
-              <MarkdownContent content={message.content} />
-              {isStreaming && isLast && (
-                <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-xs bg-orange-500 align-middle shadow-xs shadow-orange-500/50 motion-reduce:animate-none" />
-              )}
-            </>
-          )}
+        {/* Primary prose bubble */}
+        {hasProseSurface && (
+          <div
+            className={cn(
+              "rounded-2xl px-4 py-3 transition-all",
+              isFullscreen ? "text-[13.5px]" : "text-xs",
+              isUser
+                ? "bg-orange-500 text-white shadow-sm dark:bg-orange-600"
+                : "bg-neutral-100/85 text-neutral-800 ring-1 ring-black/[0.06] dark:bg-neutral-900/90 dark:text-neutral-200 dark:ring-white/[0.08]",
+            )}
+          >
+            {isUser ? (
+              <p className="whitespace-pre-wrap break-words leading-relaxed">
+                {message.content}
+              </p>
+            ) : isThinking ? (
+              <AiTextLoading />
+            ) : (
+              <>
+                <MarkdownContent content={message.content} />
+                {isStreaming && isLast && (
+                  <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse rounded-xs bg-orange-500 align-middle shadow-xs shadow-orange-500/50 motion-reduce:animate-none" />
+                )}
+              </>
+            )}
 
-          {message.cards.map((card, index) => (
-            <AssistantCardView key={`${card.kind}-${index}`} card={card} />
-          ))}
+            {message.error && (
+              <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-red-500/10 px-2.5 py-2 text-[11px] text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
+                <AlertCircle
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{message.error}</span>
+              </p>
+            )}
 
-          {message.actions.map((action, index) => (
-            <AssistantActionView
-              key={`${action.kind}-${index}`}
-              action={action}
-              inputMode={message.inputMode}
-            />
-          ))}
-
-          {message.error && (
-            <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-500/10 px-2.5 py-1.5 text-[11px] text-red-600 dark:text-red-400">
-              <AlertCircle
-                className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                aria-hidden="true"
+            {!isUser && !isStreaming && message.content.length > 0 && (
+              <MessageActions
+                message={message}
+                onRetry={onRetry}
+                canRetry={isLast}
+                canSpeak={canSpeak}
+                isSpeaking={isSpeakingThis}
+                onToggleSpeak={onToggleSpeak}
               />
-              <span>{message.error}</span>
-            </p>
-          )}
+            )}
+          </div>
+        )}
 
-          {!isUser && !isStreaming && message.content.length > 0 && (
-            <MessageActions
-              message={message}
-              onRetry={onRetry}
-              canRetry={isLast}
-            />
-          )}
-        </div>
+        {/* De-nested Data Cards (side-by-side grid in fullscreen when comparing multiple cards) */}
+        {message.cards.length > 0 && (
+          <div
+            className={cn(
+              "grid gap-3",
+              isFullscreen && message.cards.length > 1
+                ? "grid-cols-1 lg:grid-cols-2"
+                : "grid-cols-1",
+            )}
+          >
+            {message.cards.map((card, index) => (
+              <AssistantCardView key={`${card.kind}-${index}`} card={card} />
+            ))}
+          </div>
+        )}
+
+        {/* De-nested Interactive Action Cards */}
+        {message.actions.length > 0 && (
+          <div className="space-y-2.5">
+            {message.actions.map((action, index) => (
+              <AssistantActionView
+                key={`${action.kind}-${index}`}
+                action={action}
+                inputMode={message.inputMode}
+              />
+            ))}
+          </div>
+        )}
 
         <div
           className={cn(
-            "mt-1 flex items-center gap-2 px-1 text-[9.5px] text-neutral-400 transition-opacity dark:text-neutral-500",
+            "flex items-center gap-2 px-1 text-[10px] text-neutral-400 transition-opacity dark:text-neutral-500",
             isUser ? "justify-end" : "justify-start",
             isFullscreen
               ? "opacity-100"
@@ -543,8 +534,20 @@ export function TimeBotChat({
   const [showHistory, setShowHistory] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showActionLog, setShowActionLog] = useState(false);
+  const [activeSpeechMessageId, setActiveSpeechMessageId] = useState<
+    string | null
+  >(null);
 
   const hasMessages = messages.length > 0;
+
+  // Approximate character count for KokonutUI AiContextMeter
+  const conversationChars = useMemo(() => {
+    return messages.reduce((sum, msg) => {
+      const cardsChars = msg.cards.length * 420;
+      const actionsChars = msg.actions.length * 260;
+      return sum + msg.content.length + cardsChars + actionsChars;
+    }, 0);
+  }, [messages]);
 
   // Only auto-scroll while the user is already following the conversation.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `messages` is the streaming trigger, not a value read here
@@ -610,6 +613,12 @@ export function TimeBotChat({
   const modifier = useModifierKey();
   const operatorModeLabel = OPERATOR_MODE_META[settings.mode].label;
 
+  useEffect(() => {
+    if (!speech.isSpeaking) {
+      setActiveSpeechMessageId(null);
+    }
+  }, [speech.isSpeaking]);
+
   /** Guards against re-reading the same reply on unrelated re-renders. */
   const spokenMessageIdRef = useRef<string | null>(null);
   const speakRef = useRef(speech.speak);
@@ -634,8 +643,24 @@ export function TimeBotChat({
     const content = messages.find(
       (item) => item.id === finishedReplyId,
     )?.content;
-    if (content) speakRef.current(content);
+    if (content) {
+      setActiveSpeechMessageId(finishedReplyId);
+      speakRef.current(content);
+    }
   }, [settings.speakReplies, finishedReplyId, messages]);
+
+  const handleToggleSpeakMessage = useCallback(
+    (message: TimeBotMessage) => {
+      if (speech.isSpeaking && activeSpeechMessageId === message.id) {
+        speech.cancel();
+        setActiveSpeechMessageId(null);
+        return;
+      }
+      setActiveSpeechMessageId(message.id);
+      speech.speak(message.content);
+    },
+    [activeSpeechMessageId, speech],
+  );
 
   const handleScroll = useCallback(() => {
     const element = scrollRef.current;
@@ -647,12 +672,14 @@ export function TimeBotChat({
   }, []);
 
   const handleClear = useCallback(() => {
+    speech.cancel();
+    setActiveSpeechMessageId(null);
     clear();
     toast.info("Conversa limpa.");
-  }, [clear]);
+  }, [clear, speech]);
 
   const handleModeChange = useCallback(
-    async (next: OperatorMode) => {
+    async (next: OperatorMode): Promise<void> => {
       const ok = await savePolicy({ mode: next });
 
       if (ok) {
@@ -667,9 +694,11 @@ export function TimeBotChat({
   );
 
   const handleNewThread = useCallback(() => {
+    speech.cancel();
+    setActiveSpeechMessageId(null);
     newThread();
     composerRef.current?.focus();
-  }, [newThread]);
+  }, [newThread, speech]);
 
   const handleExport = useCallback(() => {
     if (messages.length === 0) {
@@ -691,7 +720,7 @@ export function TimeBotChat({
     }
   }, [activeThreadTitle, messages, user?.name]);
 
-  const handleCopyTranscript = useCallback(async () => {
+  const handleCopyTranscript = useCallback(async (): Promise<void> => {
     if (messages.length === 0) {
       toast.info("Nada para copiar ainda.");
       return;
@@ -1039,8 +1068,8 @@ export function TimeBotChat({
           >
             <div
               className={cn(
-                "space-y-4",
-                isFullscreen && "mx-auto w-full max-w-3xl",
+                "space-y-5",
+                isFullscreen && "mx-auto w-full max-w-4xl",
               )}
             >
               {!hasMessages && briefing && (
@@ -1065,7 +1094,7 @@ export function TimeBotChat({
                     {showDayDivider && (
                       <div className="flex items-center gap-2 py-1">
                         <span className="h-px flex-1 bg-border/60 dark:bg-white/10" />
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[9.5px] text-neutral-500 uppercase tracking-wide dark:bg-neutral-900 dark:text-neutral-400">
+                        <span className="rounded-full bg-neutral-100 px-2.5 py-0.5 font-medium text-[9.5px] text-neutral-500 uppercase tracking-wide dark:bg-neutral-900 dark:text-neutral-400">
                           {formatDayLabel(message.createdAt)}
                         </span>
                         <span className="h-px flex-1 bg-border/60 dark:bg-white/10" />
@@ -1079,6 +1108,12 @@ export function TimeBotChat({
                       isLast={index === messages.length - 1}
                       isStreaming={isStreaming}
                       isFullscreen={isFullscreen}
+                      canSpeak={speech.isSupported}
+                      isSpeakingThis={
+                        speech.isSpeaking &&
+                        activeSpeechMessageId === message.id
+                      }
+                      onToggleSpeak={() => handleToggleSpeakMessage(message)}
                       onRetry={retryLast}
                       onEdit={handleEditMessage}
                     />
@@ -1107,7 +1142,7 @@ export function TimeBotChat({
                   bottomRef.current?.scrollIntoView({ behavior: "smooth" });
                 }}
                 aria-label="Ir para a última mensagem"
-                className="-translate-x-1/2 absolute bottom-32 left-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-card shadow-lg dark:border-white/10"
+                className="-translate-x-1/2 absolute bottom-36 left-1/2 z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border/60 bg-card shadow-lg dark:border-white/10"
               >
                 <ChevronDown
                   className="h-4 w-4 text-neutral-500"
@@ -1123,29 +1158,29 @@ export function TimeBotChat({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               className={cn(
-                "shrink-0 border-border/40 border-t dark:border-white/10",
-                isFullscreen ? "px-6 py-2.5" : "px-3 py-2",
+                "shrink-0",
+                isFullscreen ? "px-6 pt-2 pb-0.5" : "px-3 pt-1.5 pb-0.5",
               )}
             >
               <div
                 className={cn(
-                  "flex flex-wrap gap-1.5",
+                  "flex flex-wrap items-center gap-1.5",
                   isFullscreen && "mx-auto w-full max-w-3xl",
                 )}
               >
-                <span className="flex w-full items-center gap-1 text-[10px] text-neutral-400 dark:text-neutral-500">
+                <span className="mr-0.5 inline-flex items-center gap-1 font-medium text-[10.5px] text-neutral-400 dark:text-neutral-500">
                   <Sparkles
                     className="h-3 w-3 text-orange-400"
                     aria-hidden="true"
                   />
-                  Continue com
+                  Sugestões:
                 </span>
                 {suggestions.map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
                     onClick={() => send(suggestion)}
-                    className="cursor-pointer rounded-lg border border-border/60 bg-background px-2 py-1 text-[10px] text-neutral-600 transition-colors hover:border-orange-500/40 hover:bg-orange-500/10 hover:text-orange-600 dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:text-orange-400"
+                    className="cursor-pointer rounded-full bg-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 ring-1 ring-black/[0.06] transition-all hover:bg-orange-500/10 hover:text-orange-600 hover:ring-orange-500/30 dark:bg-neutral-900 dark:text-neutral-300 dark:ring-white/10 dark:hover:text-orange-300"
                   >
                     {suggestion}
                   </button>
@@ -1164,6 +1199,8 @@ export function TimeBotChat({
             variant={isFullscreen ? "fullscreen" : "docked"}
             voiceLocale={settings.voiceLocale}
             onOpenVoiceMode={onOpenVoiceMode}
+            messageCount={messages.length}
+            conversationChars={conversationChars}
           />
 
           {/* Docked history overlay */}

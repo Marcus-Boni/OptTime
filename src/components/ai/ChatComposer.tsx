@@ -1,11 +1,11 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowUp,
   AudioLines,
   Mic,
   MicOff,
-  Send,
   SlashSquare,
   Square,
 } from "lucide-react";
@@ -18,8 +18,10 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { AiContextMeter } from "@/components/ai/AiContextMeter";
 import { Button } from "@/components/ui/button";
 import { ActionTooltip } from "@/components/ui/tooltip";
+import { useAudioLevel } from "@/hooks/use-audio-level";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import type { AppRole } from "@/lib/access-control";
 import type { OperatorInputMode } from "@/lib/ai/operator/types";
@@ -28,6 +30,12 @@ import { cn } from "@/lib/utils";
 
 const MAX_LENGTH = 2000;
 const MAX_TEXTAREA_HEIGHT = 168;
+const INLINE_BAR_COUNT = 24;
+const INLINE_BAR_IDS = Array.from(
+  { length: INLINE_BAR_COUNT },
+  (_, index) => `inline-vbar-${index}`,
+);
+const REST_LEVEL = 0.14;
 
 export interface SlashCommand {
   command: string;
@@ -153,6 +161,100 @@ const SLASH_COMMANDS: SlashCommand[] = [
   },
 ];
 
+function formatDictationTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+}
+
+/**
+ * Inline real-voice waveform strip rendered inside the composer while dictating.
+ */
+function InlineDictationWaveform({ active }: { active: boolean }) {
+  const prefersReducedMotion = useReducedMotion();
+  const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const [seconds, setSeconds] = useState(0);
+
+  const audioLevel = useAudioLevel({
+    active,
+    bandCount: INLINE_BAR_COUNT,
+  });
+
+  useEffect(() => {
+    if (!active) {
+      setSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 250);
+    return () => clearInterval(id);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || prefersReducedMotion) {
+      for (const bar of barRefs.current) {
+        if (bar) bar.style.transform = "scaleY(0.25)";
+      }
+      return;
+    }
+
+    const half = (INLINE_BAR_COUNT - 1) / 2;
+    let frameId = 0;
+
+    const tick = (now: number) => {
+      const spectrum = audioLevel.getSpectrum();
+
+      barRefs.current.forEach((bar, index) => {
+        if (!bar) return;
+        const centerDist = Math.abs((index - half) / half);
+        const bell = Math.cos(centerDist * Math.PI * 0.44);
+        const idle =
+          REST_LEVEL +
+          0.04 * bell * (0.5 + 0.5 * Math.sin(now * 0.004 + index * 0.35));
+        const level = Math.max(
+          idle,
+          Math.min(1, spectrum[index] ?? REST_LEVEL),
+        );
+        bar.style.transform = `scaleY(${level.toFixed(3)})`;
+      });
+
+      frameId = requestAnimationFrame(tick);
+    };
+
+    frameId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frameId);
+  }, [active, prefersReducedMotion, audioLevel]);
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1">
+      <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-red-600 tabular-nums dark:text-red-300">
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500 motion-reduce:animate-none"
+        />
+        {formatDictationTime(seconds)}
+      </span>
+      <div
+        aria-hidden="true"
+        className="flex h-5 w-28 items-center justify-center gap-[2px] overflow-hidden"
+      >
+        {INLINE_BAR_IDS.map((id, index) => (
+          <span
+            key={id}
+            ref={(el) => {
+              barRefs.current[index] = el;
+            }}
+            className="h-full w-[2.5px] shrink-0 rounded-full bg-red-500/85 will-change-transform dark:bg-red-400"
+            style={{ transform: `scaleY(${REST_LEVEL})` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export interface ChatComposerHandle {
   focus: () => void;
   /** Replace the draft and place the caret at the end. */
@@ -171,6 +273,10 @@ export interface ChatComposerProps {
   voiceLocale?: string;
   /** Opens the hands-free voice command overlay. */
   onOpenVoiceMode?: () => void;
+  /** Number of messages in the active conversation for the context meter. */
+  messageCount?: number;
+  /** Approximate characters in the active conversation for the context meter. */
+  conversationChars?: number;
   ref?: React.Ref<ChatComposerHandle>;
 }
 
@@ -183,6 +289,8 @@ export function ChatComposer({
   variant = "docked",
   voiceLocale = "pt-BR",
   onOpenVoiceMode,
+  messageCount = 0,
+  conversationChars = 0,
   ref,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
@@ -278,8 +386,6 @@ export function ChatComposer({
     locale: voiceLocale,
     continuous: true,
     onResult: (spoken) => {
-      // An explicit send may have already cleared this draft while the engine
-      // was still finalizing. Its late result must not repopulate the composer.
       if (!acceptsDictationRef.current) return;
       acceptsDictationRef.current = false;
       const base = dictationBaseRef.current;
@@ -404,26 +510,27 @@ export function ChatComposer({
     <div
       className={cn(
         "relative border-border/40 border-t bg-card dark:border-white/10",
-        isFullscreen ? "px-4 py-3" : "p-3",
+        isFullscreen ? "px-6 py-3" : "p-3",
       )}
     >
+      {/* KokonutUI-style floating Slash Command Palette */}
       <AnimatePresence>
         {showCommands && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 8 }}
-            transition={{ duration: 0.15 }}
+            initial={{ opacity: 0, y: 6, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.98 }}
+            transition={{ duration: 0.16, ease: [0.23, 1, 0.32, 1] }}
             className={cn(
-              "absolute bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-popover p-1.5 shadow-2xl dark:border-white/10",
+              "absolute bottom-full z-20 mb-2 max-h-72 overflow-y-auto rounded-2xl bg-popover p-1.5 shadow-2xl ring-1 ring-black/10 dark:bg-neutral-900 dark:ring-white/10",
               isFullscreen
-                ? "right-4 left-4 mx-auto max-w-3xl"
+                ? "right-6 left-6 mx-auto max-w-3xl"
                 : "right-3 left-3",
             )}
           >
             {groupedCommands.map(([group, commands]) => (
               <div key={group} className="mb-1 last:mb-0">
-                <p className="px-2 py-1 font-medium text-[9.5px] text-neutral-400 uppercase tracking-wider dark:text-neutral-500">
+                <p className="px-2.5 py-1 font-medium text-[9.5px] text-neutral-400 uppercase tracking-wider dark:text-neutral-500">
                   {group}
                 </p>
                 <ul aria-label={`Comandos de ${group}`}>
@@ -434,16 +541,16 @@ export function ChatComposer({
                         onClick={() => applyCommand(command)}
                         onMouseEnter={() => setCommandIndex(index)}
                         className={cn(
-                          "flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left transition-colors",
+                          "flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl px-2.5 py-1.5 text-left transition-colors",
                           index === commandIndex
                             ? "bg-orange-500/15 text-orange-600 dark:text-orange-300"
-                            : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
+                            : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800/80",
                         )}
                       >
-                        <span className="font-mono font-medium text-[11px]">
+                        <span className="font-mono font-semibold text-[11px]">
                           {command.command}
                         </span>
-                        <span className="truncate text-[10px] text-neutral-500 dark:text-neutral-400">
+                        <span className="truncate text-[10.5px] text-neutral-500 dark:text-neutral-400">
                           {command.description}
                         </span>
                       </button>
@@ -456,13 +563,14 @@ export function ChatComposer({
         )}
       </AnimatePresence>
 
+      {/* KokonutUI ai-prompt cohesive 2-row prompt surface */}
       <form
         onSubmit={(event) => {
           event.preventDefault();
           submit(value);
         }}
         className={cn(
-          "flex items-end gap-2 rounded-2xl border border-border/60 bg-neutral-50 p-1.5 transition-all focus-within:border-orange-500 focus-within:ring-2 focus-within:ring-orange-500/20 dark:border-neutral-700 dark:bg-neutral-800/70",
+          "flex flex-col rounded-2xl bg-neutral-50/90 p-2 ring-1 ring-black/[0.08] transition-all focus-within:ring-2 focus-within:ring-orange-500/50 dark:bg-neutral-900/90 dark:ring-white/10 dark:focus-within:ring-orange-500/50",
           isFullscreen && "mx-auto w-full max-w-3xl",
         )}
       >
@@ -481,125 +589,155 @@ export function ChatComposer({
           onKeyDown={handleKeyDown}
           placeholder={
             speech.isListening
-              ? "Ouvindo..."
+              ? "Fale agora — sua voz está sendo transcrita em tempo real..."
               : "Pergunte algo, mande uma tarefa ou digite / para comandos"
           }
           rows={1}
           maxLength={MAX_LENGTH}
           aria-describedby="timebot-composer-hint"
           className={cn(
-            "min-h-[34px] flex-1 resize-none bg-transparent px-2 py-1.5 text-foreground placeholder:text-neutral-400 focus:outline-none dark:placeholder:text-neutral-500",
+            "min-h-[36px] w-full resize-none bg-transparent px-2 py-1 text-foreground leading-relaxed placeholder:text-neutral-400 focus:outline-none dark:placeholder:text-neutral-500",
             isFullscreen ? "text-sm" : "text-xs",
           )}
           style={{ maxHeight: MAX_TEXTAREA_HEIGHT }}
         />
 
-        <ActionTooltip label="Comandos rápidos" shortcut="/" side="top">
-          <Button
-            type="button"
-            size="icon"
-            variant="ghost"
-            onClick={() => {
-              setIsPaletteForced((previous) => !previous);
-              textareaRef.current?.focus();
-            }}
-            aria-label="Abrir comandos rápidos"
-            aria-expanded={showCommands}
-            className={cn(
-              "h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
-              showCommands
-                ? "bg-orange-500/15 text-orange-500"
-                : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
+        {/* Bottom prompt toolbar (KokonutUI ai-prompt + ai-context-meter) */}
+        <div className="mt-1.5 flex items-center justify-between gap-2 border-black/[0.05] border-t pt-1.5 dark:border-white/[0.06]">
+          <div className="flex min-w-0 items-center gap-1">
+            <ActionTooltip label="Comandos rápidos" shortcut="/" side="top">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPaletteForced((previous) => !previous);
+                  textareaRef.current?.focus();
+                }}
+                aria-label="Abrir comandos rápidos"
+                aria-expanded={showCommands}
+                className={cn(
+                  "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-lg px-2 font-medium text-[11px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50",
+                  showCommands
+                    ? "bg-orange-500/15 text-orange-600 dark:text-orange-300"
+                    : "text-neutral-500 hover:bg-neutral-200/70 hover:text-foreground dark:text-neutral-400 dark:hover:bg-white/10",
+                )}
+              >
+                <SlashSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Comandos</span>
+              </button>
+            </ActionTooltip>
+
+            <AiContextMeter
+              messageCount={messageCount}
+              conversationChars={conversationChars}
+              draftChars={value.length}
+              onCompact={messageCount > 0 ? onClear : undefined}
+            />
+
+            {speech.isListening && (
+              <InlineDictationWaveform active={speech.isListening} />
             )}
-          >
-            <SlashSquare className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        </ActionTooltip>
 
-        {speech.isSupported && onOpenVoiceMode && (
-          <ActionTooltip
-            label="Modo de comando por voz"
-            shortcut="Ctrl+Shift+V"
-            side="top"
-          >
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={onOpenVoiceMode}
-              aria-label="Abrir o modo de comando por voz"
-              className="h-8 w-8 shrink-0 cursor-pointer rounded-lg text-neutral-500 transition-all hover:text-orange-500 dark:text-neutral-400"
-            >
-              <AudioLines className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </ActionTooltip>
-        )}
+            {usageRatio > 0.6 && (
+              <span
+                className={cn(
+                  "ml-1 font-mono text-[10px] tabular-nums",
+                  usageRatio > 0.9 ? "text-red-500" : "text-amber-500",
+                )}
+              >
+                {value.length}/{MAX_LENGTH}
+              </span>
+            )}
+          </div>
 
-        {speech.isSupported && (
-          <ActionTooltip
-            label={
-              speech.isListening ? "Parar ditado por voz" : "Ditar por voz"
-            }
-            side="top"
-          >
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              onClick={toggleVoice}
-              aria-label={speech.isListening ? "Parar ditado" : "Ditar por voz"}
-              aria-pressed={speech.isListening}
-              className={cn(
-                "relative h-8 w-8 shrink-0 cursor-pointer rounded-lg transition-all",
-                speech.isListening
-                  ? "bg-red-500/15 text-red-500 ring-2 ring-red-500/30 hover:bg-red-500/25"
-                  : "text-neutral-500 hover:text-orange-500 dark:text-neutral-400",
-              )}
-            >
-              {speech.isListening && (
-                <span className="pointer-events-none absolute inset-0 animate-ping rounded-lg bg-red-500/20 motion-reduce:animate-none" />
-              )}
-              {speech.isListening ? (
-                <MicOff
-                  className="relative z-10 h-4 w-4 animate-pulse motion-reduce:animate-none"
-                  aria-hidden="true"
-                />
-              ) : (
-                <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
-              )}
-            </Button>
-          </ActionTooltip>
-        )}
+          <div className="flex shrink-0 items-center gap-1">
+            {speech.isSupported && onOpenVoiceMode && (
+              <ActionTooltip
+                label="Modo de comando por voz (mãos-livres)"
+                shortcut="Ctrl+Shift+V"
+                side="top"
+              >
+                <button
+                  type="button"
+                  onClick={onOpenVoiceMode}
+                  aria-label="Abrir o modo de comando por voz"
+                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl px-2.5 font-medium text-[11px] text-neutral-500 transition-colors hover:bg-orange-500/10 hover:text-orange-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500/50 dark:text-neutral-400 dark:hover:text-orange-400"
+                >
+                  <AudioLines className="h-4 w-4" aria-hidden="true" />
+                  {isFullscreen && <span>Modo voz</span>}
+                </button>
+              </ActionTooltip>
+            )}
 
-        {isStreaming ? (
-          <ActionTooltip label="Parar geração da resposta" side="top">
-            <Button
-              type="button"
-              size="icon"
-              onClick={onStop}
-              aria-label="Parar geração da resposta"
-              className="relative h-8 w-8 shrink-0 cursor-pointer rounded-lg border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-            >
-              <span className="pointer-events-none absolute inset-0 animate-pulse rounded-lg bg-orange-500/15 motion-reduce:animate-none" />
-              <Square
-                className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400"
-                aria-hidden="true"
-              />
-            </Button>
-          </ActionTooltip>
-        ) : (
-          <ActionTooltip label="Enviar mensagem" shortcut="Enter" side="top">
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!value.trim()}
-              aria-label="Enviar mensagem"
-              className="h-8 w-8 shrink-0 cursor-pointer rounded-lg bg-orange-500 text-white transition-all hover:bg-orange-600 hover:shadow-lg hover:shadow-orange-500/25 disabled:opacity-40 disabled:shadow-none"
-            >
-              <Send className="h-4 w-4" aria-hidden="true" />
-            </Button>
-          </ActionTooltip>
-        )}
+            {speech.isSupported && (
+              <ActionTooltip
+                label={
+                  speech.isListening ? "Parar ditado por voz" : "Ditar no campo"
+                }
+                side="top"
+              >
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={toggleVoice}
+                  aria-label={
+                    speech.isListening ? "Parar ditado" : "Ditar por voz"
+                  }
+                  aria-pressed={speech.isListening}
+                  className={cn(
+                    "relative h-8 w-8 shrink-0 cursor-pointer rounded-xl transition-all",
+                    speech.isListening
+                      ? "bg-red-500/15 text-red-500 ring-1 ring-red-500/30 hover:bg-red-500/25"
+                      : "text-neutral-500 hover:bg-neutral-200/70 hover:text-orange-500 dark:text-neutral-400 dark:hover:bg-white/10",
+                  )}
+                >
+                  {speech.isListening ? (
+                    <MicOff
+                      className="relative z-10 h-4 w-4"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Mic className="relative z-10 h-4 w-4" aria-hidden="true" />
+                  )}
+                </Button>
+              </ActionTooltip>
+            )}
+
+            {isStreaming ? (
+              <ActionTooltip label="Parar geração da resposta" side="top">
+                <Button
+                  type="button"
+                  size="icon"
+                  onClick={onStop}
+                  aria-label="Parar geração da resposta"
+                  className="relative h-8 w-8 shrink-0 cursor-pointer rounded-xl border border-orange-500/30 bg-neutral-800 text-white transition-all hover:bg-neutral-700 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+                >
+                  <span className="pointer-events-none absolute inset-0 animate-pulse rounded-xl bg-orange-500/15 motion-reduce:animate-none" />
+                  <Square
+                    className="relative z-10 h-3.5 w-3.5 fill-current text-orange-400"
+                    aria-hidden="true"
+                  />
+                </Button>
+              </ActionTooltip>
+            ) : (
+              <ActionTooltip
+                label="Enviar mensagem"
+                shortcut="Enter"
+                side="top"
+              >
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!value.trim()}
+                  aria-label="Enviar mensagem"
+                  className="h-8 w-8 shrink-0 cursor-pointer rounded-xl bg-orange-500 text-white transition-all hover:bg-orange-600 hover:shadow-md hover:shadow-orange-500/25 disabled:opacity-35 disabled:shadow-none"
+                >
+                  <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                </Button>
+              </ActionTooltip>
+            )}
+          </div>
+        </div>
       </form>
 
       <div
@@ -614,17 +752,6 @@ export function ChatComposer({
           <kbd className="font-mono">Shift+Enter</kbd> quebra linha ·{" "}
           <kbd className="font-mono">/</kbd> comandos
         </span>
-
-        {usageRatio > 0.6 && (
-          <span
-            className={cn(
-              "font-mono tabular-nums",
-              usageRatio > 0.9 ? "text-red-500" : "text-amber-500",
-            )}
-          >
-            {value.length}/{MAX_LENGTH}
-          </span>
-        )}
       </div>
     </div>
   );

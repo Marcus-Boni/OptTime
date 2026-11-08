@@ -1,5 +1,6 @@
 "use client";
 
+import { format, subDays } from "date-fns";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -8,12 +9,21 @@ import {
   Edit3,
   Loader2,
   Play,
+  RotateCcw,
   Send,
+  Sparkles,
   Square,
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import {
   DeleteTimeEntryCard,
@@ -53,7 +63,7 @@ import {
   dispatchTimerUpdated,
   dispatchTimesheetsUpdated,
 } from "@/lib/time-events";
-import { formatDuration } from "@/lib/utils";
+import { cn, formatDuration } from "@/lib/utils";
 
 interface ProjectOption {
   id: string;
@@ -78,7 +88,7 @@ async function readError(res: Response, fallback: string): Promise<string> {
   return payload?.error ?? fallback;
 }
 
-// ─── Shared shell ────────────────────────────────────────────────────
+// ─── Shared shell (KokonutUI ai-tool-approval surface) ───────────────
 
 function ActionShell({
   title,
@@ -92,38 +102,42 @@ function ActionShell({
   children: React.ReactNode;
 }) {
   return (
-    <section className="mt-3 rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 shadow-sm dark:bg-orange-950/20">
-      <header className="flex items-center justify-between gap-2 border-orange-500/20 border-b pb-2">
-        <h4 className="flex items-center gap-1.5 font-semibold text-[11px] text-orange-600 uppercase tracking-wide dark:text-orange-400">
-          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+    <section className="overflow-hidden rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.08] dark:bg-neutral-900 dark:shadow-none dark:ring-white/10">
+      <header className="flex items-center justify-between gap-2 border-border/50 border-b bg-neutral-50/70 px-3.5 py-2.5 dark:border-white/[0.07] dark:bg-white/[0.02]">
+        <h4 className="flex items-center gap-2 font-semibold text-[11px] text-foreground tracking-tight">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-orange-500/15 text-orange-600 ring-1 ring-orange-500/25 dark:text-orange-400">
+            <Clock className="h-3 w-3" aria-hidden="true" />
+          </span>
           {title}
         </h4>
         {badge && (
-          <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono font-bold text-[11px] text-orange-700 dark:text-orange-300">
+          <span className="rounded-md bg-orange-500/15 px-2 py-0.5 font-mono font-semibold text-[11px] text-orange-600 tabular-nums dark:text-orange-300">
             {badge}
           </span>
         )}
       </header>
 
-      {warning && (
-        <p className="mt-2 flex gap-1.5 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-          <AlertTriangle
-            className="mt-0.5 h-3.5 w-3.5 shrink-0"
-            aria-hidden="true"
-          />
-          <span>{warning}</span>
-        </p>
-      )}
+      <div className="p-3.5">
+        {warning && (
+          <p className="mb-2.5 flex gap-1.5 rounded-xl bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
+            <AlertTriangle
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span>{warning}</span>
+          </p>
+        )}
 
-      {children}
+        {children}
+      </div>
     </section>
   );
 }
 
 function DoneState({ label }: { label: string }) {
   return (
-    <p className="mt-3 flex items-center gap-1.5 font-semibold text-[12px] text-emerald-600 dark:text-emerald-400">
-      <Check className="h-4 w-4" aria-hidden="true" />
+    <p className="mt-3 flex items-center gap-1.5 rounded-xl bg-emerald-500/10 px-2.5 py-1.5 font-semibold text-[11.5px] text-emerald-600 ring-1 ring-emerald-500/20 dark:text-emerald-400">
+      <Check className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
     </p>
   );
@@ -139,7 +153,172 @@ function AutoRunNotice({ isRunning }: { isRunning: boolean }) {
   );
 }
 
-// ─── Create time entry ───────────────────────────────────────────────
+// ─── KokonutUI AI Token Alternatives (Inline Slot Popover) ───────────
+
+interface TokenOption {
+  id: string;
+  label: string;
+  hint?: string;
+  weight: number;
+  dotColor?: string | null;
+}
+
+interface TokenSlotPopoverProps {
+  title: string;
+  options: TokenOption[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}
+
+function TokenSlotPopover({
+  title,
+  options,
+  selectedId,
+  onSelect,
+  onClose,
+}: TokenSlotPopoverProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [alignRight, setAlignRight] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 16) {
+      setAlignRight(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (listRef.current && target && !listRef.current.contains(target)) {
+        onClose();
+      }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <motion.div
+      ref={listRef}
+      role="listbox"
+      aria-label={title}
+      initial={{ opacity: 0, y: -4, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -3, scale: 0.98 }}
+      transition={{ duration: 0.14, ease: [0.16, 1, 0.3, 1] }}
+      style={{ transformOrigin: alignRight ? "top right" : "top left" }}
+      className={cn(
+        "absolute top-full z-40 mt-1.5 w-60 overflow-hidden rounded-xl bg-popover p-1 text-popover-foreground shadow-xl ring-1 ring-black/10 dark:bg-neutral-900 dark:ring-white/15",
+        alignRight ? "right-0" : "left-0",
+      )}
+    >
+      <div className="flex items-center justify-between px-2.5 py-1">
+        <span className="font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+          {title}
+        </span>
+        <span className="font-mono text-[9.5px] text-muted-foreground/70">
+          alternativas
+        </span>
+      </div>
+
+      <div className="max-h-52 overflow-y-auto">
+        {options.map((option) => {
+          const isSelected = option.id === selectedId;
+          const pct = Math.round(option.weight * 100);
+          return (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={isSelected}
+              onClick={(event) => {
+                event.stopPropagation();
+                onSelect(option.id);
+                onClose();
+              }}
+              className={cn(
+                "group relative flex w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] transition-colors",
+                isSelected
+                  ? "bg-orange-500/12 font-medium text-foreground dark:bg-orange-500/20"
+                  : "text-foreground/85 hover:bg-neutral-100 dark:hover:bg-white/[0.06]",
+              )}
+            >
+              <span
+                aria-hidden="true"
+                style={{ width: `${Math.max(8, pct)}%` }}
+                className={cn(
+                  "pointer-events-none absolute inset-y-0 left-0 transition-opacity",
+                  isSelected
+                    ? "bg-orange-500/[0.08] dark:bg-orange-400/[0.12]"
+                    : "bg-neutral-900/[0.025] opacity-0 group-hover:opacity-100 dark:bg-white/[0.03]",
+                )}
+              />
+
+              <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center">
+                {isSelected ? (
+                  <Check
+                    className="h-3 w-3 text-orange-500 dark:text-orange-400"
+                    aria-hidden="true"
+                  />
+                ) : option.dotColor !== undefined ? (
+                  <span
+                    className={cn(
+                      "h-2 w-2 rounded-full",
+                      !option.dotColor && "bg-orange-500",
+                    )}
+                    style={
+                      option.dotColor
+                        ? { backgroundColor: option.dotColor }
+                        : undefined
+                    }
+                    aria-hidden="true"
+                  />
+                ) : null}
+              </span>
+
+              <span className="relative min-w-0 flex-1 truncate">
+                {option.label}
+              </span>
+
+              {option.hint && (
+                <span className="relative shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                  {option.hint}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Create time entry (with KokonutUI Token Alternatives) ───────────
+
+type ActiveTokenSlot = "duration" | "project" | "date" | "billable" | null;
+
+const DURATION_PRESETS = [
+  { minutes: 30, weight: 0.14 },
+  { minutes: 60, weight: 0.28 },
+  { minutes: 90, weight: 0.18 },
+  { minutes: 120, weight: 0.24 },
+  { minutes: 180, weight: 0.1 },
+  { minutes: 240, weight: 0.06 },
+];
 
 function CreateTimeEntryCard({
   action,
@@ -151,6 +330,7 @@ function CreateTimeEntryCard({
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreated, setIsCreated] = useState(false);
+  const [activeSlot, setActiveSlot] = useState<ActiveTokenSlot>(null);
   /** Distinguishes a delegated run from a clicked one in the audit trail. */
   const wasAutoRef = useRef(false);
 
@@ -159,6 +339,8 @@ function CreateTimeEntryCard({
     action.durationMinutes,
   );
   const [projectId, setProjectId] = useState(action.projectId ?? "");
+  const [entryDate, setEntryDate] = useState(action.date);
+  const [billable, setBillable] = useState(action.billable);
   const [workItem, setWorkItem] = useState<{
     id: number;
     title: string;
@@ -175,7 +357,7 @@ function CreateTimeEntryCard({
   useEffect(() => {
     let cancelled = false;
 
-    async function loadProjects() {
+    async function loadProjects(): Promise<void> {
       try {
         const res = await fetch("/api/projects");
         if (!res.ok) return;
@@ -201,15 +383,160 @@ function CreateTimeEntryCard({
     [projects, projectId],
   );
 
+  const initialProjectName = useMemo(() => {
+    if (action.projectName) return action.projectName;
+    const found = projects.find((item) => item.id === action.projectId);
+    return found?.name ?? "Projeto";
+  }, [action.projectId, action.projectName, projects]);
+
   const projectName =
     selectedProject?.name ?? action.projectName ?? "Selecione um projeto";
-  const projectColor =
-    selectedProject?.color ?? action.projectColor ?? "#f97316";
+  const projectColor = selectedProject?.color ?? action.projectColor ?? null;
 
   // Missing project is the only blocker we resolve inline.
   const needsProject = !projectId;
 
-  async function handleConfirm(event?: React.FormEvent) {
+  // Token options for KokonutUI inline slot popovers
+  const durationOptions = useMemo<TokenOption[]>(() => {
+    const map = new Map<number, number>();
+    map.set(action.durationMinutes, 0.34);
+    for (const preset of DURATION_PRESETS) {
+      if (!map.has(preset.minutes)) {
+        map.set(preset.minutes, preset.weight);
+      }
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([mins, weight]) => ({
+        id: String(mins),
+        label: formatDuration(mins),
+        hint: mins === action.durationMinutes ? "sugerido" : `${mins}m`,
+        weight,
+      }));
+  }, [action.durationMinutes]);
+
+  const projectOptions = useMemo<TokenOption[]>(() => {
+    return projects.slice(0, 8).map((proj, index) => ({
+      id: proj.id,
+      label: proj.name,
+      hint: proj.id === action.projectId ? "sugerido" : undefined,
+      weight:
+        proj.id === action.projectId
+          ? 0.55
+          : Math.max(0.1, 0.35 - index * 0.05),
+      dotColor: proj.color,
+    }));
+  }, [projects, action.projectId]);
+
+  const dateOptions = useMemo<TokenOption[]>(() => {
+    const todayIso = format(new Date(), "yyyy-MM-dd");
+    const yesterdayIso = format(subDays(new Date(), 1), "yyyy-MM-dd");
+    const list: TokenOption[] = [
+      {
+        id: todayIso,
+        label: `Hoje (${todayIso})`,
+        hint: todayIso === action.date ? "sugerido" : undefined,
+        weight: 0.55,
+      },
+      {
+        id: yesterdayIso,
+        label: `Ontem (${yesterdayIso})`,
+        hint: yesterdayIso === action.date ? "sugerido" : undefined,
+        weight: 0.3,
+      },
+    ];
+    if (action.date !== todayIso && action.date !== yesterdayIso) {
+      list.unshift({
+        id: action.date,
+        label: action.date,
+        hint: "sugerido",
+        weight: 0.6,
+      });
+    }
+    return list;
+  }, [action.date]);
+
+  const billableOptions = useMemo<TokenOption[]>(
+    () => [
+      {
+        id: "true",
+        label: "faturável",
+        hint: action.billable ? "sugerido" : undefined,
+        weight: action.billable ? 0.72 : 0.28,
+      },
+      {
+        id: "false",
+        label: "não faturável",
+        hint: !action.billable ? "sugerido" : undefined,
+        weight: !action.billable ? 0.72 : 0.28,
+      },
+    ],
+    [action.billable],
+  );
+
+  // Track token swaps for KokonutUI EditChips footer
+  const swaps = useMemo(() => {
+    const list: {
+      key: string;
+      from: string;
+      to: string;
+      revert: () => void;
+    }[] = [];
+
+    if (durationMinutes !== action.durationMinutes) {
+      list.push({
+        key: "duration",
+        from: formatDuration(action.durationMinutes),
+        to: formatDuration(durationMinutes),
+        revert: () => setDurationMinutes(action.durationMinutes),
+      });
+    }
+    if (action.projectId && projectId && projectId !== action.projectId) {
+      list.push({
+        key: "project",
+        from: initialProjectName,
+        to: projectName,
+        revert: () => setProjectId(action.projectId ?? ""),
+      });
+    }
+    if (entryDate !== action.date) {
+      list.push({
+        key: "date",
+        from: action.date,
+        to: entryDate,
+        revert: () => setEntryDate(action.date),
+      });
+    }
+    if (billable !== action.billable) {
+      list.push({
+        key: "billable",
+        from: action.billable ? "faturável" : "não faturável",
+        to: billable ? "faturável" : "não faturável",
+        revert: () => setBillable(action.billable),
+      });
+    }
+    return list;
+  }, [
+    action.billable,
+    action.date,
+    action.durationMinutes,
+    action.projectId,
+    billable,
+    durationMinutes,
+    entryDate,
+    initialProjectName,
+    projectId,
+    projectName,
+  ]);
+
+  const handleResetAllSwaps = useCallback(() => {
+    setDurationMinutes(action.durationMinutes);
+    if (action.projectId) setProjectId(action.projectId);
+    setEntryDate(action.date);
+    setBillable(action.billable);
+  }, [action.billable, action.date, action.durationMinutes, action.projectId]);
+
+  async function handleConfirm(event?: React.FormEvent): Promise<void> {
     event?.preventDefault();
 
     if (!projectId) {
@@ -238,9 +565,9 @@ function CreateTimeEntryCard({
         body: JSON.stringify({
           projectId,
           description: description.trim(),
-          date: action.date,
+          date: entryDate,
           duration: durationMinutes,
-          billable: action.billable,
+          billable,
           azureWorkItemId: workItem?.id,
           azureWorkItemTitle: workItem?.title,
         }),
@@ -257,6 +584,7 @@ function CreateTimeEntryCard({
       markExecuted(actionKey(action));
       setIsCreated(true);
       setIsEditing(false);
+      setActiveSlot(null);
       dispatchTimeEntriesUpdated();
       dispatchTimesheetsUpdated();
       toast.success(`${formatDuration(durationMinutes)} registradas!`);
@@ -316,7 +644,7 @@ function CreateTimeEntryCard({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onSubmit={handleConfirm}
-            className="mt-3 space-y-3"
+            className="space-y-3"
           >
             <div className="space-y-1">
               <label
@@ -419,42 +747,243 @@ function CreateTimeEntryCard({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="mt-2.5 space-y-1.5"
+            className="space-y-2.5"
           >
-            <p className="flex items-center gap-1.5 font-semibold text-[12px] text-foreground">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ backgroundColor: projectColor }}
-                aria-hidden="true"
-              />
-              <span className="truncate">{projectName}</span>
-            </p>
+            {/* Interactive Token Sentence (KokonutUI ai-token-alternatives) */}
+            <div className="rounded-xl bg-neutral-100/70 p-2.5 text-[12px] text-foreground leading-relaxed dark:bg-white/[0.03]">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-1 font-medium text-[10px] text-muted-foreground">
+                  <Sparkles
+                    className="h-2.5 w-2.5 text-orange-500"
+                    aria-hidden="true"
+                  />
+                  Clique nos termos destacados para ajustar rapidamente
+                </span>
+              </div>
 
-            <p className="pl-4 text-[11px] text-neutral-600 italic leading-relaxed dark:text-neutral-300">
-              “{description}”
-            </p>
+              <div className="flex flex-wrap items-baseline gap-x-1 gap-y-1.5">
+                <span className="text-muted-foreground">Registrar</span>
 
-            <p className="pl-4 font-mono text-[10px] text-neutral-500 dark:text-neutral-400">
-              {action.date}
-              {workItem ? ` · #${workItem.id}` : ""}
-              {action.billable ? " · faturável" : " · não faturável"}
-            </p>
+                {/* Duration token */}
+                <span className="relative inline-block">
+                  <button
+                    type="button"
+                    disabled={isCreated}
+                    aria-haspopup="listbox"
+                    aria-expanded={activeSlot === "duration"}
+                    onClick={() =>
+                      setActiveSlot((prev) =>
+                        prev === "duration" ? null : "duration",
+                      )
+                    }
+                    className={cn(
+                      "inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 font-mono font-semibold text-[11.5px] transition-colors",
+                      durationMinutes !== action.durationMinutes
+                        ? "bg-orange-500/15 text-orange-600 underline decoration-2 decoration-orange-500 underline-offset-4 dark:text-orange-300"
+                        : "bg-background/80 text-foreground underline decoration-dotted decoration-neutral-400 underline-offset-4 hover:bg-orange-500/10 hover:decoration-orange-500 dark:bg-white/[0.06]",
+                    )}
+                  >
+                    {formatDuration(durationMinutes)}
+                  </button>
+                  <AnimatePresence>
+                    {activeSlot === "duration" && (
+                      <TokenSlotPopover
+                        title="Duração"
+                        options={durationOptions}
+                        selectedId={String(durationMinutes)}
+                        onSelect={(id) => setDurationMinutes(Number(id))}
+                        onClose={() => setActiveSlot(null)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </span>
+
+                <span className="text-muted-foreground">em</span>
+
+                {/* Project token */}
+                <span className="relative inline-block max-w-full">
+                  <button
+                    type="button"
+                    disabled={isCreated || projectOptions.length === 0}
+                    aria-haspopup="listbox"
+                    aria-expanded={activeSlot === "project"}
+                    onClick={() =>
+                      setActiveSlot((prev) =>
+                        prev === "project" ? null : "project",
+                      )
+                    }
+                    className={cn(
+                      "inline-flex max-w-[230px] cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 font-semibold text-[11.5px] transition-colors",
+                      action.projectId &&
+                        projectId &&
+                        projectId !== action.projectId
+                        ? "bg-orange-500/15 text-orange-600 underline decoration-2 decoration-orange-500 underline-offset-4 dark:text-orange-300"
+                        : "bg-background/80 text-foreground underline decoration-dotted decoration-neutral-400 underline-offset-4 hover:bg-orange-500/10 hover:decoration-orange-500 dark:bg-white/[0.06]",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "h-2 w-2 shrink-0 rounded-full",
+                        !projectColor && "bg-orange-500",
+                      )}
+                      style={
+                        projectColor
+                          ? { backgroundColor: projectColor }
+                          : undefined
+                      }
+                      aria-hidden="true"
+                    />
+                    <span className="truncate">{projectName}</span>
+                  </button>
+                  <AnimatePresence>
+                    {activeSlot === "project" && (
+                      <TokenSlotPopover
+                        title="Projeto"
+                        options={projectOptions}
+                        selectedId={projectId}
+                        onSelect={(id) => setProjectId(id)}
+                        onClose={() => setActiveSlot(null)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </span>
+
+                <span className="text-muted-foreground">em</span>
+
+                {/* Date token */}
+                <span className="relative inline-block">
+                  <button
+                    type="button"
+                    disabled={isCreated}
+                    aria-haspopup="listbox"
+                    aria-expanded={activeSlot === "date"}
+                    onClick={() =>
+                      setActiveSlot((prev) => (prev === "date" ? null : "date"))
+                    }
+                    className={cn(
+                      "inline-flex cursor-pointer items-center rounded-md px-1.5 py-0.5 font-mono text-[11px] transition-colors",
+                      entryDate !== action.date
+                        ? "bg-orange-500/15 font-semibold text-orange-600 underline decoration-2 decoration-orange-500 underline-offset-4 dark:text-orange-300"
+                        : "bg-background/80 text-foreground underline decoration-dotted decoration-neutral-400 underline-offset-4 hover:bg-orange-500/10 hover:decoration-orange-500 dark:bg-white/[0.06]",
+                    )}
+                  >
+                    {entryDate}
+                  </button>
+                  <AnimatePresence>
+                    {activeSlot === "date" && (
+                      <TokenSlotPopover
+                        title="Data do lançamento"
+                        options={dateOptions}
+                        selectedId={entryDate}
+                        onSelect={(id) => setEntryDate(id)}
+                        onClose={() => setActiveSlot(null)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </span>
+
+                <span className="text-muted-foreground">como</span>
+
+                {/* Billable token */}
+                <span className="relative inline-block">
+                  <button
+                    type="button"
+                    disabled={isCreated}
+                    aria-haspopup="listbox"
+                    aria-expanded={activeSlot === "billable"}
+                    onClick={() =>
+                      setActiveSlot((prev) =>
+                        prev === "billable" ? null : "billable",
+                      )
+                    }
+                    className={cn(
+                      "inline-flex cursor-pointer items-center rounded-md px-1.5 py-0.5 font-medium text-[11px] transition-colors",
+                      billable !== action.billable
+                        ? "bg-orange-500/15 font-semibold text-orange-600 underline decoration-2 decoration-orange-500 underline-offset-4 dark:text-orange-300"
+                        : "bg-background/80 text-foreground underline decoration-dotted decoration-neutral-400 underline-offset-4 hover:bg-orange-500/10 hover:decoration-orange-500 dark:bg-white/[0.06]",
+                    )}
+                  >
+                    {billable ? "faturável" : "não faturável"}
+                  </button>
+                  <AnimatePresence>
+                    {activeSlot === "billable" && (
+                      <TokenSlotPopover
+                        title="Faturamento"
+                        options={billableOptions}
+                        selectedId={String(billable)}
+                        onSelect={(id) => setBillable(id === "true")}
+                        onClose={() => setActiveSlot(null)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </span>
+              </div>
+
+              <p className="mt-2 border-border/50 border-l-2 pl-2.5 text-[11.5px] text-neutral-600 italic leading-relaxed dark:border-white/10 dark:text-neutral-300">
+                “{description}”
+                {workItem && (
+                  <span className="ml-1.5 not-italic font-mono text-[10.5px] text-orange-500">
+                    #{workItem.id}
+                  </span>
+                )}
+              </p>
+            </div>
+
+            {/* Swapped Token Chips (KokonutUI EditChips) */}
+            {swaps.length > 0 && !isCreated && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-[10.5px]">
+                {swaps.map((swap) => (
+                  <button
+                    key={swap.key}
+                    type="button"
+                    onClick={swap.revert}
+                    title="Clique para desfazer este ajuste"
+                    className="group inline-flex cursor-pointer items-center gap-1 rounded-md bg-orange-500/10 px-2 py-0.5 text-orange-700 ring-1 ring-orange-500/20 transition-colors hover:bg-orange-500/15 dark:text-orange-300"
+                  >
+                    <span className="text-muted-foreground line-through">
+                      {swap.from}
+                    </span>
+                    <span aria-hidden="true" className="text-muted-foreground">
+                      →
+                    </span>
+                    <span className="font-semibold">{swap.to}</span>
+                    <X
+                      className="h-2.5 w-2.5 opacity-60 group-hover:opacity-100"
+                      aria-hidden="true"
+                    />
+                  </button>
+                ))}
+                {swaps.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={handleResetAllSwaps}
+                    className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <RotateCcw className="h-2.5 w-2.5" aria-hidden="true" />
+                    Restaurar
+                  </button>
+                )}
+              </div>
+            )}
 
             {isCreated ? (
               <DoneState label="Registrado com sucesso!" />
             ) : willAutoRun && !needsProject ? (
               <AutoRunNotice isRunning={isSubmitting} />
             ) : (
-              <div className="flex items-center justify-end gap-2 pt-2">
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  onClick={() => setIsEditing(true)}
-                  className="h-8 cursor-pointer gap-1.5 border-orange-500/30 text-[11px] text-orange-600 hover:bg-orange-500/10 dark:text-orange-300"
+                  onClick={() => {
+                    setActiveSlot(null);
+                    setIsEditing(true);
+                  }}
+                  className="h-8 cursor-pointer gap-1.5 text-[11px] text-muted-foreground hover:text-foreground"
                 >
                   <Edit3 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Editar
+                  Formulário completo
                 </Button>
                 <Button
                   type="button"
@@ -496,7 +1025,7 @@ function StartTimerCard({
   const [isStarted, setIsStarted] = useState(false);
   const wasAutoRef = useRef(false);
 
-  async function handleStart() {
+  async function handleStart(): Promise<void> {
     if (!action.projectId) {
       toast.error("Projeto não identificado. Inicie o timer pela sidebar.");
       return;
@@ -573,11 +1102,18 @@ function StartTimerCard({
 
   return (
     <ActionShell title="Iniciar cronômetro" warning={action.warning}>
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="flex items-center gap-1.5 font-semibold text-[12px] text-foreground">
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: action.projectColor ?? "#f97316" }}
+            className={cn(
+              "h-2.5 w-2.5 shrink-0 rounded-full",
+              !action.projectColor && "bg-orange-500",
+            )}
+            style={
+              action.projectColor
+                ? { backgroundColor: action.projectColor }
+                : undefined
+            }
             aria-hidden="true"
           />
           <span className="truncate">
@@ -635,7 +1171,7 @@ function StopTimerCard({
   const [isStopped, setIsStopped] = useState(false);
   const wasAutoRef = useRef(false);
 
-  async function handleStop() {
+  async function handleStop(): Promise<void> {
     if (isSubmitting || isStopped) return;
 
     setIsSubmitting(true);
@@ -704,7 +1240,7 @@ function StopTimerCard({
       title="Parar cronômetro"
       badge={formatDuration(action.elapsedMinutes)}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="truncate font-semibold text-[12px] text-foreground">
           {action.projectName ?? "Projeto"}
         </p>
@@ -759,7 +1295,7 @@ function SubmitTimesheetCard({
 
   // Submitting is outward-facing (it reaches the manager and locks the week),
   // so it always requires this click — never an auto-run.
-  async function handleSubmit() {
+  async function handleSubmit(): Promise<void> {
     if (isSubmitting || isSubmitted) return;
 
     setIsSubmitting(true);
@@ -851,7 +1387,7 @@ function SubmitTimesheetCard({
       badge={formatDuration(action.totalMinutes)}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="font-semibold text-[12px] text-foreground">
           {action.period}
         </p>

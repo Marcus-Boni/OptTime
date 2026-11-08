@@ -28,7 +28,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAutoRunAction } from "@/hooks/use-auto-run-action";
@@ -53,30 +53,38 @@ import type {
 } from "@/lib/ai/types";
 import { cn, formatDuration } from "@/lib/utils";
 
-// ─── Shared shell ────────────────────────────────────────────────────
+// ─── Shared shell (KokonutUI ai-tool-approval surface) ───────────────
 
 type Tone = "brand" | "danger" | "info";
 
 const TONE_STYLES: Record<
   Tone,
-  { shell: string; header: string; badge: string; button: string }
+  {
+    shell: string;
+    headerIcon: string;
+    badge: string;
+    button: string;
+  }
 > = {
   brand: {
-    shell: "border-orange-500/30 bg-orange-500/10 dark:bg-orange-950/20",
-    header: "border-orange-500/20 text-orange-600 dark:text-orange-400",
-    badge: "bg-orange-500/20 text-orange-700 dark:text-orange-300",
+    shell: "ring-black/[0.08] dark:ring-white/10",
+    headerIcon:
+      "bg-orange-500/15 text-orange-600 ring-1 ring-orange-500/25 dark:text-orange-400",
+    badge: "bg-orange-500/15 text-orange-600 dark:text-orange-300",
     button: "bg-orange-500 hover:bg-orange-600",
   },
   danger: {
-    shell: "border-red-500/30 bg-red-500/10 dark:bg-red-950/20",
-    header: "border-red-500/20 text-red-600 dark:text-red-400",
-    badge: "bg-red-500/20 text-red-700 dark:text-red-300",
+    shell: "ring-red-500/25 dark:ring-red-500/25",
+    headerIcon:
+      "bg-red-500/15 text-red-600 ring-1 ring-red-500/30 dark:text-red-400",
+    badge: "bg-red-500/15 text-red-600 dark:text-red-300",
     button: "bg-red-600 hover:bg-red-700",
   },
   info: {
-    shell: "border-blue-500/30 bg-blue-500/10 dark:bg-blue-950/20",
-    header: "border-blue-500/20 text-blue-600 dark:text-blue-400",
-    badge: "bg-blue-500/20 text-blue-700 dark:text-blue-300",
+    shell: "ring-blue-500/20 dark:ring-blue-500/20",
+    headerIcon:
+      "bg-blue-500/15 text-blue-600 ring-1 ring-blue-500/25 dark:text-blue-400",
+    badge: "bg-blue-500/15 text-blue-600 dark:text-blue-300",
     button: "bg-blue-600 hover:bg-blue-700",
   },
 };
@@ -102,22 +110,27 @@ function ActionShell({
 
   return (
     <section
-      className={cn("mt-3 rounded-xl border p-3 shadow-sm", styles.shell)}
+      className={cn(
+        "overflow-hidden rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)] ring-1 dark:bg-neutral-900 dark:shadow-none",
+        styles.shell,
+      )}
     >
-      <header
-        className={cn(
-          "flex items-center justify-between gap-2 border-b pb-2",
-          styles.header,
-        )}
-      >
-        <h4 className="flex items-center gap-1.5 font-semibold text-[11px] uppercase tracking-wide">
-          {icon}
+      <header className="flex items-center justify-between gap-2 border-border/50 border-b bg-neutral-50/70 px-3.5 py-2.5 dark:border-white/[0.07] dark:bg-white/[0.02]">
+        <h4 className="flex items-center gap-2 font-semibold text-[11px] text-foreground tracking-tight">
+          <span
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-md",
+              styles.headerIcon,
+            )}
+          >
+            {icon}
+          </span>
           {title}
         </h4>
         {badge && (
           <span
             className={cn(
-              "rounded-full px-2.5 py-0.5 font-mono font-bold text-[11px]",
+              "rounded-md px-2 py-0.5 font-mono font-semibold text-[11px] tabular-nums",
               styles.badge,
             )}
           >
@@ -126,17 +139,19 @@ function ActionShell({
         )}
       </header>
 
-      {warning && (
-        <p className="mt-2 flex gap-1.5 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-          <AlertTriangle
-            className="mt-0.5 h-3.5 w-3.5 shrink-0"
-            aria-hidden="true"
-          />
-          <span>{warning}</span>
-        </p>
-      )}
+      <div className="p-3.5">
+        {warning && (
+          <p className="mb-2.5 flex gap-1.5 rounded-xl bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300">
+            <AlertTriangle
+              className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span>{warning}</span>
+          </p>
+        )}
 
-      {children}
+        {children}
+      </div>
     </section>
   );
 }
@@ -158,7 +173,7 @@ function useActionExecution(
   const wasAutoRef = useRef(false);
   const busyRef = useRef(false);
 
-  async function run(override?: ConfirmableAction) {
+  async function run(override?: ConfirmableAction): Promise<void> {
     // The ref closes the gap between two calls landing in the same tick, which
     // state alone cannot.
     if (busyRef.current || isDone) return;
@@ -229,6 +244,113 @@ function useActionExecution(
   };
 }
 
+// ─── KokonutUI HoldToConfirm Button (Destructive Safety) ─────────────
+
+const HOLD_MS = 850;
+
+function HoldToDangerButton({
+  label,
+  icon,
+  disabled,
+  isSubmitting,
+  onComplete,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  disabled?: boolean;
+  isSubmitting: boolean;
+  onComplete: () => void;
+}) {
+  const [holding, setHolding] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const doneRef = useRef(false);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearTimer, [clearTimer]);
+
+  const startHold = useCallback(() => {
+    if (disabled || isSubmitting) return;
+    doneRef.current = false;
+    setHolding(true);
+    clearTimer();
+    timerRef.current = setTimeout(() => {
+      doneRef.current = true;
+      setHolding(false);
+      onComplete();
+    }, HOLD_MS);
+  }, [clearTimer, disabled, isSubmitting, onComplete]);
+
+  const cancelHold = useCallback(() => {
+    if (doneRef.current) return;
+    clearTimer();
+    setHolding(false);
+  }, [clearTimer]);
+
+  const holdLabel = `Segure para ${label.toLowerCase()}`;
+
+  return (
+    <button
+      type="button"
+      disabled={disabled || isSubmitting}
+      aria-busy={isSubmitting}
+      aria-label={`${holdLabel} (mantenha pressionado)`}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        startHold();
+      }}
+      onPointerUp={cancelHold}
+      onPointerLeave={cancelHold}
+      onPointerCancel={cancelHold}
+      onKeyDown={(event) => {
+        if ((event.key === " " || event.key === "Enter") && !event.repeat) {
+          event.preventDefault();
+          startHold();
+        }
+      }}
+      onKeyUp={(event) => {
+        if (event.key === " " || event.key === "Enter") {
+          event.preventDefault();
+          cancelHold();
+        }
+      }}
+      onBlur={cancelHold}
+      className="relative h-8 cursor-pointer select-none overflow-hidden rounded-lg bg-red-500/12 px-3 font-medium text-[11px] text-red-700 ring-1 ring-red-500/30 transition-transform active:scale-[0.985] disabled:pointer-events-none disabled:opacity-50 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-400/30"
+    >
+      <span className="flex items-center gap-1.5 whitespace-nowrap">
+        {isSubmitting ? (
+          <Loader2
+            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
+        ) : (
+          icon
+        )}
+        <span>{isSubmitting ? "Executando…" : holdLabel}</span>
+      </span>
+
+      <span
+        aria-hidden="true"
+        style={{
+          clipPath: holding ? "inset(0 0% 0 0)" : "inset(0 100% 0 0)",
+          transition: holding
+            ? `clip-path ${HOLD_MS}ms linear`
+            : "clip-path 160ms cubic-bezier(0.22, 1, 0.36, 1)",
+        }}
+        className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 whitespace-nowrap bg-red-600 px-3 font-medium text-[11px] text-white dark:bg-red-500"
+      >
+        {icon}
+        <span>{holdLabel}</span>
+      </span>
+    </button>
+  );
+}
+
 interface ConfirmFooterProps {
   label: string;
   icon: React.ReactNode;
@@ -274,35 +396,46 @@ function ConfirmFooter({
         <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
         Cancelar
       </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={onConfirm}
-        disabled={disabled || isSubmitting}
-        aria-busy={isSubmitting}
-        className={cn(
-          "h-8 cursor-pointer gap-1.5 text-[11px] text-white",
-          TONE_STYLES[tone].button,
-        )}
-      >
-        {isSubmitting ? (
-          <Loader2
-            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-        ) : (
-          icon
-        )}
-        {label}
-      </Button>
+
+      {tone === "danger" ? (
+        <HoldToDangerButton
+          label={label}
+          icon={icon}
+          disabled={disabled}
+          isSubmitting={isSubmitting}
+          onComplete={onConfirm}
+        />
+      ) : (
+        <Button
+          type="button"
+          size="sm"
+          onClick={onConfirm}
+          disabled={disabled || isSubmitting}
+          aria-busy={isSubmitting}
+          className={cn(
+            "h-8 cursor-pointer gap-1.5 text-[11px] text-white",
+            TONE_STYLES[tone].button,
+          )}
+        >
+          {isSubmitting ? (
+            <Loader2
+              className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+          ) : (
+            icon
+          )}
+          {label}
+        </Button>
+      )}
     </div>
   );
 }
 
 function DoneState({ label }: { label: string }) {
   return (
-    <p className="mt-3 flex items-center gap-1.5 font-semibold text-[12px] text-emerald-600 dark:text-emerald-400">
-      <Check className="h-4 w-4" aria-hidden="true" />
+    <p className="mt-3 flex items-center gap-1.5 rounded-xl bg-emerald-500/10 px-2.5 py-1.5 font-semibold text-[11.5px] text-emerald-600 ring-1 ring-emerald-500/20 dark:text-emerald-400">
+      <Check className="h-3.5 w-3.5" aria-hidden="true" />
       {label}
     </p>
   );
@@ -310,7 +443,7 @@ function DoneState({ label }: { label: string }) {
 
 function DismissedState() {
   return (
-    <p className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-500">
+    <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:bg-white/[0.03] dark:text-neutral-400">
       <X className="h-3.5 w-3.5" aria-hidden="true" />
       Ação cancelada — nada foi alterado.
     </p>
@@ -338,15 +471,22 @@ export function UpdateTimeEntryCard({
   return (
     <ActionShell
       title="Confirmar edição"
-      icon={<Pencil className="h-3.5 w-3.5" aria-hidden="true" />}
+      icon={<Pencil className="h-3 w-3" aria-hidden="true" />}
       badge={formatDuration(action.next.durationMinutes)}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="flex items-center gap-1.5 font-semibold text-[12px] text-foreground">
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: action.projectColor ?? "#f97316" }}
+            className={cn(
+              "h-2.5 w-2.5 shrink-0 rounded-full",
+              !action.projectColor && "bg-orange-500",
+            )}
+            style={
+              action.projectColor
+                ? { backgroundColor: action.projectColor }
+                : undefined
+            }
             aria-hidden="true"
           />
           <span className="truncate">{action.projectName ?? "Projeto"}</span>
@@ -431,16 +571,23 @@ export function DeleteTimeEntryCard({
   return (
     <ActionShell
       title="Confirmar exclusão"
-      icon={<Trash2 className="h-3.5 w-3.5" aria-hidden="true" />}
+      icon={<Trash2 className="h-3 w-3" aria-hidden="true" />}
       tone="danger"
       badge={formatDuration(action.durationMinutes)}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="flex items-center gap-1.5 font-semibold text-[12px] text-foreground">
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full"
-            style={{ backgroundColor: action.projectColor ?? "#ef4444" }}
+            className={cn(
+              "h-2.5 w-2.5 shrink-0 rounded-full",
+              !action.projectColor && "bg-red-500",
+            )}
+            style={
+              action.projectColor
+                ? { backgroundColor: action.projectColor }
+                : undefined
+            }
             aria-hidden="true"
           />
           <span className="truncate">{action.projectName ?? "Projeto"}</span>
@@ -490,14 +637,14 @@ export function TimerToggleCard({
       title={pausing ? "Pausar cronômetro" : "Retomar cronômetro"}
       icon={
         pausing ? (
-          <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+          <Pause className="h-3 w-3" aria-hidden="true" />
         ) : (
-          <Play className="h-3.5 w-3.5" aria-hidden="true" />
+          <Play className="h-3 w-3" aria-hidden="true" />
         )
       }
       badge={formatDuration(action.elapsedMinutes)}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="truncate font-semibold text-[12px] text-foreground">
           {action.projectName ?? "Projeto"}
         </p>
@@ -554,16 +701,16 @@ export function TimesheetReviewCard({
       title={approving ? "Aprovar timesheet" : "Rejeitar timesheet"}
       icon={
         approving ? (
-          <ThumbsUp className="h-3.5 w-3.5" aria-hidden="true" />
+          <ThumbsUp className="h-3 w-3" aria-hidden="true" />
         ) : (
-          <ThumbsDown className="h-3.5 w-3.5" aria-hidden="true" />
+          <ThumbsDown className="h-3 w-3" aria-hidden="true" />
         )
       }
       tone={approving ? "brand" : "danger"}
       badge={formatDuration(action.totalMinutes)}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-1.5">
+      <div className="space-y-1.5">
         <p className="font-semibold text-[12px] text-foreground">
           {action.userName}
         </p>
@@ -630,11 +777,11 @@ export function ExportReportCard({
   return (
     <ActionShell
       title="Gerar relatório"
-      icon={<FileText className="h-3.5 w-3.5" aria-hidden="true" />}
+      icon={<FileText className="h-3 w-3" aria-hidden="true" />}
       badge={format.toUpperCase()}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-2">
+      <div className="space-y-2">
         <div>
           <p className="font-semibold text-[12px] text-foreground">
             {action.title}
@@ -720,12 +867,12 @@ export function NotifyTeamCard({
   return (
     <ActionShell
       title="Enviar notificação"
-      icon={<Mail className="h-3.5 w-3.5" aria-hidden="true" />}
+      icon={<Mail className="h-3 w-3" aria-hidden="true" />}
       tone="info"
       badge={`${action.recipients.length} pessoa(s)`}
       warning={action.warning}
     >
-      <div className="mt-2.5 space-y-2">
+      <div className="space-y-2">
         <div>
           <p className="font-semibold text-[12px] text-foreground">
             {action.subject}
