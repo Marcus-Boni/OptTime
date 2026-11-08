@@ -128,14 +128,15 @@ function StepRow({ step, runtime, autoRuns, canSkip, onSkip }: StepRowProps) {
   return (
     <li
       className={cn(
-        "flex gap-2.5 rounded-lg border p-2.5 transition-colors duration-150",
+        "flex gap-2.5 rounded-xl border p-2.5 transition-colors duration-150",
         runtime.state === "done" &&
-          "border-emerald-500/30 bg-emerald-500/5 dark:bg-emerald-950/20",
+          "border-emerald-500/25 bg-emerald-500/[0.06] dark:bg-emerald-950/20",
         runtime.state === "failed" &&
-          "border-red-500/30 bg-red-500/5 dark:bg-red-950/20",
+          "border-red-500/25 bg-red-500/[0.06] dark:bg-red-950/20",
         runtime.state === "running" && "border-orange-500/40 bg-orange-500/10",
-        runtime.state === "skipped" && "border-border/60 opacity-60",
-        runtime.state === "pending" && "border-border/60",
+        runtime.state === "skipped" && "border-border/50 opacity-55",
+        runtime.state === "pending" &&
+          "border-border/50 bg-neutral-50/50 dark:border-white/[0.06] dark:bg-white/[0.02]",
       )}
     >
       <span className="mt-0.5 shrink-0">
@@ -211,7 +212,7 @@ function StepRow({ step, runtime, autoRuns, canSkip, onSkip }: StepRowProps) {
   );
 }
 
-// ─── Plan card ───────────────────────────────────────────────────────
+// ─── Plan card (KokonutUI ai-tool-approval surface) ──────────────────
 
 export interface OperatorPlanCardProps {
   action: OperatorPlanAction;
@@ -261,7 +262,7 @@ export function OperatorPlanCard({
   }, [confirmableSteps, isLoading, permissionFor]);
 
   const runFrom = useCallback(
-    async (startIndex: number) => {
+    async (startIndex: number): Promise<void> => {
       setIsRunning(true);
 
       let completed = 0;
@@ -352,7 +353,7 @@ export function OperatorPlanCard({
     if (hasPlanRun(action.planId)) return;
 
     markPlanStarted(action.planId);
-    runFrom(0);
+    void runFrom(0);
   }, [action.planId, isLoading, runsUnattended, runFrom]);
 
   function handleRun() {
@@ -363,7 +364,7 @@ export function OperatorPlanCard({
     }
 
     markPlanStarted(action.planId);
-    runFrom(0);
+    void runFrom(0);
   }
 
   function handleSkip(stepId: string) {
@@ -378,7 +379,7 @@ export function OperatorPlanCard({
     );
     if (failedIndex < 0) return;
 
-    runFrom(failedIndex + 1);
+    void runFrom(failedIndex + 1);
   }
 
   const doneCount = action.steps.filter(
@@ -403,7 +404,7 @@ export function OperatorPlanCard({
 
   if (isDismissed) {
     return (
-      <p className="mt-3 flex items-center gap-1.5 text-[11px] text-neutral-500">
+      <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-neutral-100 px-3 py-2 text-[11px] text-neutral-500 dark:bg-white/[0.03] dark:text-neutral-400">
         <X className="h-3.5 w-3.5" aria-hidden="true" />
         Plano descartado — nada foi executado.
       </p>
@@ -415,126 +416,132 @@ export function OperatorPlanCard({
       initial={prefersReducedMotion ? undefined : { opacity: 0, y: 8 }}
       animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: "easeOut" }}
-      className="mt-3 rounded-xl border border-orange-500/30 bg-orange-500/10 p-3 shadow-sm dark:bg-orange-950/20"
+      className="overflow-hidden rounded-2xl bg-card shadow-[0_1px_3px_rgba(0,0,0,0.05)] ring-1 ring-black/[0.08] dark:bg-neutral-900 dark:shadow-none dark:ring-white/10"
       aria-label="Plano de ações do assistente"
     >
-      <header className="flex items-center justify-between gap-2 border-orange-500/20 border-b pb-2">
-        <h4 className="flex items-center gap-1.5 font-semibold text-[11px] text-orange-600 uppercase tracking-wide dark:text-orange-400">
-          <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
+      <header className="flex items-center justify-between gap-2 border-border/50 border-b bg-neutral-50/70 px-3.5 py-2.5 dark:border-white/[0.07] dark:bg-white/[0.02]">
+        <h4 className="flex items-center gap-2 font-semibold text-[11px] text-foreground tracking-tight">
+          <span className="flex h-5 w-5 items-center justify-center rounded-md bg-orange-500/15 text-orange-600 ring-1 ring-orange-500/25 dark:text-orange-400">
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
+          </span>
           Plano de ação
         </h4>
-        <span className="rounded-full bg-orange-500/20 px-2.5 py-0.5 font-mono font-bold text-[11px] text-orange-700 dark:text-orange-300">
+        <span className="rounded-md bg-orange-500/15 px-2 py-0.5 font-mono font-semibold text-[11px] text-orange-600 tabular-nums dark:text-orange-300">
           {action.steps.length} etapas
         </span>
       </header>
 
-      {(isRunning || hasRun) && (
-        <div className="mt-2.5">
-          <Progress
-            value={progress}
-            aria-label={`Progresso do plano: ${progress}%`}
-            className="h-1.5"
-          />
-          <p className="mt-1 text-right font-mono text-[10px] text-neutral-500">
-            {doneCount}/{action.steps.length}
-          </p>
-        </div>
-      )}
-
-      <ul className="mt-2.5 space-y-1.5">
-        {action.steps.map((step) => {
-          const stepAction = step.action;
-          const autoRuns =
-            isConfirmableAction(stepAction) &&
-            permissionFor(stepAction.kind) === "auto";
-
-          return (
-            <StepRow
-              key={step.id}
-              step={step}
-              runtime={runtimes[step.id] ?? { state: "pending", message: null }}
-              autoRuns={autoRuns}
-              canSkip={!isRunning && !hasRun}
-              onSkip={() => handleSkip(step.id)}
+      <div className="p-3.5">
+        {(isRunning || hasRun) && (
+          <div className="mb-2.5">
+            <Progress
+              value={progress}
+              aria-label={`Progresso do plano: ${progress}%`}
+              className="h-1.5"
             />
-          );
-        })}
-      </ul>
-
-      {warnings.length > 0 && !hasRun && (
-        <ul className="mt-2 space-y-1">
-          {warnings.map((warning) => (
-            <li
-              key={warning}
-              className="flex gap-1.5 rounded-lg bg-amber-500/15 px-2.5 py-1.5 text-[11px] text-amber-700 dark:text-amber-400"
-            >
-              <AlertTriangle
-                className="mt-0.5 h-3.5 w-3.5 shrink-0"
-                aria-hidden="true"
-              />
-              <span>{warning}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {!hasRun && !isRunning && (
-        <div className="flex items-center justify-end gap-2 pt-2.5">
-          {runsUnattended ? (
-            <p className="flex items-center gap-1 text-[11px] text-orange-600 dark:text-orange-400">
-              <Zap className="h-3 w-3" aria-hidden="true" />
-              Executando automaticamente…
+            <p className="mt-1 text-right font-mono text-[10px] text-neutral-500 tabular-nums">
+              {doneCount}/{action.steps.length}
             </p>
-          ) : (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsDismissed(true)}
-                className="h-8 cursor-pointer text-[11px]"
-              >
-                <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-                Descartar
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleRun}
-                className="h-8 cursor-pointer gap-1.5 bg-orange-500 text-[11px] text-white hover:bg-orange-600"
-              >
-                <Play className="h-3.5 w-3.5" aria-hidden="true" />
-                Executar plano
-              </Button>
-            </>
-          )}
-        </div>
-      )}
+          </div>
+        )}
 
-      {isRunning && (
-        <p className="flex items-center justify-end gap-1.5 pt-2.5 text-[11px] text-orange-600 dark:text-orange-400">
-          <Loader2
-            className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-          Executando o plano…
-        </p>
-      )}
+        <ul className="space-y-1.5">
+          {action.steps.map((step) => {
+            const stepAction = step.action;
+            const autoRuns =
+              isConfirmableAction(stepAction) &&
+              permissionFor(stepAction.kind) === "auto";
 
-      {hasPendingAfterFailure && !isRunning && (
-        <div className="flex items-center justify-end pt-2.5">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleContinue}
-            className="h-8 cursor-pointer gap-1.5 border-orange-500/30 text-[11px] text-orange-600 hover:bg-orange-500/10 dark:text-orange-300"
-          >
-            <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
-            Continuar as etapas restantes
-          </Button>
-        </div>
-      )}
+            return (
+              <StepRow
+                key={step.id}
+                step={step}
+                runtime={
+                  runtimes[step.id] ?? { state: "pending", message: null }
+                }
+                autoRuns={autoRuns}
+                canSkip={!isRunning && !hasRun}
+                onSkip={() => handleSkip(step.id)}
+              />
+            );
+          })}
+        </ul>
+
+        {warnings.length > 0 && !hasRun && (
+          <ul className="mt-2.5 space-y-1">
+            {warnings.map((warning) => (
+              <li
+                key={warning}
+                className="flex gap-1.5 rounded-xl bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-700 ring-1 ring-amber-500/20 dark:text-amber-300"
+              >
+                <AlertTriangle
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{warning}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!hasRun && !isRunning && (
+          <div className="flex items-center justify-end gap-2 pt-2.5">
+            {runsUnattended ? (
+              <p className="flex items-center gap-1 text-[11px] text-orange-600 dark:text-orange-400">
+                <Zap className="h-3 w-3" aria-hidden="true" />
+                Executando automaticamente…
+              </p>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsDismissed(true)}
+                  className="h-8 cursor-pointer text-[11px]"
+                >
+                  <X className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                  Descartar
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleRun}
+                  className="h-8 cursor-pointer gap-1.5 bg-orange-500 text-[11px] text-white hover:bg-orange-600"
+                >
+                  <Play className="h-3.5 w-3.5" aria-hidden="true" />
+                  Executar plano
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+
+        {isRunning && (
+          <p className="flex items-center justify-end gap-1.5 pt-2.5 text-[11px] text-orange-600 dark:text-orange-400">
+            <Loader2
+              className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+              aria-hidden="true"
+            />
+            Executando o plano…
+          </p>
+        )}
+
+        {hasPendingAfterFailure && !isRunning && (
+          <div className="flex items-center justify-end pt-2.5">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleContinue}
+              className="h-8 cursor-pointer gap-1.5 border-orange-500/30 text-[11px] text-orange-600 hover:bg-orange-500/10 dark:text-orange-300"
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              Continuar as etapas restantes
+            </Button>
+          </div>
+        )}
+      </div>
     </motion.section>
   );
 }

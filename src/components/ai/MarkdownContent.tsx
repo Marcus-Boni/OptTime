@@ -1,7 +1,194 @@
+"use client";
+
+import { Check, Copy, Download, Table } from "lucide-react";
 import type React from "react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export interface MarkdownContentProps {
   content: string;
+}
+
+function CodeBlock({
+  code,
+  language,
+}: {
+  code: string;
+  language: string | null;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch (error: unknown) {
+      console.error("[MarkdownContent] handleCopyCode:", error);
+      toast.error("Não foi possível copiar o bloco.");
+    }
+  }
+
+  return (
+    <div className="my-2 overflow-hidden rounded-xl border border-border/50 bg-neutral-100/90 dark:border-white/10 dark:bg-neutral-950">
+      <div className="flex items-center justify-between border-border/40 border-b bg-neutral-200/50 px-3 py-1 dark:border-white/[0.07] dark:bg-white/[0.03]">
+        <span className="font-mono text-[10px] text-neutral-500 uppercase tracking-wider dark:text-neutral-400">
+          {language || "código"}
+        </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label="Copiar código"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[10px] text-neutral-600 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-300 dark:hover:bg-white/10"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-emerald-500" aria-hidden="true" />
+              <span>Copiado</span>
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" aria-hidden="true" />
+              <span>Copiar</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="overflow-x-auto p-3 font-mono text-[11px] text-neutral-800 dark:text-orange-300">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function toDelimitedText(
+  header: string[],
+  body: string[][],
+  delimiter: string,
+): string {
+  const escapeCell = (cell: string) => {
+    const clean = cell.replace(/\*\*|__|~~|`/g, "").trim();
+    if (
+      delimiter === "," &&
+      (clean.includes(",") || clean.includes('"') || clean.includes("\n"))
+    ) {
+      return `"${clean.replace(/"/g, '""')}"`;
+    }
+    return clean;
+  };
+  return [header, ...body]
+    .map((row) => row.map(escapeCell).join(delimiter))
+    .join("\n");
+}
+
+function TableBlock({ header, body }: { header: string[]; body: string[][] }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopyTsv(): Promise<void> {
+    try {
+      const tsv = toDelimitedText(header, body, "\t");
+      await navigator.clipboard.writeText(tsv);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+      toast.success("Tabela copiada (pronta para colar no Excel/Sheets).");
+    } catch (error: unknown) {
+      console.error("[MarkdownContent] handleCopyTsv:", error);
+      toast.error("Não foi possível copiar a tabela.");
+    }
+  }
+
+  function handleDownloadCsv(): void {
+    try {
+      const csv = `\uFEFF${toDelimitedText(header, body, ",")}`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `timebot-tabela-${Date.now()}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error: unknown) {
+      console.error("[MarkdownContent] handleDownloadCsv:", error);
+      toast.error("Não foi possível exportar o CSV.");
+    }
+  }
+
+  return (
+    <div className="my-2 overflow-hidden rounded-xl border border-border/50 bg-card/70 dark:border-white/10 dark:bg-neutral-950/60">
+      <div className="flex items-center justify-between gap-2 border-border/40 border-b bg-neutral-100/80 px-3 py-1.5 dark:border-white/[0.07] dark:bg-white/[0.03]">
+        <span className="inline-flex items-center gap-1.5 font-medium text-[10px] text-neutral-500 uppercase tracking-wider dark:text-neutral-400">
+          <Table className="h-3 w-3 text-orange-500" aria-hidden="true" />
+          Tabela ({body.length} {body.length === 1 ? "linha" : "linhas"})
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleCopyTsv}
+            aria-label="Copiar tabela para Excel"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[10px] text-neutral-600 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-300 dark:hover:bg-white/10"
+          >
+            {copied ? (
+              <>
+                <Check
+                  className="h-3 w-3 text-emerald-500"
+                  aria-hidden="true"
+                />
+                <span>Copiada</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" aria-hidden="true" />
+                <span>Copiar</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={handleDownloadCsv}
+            aria-label="Baixar tabela em CSV"
+            className="inline-flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-[10px] text-neutral-600 transition-colors hover:bg-black/5 hover:text-foreground dark:text-neutral-300 dark:hover:bg-white/10"
+          >
+            <Download className="h-3 w-3" aria-hidden="true" />
+            <span>CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="bg-neutral-100/60 dark:bg-neutral-900/80">
+            <tr>
+              {header.map((cell, index) => (
+                <th
+                  key={`th-${index}-${cell}`}
+                  className="px-2.5 py-1.5 text-left font-semibold text-foreground"
+                >
+                  {renderInline(cell)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, rowIndex) => (
+              <tr
+                key={`tr-${rowIndex}-${row[0] ?? ""}`}
+                className="border-border/40 border-t transition-colors hover:bg-black/[0.02] dark:border-white/5 dark:hover:bg-white/[0.02]"
+              >
+                {row.map((cell, cellIndex) => (
+                  <td
+                    key={`td-${cellIndex}-${cell}`}
+                    className="px-2.5 py-1.5 text-neutral-700 dark:text-neutral-300"
+                  >
+                    {renderInline(cell)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 /**
@@ -21,7 +208,7 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
   const elements: React.ReactNode[] = [];
 
   let listBuffer: { ordered: boolean; items: string[] } | null = null;
-  let codeBuffer: string[] | null = null;
+  let codeBuffer: { lang: string | null; lines: string[] } | null = null;
   let tableBuffer: string[] | null = null;
 
   function flushList() {
@@ -47,12 +234,11 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
     if (!codeBuffer) return;
 
     elements.push(
-      <pre
+      <CodeBlock
         key={`code-${elements.length}`}
-        className="my-2 overflow-x-auto rounded-lg border border-border/40 bg-neutral-100 p-2.5 font-mono text-[11px] text-neutral-800 dark:border-white/10 dark:bg-neutral-950 dark:text-orange-300"
-      >
-        <code>{codeBuffer.join("\n")}</code>
-      </pre>,
+        code={codeBuffer.lines.join("\n")}
+        language={codeBuffer.lang}
+      />,
     );
     codeBuffer = null;
   }
@@ -80,42 +266,11 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
     }
 
     elements.push(
-      <div
+      <TableBlock
         key={`table-${elements.length}`}
-        className="my-2 overflow-x-auto rounded-lg border border-border/40 dark:border-white/10"
-      >
-        <table className="w-full border-collapse text-[11px]">
-          <thead className="bg-neutral-100 dark:bg-neutral-900">
-            <tr>
-              {header.map((cell, index) => (
-                <th
-                  key={`th-${index}-${cell}`}
-                  className="px-2 py-1.5 text-left font-semibold text-foreground"
-                >
-                  {renderInline(cell)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {body.map((row, rowIndex) => (
-              <tr
-                key={`tr-${rowIndex}-${row[0] ?? ""}`}
-                className="border-border/40 border-t dark:border-white/5"
-              >
-                {row.map((cell, cellIndex) => (
-                  <td
-                    key={`td-${cellIndex}-${cell}`}
-                    className="px-2 py-1.5 text-neutral-700 dark:text-neutral-300"
-                  >
-                    {renderInline(cell)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>,
+        header={header}
+        body={body}
+      />,
     );
 
     tableBuffer = null;
@@ -132,13 +287,14 @@ export function MarkdownContent({ content }: MarkdownContentProps) {
       } else {
         flushList();
         flushTable();
-        codeBuffer = [];
+        const lang = trimmed.slice(3).trim() || null;
+        codeBuffer = { lang, lines: [] };
       }
       continue;
     }
 
     if (codeBuffer !== null) {
-      codeBuffer.push(line);
+      codeBuffer.lines.push(line);
       continue;
     }
 

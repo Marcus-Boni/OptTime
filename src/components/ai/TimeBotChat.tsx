@@ -825,37 +825,23 @@ export function TimeBotChat({
         >
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/20 text-orange-400">
+              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500/15 text-orange-400 ring-1 ring-orange-500/25">
                 <Bot className="h-5 w-5" aria-hidden="true" />
-                <span
-                  className={cn(
-                    "-bottom-0.5 -right-0.5 absolute h-2.5 w-2.5 rounded-full border-2 border-neutral-900",
-                    isStreaming
-                      ? "animate-pulse bg-orange-400 motion-reduce:animate-none"
-                      : "bg-emerald-400",
-                  )}
-                  aria-hidden="true"
-                />
               </div>
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2
                     id={titleId}
-                    className="flex items-center gap-1.5 font-bold font-sora text-base text-white"
+                    className="font-bold font-sora text-[15px] text-white tracking-tight"
                   >
                     TimeBot
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-500/20 px-2 py-0.5 font-medium text-[10px] text-orange-300">
-                      <Sparkles className="h-3 w-3" aria-hidden="true" /> IA
-                    </span>
                   </h2>
 
                   <span
                     className={cn(
-                      "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium text-[10px] transition-colors",
-                      isStreaming
-                        ? "border border-orange-500/30 bg-orange-500/20 text-orange-300"
-                        : "border border-emerald-500/20 bg-emerald-500/15 text-emerald-300",
+                      "inline-flex items-center gap-1.5 font-medium text-[10.5px] transition-colors",
+                      isStreaming ? "text-orange-300" : "text-neutral-400",
                     )}
                   >
                     <span
@@ -863,11 +849,11 @@ export function TimeBotChat({
                         "h-1.5 w-1.5 rounded-full",
                         isStreaming
                           ? "animate-pulse bg-orange-400 motion-reduce:animate-none"
-                          : "bg-emerald-400",
+                          : "bg-emerald-400/90",
                       )}
                       aria-hidden="true"
                     />
-                    {isStreaming ? "Processando..." : "Pronto"}
+                    {isStreaming ? "Respondendo…" : "Pronto"}
                   </span>
 
                   <OperatorModeChip

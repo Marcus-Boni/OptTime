@@ -178,9 +178,12 @@ export function VoiceCommandOverlay({
   const glowRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLSpanElement>(null);
   const outerRingRef = useRef<HTMLSpanElement>(null);
+  const silenceStrokeRef = useRef<SVGRectElement>(null);
   const barRefs = useRef<(HTMLSpanElement | null)[]>([]);
   const takeRef = useRef<number[]>([]);
   const speechActivityBoostRef = useRef(0);
+  const hasSpokenRef = useRef(false);
+  const silenceElapsedRef = useRef(0);
 
   const submitRef = useRef(onSubmit);
   const closeRef = useRef(onClose);
@@ -246,11 +249,14 @@ export function VoiceCommandOverlay({
   });
 
   // Whenever new interim/final words arrive from Web Speech API, provide a small
-  // fallback pulse in case the browser blocks concurrent getUserMedia streams.
+  // fallback pulse in case the browser blocks concurrent getUserMedia streams,
+  // and reset the VAD silence countdown.
   useEffect(() => {
     if (!speech.isListening) return;
     if (speech.interim || speech.transcript) {
       speechActivityBoostRef.current = 0.65;
+      hasSpokenRef.current = true;
+      silenceElapsedRef.current = 0;
     }
   }, [speech.isListening, speech.interim, speech.transcript]);
 
@@ -262,6 +268,8 @@ export function VoiceCommandOverlay({
 
     hasSubmittedRef.current = false;
     isReviewingRef.current = false;
+    hasSpokenRef.current = false;
+    silenceElapsedRef.current = 0;
     takeRef.current = [];
     setIsReviewing(false);
     setEditedText("");
@@ -300,6 +308,7 @@ export function VoiceCommandOverlay({
     const glow = glowRef.current;
     const ring = ringRef.current;
     const outerRing = outerRingRef.current;
+    const silenceStroke = silenceStrokeRef.current;
 
     if (!open || !row) return;
 
@@ -319,6 +328,10 @@ export function VoiceCommandOverlay({
       if (outerRing) {
         outerRing.style.transform = "scale(1)";
         outerRing.style.opacity = "0";
+      }
+      if (silenceStroke) {
+        silenceStroke.style.strokeDashoffset = "100";
+        silenceStroke.style.opacity = "0";
       }
       return;
     }
@@ -383,6 +396,33 @@ export function VoiceCommandOverlay({
       smoothLevel += (liveLevel - smoothLevel) * 0.35;
       const lift = Math.max(0, smoothLevel);
 
+      // Update real-time VAD silence countdown ring when the user pauses after speaking.
+      if (liveLevel > 0.085) {
+        silenceElapsedRef.current = 0;
+      } else if (hasSpokenRef.current && !isReviewingRef.current) {
+        silenceElapsedRef.current = Math.min(
+          AUTO_SEND_SILENCE_MS,
+          silenceElapsedRef.current + dt,
+        );
+      } else {
+        silenceElapsedRef.current = 0;
+      }
+
+      if (silenceStroke) {
+        const progress =
+          silenceElapsedRef.current > 120
+            ? Math.min(
+                1,
+                (silenceElapsedRef.current - 120) /
+                  (AUTO_SEND_SILENCE_MS - 120),
+              )
+            : 0;
+        silenceStroke.style.strokeDashoffset = (100 - progress * 100).toFixed(
+          2,
+        );
+        silenceStroke.style.opacity = progress > 0.02 ? "0.95" : "0";
+      }
+
       if (glow) {
         glow.style.opacity = (0.06 + lift * 0.75).toFixed(3);
         glow.style.transform = `scale(${(0.92 + lift * 0.28).toFixed(3)})`;
@@ -413,6 +453,10 @@ export function VoiceCommandOverlay({
       if (outerRing) {
         outerRing.style.transform = "scale(1)";
         outerRing.style.opacity = "0";
+      }
+      if (silenceStroke) {
+        silenceStroke.style.strokeDashoffset = "100";
+        silenceStroke.style.opacity = "0";
       }
     };
   }, [open, speech.isListening, isSending, prefersReducedMotion, audioLevel]);
@@ -558,7 +602,7 @@ export function VoiceCommandOverlay({
             transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
             className="flex w-full max-w-xl flex-col items-center gap-5 rounded-3xl border border-white/10 bg-neutral-900/75 p-7 shadow-2xl shadow-black/60 backdrop-blur-xl sm:p-8"
           >
-            {/* KokonutUI ai-voice style interactive orb with real audio ring */}
+            {/* KokonutUI ai-voice style interactive orb with real audio ring & VAD auto-send perimeter */}
             <div className="relative flex h-24 w-24 items-center justify-center">
               <span
                 ref={outerRingRef}
@@ -570,6 +614,28 @@ export function VoiceCommandOverlay({
                 aria-hidden="true"
                 className="pointer-events-none absolute inset-1.5 rounded-2xl bg-orange-500/25 opacity-0 transition-transform duration-75"
               />
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 84 84"
+                className="pointer-events-none absolute h-[84px] w-[84px]"
+              >
+                <rect
+                  ref={silenceStrokeRef}
+                  x="3"
+                  y="3"
+                  width="78"
+                  height="78"
+                  rx="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  pathLength={100}
+                  strokeDasharray="100"
+                  strokeDashoffset="100"
+                  className="text-amber-300 opacity-0 transition-opacity duration-150"
+                />
+              </svg>
 
               <button
                 type="button"
