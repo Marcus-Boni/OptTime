@@ -542,9 +542,10 @@ export function VoiceCommandOverlay({
   function handleManualSend() {
     const target = activeText.trim();
     if (!target) return;
-    isReviewingRef.current = true;
     if (speech.isListening) {
+      isReviewingRef.current = false;
       stop();
+      return;
     }
     commitSubmit(target);
   }
@@ -830,6 +831,7 @@ export function VoiceCommandOverlay({
                 <Button
                   type="button"
                   variant="outline"
+                  aria-label="Parar"
                   onClick={
                     liveSpoken
                       ? handlePauseForReview
@@ -848,6 +850,7 @@ export function VoiceCommandOverlay({
                 <Button
                   type="button"
                   variant="outline"
+                  aria-label="Ouvir"
                   onClick={handleResumeListening}
                   disabled={isSending}
                   className="h-10 cursor-pointer gap-1.5 rounded-xl border-white/15 bg-white/5 px-4 text-xs text-white hover:bg-white/10"
@@ -859,6 +862,7 @@ export function VoiceCommandOverlay({
 
               <Button
                 type="button"
+                aria-label="Enviar agora"
                 onClick={handleManualSend}
                 disabled={!activeText.trim() || isSending}
                 className="h-10 cursor-pointer gap-1.5 rounded-xl bg-orange-500 px-5 font-medium text-white text-xs shadow-lg shadow-orange-500/25 hover:bg-orange-600 disabled:opacity-40 disabled:shadow-none"

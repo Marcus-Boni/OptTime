@@ -10,6 +10,11 @@ export interface TestRequest {
   message: string;
   aborted: boolean;
 }
+export interface SyntheticThreadsState {
+  activeThreadId: string;
+  threads: unknown[];
+  executedKeys: string[];
+}
 export interface VoiceHarnessApi {
   mount: (options?: {
     queued?: string;
@@ -20,6 +25,8 @@ export interface VoiceHarnessApi {
   queue: (text: string) => void;
   setAuth: (ready: boolean) => void;
   requests: TestRequest[];
+  threadSyncPayloads: SyntheticThreadsState[];
+  setServerThreads: (state: SyntheticThreadsState) => void;
   setResponseDelay: (milliseconds: number) => void;
   recognition: {
     result: (text: string, final: boolean) => void;
@@ -94,6 +101,12 @@ function engine(): SyntheticRecognition {
   return current;
 }
 const requests: TestRequest[] = [];
+const threadSyncPayloads: SyntheticThreadsState[] = [];
+let serverThreadsState: SyntheticThreadsState = {
+  activeThreadId: "",
+  threads: [],
+  executedKeys: [],
+};
 let responseDelay = 60;
 window.fetch = async (input, init): Promise<Response> => {
   const url = new URL(
@@ -106,6 +119,20 @@ window.fetch = async (input, init): Promise<Response> => {
       actions: [],
       role: "member",
     });
+  }
+  if (url.pathname === "/api/projects") {
+    return Response.json([]);
+  }
+  if (url.pathname === "/api/ai/threads") {
+    if (init?.method === "PUT" && init.body) {
+      const payload = JSON.parse(String(init.body)) as SyntheticThreadsState;
+      threadSyncPayloads.push(payload);
+      serverThreadsState = payload;
+    }
+    return Response.json(serverThreadsState);
+  }
+  if (url.pathname.startsWith("/api/ai/threads/")) {
+    return Response.json({ deleted: true });
   }
   if (url.pathname === "/api/ai/context") {
     return Response.json({
@@ -208,6 +235,10 @@ const root = createRoot(container);
 let generation = 0;
 window.voiceHarness = {
   requests,
+  threadSyncPayloads,
+  setServerThreads: (state): void => {
+    serverThreadsState = state;
+  },
   setResponseDelay: (milliseconds): void => {
     responseDelay = milliseconds;
   },

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AppRole } from "@/lib/access-control";
+import {
+  EXECUTED_STORE_UPDATED_EVENT,
+  getExecutedKeys,
+  hydrateExecutedKeys,
+} from "@/lib/ai/operator/executed-store";
 import type { OperatorInputMode } from "@/lib/ai/operator/types";
 import type {
   AgentEvent,
@@ -13,7 +18,7 @@ import type {
 const STORAGE_VERSION = "v3";
 const LEGACY_STORAGE_VERSION = "v2";
 
-/** Messages kept per conversation in localStorage. */
+/** Messages kept per conversation in localStorage and PostgreSQL. */
 const MAX_PERSISTED_MESSAGES = 60;
 /** Conversations kept in the history list. */
 const MAX_THREADS = 20;
@@ -21,6 +26,8 @@ const MAX_THREADS = 20;
 const HISTORY_WINDOW = 12;
 /** Delay before flushing the conversation to localStorage. */
 const PERSIST_DEBOUNCE_MS = 400;
+/** Delay before synchronizing settled conversation state to PostgreSQL. */
+const SERVER_SYNC_DEBOUNCE_MS = 650;
 export const NEW_THREAD_TITLE = "Nova conversa";
 
 export interface ToolActivityItem {
@@ -213,9 +220,92 @@ function readPersistedState(userId?: string): PersistedState | null {
   }
 }
 
+function normalizeThread(thread: TimeBotThread): TimeBotThread {
+  return {
+    id: thread.id,
+    title: thread.title || NEW_THREAD_TITLE,
+    createdAt: thread.createdAt || Date.now(),
+    updatedAt: thread.updatedAt || Date.now(),
+    messages: (thread.messages ?? [])
+      .slice(-MAX_PERSISTED_MESSAGES)
+      .map(normalizeMessage),
+  };
+}
+
+/**
+ * Merges local (localStorage / in-flight) threads with remote PostgreSQL
+ * threads. Any non-empty local conversation that does not yet exist on the
+ * server (or has newer messages) is flagged so the caller can complete the
+ * localStorage -> database migration automatically.
+ */
+function mergeLocalAndRemoteThreads(
+  localThreads: TimeBotThread[],
+  remoteThreads: TimeBotThread[],
+): { merged: TimeBotThread[]; hasUnsyncedLocal: boolean } {
+  const byId = new Map<string, TimeBotThread>();
+  for (const remote of remoteThreads) {
+    const normalized = normalizeThread(remote);
+    byId.set(normalized.id, normalized);
+  }
+
+  let hasUnsyncedLocal = false;
+
+  for (const local of localThreads) {
+    const normalized = normalizeThread(local);
+    const existing = byId.get(normalized.id);
+
+    if (!existing) {
+      if (normalized.messages.length > 0) {
+        byId.set(normalized.id, normalized);
+        hasUnsyncedLocal = true;
+      }
+      continue;
+    }
+
+    if (
+      normalized.messages.length > existing.messages.length ||
+      (normalized.messages.length === existing.messages.length &&
+        normalized.updatedAt > existing.updatedAt) ||
+      (normalized.title !== existing.title &&
+        normalized.updatedAt >= existing.updatedAt)
+    ) {
+      byId.set(normalized.id, normalized);
+      hasUnsyncedLocal = true;
+    }
+  }
+
+  const merged = [...byId.values()]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, MAX_THREADS);
+
+  if (merged.length === 0) {
+    const fallback = localThreads[0]
+      ? normalizeThread(localThreads[0])
+      : createThread();
+    return { merged: [fallback], hasUnsyncedLocal: false };
+  }
+
+  return { merged, hasUnsyncedLocal };
+}
+
+function buildSyncSignature(
+  activeThreadId: string,
+  threads: TimeBotThread[],
+  executedKeys: string[],
+): string {
+  const threadPart = threads
+    .map(
+      (t) =>
+        `${t.id}:${t.title}:${t.updatedAt}:${t.messages.length}:${t.messages[t.messages.length - 1]?.content.length ?? 0}`,
+    )
+    .join("|");
+  return `${activeThreadId}::${threadPart}::${executedKeys.length}`;
+}
+
 /**
  * Conversation state for the TimeBot assistant: streaming, tool activity,
- * proactive briefing and a multi-conversation history kept on the client.
+ * proactive briefing and a multi-conversation history persisted in PostgreSQL
+ * with a local write-through cache for instant hydration.
  */
 export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   const [threads, setThreads] = useState<TimeBotThread[]>([]);
@@ -225,6 +315,12 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   const [briefing, setBriefing] = useState<TimeBotBriefing | null>(null);
   const [isLoadingBriefing, setIsLoadingBriefing] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [serverHydratedUser, setServerHydratedUser] = useState<string | null>(
+    null,
+  );
+  const [executedKeys, setExecutedKeys] = useState<string[]>(() =>
+    getExecutedKeys(),
+  );
 
   const abortRef = useRef<AbortController | null>(null);
   const lastUserMessageRef = useRef<string>("");
@@ -232,6 +328,10 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
   const activeThreadIdRef = useRef<string>("");
   const isStreamingRef = useRef(false);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serverHydratedUserRef = useRef<string | null>(null);
+  const serverHadThreadsRef = useRef(false);
+  const lastSyncedSignatureRef = useRef<string>("");
 
   // Mirrors for the async streaming loop, which must never read stale state.
   useEffect(() => {
@@ -246,7 +346,24 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     isStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
-  // Restore persisted conversations once the user id is known.
+  // Listen to operator executed-store updates so executed action keys sync to DB.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function handleExecutedUpdate() {
+      setExecutedKeys(getExecutedKeys());
+    }
+
+    window.addEventListener(EXECUTED_STORE_UPDATED_EVENT, handleExecutedUpdate);
+    return () => {
+      window.removeEventListener(
+        EXECUTED_STORE_UPDATED_EVENT,
+        handleExecutedUpdate,
+      );
+    };
+  }, []);
+
+  // Restore persisted conversations immediately from localStorage once the user id is known.
   useEffect(() => {
     const restored = readPersistedState(userId);
     const initial = restored ?? {
@@ -270,7 +387,97 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     setHydrated(true);
   }, [userId]);
 
-  // Persist on idle so token-by-token streaming never thrashes localStorage.
+  // Hydrate from PostgreSQL and automatically migrate any unsynced localStorage threads.
+  useEffect(() => {
+    if (!hydrated || !userId || !enabled) return;
+    if (serverHydratedUserRef.current === userId) return;
+
+    let cancelled = false;
+
+    async function hydrateFromServer(currentUserId: string): Promise<void> {
+      try {
+        const res = await fetch("/api/ai/threads");
+        if (!res.ok) {
+          serverHydratedUserRef.current = currentUserId;
+          return;
+        }
+
+        const data = (await res.json()) as {
+          activeThreadId?: string;
+          threads?: TimeBotThread[];
+          executedKeys?: string[];
+        };
+        if (cancelled) return;
+
+        if (Array.isArray(data.executedKeys) && data.executedKeys.length > 0) {
+          hydrateExecutedKeys(data.executedKeys);
+          setExecutedKeys(getExecutedKeys());
+        }
+
+        const remoteThreads = Array.isArray(data.threads) ? data.threads : [];
+        serverHadThreadsRef.current = remoteThreads.length > 0;
+        serverHydratedUserRef.current = currentUserId;
+
+        if (remoteThreads.length === 0) {
+          lastSyncedSignatureRef.current = "";
+          setServerHydratedUser(currentUserId);
+          return;
+        }
+
+        const currentLocal = threadsRef.current;
+        const { merged, hasUnsyncedLocal } = mergeLocalAndRemoteThreads(
+          currentLocal,
+          remoteThreads,
+        );
+
+        const activeLocal = currentLocal.find(
+          (t) => t.id === activeThreadIdRef.current,
+        );
+        const keepLocalActive =
+          isStreamingRef.current ||
+          Boolean(activeLocal && activeLocal.messages.length > 0);
+
+        const nextActiveId =
+          (keepLocalActive &&
+            merged.find((t) => t.id === activeThreadIdRef.current)?.id) ||
+          merged.find((t) => t.id === data.activeThreadId)?.id ||
+          merged[0]?.id ||
+          "";
+
+        threadsRef.current = merged;
+        activeThreadIdRef.current = nextActiveId;
+
+        if (!hasUnsyncedLocal) {
+          lastSyncedSignatureRef.current = buildSyncSignature(
+            nextActiveId,
+            merged,
+            getExecutedKeys(),
+          );
+        } else {
+          // Force immediate sync effect so localStorage conversations migrate to PostgreSQL.
+          lastSyncedSignatureRef.current = "";
+        }
+
+        setThreads(merged);
+        setActiveThreadId(nextActiveId);
+        setServerHydratedUser(currentUserId);
+      } catch (error: unknown) {
+        if (!cancelled) {
+          serverHydratedUserRef.current = currentUserId;
+          setServerHydratedUser(currentUserId);
+          console.error("[useTimeBot] hydrateFromServer:", error);
+        }
+      }
+    }
+
+    hydrateFromServer(userId);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, userId, enabled]);
+
+  // Write-through to localStorage on idle so token-by-token streaming never thrashes storage.
   useEffect(() => {
     if (!hydrated) return;
 
@@ -299,6 +506,65 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
       if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     };
   }, [threads, activeThreadId, userId, hydrated]);
+
+  // Synchronize settled conversation state and executed keys to PostgreSQL.
+  useEffect(() => {
+    if (!hydrated || !userId || isStreaming || serverHydratedUser !== userId) {
+      return;
+    }
+
+    const hasMeaningfulContent =
+      serverHadThreadsRef.current ||
+      threads.some(
+        (thread) =>
+          thread.messages.length > 0 || thread.title !== NEW_THREAD_TITLE,
+      );
+    if (!hasMeaningfulContent) return;
+
+    const signature = buildSyncSignature(activeThreadId, threads, executedKeys);
+    if (signature === lastSyncedSignatureRef.current) return;
+
+    if (serverSyncTimerRef.current) clearTimeout(serverSyncTimerRef.current);
+
+    serverSyncTimerRef.current = setTimeout(() => {
+      const payloadThreads = threads.map((thread) => ({
+        id: thread.id,
+        title: thread.title || NEW_THREAD_TITLE,
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        messages: thread.messages
+          .slice(-MAX_PERSISTED_MESSAGES)
+          .map(normalizeMessage),
+      }));
+
+      lastSyncedSignatureRef.current = signature;
+      serverHadThreadsRef.current = payloadThreads.length > 0;
+
+      fetch("/api/ai/threads", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          activeThreadId,
+          threads: payloadThreads,
+          executedKeys,
+        }),
+      }).catch((error: unknown) => {
+        console.error("[useTimeBot] sync threads to DB:", error);
+      });
+    }, SERVER_SYNC_DEBOUNCE_MS);
+
+    return () => {
+      if (serverSyncTimerRef.current) clearTimeout(serverSyncTimerRef.current);
+    };
+  }, [
+    threads,
+    activeThreadId,
+    userId,
+    hydrated,
+    isStreaming,
+    executedKeys,
+    serverHydratedUser,
+  ]);
 
   const messages = useMemo(
     () =>
@@ -331,11 +597,13 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
 
   const updateThread = useCallback(
     (threadId: string, updater: (thread: TimeBotThread) => TimeBotThread) => {
-      setThreads((previous) =>
-        previous.map((thread) =>
+      setThreads((previous) => {
+        const next = previous.map((thread) =>
           thread.id === threadId ? updater(thread) : thread,
-        ),
-      );
+        );
+        threadsRef.current = next;
+        return next;
+      });
     },
     [],
   );
@@ -654,35 +922,62 @@ export function useTimeBot({ userId, activePath, enabled }: UseTimeBotOptions) {
     [briefing?.suggestions, stop],
   );
 
-  const deleteThread = useCallback((threadId: string) => {
-    const remaining = threadsRef.current.filter(
-      (thread) => thread.id !== threadId,
-    );
-    const next = remaining.length > 0 ? remaining : [createThread()];
+  const deleteThread = useCallback(
+    (threadId: string) => {
+      const remaining = threadsRef.current.filter(
+        (thread) => thread.id !== threadId,
+      );
+      const next = remaining.length > 0 ? remaining : [createThread()];
 
-    threadsRef.current = next;
-    setThreads(next);
+      threadsRef.current = next;
+      setThreads(next);
 
-    if (threadId === activeThreadIdRef.current) {
-      const fallback = [...next].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-      if (fallback) {
-        activeThreadIdRef.current = fallback.id;
-        setActiveThreadId(fallback.id);
-        lastUserMessageRef.current = "";
+      if (threadId === activeThreadIdRef.current) {
+        const fallback = [...next].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+        if (fallback) {
+          activeThreadIdRef.current = fallback.id;
+          setActiveThreadId(fallback.id);
+          lastUserMessageRef.current = "";
+        }
       }
-    }
-  }, []);
 
-  const renameThread = useCallback((threadId: string, title: string) => {
-    const clean = title.replace(/\s+/g, " ").trim().slice(0, 60);
-    if (!clean) return;
+      if (userId) {
+        fetch(`/api/ai/threads/${encodeURIComponent(threadId)}`, {
+          method: "DELETE",
+        }).catch((error: unknown) => {
+          console.error("[useTimeBot] deleteThread:", error);
+        });
+      }
+    },
+    [userId],
+  );
 
-    setThreads((previous) =>
-      previous.map((thread) =>
-        thread.id === threadId ? { ...thread, title: clean } : thread,
-      ),
-    );
-  }, []);
+  const renameThread = useCallback(
+    (threadId: string, title: string) => {
+      const clean = title.replace(/\s+/g, " ").trim().slice(0, 60);
+      if (!clean) return;
+
+      const now = Date.now();
+      setThreads((previous) =>
+        previous.map((thread) =>
+          thread.id === threadId
+            ? { ...thread, title: clean, updatedAt: now }
+            : thread,
+        ),
+      );
+
+      if (userId) {
+        fetch(`/api/ai/threads/${encodeURIComponent(threadId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: clean }),
+        }).catch((error: unknown) => {
+          console.error("[useTimeBot] renameThread:", error);
+        });
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
     return () => {

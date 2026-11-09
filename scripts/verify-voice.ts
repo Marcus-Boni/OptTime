@@ -606,6 +606,113 @@ async function main(): Promise<void> {
         assert.deepEqual(await results(page), []);
       },
     );
+    await check(
+      "Migrates pre-existing localStorage threads to PostgreSQL via PUT /api/ai/threads",
+      async (page): Promise<void> => {
+        await page.evaluate(() => {
+          const now = Date.now();
+          localStorage.setItem(
+            "timebot_chat_v3_voice-test-user",
+            JSON.stringify({
+              activeThreadId: "legacy-local-thread",
+              threads: [
+                {
+                  id: "legacy-local-thread",
+                  title: "Conversa legada no navegador",
+                  createdAt: now - 5000,
+                  updatedAt: now - 1000,
+                  messages: [
+                    {
+                      id: "msg-u-1",
+                      role: "user",
+                      content: "Pergunta salva no localStorage",
+                      cards: [],
+                      actions: [],
+                      tools: [],
+                      createdAt: now - 4000,
+                    },
+                    {
+                      id: "msg-a-1",
+                      role: "assistant",
+                      content: "Resposta migrada automaticamente para o banco",
+                      cards: [],
+                      actions: [],
+                      tools: [],
+                      createdAt: now - 3000,
+                    },
+                  ],
+                },
+              ],
+            }),
+          );
+          window.voiceHarness.mount();
+        });
+        await page
+          .getByText("Resposta migrada automaticamente para o banco", {
+            exact: true,
+          })
+          .waitFor();
+        await page.waitForFunction(
+          () => window.voiceHarness.threadSyncPayloads.length >= 1,
+        );
+        const synced = await page.evaluate(
+          () => window.voiceHarness.threadSyncPayloads[0],
+        );
+        assert.equal(synced.activeThreadId, "legacy-local-thread");
+        assert.equal(synced.threads.length, 1);
+      },
+    );
+    await check(
+      "Hydrates remote PostgreSQL threads and executed keys onto a clean browser",
+      async (page): Promise<void> => {
+        await page.evaluate(() => {
+          const now = Date.now();
+          window.voiceHarness.setServerThreads({
+            activeThreadId: "remote-db-thread",
+            executedKeys: ["plan:plan-remote-1"],
+            threads: [
+              {
+                id: "remote-db-thread",
+                title: "Conversa sincronizada do banco",
+                createdAt: now - 8000,
+                updatedAt: now - 2000,
+                messages: [
+                  {
+                    id: "msg-r-1",
+                    role: "user",
+                    content: "Pergunta feita em outro dispositivo",
+                    cards: [],
+                    actions: [],
+                    tools: [],
+                    createdAt: now - 7000,
+                  },
+                  {
+                    id: "msg-r-2",
+                    role: "assistant",
+                    content: "Resposta carregada do PostgreSQL",
+                    cards: [],
+                    actions: [],
+                    tools: [],
+                    createdAt: now - 6000,
+                  },
+                ],
+              },
+            ],
+          });
+          window.voiceHarness.mount();
+        });
+        await page
+          .getByText("Resposta carregada do PostgreSQL", { exact: true })
+          .waitFor();
+        const executedRaw = await page.evaluate(() =>
+          localStorage.getItem("optsolv:operator:executed:v1"),
+        );
+        assert.ok(
+          executedRaw?.includes("plan:plan-remote-1"),
+          "Remote executed keys must hydrate into local executed-store",
+        );
+      },
+    );
     console.log(
       `Voice browser checks: ${passed} passed, ${failures.length} failed. Recognition/audio and server APIs are synthetic; React components/hooks are real.`,
     );

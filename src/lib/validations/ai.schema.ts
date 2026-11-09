@@ -42,3 +42,58 @@ export const parsedTimeEntrySchema = z.object({
 });
 
 export type ParsedTimeEntry = z.infer<typeof parsedTimeEntrySchema>;
+
+// ─── TimeBot Persisted Conversation Schemas ──────────────────────────
+
+export const persistedTimeBotMessageSchema = z.object({
+  id: z.string().min(1).max(128),
+  role: z.union([z.literal("user"), z.literal("assistant")]),
+  content: z.string().max(32000),
+  cards: z.array(z.record(z.string(), z.unknown())).max(30).default([]),
+  actions: z.array(z.record(z.string(), z.unknown())).max(30).default([]),
+  provider: z
+    .union([z.literal("foundry"), z.literal("local_fallback")])
+    .optional(),
+  error: z.string().max(1000).optional(),
+  inputMode: z.union([z.literal("text"), z.literal("voice")]).optional(),
+  createdAt: z.number().int().nonnegative(),
+});
+
+export type PersistedTimeBotMessageInput = z.infer<
+  typeof persistedTimeBotMessageSchema
+>;
+
+export const persistedTimeBotThreadSchema = z.object({
+  id: z.string().min(1).max(128),
+  title: z.string().min(1).max(120),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+  messages: z.array(persistedTimeBotMessageSchema).max(60).default([]),
+});
+
+export type PersistedTimeBotThreadInput = z.infer<
+  typeof persistedTimeBotThreadSchema
+>;
+
+export const syncTimeBotThreadsSchema = z.object({
+  activeThreadId: z.string().max(128).optional().default(""),
+  threads: z.array(persistedTimeBotThreadSchema).max(20),
+  executedKeys: z
+    .array(z.string().min(1).max(2000))
+    .max(400)
+    .optional()
+    .default([]),
+});
+
+export type SyncTimeBotThreadsInput = z.infer<typeof syncTimeBotThreadsSchema>;
+
+export const patchTimeBotThreadSchema = z
+  .object({
+    title: z.string().min(1).max(120).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .refine((data) => data.title !== undefined || data.isActive !== undefined, {
+    message: "Informe ao menos um campo para atualizar",
+  });
+
+export type PatchTimeBotThreadInput = z.infer<typeof patchTimeBotThreadSchema>;

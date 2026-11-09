@@ -163,6 +163,7 @@ export const userRelations = relations(user, ({ many, one }) => ({
   timeSuggestionFeedback: many(timeSuggestionFeedback),
   suggestions: many(suggestion),
   apiTokens: many(apiToken),
+  timebotThreads: many(timebotThread),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -1618,6 +1619,50 @@ export const companyHoliday = pgTable(
 export const companyHolidayRelations = relations(companyHoliday, ({ one }) => ({
   createdBy: one(user, {
     fields: [companyHoliday.createdById],
+    references: [user.id],
+  }),
+}));
+
+// ─── TimeBot Conversation Threads ─────────────────────────────────────
+/**
+ * Per-user AI assistant conversation threads.
+ *
+ * Synced between the client and PostgreSQL so a user can continue the same
+ * conversation across desktops, laptops, and mobile devices, while keeping a
+ * fast localStorage cache for instant hydration and offline resilience.
+ *
+ * `executedKeys` tracks action/plan keys already executed within this user's
+ * assistant sessions so historical confirmation cards never re-fire on a new
+ * device when autopilot/smart mode is enabled.
+ */
+export const timebotThread = pgTable(
+  "timebot_thread",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("Nova conversa"),
+    /** JSON-serialized array of TimeBotMessage (bounded to MAX_PERSISTED_MESSAGES) */
+    messages: text("messages").notNull().default("[]"),
+    /** Marks the most recently selected thread for this user */
+    isActive: boolean("is_active").notNull().default(false),
+    /** JSON-serialized array of executed operator action/plan keys */
+    executedKeys: text("executed_keys").notNull().default("[]"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("timebot_thread_user_updated_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
+export const timebotThreadRelations = relations(timebotThread, ({ one }) => ({
+  user: one(user, {
+    fields: [timebotThread.userId],
     references: [user.id],
   }),
 }));
