@@ -88,7 +88,7 @@ export default function ReleaseFormDialog({
         versionTag: "",
         title: "",
         description: "",
-        videoUrl: "remotion:ReleaseShowcaseV110",
+        videoUrl: "remotion:ReleaseShowcaseV112",
       });
     }
   }, [form, isOpen, release]);
@@ -273,6 +273,21 @@ export default function ReleaseFormDialog({
                       className="flex flex-wrap gap-1.5 py-1"
                       data-tour="release-video-presets"
                     >
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={
+                          field.value === "remotion:ReleaseShowcaseV112"
+                            ? "default"
+                            : "outline"
+                        }
+                        onClick={() =>
+                          field.onChange("remotion:ReleaseShowcaseV112")
+                        }
+                        className={`h-7 text-xs ${field.value === "remotion:ReleaseShowcaseV112" ? "bg-brand-500 text-white" : ""}`}
+                      >
+                        🎬 Showcase v1.12.0
+                      </Button>
                       <Button
                         type="button"
                         size="sm"
