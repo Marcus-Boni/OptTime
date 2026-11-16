@@ -130,7 +130,7 @@ const PROJECT_REF_SCHEMA = {
 const DATE_SCHEMA = {
   type: "string",
   description:
-    "Data no formato YYYY-MM-DD. Também aceita 'hoje', 'ontem' ou 'anteontem'. Padrão: hoje. Não é permitido registrar em datas futuras nem há mais de 30 dias.",
+    "Data no formato YYYY-MM-DD. Também aceita 'hoje', 'ontem' ou 'anteontem'. Padrão: hoje. Registros são permitidos até hoje, em períodos editáveis.",
 } as const;
 
 const PERIOD_SCHEMA = {
@@ -645,7 +645,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_update_time_entry",
     title: "Editar lançamento",
     description:
-      "Edita um lançamento existente (projeto, duração, descrição, data, faturável ou Work Item). Só funciona em semanas ainda não submetidas. Use opt_time_list_time_entries para obter o entryId.",
+      "Edita um lançamento existente (projeto, duração, descrição, data, faturável ou Work Item) em um período editável. Use opt_time_list_time_entries para obter o entryId.",
     scope: "time:write",
     annotations: MUTATING,
     inputSchema: {
@@ -719,7 +719,7 @@ export const TOOLS: ToolDefinition[] = [
     name: "opt_time_delete_time_entry",
     title: "Excluir lançamento",
     description:
-      "Exclui um lançamento de tempo. A operação é reversível apenas por um administrador — confirme com o usuário antes de chamar. Só funciona em semanas ainda não submetidas.",
+      "Exclui um lançamento de tempo em um período editável. A operação é reversível apenas por um administrador — confirme com o usuário antes de chamar.",
     scope: "time:write",
     annotations: DESTRUCTIVE,
     inputSchema: {
@@ -950,7 +950,7 @@ export const TOOLS: ToolDefinition[] = [
         date: {
           type: "string",
           description:
-            "Data YYYY-MM-DD a analisar, ou 'hoje'/'ontem'. Padrão: hoje. Não aceita datas futuras nem com mais de 30 dias.",
+            "Data YYYY-MM-DD a analisar, ou 'hoje'/'ontem'. Padrão: hoje. Aceita datas até hoje em períodos editáveis.",
         },
       },
       additionalProperties: false,

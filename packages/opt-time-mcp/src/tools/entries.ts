@@ -126,7 +126,7 @@ export function registerEntryTools(
     {
       title: "Editar lançamento",
       description:
-        "Edita um lançamento existente (projeto, duração, descrição, data, faturável ou Work Item). Só funciona em semanas ainda não submetidas. Use opt_time_list_time_entries para obter o entryId.",
+        "Edita um lançamento existente (projeto, duração, descrição, data, faturável ou Work Item) em um período editável. Use opt_time_list_time_entries para obter o entryId.",
       inputSchema: {
         entryId: z
           .string()
@@ -173,7 +173,7 @@ export function registerEntryTools(
     {
       title: "Excluir lançamento",
       description:
-        "Exclui um lançamento de tempo. Confirme com o usuário antes de chamar. Só funciona em semanas ainda não submetidas.",
+        "Exclui um lançamento de tempo em um período editável. Confirme com o usuário antes de chamar.",
       inputSchema: {
         entryId: z
           .string()

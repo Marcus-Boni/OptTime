@@ -81,7 +81,7 @@ export const dateArg = z
   .string()
   .optional()
   .describe(
-    "Data no formato YYYY-MM-DD. Também aceita 'hoje' e 'ontem'. Padrão: hoje. Não é permitido registrar em datas futuras nem há mais de 30 dias.",
+    "Data no formato YYYY-MM-DD. Também aceita 'hoje' e 'ontem'. Padrão: hoje. Registros são permitidos até hoje, em períodos editáveis.",
   );
 
 export const periodArg = z

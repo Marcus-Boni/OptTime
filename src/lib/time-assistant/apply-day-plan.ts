@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { db } from "@/lib/db";
 import { timeEntry, timeSuggestionFeedback } from "@/lib/db/schema";
+import { assertTimesheetDatesUnlocked } from "@/lib/time-entry-locks";
 import type { ReconstructSourceKind } from "@/types/reconstruct";
 
 /**
@@ -89,6 +90,8 @@ export async function applyDayPlanEntries(
 ): Promise<ApplyDayPlanResult> {
   const { userId, date, items, rejected = [], provenance = {} } = input;
   const newMinutes = items.reduce((sum, item) => sum + item.minutes, 0);
+
+  await assertTimesheetDatesUnlocked(tx, [{ userId, date }]);
 
   // Serialize this review flow across tabs before checking evidence or totals.
   await tx.execute(

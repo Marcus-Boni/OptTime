@@ -41,7 +41,6 @@ import {
 import { buildCommitSessions } from "@/lib/time-assistant/commit-sessions";
 import { mapWithConcurrencyLimit } from "@/lib/time-assistant/concurrency";
 import type { NormalizedCommitActivity } from "@/lib/time-assistant/engine";
-import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/limits";
 import {
   buildDeterministicDayPlan,
   type CalendarEventInput,
@@ -49,7 +48,10 @@ import {
   refineDayPlanWithAI,
   type WeekdayPattern,
 } from "@/lib/time-assistant/reconstruct";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
+import {
+  getWeeklyTimesheetStatusForDate,
+  TIMESHEET_PERIOD_LOCKED_MESSAGE,
+} from "@/lib/time-entry-locks";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { formatLocalDate, parseLocalDate } from "@/lib/utils";
 import type {
@@ -74,10 +76,7 @@ const PATTERN_LOOKBACK_DAYS = 60;
 const WORKING_DAYS_PER_WEEK = 5;
 const MAX_ENRICHED_MEETINGS = 3;
 
-export type DayPlanRejection =
-  | "future_date"
-  | "out_of_window"
-  | "period_locked";
+export type DayPlanRejection = "future_date" | "period_locked";
 
 /** The day cannot be planned; each reason maps to a distinct HTTP/agent error. */
 export class DayPlanRejectedError extends Error {
@@ -91,8 +90,7 @@ export class DayPlanRejectedError extends Error {
 }
 
 /**
- * Throws when `date` is outside the reconstruction window or sits in a week
- * that was already submitted or approved.
+ * Throws when `date` is in the future or belongs to a locked period.
  *
  * @throws {DayPlanRejectedError}
  */
@@ -109,18 +107,11 @@ export async function assertDayPlannable(
     );
   }
 
-  if (date < shiftDay(today, -MAX_BACKFILL_DAYS)) {
-    throw new DayPlanRejectedError(
-      "out_of_window",
-      "Reconstrução limitada aos últimos 30 dias.",
-    );
-  }
-
   const lockStatus = await getWeeklyTimesheetStatusForDate(userId, date);
   if (lockStatus.locked) {
     throw new DayPlanRejectedError(
       "period_locked",
-      "Esse dia pertence a um timesheet já submetido ou aprovado.",
+      TIMESHEET_PERIOD_LOCKED_MESSAGE,
     );
   }
 }

@@ -6,10 +6,13 @@ import { runInNewContext } from "node:vm";
 import type { SQL } from "drizzle-orm";
 import { PgDialect } from "drizzle-orm/pg-core";
 import ts from "typescript";
+import * as duration from "@/lib/ai/duration";
 import * as periods from "@/lib/ai/periods";
+import type { OperatorStepAction } from "@/lib/ai/types";
 import * as capacity from "@/lib/capacity";
 import * as schema from "@/lib/db/schema";
 import * as timesheetPeriods from "@/lib/timesheet-periods";
+import * as timesheetStatus from "@/lib/timesheet-status";
 import * as utils from "@/lib/utils";
 
 const requireDependency = createRequire(resolve("package.json"));
@@ -39,9 +42,11 @@ function loadModule<T>(path: string, extra = "", overrides = {}): T {
     },
   ).outputText;
   const mocks: Record<string, unknown> = {
+    "@/lib/ai/duration": duration,
     "@/lib/ai/periods": periods,
     "@/lib/capacity": capacity,
     "@/lib/db/schema": schema,
+    "@/lib/holidays/service": { getHolidaysInRange: async () => [] },
     "@/lib/timesheet-periods": timesheetPeriods,
     "@/lib/utils": utils,
     "@/lib/db": {
@@ -72,7 +77,7 @@ function loadModule<T>(path: string, extra = "", overrides = {}): T {
     "@/app/(dashboard)/dashboard/settings/tabs": { SETTINGS_TABS: [] },
     "@/lib/ai/operator/navigation": { NAVIGATION_TARGETS: {} },
     "@/lib/ai/operator/ui-commands": { UI_COMMAND_LIST: [] },
-    "@/lib/timesheet-status": { getTimesheetStatusLabel: () => "aprovado" },
+    "@/lib/timesheet-status": timesheetStatus,
     ...overrides,
   };
   runInNewContext(source, {
@@ -84,6 +89,192 @@ function loadModule<T>(path: string, extra = "", overrides = {}): T {
     },
   });
   return exports as T;
+}
+
+async function verifyEntryPreparation(): Promise<void> {
+  type TimesheetRecord = {
+    id: string;
+    userId: string;
+    period: string;
+    periodType: "weekly" | "monthly";
+    status: "open" | "submitted" | "approved" | "rejected";
+  };
+  const records: TimesheetRecord[] = [];
+  const userId = "fixture-user";
+  const today = "2026-10-01";
+  const oldDate = "2026-04-01";
+  const createdDate = "2026-07-03";
+  const oldSegment = timesheetPeriods.getTimesheetSegmentForDate(oldDate);
+  const recentSegment = timesheetPeriods.getTimesheetSegmentForDate(today);
+  const lockedRecord: TimesheetRecord = {
+    id: "submitted",
+    userId,
+    period: recentSegment.period,
+    periodType: "weekly",
+    status: "submitted",
+  };
+  const emitActions: OperatorStepAction[] = [];
+  const context = {
+    actor: { role: "member" },
+    user: { userId, today },
+    emitAction: (action: OperatorStepAction) => emitActions.push(action),
+  };
+
+  const locks = loadModule<typeof import("@/lib/time-entry-locks")>(
+    "src/lib/time-entry-locks.ts",
+    "",
+    {
+      "@/lib/db": {
+        db: {
+          query: {
+            timesheet: {
+              findMany: async ({
+                where,
+              }: {
+                where: SQL;
+              }): Promise<TimesheetRecord[]> => {
+                const params = dialect.sqlToQuery(where).params;
+                return records.filter(
+                  (row) =>
+                    params.includes(row.period) || params.includes(row.id),
+                );
+              },
+            },
+          },
+        },
+      },
+    },
+  );
+  const entryPeriod = loadModule("src/lib/ai/tools/entry-period.ts", "", {
+    "@/lib/time-entry-locks": locks,
+  });
+  const project = {
+    id: "fixture-project",
+    name: "Projeto",
+    color: "#000000",
+    isMember: true,
+  };
+  let linkedId: string | null = null;
+  const readTools = {
+    listLoggableProjects: async () => [project],
+    matchProject: () => project,
+  };
+  const dependencies = {
+    "@/lib/ai/tools/entry-period": entryPeriod,
+    "./read-tools": readTools,
+    "@/lib/db": {
+      db: {
+        query: {
+          timeEntry: {
+            findMany: async ({ where }: { where: SQL }) => {
+              const [, date] = dialect.sqlToQuery(where).params;
+              return [
+                {
+                  id: "fixture-entry",
+                  date,
+                  timesheetId: linkedId,
+                  description: "Atividade histórica",
+                  duration: 30,
+                  billable: true,
+                  project,
+                },
+              ];
+            },
+          },
+        },
+      },
+    },
+  };
+  interface EntryTool {
+    execute(
+      args: { date: string; description?: string; newDurationMinutes?: number },
+      ctx: unknown,
+    ): Promise<{ data: { status: string; message?: string } }>;
+  }
+  const { prepareTimeEntryTool: create } = loadModule<{
+    prepareTimeEntryTool: EntryTool;
+  }>("src/lib/ai/tools/write-tools.ts", "", dependencies);
+  const {
+    prepareTimeEntryUpdateTool: edit,
+    prepareTimeEntryDeleteTool: remove,
+  } = loadModule<{
+    prepareTimeEntryUpdateTool: EntryTool;
+    prepareTimeEntryDeleteTool: EntryTool;
+  }>("src/lib/ai/tools/operator-tools.ts", "", dependencies);
+
+  assert.equal(
+    (
+      await create.execute(
+        { date: createdDate, description: "Atividade" },
+        context,
+      )
+    ).data.status,
+    "awaiting_confirmation",
+  );
+  assert.equal(emitActions.at(-1)?.kind, "create_time_entry");
+  assert.equal(
+    (await edit.execute({ date: oldDate, newDurationMinutes: 45 }, context))
+      .data.status,
+    "awaiting_confirmation",
+  );
+  assert.equal(emitActions.at(-1)?.kind, "update_time_entry");
+  assert.equal(
+    (await remove.execute({ date: oldDate }, context)).data.status,
+    "awaiting_confirmation",
+  );
+  assert.equal(emitActions.at(-1)?.kind, "delete_time_entry");
+
+  records.push(lockedRecord);
+  const blockedEdit = await edit.execute(
+    { date: today, newDurationMinutes: 45 },
+    context,
+  );
+  assert.equal(blockedEdit.data.status, "period_locked");
+  assert.equal(blockedEdit.data.message, locks.TIMESHEET_PERIOD_LOCKED_MESSAGE);
+  linkedId = lockedRecord.id;
+  assert.equal(
+    (await remove.execute({ date: oldDate }, context)).data.status,
+    "period_locked",
+  );
+  linkedId = null;
+
+  records.push(
+    {
+      id: "reopened",
+      userId,
+      period: oldSegment.period,
+      periodType: "weekly",
+      status: "rejected",
+    },
+    {
+      id: "closedMonth",
+      userId,
+      period: oldSegment.competence,
+      periodType: "monthly",
+      status: "approved",
+    },
+  );
+  assert.equal(
+    (await create.execute({ date: oldDate, description: "Atividade" }, context))
+      .data.status,
+    "period_locked",
+  );
+  assert.equal(
+    (await edit.execute({ date: oldDate, newDurationMinutes: 45 }, context))
+      .data.status,
+    "period_locked",
+  );
+  assert.equal(
+    emitActions.length,
+    3,
+    "Bloqueios não devem produzir cartões executáveis",
+  );
+  records.pop();
+  assert.equal(
+    (await edit.execute({ date: oldDate, newDurationMinutes: 45 }, context))
+      .data.status,
+    "awaiting_confirmation",
+  );
 }
 
 async function main(): Promise<void> {
@@ -171,8 +362,9 @@ async function main(): Promise<void> {
     Array.from(await resolveLockedDates("fixture-user", dates)).sort(),
     dates.slice(2),
   );
+  await verifyEntryPreparation();
   process.stdout.write(
-    "Assistant submissions and autofill respect independent month segments.\n",
+    "AI: submissões por competência, apontamentos históricos, bloqueios e reabertura verificados.\n",
   );
 }
 

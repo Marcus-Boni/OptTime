@@ -1,10 +1,11 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry } from "@/lib/db/schema";
+import { rethrowAgentPeriodError } from "@/lib/mcp/service/period-locks";
 import {
+  assertTimesheetDatesUnlocked,
   assertWeeklyTimesheetDateUnlocked,
-  LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import type { AgentPrincipal } from "../auth";
@@ -141,25 +142,24 @@ export async function startTimer(
   const targetProject = await resolveProject(principal, input.project);
   const today = todayInAppTimeZone();
 
-  await assertUnlocked(principal.userId, today);
+  await assertWeeklyTimesheetDateUnlocked(principal.userId, today).catch(
+    rethrowAgentPeriodError,
+  );
 
   const existing = await findTimerWithProject(principal.userId);
   let replaced: StartTimerResult["replaced"] = null;
   let discarded: StartTimerResult["discarded"] = null;
 
   if (existing) {
-    if (elapsedMs(existing) < MIN_PERSISTED_TIMER_MS) {
-      await db
-        .delete(activeTimer)
-        .where(eq(activeTimer.userId, principal.userId));
-      discarded = { projectName: existing.project.name };
-    } else {
-      const saved = await stopAndPersist(principal.userId, existing);
+    const saved = await stopAndPersist(principal.userId, existing);
+    if (saved.entryId) {
       replaced = {
         projectName: existing.project.name,
         durationMinutes: saved.durationMinutes,
         entryId: saved.entryId,
       };
+    } else {
+      discarded = { projectName: existing.project.name };
     }
   }
 
@@ -228,26 +228,11 @@ export async function stopTimer(
     project: existing.project,
   };
 
-  if (elapsed < MIN_PERSISTED_TIMER_MS) {
-    await db
-      .delete(activeTimer)
-      .where(eq(activeTimer.userId, principal.userId));
-
-    return {
-      ...common,
-      saved: false,
-      entryId: null,
-      durationMinutes: 0,
-      durationLabel: humanizeMinutes(0),
-      date: todayInAppTimeZone(),
-    };
-  }
-
   const saved = await stopAndPersist(principal.userId, existing);
 
   return {
     ...common,
-    saved: true,
+    saved: saved.entryId !== null,
     entryId: saved.entryId,
     durationMinutes: saved.durationMinutes,
     durationLabel: humanizeMinutes(saved.durationMinutes),
@@ -443,65 +428,75 @@ export async function discardTimerTime(
   };
 }
 
-/** Converts a running timer into a saved time entry, inside one transaction. */
+async function claimTimer(
+  executor: Pick<typeof db, "delete">,
+  userId: string,
+  timerId: string,
+): Promise<TimerRow> {
+  const [claimed] = await executor
+    .delete(activeTimer)
+    .where(and(eq(activeTimer.userId, userId), eq(activeTimer.id, timerId)))
+    .returning();
+  if (!claimed) {
+    throw new AgentError(
+      "CONFLICT",
+      "O timer mudou durante a operação. Consulte o timer antes de tentar novamente.",
+    );
+  }
+  return claimed;
+}
+
+/** Convert a running timer into a saved entry, or discard a short session. */
 async function stopAndPersist(
   userId: string,
   timer: TimerRow,
-): Promise<{ entryId: string; durationMinutes: number; date: string }> {
+): Promise<{ entryId: string | null; durationMinutes: number; date: string }> {
   const now = new Date();
-  const durationMinutes = Math.max(
-    1,
-    Math.round(elapsedMs(timer, now.getTime()) / 60_000),
-  );
   const date = todayInAppTimeZone();
 
-  await assertUnlocked(userId, date);
-
-  const entry = await db.transaction(async (tx) => {
-    const [created] = await tx
-      .insert(timeEntry)
-      .values({
-        id: crypto.randomUUID(),
-        userId,
-        projectId: timer.projectId,
-        description: timer.description || "Timer",
-        date,
-        duration: durationMinutes,
-        billable: timer.billable,
-        azureWorkItemId: timer.azureWorkItemId,
-        azureWorkItemTitle: timer.azureWorkItemTitle,
-        startTime: timer.startedAt,
-        endTime: now,
-        azdoSyncStatus: timer.azureWorkItemId ? "pending" : "none",
-      })
-      .returning();
-
-    await tx.delete(activeTimer).where(eq(activeTimer.userId, userId));
-
-    return created;
-  });
-
-  // A new entry changes what the agenda reports as already logged.
-  clearAgendaCache(userId);
-  triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
-
-  return { entryId: entry.id, durationMinutes, date };
-}
-
-/** Translates the shared lock error into the agent error vocabulary. */
-export async function assertUnlocked(
-  userId: string,
-  date: string,
-): Promise<void> {
-  try {
-    await assertWeeklyTimesheetDateUnlocked(userId, date);
-  } catch (error: unknown) {
-    if (error instanceof LockedTimesheetPeriodError) {
-      throw new AgentError("PERIOD_LOCKED", error.message, {
-        details: { date, timesheetStatus: error.timesheetStatus },
-        hint: "A semana já foi submetida ou aprovada. Peça ao gestor para rejeitar o timesheet antes de alterar as horas.",
-      });
-    }
-    throw error;
+  if (elapsedMs(timer, now.getTime()) < MIN_PERSISTED_TIMER_MS) {
+    await claimTimer(db, userId, timer.id);
+    return { entryId: null, durationMinutes: 0, date };
   }
+
+  const entry = await db
+    .transaction(async (tx) => {
+      await assertTimesheetDatesUnlocked(tx, [{ userId, date }]);
+
+      const claimed = await claimTimer(tx, userId, timer.id);
+      const elapsed = elapsedMs(claimed, now.getTime());
+      if (elapsed < MIN_PERSISTED_TIMER_MS) return null;
+
+      const [created] = await tx
+        .insert(timeEntry)
+        .values({
+          id: crypto.randomUUID(),
+          userId,
+          projectId: claimed.projectId,
+          description: claimed.description || "Timer",
+          date,
+          duration: Math.round(elapsed / 60_000),
+          billable: claimed.billable,
+          azureWorkItemId: claimed.azureWorkItemId,
+          azureWorkItemTitle: claimed.azureWorkItemTitle,
+          startTime: claimed.startedAt,
+          endTime: now,
+          azdoSyncStatus: claimed.azureWorkItemId ? "pending" : "none",
+        })
+        .returning();
+
+      return created;
+    })
+    .catch(rethrowAgentPeriodError);
+
+  if (entry) {
+    clearAgendaCache(userId);
+    triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
+  }
+
+  return {
+    entryId: entry?.id ?? null,
+    durationMinutes: entry?.duration ?? 0,
+    date,
+  };
 }

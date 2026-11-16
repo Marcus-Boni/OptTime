@@ -17,12 +17,12 @@ import {
   UI_COMMANDS,
 } from "@/lib/ai/operator/ui-commands";
 import { formatDayLabel } from "@/lib/ai/periods";
+import { getTimeEntryPeriodBlock } from "@/lib/ai/tools/entry-period";
 import type { NavigateAction, UiCommandPayload } from "@/lib/ai/types";
 import { incompleteDayThresholdMinutes } from "@/lib/capacity";
 import { db } from "@/lib/db";
 import { activeTimer, timeEntry, timesheet } from "@/lib/db/schema";
 import { getHolidaysInRange } from "@/lib/holidays/service";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
 import { getTimesheetSegmentForDate } from "@/lib/timesheet-periods";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { formatDuration, formatLocalDate, parseLocalDate } from "@/lib/utils";
@@ -51,27 +51,11 @@ function resolveDate(raw: string | undefined, today: string): string {
   return today;
 }
 
-/** Business validations mirrored from POST /api/time-entries. */
-async function buildEntryWarning(
+function buildEntryWarning(
   ctx: ToolContext,
-  date: string,
   matchedProjectId: string | null,
   isMember: boolean,
-): Promise<string | null> {
-  if (date > ctx.user.today) {
-    return "Não é possível lançar horas em datas futuras.";
-  }
-
-  const oldest = formatLocalDate(subDays(parseLocalDate(ctx.user.today), 30));
-  if (date < oldest) {
-    return "Só é possível lançar horas com até 30 dias de retroatividade.";
-  }
-
-  const lock = await getWeeklyTimesheetStatusForDate(ctx.user.userId, date);
-  if (lock.locked && lock.status) {
-    return `A semana de ${formatDayLabel(date)} já foi ${getTimesheetStatusLabel(lock.status)} — não é possível editar.`;
-  }
-
+): string | null {
   if (!matchedProjectId) {
     return "Não identifiquei o projeto — selecione um antes de confirmar.";
   }
@@ -142,21 +126,33 @@ export const prepareTimeEntryTool: AgentTool<
   actionKind: "create_time_entry",
   label: () => "Preparando o lançamento",
   async execute(args, ctx) {
+    const date = resolveDate(args.date, ctx.user.today);
+    if (!z.iso.date().safeParse(date).success || date > ctx.user.today) {
+      return {
+        label: "Data indisponível",
+        data: {
+          status: "invalid_date",
+          message: "Informe uma data válida que não esteja no futuro.",
+        },
+      };
+    }
+
+    const blocked = await getTimeEntryPeriodBlock(ctx.user.userId, date);
+    if (blocked) return blocked;
+
     const projects = await listLoggableProjects(ctx);
     const matched =
       matchProject(args.project, projects) ??
       (projects.length === 1 ? projects[0] : null);
 
-    const date = resolveDate(args.date, ctx.user.today);
     const durationMinutes = resolveDurationMinutes(
       args.durationMinutes,
       args.durationText,
       60,
     );
 
-    const warning = await buildEntryWarning(
+    const warning = buildEntryWarning(
       ctx,
-      date,
       matched?.id ?? null,
       matched?.isMember ?? false,
     );
@@ -232,23 +228,24 @@ export const prepareTimerStartTool: AgentTool<
   actionKind: "start_timer",
   label: () => "Preparando o cronômetro",
   async execute(args, ctx) {
+    const blocked = await getTimeEntryPeriodBlock(
+      ctx.user.userId,
+      ctx.user.today,
+    );
+    if (blocked) return blocked;
+
     const projects = await listLoggableProjects(ctx);
     const matched =
       matchProject(args.project, projects) ??
       (projects.length === 1 ? projects[0] : null);
 
-    const [lock, running] = await Promise.all([
-      getWeeklyTimesheetStatusForDate(ctx.user.userId, ctx.user.today),
-      db.query.activeTimer.findFirst({
-        where: eq(activeTimer.userId, ctx.user.userId),
-        columns: { id: true },
-      }),
-    ]);
+    const running = await db.query.activeTimer.findFirst({
+      where: eq(activeTimer.userId, ctx.user.userId),
+      columns: { id: true },
+    });
 
     let warning: string | null = null;
-    if (lock.locked && lock.status) {
-      warning = `A semana atual já foi ${getTimesheetStatusLabel(lock.status)} — não é possível registrar novas horas.`;
-    } else if (!matched) {
+    if (!matched) {
       warning = "Não identifiquei o projeto — selecione um antes de confirmar.";
     } else if (running) {
       warning =
@@ -307,6 +304,12 @@ export const prepareTimerStopTool: AgentTool<EmptyArgs> = {
         },
       };
     }
+
+    const blocked = await getTimeEntryPeriodBlock(
+      ctx.user.userId,
+      ctx.user.today,
+    );
+    if (blocked) return blocked;
 
     const elapsedMs = timer.pausedAt
       ? timer.accumulatedMs

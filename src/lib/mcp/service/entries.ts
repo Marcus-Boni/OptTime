@@ -16,19 +16,22 @@ import {
   runIdempotentInTransaction,
 } from "@/lib/mcp/idempotency";
 import { clearAgendaCache } from "@/lib/mcp/service/agenda-cache";
+import { rethrowAgentPeriodError } from "@/lib/mcp/service/period-locks";
 import {
   type ProjectSummary,
   resolveProject,
 } from "@/lib/mcp/service/projects";
-import {
-  type ActiveTimerView,
-  assertUnlocked,
-  getActiveTimer,
-} from "@/lib/mcp/service/timer";
+import { type ActiveTimerView, getActiveTimer } from "@/lib/mcp/service/timer";
 import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
+import {
+  assertTimesheetDatesUnlocked,
+  getWeeklyTimesheetStatusForDate,
+} from "@/lib/time-entry-locks";
+import {
+  getRetainedTimeEntryTimesheetId,
+  lockTimeEntryForMutation,
+} from "@/lib/time-entry-timesheet";
 import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
-import { isTimesheetLockedStatus } from "@/lib/timesheet-status";
 import { getPeriodRange, getWeekPeriod } from "@/lib/utils";
 
 /**
@@ -87,7 +90,7 @@ async function buildLockedPeriodSet(
     periods.map(async (period) => {
       const { start } = getPeriodRange(period, "weekly");
       const status = await getWeeklyTimesheetStatusForDate(userId, start);
-      if (isTimesheetLockedStatus(status.status)) locked.add(period);
+      if (status.locked) locked.add(period);
     }),
   );
 
@@ -121,8 +124,7 @@ interface PreparedEntry {
 }
 
 /**
- * Everything about a manual entry that reads the pool and can fail: the
- * description, the project and whether the week is still open.
+ * Validates the description and resolves the project before the transaction.
  *
  * It runs before any transaction opens. Done inside one, each of these queries
  * would hold the transaction's connection and wait for a second one from the
@@ -141,26 +143,28 @@ async function prepareEntry(
   }
 
   const project = await resolveProject(principal, input.project);
-  await assertUnlocked(principal.userId, input.date);
-
   return { description, project };
 }
 
 /**
- * Inserts a prepared entry through `executor`.
+ * Rechecks period status and inserts a prepared entry in one transaction.
  *
  * Does not fire the Azure DevOps sync: the caller decides when, because inside
  * a transaction the entry is not yet visible to the sync that reads it back.
  */
 async function insertEntry(
-  executor: Executor,
+  tx: DbTransaction,
   principal: AgentPrincipal,
   input: LogTimeInput,
   prepared: PreparedEntry,
 ): Promise<LogTimeResult> {
   const { description, project: targetProject } = prepared;
 
-  const [created] = await executor
+  await assertTimesheetDatesUnlocked(tx, [
+    { userId: principal.userId, date: input.date },
+  ]);
+
+  const [created] = await tx
     .insert(timeEntry)
     .values({
       id: crypto.randomUUID(),
@@ -177,7 +181,7 @@ async function insertEntry(
     .returning();
 
   const dayTotalMinutes = await sumMinutes(
-    executor,
+    tx,
     principal.userId,
     input.date,
     input.date,
@@ -211,7 +215,9 @@ export async function logTime(
   input: LogTimeInput,
 ): Promise<LogTimeResult> {
   const prepared = await prepareEntry(principal, input);
-  const result = await insertEntry(db, principal, input, prepared);
+  const result = await db
+    .transaction((tx) => insertEntry(tx, principal, input, prepared))
+    .catch(rethrowAgentPeriodError);
 
   clearAgendaCache(principal.userId);
   triggerCompletedWorkSync(principal.userId, [result.entry.azureWorkItemId]);
@@ -225,8 +231,8 @@ export async function logTime(
  * A retry with the same key and input returns the first result and writes
  * nothing; the same key with different input is refused. The ledger is read
  * first and validation runs only when the key is new, so a replay survives the
- * week having been submitted in the meantime. The transaction then contains
- * nothing but the insert and the ledger record.
+ * week having been submitted in the meantime. A new key checks the period
+ * before saving the entry and the ledger record in the same transaction.
  */
 export async function logTimeIdempotent(
   principal: AgentPrincipal,
@@ -251,7 +257,7 @@ export async function logTimeIdempotent(
     key: idempotencyKey,
     input,
     execute: (tx) => insertEntry(tx, principal, input, prepared),
-  });
+  }).catch(rethrowAgentPeriodError);
 
   if (!replayed) {
     clearAgendaCache(principal.userId);
@@ -301,8 +307,8 @@ export async function listTimeEntries(
   return rows.map((row) => toView(row, locked));
 }
 
-/** Loads an entry, asserting it belongs to the principal and is editable. */
-async function loadEditableEntry(
+/** Loads a snapshot of the owned entry to determine which dates to lock. */
+async function loadOwnedEntry(
   principal: AgentPrincipal,
   entryId: string,
 ): Promise<EntryRow> {
@@ -316,8 +322,6 @@ async function loadEditableEntry(
   if (!row || row.userId !== principal.userId) {
     throw new AgentError("NOT_FOUND", "Lançamento não encontrado.");
   }
-
-  await assertUnlocked(principal.userId, row.date);
 
   return row;
 }
@@ -336,7 +340,7 @@ export async function updateTimeEntry(
   principal: AgentPrincipal,
   input: UpdateTimeEntryInput,
 ): Promise<TimeEntryView> {
-  const current = await loadEditableEntry(principal, input.entryId);
+  const current = await loadOwnedEntry(principal, input.entryId);
 
   const patch: Partial<typeof timeEntry.$inferInsert> = {};
   let nextProject = current.project;
@@ -363,10 +367,7 @@ export async function updateTimeEntry(
   if (input.durationMinutes != null) patch.duration = input.durationMinutes;
   if (input.billable != null) patch.billable = input.billable;
 
-  if (input.date) {
-    await assertUnlocked(principal.userId, input.date);
-    patch.date = input.date;
-  }
+  if (input.date) patch.date = input.date;
 
   if (input.azureWorkItemId !== undefined) {
     patch.azureWorkItemId = input.azureWorkItemId;
@@ -380,16 +381,12 @@ export async function updateTimeEntry(
     );
   }
 
-  const [updated] = await db
-    .update(timeEntry)
-    .set(patch)
-    .where(eq(timeEntry.id, input.entryId))
-    .returning();
+  const { before, updated } = await updateOwnedEntry(current, patch);
 
   clearAgendaCache(principal.userId);
   triggerCompletedWorkSync(principal.userId, [
     updated.azureWorkItemId,
-    current.azureWorkItemId,
+    before.azureWorkItemId,
   ]);
 
   return {
@@ -410,21 +407,57 @@ export async function deleteTimeEntry(
   principal: AgentPrincipal,
   entryId: string,
 ): Promise<{ entryId: string; durationMinutes: number; date: string }> {
-  const current = await loadEditableEntry(principal, entryId);
+  const current = await loadOwnedEntry(principal, entryId);
 
-  await db
-    .update(timeEntry)
-    .set({ deletedAt: new Date() })
-    .where(eq(timeEntry.id, entryId));
+  const { updated: deleted } = await updateOwnedEntry(current, {
+    deletedAt: new Date(),
+  });
 
   clearAgendaCache(principal.userId);
-  triggerCompletedWorkSync(principal.userId, [current.azureWorkItemId]);
+  triggerCompletedWorkSync(principal.userId, [deleted.azureWorkItemId]);
 
   return {
     entryId,
-    durationMinutes: current.duration,
-    date: current.date,
+    durationMinutes: deleted.duration,
+    date: deleted.date,
   };
+}
+
+async function updateOwnedEntry(
+  current: EntryRow,
+  patch: Partial<typeof timeEntry.$inferInsert>,
+): Promise<{
+  before: typeof timeEntry.$inferSelect;
+  updated: typeof timeEntry.$inferSelect;
+}> {
+  const destination = {
+    userId: current.userId,
+    date: patch.date ?? current.date,
+  };
+  return db
+    .transaction(async (tx) => {
+      const before = await lockTimeEntryForMutation(tx, current, destination);
+      if (!before) {
+        throw new AgentError(
+          "CONFLICT",
+          "O lançamento mudou durante a operação. Consulte o lançamento atualizado antes de tentar novamente.",
+        );
+      }
+
+      const timesheetId = await getRetainedTimeEntryTimesheetId(
+        tx,
+        before,
+        destination,
+      );
+      const [updated] = await tx
+        .update(timeEntry)
+        .set({ ...patch, timesheetId })
+        .where(eq(timeEntry.id, before.id))
+        .returning();
+
+      return { before, updated };
+    })
+    .catch(rethrowAgentPeriodError);
 }
 
 async function sumMinutes(

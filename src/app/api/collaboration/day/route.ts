@@ -7,13 +7,12 @@
  * owns timesheet locking and Azure DevOps sync.
  */
 
+import { z } from "zod";
 import { getActiveSession } from "@/lib/access-control";
 import { buildCollaborationDay } from "@/lib/collaboration/service";
 import { todayInAppTimeZone } from "@/lib/timezone";
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-/** Matches the manual-entry rule: nothing older than 30 days. */
-const MAX_PAST_DAYS = 30;
+const dateSchema = z.iso.date();
 
 export async function GET(req: Request): Promise<Response> {
   const session = await getActiveSession(req.headers);
@@ -27,9 +26,12 @@ export async function GET(req: Request): Promise<Response> {
   // shows only what is left to log.
   const includeLogged = searchParams.get("includeLogged") === "1";
 
-  if (!DATE_PATTERN.test(date)) {
+  if (!dateSchema.safeParse(date).success) {
     return Response.json(
-      { error: "Parâmetro 'date' deve estar no formato YYYY-MM-DD." },
+      {
+        error:
+          "Parâmetro 'date' deve ser uma data válida no formato YYYY-MM-DD.",
+      },
       { status: 400 },
     );
   }
@@ -39,19 +41,6 @@ export async function GET(req: Request): Promise<Response> {
   if (date > today) {
     return Response.json(
       { error: "Não é possível analisar um dia futuro." },
-      { status: 400 },
-    );
-  }
-
-  const ageDays = Math.round(
-    (new Date(`${today}T00:00:00Z`).getTime() -
-      new Date(`${date}T00:00:00Z`).getTime()) /
-      86_400_000,
-  );
-
-  if (ageDays > MAX_PAST_DAYS) {
-    return Response.json(
-      { error: `Só é possível analisar os últimos ${MAX_PAST_DAYS} dias.` },
       { status: 400 },
     );
   }

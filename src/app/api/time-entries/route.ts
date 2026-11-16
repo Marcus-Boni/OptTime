@@ -8,9 +8,10 @@ import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { project, projectMember, timeEntry } from "@/lib/db/schema";
 import {
-  assertWeeklyTimesheetDateUnlocked,
+  assertTimesheetDatesUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { createTimeEntrySchema } from "@/lib/validations/time-entry.schema";
 
 /**
@@ -87,9 +88,14 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const data = parsed.data;
-    const actor = getActorContext(session.user);
+    if (data.date > todayInAppTimeZone()) {
+      return Response.json(
+        { error: "Não é possível lançar horas em um dia futuro." },
+        { status: 400 },
+      );
+    }
 
-    await assertWeeklyTimesheetDateUnlocked(session.user.id, data.date);
+    const actor = getActorContext(session.user);
 
     const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
@@ -127,23 +133,29 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const id = crypto.randomUUID();
-    const [entry] = await db
-      .insert(timeEntry)
-      .values({
-        id,
-        userId: session.user.id,
-        projectId: data.projectId,
-        description: data.description,
-        date: data.date,
-        duration: data.duration,
-        billable: data.billable,
-        azureWorkItemId: data.azureWorkItemId,
-        azureWorkItemTitle: data.azureWorkItemTitle,
-        startTime: data.startTime ? new Date(data.startTime) : null,
-        endTime: data.endTime ? new Date(data.endTime) : null,
-        azdoSyncStatus: data.azureWorkItemId ? "pending" : "none",
-      })
-      .returning();
+    const [entry] = await db.transaction(async (tx) => {
+      await assertTimesheetDatesUnlocked(tx, [
+        { userId: session.user.id, date: data.date },
+      ]);
+
+      return tx
+        .insert(timeEntry)
+        .values({
+          id,
+          userId: session.user.id,
+          projectId: data.projectId,
+          description: data.description,
+          date: data.date,
+          duration: data.duration,
+          billable: data.billable,
+          azureWorkItemId: data.azureWorkItemId,
+          azureWorkItemTitle: data.azureWorkItemTitle,
+          startTime: data.startTime ? new Date(data.startTime) : null,
+          endTime: data.endTime ? new Date(data.endTime) : null,
+          azdoSyncStatus: data.azureWorkItemId ? "pending" : "none",
+        })
+        .returning();
+    });
 
     triggerCompletedWorkSync(session.user.id, [entry.azureWorkItemId]);
 

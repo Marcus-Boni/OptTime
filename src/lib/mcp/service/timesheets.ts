@@ -15,6 +15,12 @@ import {
   resolveWeekPeriod,
   weekdayLabel,
 } from "@/lib/mcp/format";
+import { rethrowAgentPeriodError } from "@/lib/mcp/service/period-locks";
+import type { DbTransaction } from "@/lib/time-assistant/apply-day-plan";
+import {
+  assertTimesheetDatesUnlocked,
+  lockTimesheetPeriod,
+} from "@/lib/time-entry-locks";
 import {
   getTimesheetStatusLabel,
   isTimesheetSubmittableStatus,
@@ -200,10 +206,11 @@ export async function getTimesheetStatus(
 
 /** Creates the timesheet row on demand, guarding the user's join date. */
 async function ensureTimesheet(
+  tx: DbTransaction,
   principal: AgentPrincipal,
   period: string,
 ): Promise<typeof timesheet.$inferSelect> {
-  const existing = await db.query.timesheet.findFirst({
+  const existing = await tx.query.timesheet.findFirst({
     where: and(
       eq(timesheet.userId, principal.userId),
       eq(timesheet.period, period),
@@ -212,7 +219,7 @@ async function ensureTimesheet(
 
   if (existing) return existing;
 
-  const profile = await db.query.user.findFirst({
+  const profile = await tx.query.user.findFirst({
     where: eq(user.id, principal.userId),
     columns: { createdAt: true },
   });
@@ -230,7 +237,7 @@ async function ensureTimesheet(
     }
   }
 
-  const [created] = await db
+  const [created] = await tx
     .insert(timesheet)
     .values({
       id: crypto.randomUUID(),
@@ -294,72 +301,90 @@ export async function submitTimesheet(
     );
   }
 
-  const record = await ensureTimesheet(principal, period);
-  const { start, end } = getPeriodRange(record.period, record.periodType);
+  const updated = await db
+    .transaction(async (tx) => {
+      await lockTimesheetPeriod(tx, principal.userId, period, "weekly");
+      const record = await ensureTimesheet(tx, principal, period);
+      const { start, end } = getPeriodRange(record.period, record.periodType);
+      if (!isTimesheetSubmittableStatus(record.status)) {
+        throw new AgentError(
+          "CONFLICT",
+          `O timesheet ${period} mudou durante a operação. Consulte o status atualizado antes de tentar novamente.`,
+          { details: { status: record.status } },
+        );
+      }
 
-  const updated = await db.transaction(async (tx) => {
-    await tx
-      .update(timeEntry)
-      .set({ timesheetId: record.id })
-      .where(
-        and(
-          eq(timeEntry.userId, principal.userId),
-          gte(timeEntry.date, start),
-          lte(timeEntry.date, end),
-          or(
-            isNull(timeEntry.timesheetId),
-            eq(timeEntry.timesheetId, record.id),
+      await assertTimesheetDatesUnlocked(tx, [
+        { userId: principal.userId, date: start },
+        { userId: principal.userId, date: end },
+      ]);
+
+      await tx
+        .update(timeEntry)
+        .set({ timesheetId: record.id })
+        .where(
+          and(
+            eq(timeEntry.userId, principal.userId),
+            gte(timeEntry.date, start),
+            lte(timeEntry.date, end),
+            or(
+              isNull(timeEntry.timesheetId),
+              eq(timeEntry.timesheetId, record.id),
+            ),
+            isNull(timeEntry.deletedAt),
           ),
-          isNull(timeEntry.deletedAt),
-        ),
-      );
+        );
 
-    const [totals] = await tx
-      .select({
-        totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)`,
-        billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)`,
-        entryCount: sql<number>`COUNT(*)`,
-      })
-      .from(timeEntry)
-      .where(
-        and(eq(timeEntry.timesheetId, record.id), isNull(timeEntry.deletedAt)),
-      );
+      const [totals] = await tx
+        .select({
+          totalMinutes: sql<number>`COALESCE(SUM(${timeEntry.duration}), 0)`,
+          billableMinutes: sql<number>`COALESCE(SUM(CASE WHEN ${timeEntry.billable} THEN ${timeEntry.duration} ELSE 0 END), 0)`,
+          entryCount: sql<number>`COUNT(*)`,
+        })
+        .from(timeEntry)
+        .where(
+          and(
+            eq(timeEntry.timesheetId, record.id),
+            isNull(timeEntry.deletedAt),
+          ),
+        );
 
-    if (Number(totals?.entryCount ?? 0) === 0) {
-      throw new AgentError(
-        "CONFLICT",
-        "Não é possível submeter um timesheet sem entradas no período.",
-      );
-    }
+      if (Number(totals?.entryCount ?? 0) === 0) {
+        throw new AgentError(
+          "CONFLICT",
+          "Não é possível submeter um timesheet sem entradas no período.",
+        );
+      }
 
-    const [submitted] = await tx
-      .update(timesheet)
-      .set({
-        status: "submitted",
-        submittedAt: new Date(),
-        totalMinutes: Number(totals?.totalMinutes ?? 0),
-        billableMinutes: Number(totals?.billableMinutes ?? 0),
-        rejectionReason: null,
-      })
-      .where(eq(timesheet.id, record.id))
-      .returning();
+      const [submitted] = await tx
+        .update(timesheet)
+        .set({
+          status: "submitted",
+          submittedAt: new Date(),
+          totalMinutes: Number(totals?.totalMinutes ?? 0),
+          billableMinutes: Number(totals?.billableMinutes ?? 0),
+          rejectionReason: null,
+        })
+        .where(eq(timesheet.id, record.id))
+        .returning();
 
-    return { submitted, entryCount: Number(totals?.entryCount ?? 0) };
-  });
+      return { record, submitted, entryCount: Number(totals?.entryCount ?? 0) };
+    })
+    .catch(rethrowAgentPeriodError);
 
   // Gamification rewards the submission; it must never be able to fail it.
   try {
     const awardPeriod = await resolveClosedWeekAwardPeriod(
       principal.userId,
-      record.period,
-      record.periodType,
+      updated.record.period,
+      updated.record.periodType,
       ["submitted", "approved"],
     );
     if (awardPeriod) {
       await awardWeekSubmission({
         userId: principal.userId,
         period: awardPeriod,
-        periodType: record.periodType,
+        periodType: updated.record.periodType,
         submittedAt: updated.submitted?.submittedAt ?? new Date(),
         totalMinutes: updated.submitted?.totalMinutes ?? 0,
       });
@@ -371,7 +396,7 @@ export async function submitTimesheet(
   const totalMinutes = updated.submitted?.totalMinutes ?? preview.totalMinutes;
 
   return {
-    period: record.period,
+    period: updated.record.period,
     status: updated.submitted?.status ?? "submitted",
     totalMinutes,
     totalLabel: humanizeMinutes(totalMinutes),

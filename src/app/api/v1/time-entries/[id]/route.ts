@@ -17,10 +17,11 @@ import {
   getRateLimitHeaders,
 } from "@/lib/integration/rate-limit";
 import { requireScope, SCOPES } from "@/lib/integration/scopes";
+import { LockedTimesheetPeriodError } from "@/lib/time-entry-locks";
 import {
-  assertWeeklyTimesheetDateUnlocked,
-  LockedTimesheetPeriodError,
-} from "@/lib/time-entry-locks";
+  getRetainedTimeEntryTimesheetId,
+  lockTimeEntryForMutation,
+} from "@/lib/time-entry-timesheet";
 
 type EntryStatus = "draft" | "submitted" | "approved" | "rejected";
 
@@ -168,10 +169,7 @@ const updateV1TimeEntrySchema = z.object({
     .trim()
     .min(1, "projectIntegrationKey cannot be empty")
     .optional(),
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD")
-    .optional(),
+  date: z.iso.date("must be YYYY-MM-DD").optional(),
   description: z
     .string()
     .trim()
@@ -322,57 +320,50 @@ export async function PUT(
       }
     }
 
-    // 5. Check Timesheet Locks
-    try {
-      await assertWeeklyTimesheetDateUnlocked(existing.userId, existing.date);
-
-      const nextUserId = targetUser.id;
-      const nextDate = data.date ?? existing.date;
-
-      if (nextUserId !== existing.userId || nextDate !== existing.date) {
-        await assertWeeklyTimesheetDateUnlocked(nextUserId, nextDate);
+    const destination = {
+      userId: targetUser.id,
+      date: data.date ?? existing.date,
+    };
+    const projectId = targetProject.id;
+    const { entry, syncWorkItemId } = await db.transaction(async (tx) => {
+      const current = await lockTimeEntryForMutation(tx, existing, destination);
+      if (!current) {
+        throw new ApiError(
+          "VALIDATION_ERROR",
+          "Time entry changed during the operation. Refresh and retry.",
+          409,
+        );
       }
-    } catch (err) {
-      if (err instanceof LockedTimesheetPeriodError) {
-        throw new ApiError("LOCKED_PERIOD", err.message, 409);
-      }
-      throw err;
-    }
 
-    // 6. Handle Azure DevOps sync trigger if duration changes
-    const durationChanged =
-      data.durationMinutes !== undefined &&
-      data.durationMinutes !== existing.duration;
-    const shouldSyncCompletedWork =
-      durationChanged && !!existing.azureWorkItemId;
-    const nextAzdoSyncStatus = shouldSyncCompletedWork
-      ? "pending"
-      : existing.azdoSyncStatus;
+      const durationChanged =
+        data.durationMinutes !== undefined &&
+        data.durationMinutes !== current.duration;
+      const syncWorkItemId = durationChanged ? current.azureWorkItemId : null;
+      const timesheetId = await getRetainedTimeEntryTimesheetId(
+        tx,
+        current,
+        destination,
+      );
+      const [entry] = await tx
+        .update(timeEntry)
+        .set({
+          userId: destination.userId,
+          projectId,
+          description: data.description ?? current.description,
+          date: destination.date,
+          duration: data.durationMinutes ?? current.duration,
+          billable: data.billable ?? current.billable,
+          timesheetId,
+          azdoSyncStatus: syncWorkItemId ? "pending" : current.azdoSyncStatus,
+        })
+        .where(eq(timeEntry.id, current.id))
+        .returning();
 
-    // 7. Update database
-    const [entry] = await db
-      .update(timeEntry)
-      .set({
-        userId: targetUser.id,
-        projectId: targetProject.id,
-        description:
-          data.description !== undefined
-            ? data.description
-            : existing.description,
-        date: data.date !== undefined ? data.date : existing.date,
-        duration:
-          data.durationMinutes !== undefined
-            ? data.durationMinutes
-            : existing.duration,
-        billable:
-          data.billable !== undefined ? data.billable : existing.billable,
-        azdoSyncStatus: nextAzdoSyncStatus,
-      })
-      .where(eq(timeEntry.id, existing.id))
-      .returning();
+      return { entry, syncWorkItemId };
+    });
 
-    if (shouldSyncCompletedWork && existing.azureWorkItemId) {
-      triggerCompletedWorkSync(targetUser.id, [existing.azureWorkItemId]);
+    if (syncWorkItemId) {
+      triggerCompletedWorkSync(targetUser.id, [syncWorkItemId]);
     }
 
     const dto: TimeEntryDTO = {
@@ -410,14 +401,18 @@ export async function PUT(
       },
     );
   } catch (error: unknown) {
+    const apiError =
+      error instanceof LockedTimesheetPeriodError
+        ? new ApiError("LOCKED_PERIOD", error.message, 409)
+        : error;
     logRequest({
       requestId,
       clientId,
       route: "PUT /api/v1/time-entries/[id]",
       durationMs: Date.now() - start,
-      status: error instanceof ApiError ? error.status : 500,
+      status: apiError instanceof ApiError ? apiError.status : 500,
     });
-    return toErrorResponse(error, requestId);
+    return toErrorResponse(apiError, requestId);
   }
 }
 
@@ -462,24 +457,25 @@ export async function DELETE(
       throw new ApiError("NOT_FOUND", "Time entry not found", 404);
     }
 
-    try {
-      await assertWeeklyTimesheetDateUnlocked(existing.userId, existing.date);
-    } catch (err) {
-      if (err instanceof LockedTimesheetPeriodError) {
-        throw new ApiError("LOCKED_PERIOD", err.message, 409);
+    const deleted = await db.transaction(async (tx) => {
+      const current = await lockTimeEntryForMutation(tx, existing);
+      if (!current) {
+        throw new ApiError(
+          "VALIDATION_ERROR",
+          "Time entry changed during the operation. Refresh and retry.",
+          409,
+        );
       }
-      throw err;
-    }
 
-    await db
-      .update(timeEntry)
-      .set({
-        deletedAt: new Date(),
-      })
-      .where(eq(timeEntry.id, existing.id));
+      await tx
+        .update(timeEntry)
+        .set({ deletedAt: new Date() })
+        .where(eq(timeEntry.id, current.id));
+      return current;
+    });
 
-    if (existing.azureWorkItemId) {
-      triggerCompletedWorkSync(existing.userId, [existing.azureWorkItemId]);
+    if (deleted.azureWorkItemId) {
+      triggerCompletedWorkSync(deleted.userId, [deleted.azureWorkItemId]);
     }
 
     logRequest({
@@ -498,13 +494,17 @@ export async function DELETE(
       },
     });
   } catch (error: unknown) {
+    const apiError =
+      error instanceof LockedTimesheetPeriodError
+        ? new ApiError("LOCKED_PERIOD", error.message, 409)
+        : error;
     logRequest({
       requestId,
       clientId,
       route: "DELETE /api/v1/time-entries/[id]",
       durationMs: Date.now() - start,
-      status: error instanceof ApiError ? error.status : 500,
+      status: apiError instanceof ApiError ? apiError.status : 500,
     });
-    return toErrorResponse(error, requestId);
+    return toErrorResponse(apiError, requestId);
   }
 }

@@ -102,7 +102,7 @@ Uma aplicação Next.js 16 full-stack com design premium (dark mode, identidade 
 
 - Formulário: Projeto + Task AzDO (opcional) + Data + Horas + Descrição + Billable toggle
 - Input de horas em formato natural: `"2"`, `"2.5"`, `"2h30"`, `"150m"` — todos aceitos
-- Date picker com navegação por teclado, suporte a datas passadas (até 30 dias)
+- Date picker com navegação por teclado e suporte a datas passadas em períodos editáveis
 - Duplicar entrada do dia anterior com 1 clique
 
 #### 3c. Gestão de Entradas
@@ -859,7 +859,7 @@ export async function POST(req: Request): Promise<Response> {
 | Duração mínima     | 1 minuto                                                      |
 | Duração máxima     | 24 horas (1440 min)                                           |
 | Data máxima        | Hoje (sem datas futuras)                                      |
-| Data mínima        | 30 dias no passado                                            |
+| Período da data    | Semana editável e sem fechamento mensal                       |
 | Timers simultâneos | Máximo 1 por usuário                                          |
 | Edição bloqueada   | Entries em status `submitted` ou `approved`                   |
 | Timer em pausa     | Ao iniciar novo timer, o pausado é finalizado automaticamente |

@@ -16,6 +16,7 @@ import {
   type PeriodKey,
   resolvePeriod,
 } from "@/lib/ai/periods";
+import { getTimeEntryPeriodBlock } from "@/lib/ai/tools/entry-period";
 import type {
   NotifyAudience,
   ReportFormat,
@@ -31,8 +32,6 @@ import {
   timesheet,
   user,
 } from "@/lib/db/schema";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
-import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { formatDuration, formatLocalDate, parseLocalDate } from "@/lib/utils";
 import {
   listLoggableProjects,
@@ -67,6 +66,7 @@ function resolveDate(raw: string | undefined, today: string): string {
 interface EntryCandidate {
   id: string;
   date: string;
+  timesheetId: string | null;
   description: string;
   duration: number;
   billable: boolean;
@@ -106,6 +106,7 @@ async function findEntryCandidates(
     columns: {
       id: true,
       date: true,
+      timesheetId: true,
       description: true,
       duration: true,
       billable: true,
@@ -120,6 +121,7 @@ async function findEntryCandidates(
     candidates: rows.map((row) => ({
       id: row.id,
       date: row.date,
+      timesheetId: row.timesheetId,
       description: row.description,
       duration: row.duration,
       billable: row.billable,
@@ -136,17 +138,6 @@ function toAmbiguityPayload(candidates: EntryCandidate[]) {
     description: item.description,
     duration: formatDuration(item.duration),
   }));
-}
-
-async function lockWarning(
-  ctx: ToolContext,
-  date: string,
-): Promise<string | null> {
-  const lock = await getWeeklyTimesheetStatusForDate(ctx.user.userId, date);
-  if (lock.locked && lock.status) {
-    return `A semana de ${formatDayLabel(date)} já foi ${getTimesheetStatusLabel(lock.status)} — não é possível editar.`;
-  }
-  return null;
 }
 
 // ─── Tool: prepare_time_entry_update ─────────────────────────────────
@@ -228,6 +219,13 @@ export const prepareTimeEntryUpdateTool: AgentTool<
       };
     }
 
+    const blocked = await getTimeEntryPeriodBlock(
+      ctx.user.userId,
+      entry.date,
+      entry.timesheetId,
+    );
+    if (blocked) return blocked;
+
     const nextDuration = resolveDurationMinutes(
       args.newDurationMinutes,
       args.newDurationText,
@@ -267,7 +265,7 @@ export const prepareTimeEntryUpdateTool: AgentTool<
         durationMinutes: nextDuration,
         billable: nextBillable,
       },
-      warning: await lockWarning(ctx, entry.date),
+      warning: null,
     });
 
     return {
@@ -347,6 +345,13 @@ export const prepareTimeEntryDeleteTool: AgentTool<
       };
     }
 
+    const blocked = await getTimeEntryPeriodBlock(
+      ctx.user.userId,
+      entry.date,
+      entry.timesheetId,
+    );
+    if (blocked) return blocked;
+
     ctx.emitAction({
       kind: "delete_time_entry",
       entryId: entry.id,
@@ -355,7 +360,7 @@ export const prepareTimeEntryDeleteTool: AgentTool<
       description: entry.description,
       date: entry.date,
       durationMinutes: entry.duration,
-      warning: await lockWarning(ctx, entry.date),
+      warning: null,
     });
 
     return {

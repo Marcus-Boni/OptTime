@@ -9,6 +9,7 @@ import {
   resolveExtensionUser,
 } from "@/lib/extension-auth";
 import {
+  assertTimesheetDatesUnlocked,
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
@@ -85,7 +86,10 @@ export async function POST(req: Request): Promise<Response> {
         return extensionJson({ error: "Nenhum timer ativo." }, { status: 404 });
       }
 
-      const entry = await stopTimerAndSave(extUser.id, existing);
+      const entry = await stopTimerAndSave(extUser.id, existing.id);
+      if (!entry) {
+        return extensionJson({ error: "Nenhum timer ativo." }, { status: 404 });
+      }
       return extensionJson({ entry });
     } catch (error) {
       if (error instanceof LockedTimesheetPeriodError) {
@@ -143,8 +147,14 @@ export async function POST(req: Request): Promise<Response> {
     const existing = await db.query.activeTimer.findFirst({
       where: eq(activeTimer.userId, extUser.id),
     });
-    if (existing) {
-      await stopTimerAndSave(extUser.id, existing);
+    if (existing && !(await stopTimerAndSave(extUser.id, existing.id))) {
+      return extensionJson(
+        {
+          error:
+            "O timer mudou durante a operação. Atualize e tente novamente.",
+        },
+        { status: 409 },
+      );
     }
 
     const id = crypto.randomUUID();
@@ -175,19 +185,26 @@ export async function POST(req: Request): Promise<Response> {
 
 async function stopTimerAndSave(
   userId: string,
-  timer: typeof activeTimer.$inferSelect,
-) {
+  timerId: string,
+): Promise<typeof timeEntry.$inferSelect | null> {
   const now = new Date();
-  let totalMs = timer.accumulatedMs;
-  if (!timer.pausedAt) {
-    totalMs += now.getTime() - timer.startedAt.getTime();
-  }
-  const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
   const dateStr = todayInAppTimeZone();
 
-  await assertWeeklyTimesheetDateUnlocked(userId, dateStr);
-
   const entry = await db.transaction(async (tx) => {
+    await assertTimesheetDatesUnlocked(tx, [{ userId, date: dateStr }]);
+
+    const [timer] = await tx
+      .delete(activeTimer)
+      .where(eq(activeTimer.id, timerId))
+      .returning();
+    if (!timer) return null;
+
+    let totalMs = timer.accumulatedMs;
+    if (!timer.pausedAt) {
+      totalMs += now.getTime() - timer.startedAt.getTime();
+    }
+
+    const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
     const entryId = crypto.randomUUID();
     const [createdEntry] = await tx
       .insert(timeEntry)
@@ -207,12 +224,10 @@ async function stopTimerAndSave(
       })
       .returning();
 
-    await tx.delete(activeTimer).where(eq(activeTimer.userId, userId));
-
     return createdEntry;
   });
 
-  triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
+  if (entry) triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
 
   return entry;
 }

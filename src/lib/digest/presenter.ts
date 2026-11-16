@@ -146,7 +146,7 @@ function presentMember(digest: MemberDigest): DigestPresentation {
 
   if (digest.totalMinutes === 0) {
     attention =
-      "Nenhuma hora registrada nessa semana. É possível lançar retroativamente por até 30 dias.";
+      "Nenhuma hora registrada nessa semana. Você pode lançar horas retroativamente se o período estiver aberto.";
   } else if (digest.timesheetStatus === "rejected") {
     attention =
       "Seu timesheet dessa semana foi rejeitado. Revise os lançamentos e submeta novamente.";

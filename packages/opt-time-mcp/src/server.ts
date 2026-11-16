@@ -24,7 +24,8 @@ Pontos essenciais:
 - 'projectId' aceita ID, código (OPT-001) ou nome (Harvest).
 - 'durationMinutes' é em MINUTOS (2h30 = 150).
 - Confirme com o usuário antes de registrar, editar, excluir ou submeter.
-- Semanas submetidas ou aprovadas estão bloqueadas para edição.`;
+- Semanas submetidas ou aprovadas e períodos oficialmente fechados bloqueiam alterações.
+- Informe a mensagem retornada pelo servidor em caso de bloqueio. A reabertura exige o fluxo autorizado.`;
 
 export function createServer(config: OptSolvConfig): {
   server: McpServer;

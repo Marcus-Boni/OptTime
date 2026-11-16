@@ -9,8 +9,11 @@ import {
   project,
   projectMember,
   timeEntry,
+  timesheet,
   user,
 } from "@/lib/db/schema";
+import { TIMESHEET_PERIOD_LOCKED_MESSAGE } from "@/lib/time-entry-locks";
+import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import {
   assertServerReachable,
   getBaseUrl,
@@ -291,6 +294,85 @@ async function main(): Promise<void> {
       `${summaryResult.structuredContent?.totalMinutes} min`,
     );
 
+    const pastDate = shiftDay(todayInAppTimeZone(), -90);
+    const olderDate = shiftDay(pastDate, -100);
+    const historicalInput = {
+      projectId,
+      durationMinutes: 45,
+      description: "lançamento histórico pelo pacote npm",
+      date: pastDate,
+    };
+    const historical = await client.send("tools/call", {
+      name: "opt_time_log_time",
+      arguments: historicalInput,
+    });
+    const historicalResult = historical.result as {
+      isError?: boolean;
+      structuredContent?: { entry?: { id: string; date: string } };
+    };
+    const historicalEntry = historicalResult.structuredContent?.entry;
+    check(
+      "pacote grava apontamento de 90 dias atrás",
+      historicalResult.isError === false && historicalEntry?.date === pastDate,
+    );
+
+    if (historicalEntry) {
+      const edit = await client.send("tools/call", {
+        name: "opt_time_update_time_entry",
+        arguments: {
+          entryId: historicalEntry.id,
+          date: olderDate,
+          durationMinutes: 55,
+        },
+      });
+      const editedEntry = await db.query.timeEntry.findFirst({
+        where: eq(timeEntry.id, historicalEntry.id),
+        columns: { date: true, duration: true },
+      });
+      check(
+        "pacote edita apontamento em uma semana de mais de seis meses atrás",
+        edit.result?.isError === false &&
+          editedEntry?.date === olderDate &&
+          editedEntry.duration === 55,
+      );
+
+      const remove = await client.send("tools/call", {
+        name: "opt_time_delete_time_entry",
+        arguments: { entryId: historicalEntry.id },
+      });
+      const deletedEntry = await db.query.timeEntry.findFirst({
+        where: eq(timeEntry.id, historicalEntry.id),
+        columns: { deletedAt: true },
+      });
+      check(
+        "pacote exclui apontamento antigo",
+        remove.result?.isError === false && !!deletedEntry?.deletedAt,
+      );
+    }
+
+    await db.insert(timesheet).values({
+      id: crypto.randomUUID(),
+      userId,
+      period: olderDate.slice(0, 7),
+      periodType: "monthly",
+      status: "approved",
+    });
+    const blocked = await client.send("tools/call", {
+      name: "opt_time_log_time",
+      arguments: { ...historicalInput, date: olderDate },
+    });
+    const blockedResult = blocked.result as {
+      isError?: boolean;
+      structuredContent?: { error?: { code?: string; message?: string } };
+    };
+    check(
+      "pacote recebe o código e a mensagem de período fechado",
+      blockedResult.isError === true &&
+        blockedResult.structuredContent?.error?.code === "PERIOD_LOCKED" &&
+        blockedResult.structuredContent.error.message ===
+          TIMESHEET_PERIOD_LOCKED_MESSAGE,
+    );
+
     const scopeDenied = await client.send("tools/call", {
       name: "opt_time_submit_timesheet",
       arguments: {},
@@ -358,6 +440,7 @@ async function main(): Promise<void> {
     // The token row is hard-deleted below with the rest of the user's data, so
     // there is nothing left to soft-revoke.
     await db.delete(timeEntry).where(eq(timeEntry.userId, userId));
+    await db.delete(timesheet).where(eq(timesheet.userId, userId));
     await db.delete(activeTimer).where(eq(activeTimer.userId, userId));
     await db
       .delete(projectMember)

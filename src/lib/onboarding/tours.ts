@@ -229,7 +229,7 @@ export const TOURS: readonly TourDefinition[] = [
         id: "outro",
         title: "Regras que valem lembrar",
         description:
-          "Você pode lançar até 30 dias no passado, nunca no futuro, com no mínimo 1 minuto e no máximo 24 horas por entrada.",
+          "Você pode lançar horas em datas passadas enquanto o período estiver aberto. Cada lançamento deve ter de 1 minuto a 24 horas e usar uma data até hoje.",
         placement: "center",
         optional: false,
       },

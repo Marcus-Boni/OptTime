@@ -217,8 +217,10 @@ function rules(options: AgentInstructionsOptions): string[] {
     "",
     "Regras de negócio que o servidor aplica sozinho — respeite-as em vez de",
     "tentar contorná-las: um timer ativo por usuário, lançamentos entre 1 minuto e",
-    "24 horas, datas até 30 dias no passado e nunca no futuro, e semanas já",
-    "submetidas ou aprovadas ficam bloqueadas para edição.",
+    "24 horas e datas válidas até hoje. Aplique o retorno do servidor para",
+    "cada alteração. Se ele retornar PERIOD_LOCKED, informe a mensagem e",
+    "oriente pelo fluxo autorizado de reabertura. Um apontamento não deve",
+    "acionar submissão, reabertura ou fechamento automático.",
     "",
   ];
 }

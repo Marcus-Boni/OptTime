@@ -45,10 +45,13 @@ dos projetos, então precisão importa mais do que velocidade.
 ## Regras do produto
 
 - Duração: mínimo 1 minuto, máximo 24h (1440 min) por lançamento.
-- Datas: não é permitido lançar no futuro nem há mais de 30 dias.
+- Datas: qualquer data passada válida pode ser usada em períodos editáveis.
+  Datas futuras não são permitidas.
 - Apenas 1 timer ativo por usuário. Iniciar um novo para e salva o anterior.
-- Semanas submetidas ou aprovadas ficam bloqueadas: nada pode ser criado,
-  editado ou excluído nelas até o gestor rejeitar o timesheet.
+- Semanas submetidas ou aprovadas e períodos fechados bloqueiam criação,
+  edição e exclusão. Informe a mensagem do servidor e indique o fluxo
+  autorizado de reabertura. Não submeta, reabra ou feche períodos como parte
+  de um apontamento.
 - Fluxo do timesheet: aberto → submetido → aprovado (ou rejeitado → aberto).
 
 ## Convenções das ferramentas

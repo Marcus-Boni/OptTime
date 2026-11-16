@@ -8,6 +8,7 @@ import { syncCompletedWorkToAzDO } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { timeEntry, timesheet } from "@/lib/db/schema";
 import { awardWeekApproval } from "@/lib/gamification";
+import { lockTimesheetPeriod } from "@/lib/time-entry-locks";
 import { isPeriodOpenAfter } from "@/lib/timesheet-periods";
 import { resolveClosedWeekAwardPeriod } from "@/lib/timesheet-week-closure";
 import { todayInAppTimeZone } from "@/lib/timezone";
@@ -102,8 +103,9 @@ export async function POST(req: Request): Promise<Response> {
           continue;
         }
 
-        await db.transaction(async (tx) => {
-          await tx
+        const approved = await db.transaction(async (tx) => {
+          await lockTimesheetPeriod(tx, ts.userId, ts.period, ts.periodType);
+          const [updated] = await tx
             .update(timesheet)
             .set({
               status: "approved",
@@ -111,7 +113,14 @@ export async function POST(req: Request): Promise<Response> {
               approvedAt: new Date(),
               rejectionReason: null,
             })
-            .where(eq(timesheet.id, timesheetId));
+            .where(
+              and(
+                eq(timesheet.id, timesheetId),
+                eq(timesheet.status, "submitted"),
+              ),
+            )
+            .returning({ id: timesheet.id });
+          if (!updated) return false;
 
           await tx
             .update(timeEntry)
@@ -122,7 +131,17 @@ export async function POST(req: Request): Promise<Response> {
                 isNull(timeEntry.deletedAt),
               ),
             );
+          return true;
         });
+
+        if (!approved) {
+          results.push({
+            timesheetId,
+            status: "failed",
+            error: "O timesheet mudou de status. Atualize a página.",
+          });
+          continue;
+        }
 
         const linkedEntries = await db.query.timeEntry.findMany({
           where: and(

@@ -11,9 +11,8 @@ import {
   DayLimitError,
 } from "@/lib/time-assistant/apply-day-plan";
 import { clearCachedSuggestionsByPrefix } from "@/lib/time-assistant/cache";
-import { MAX_BACKFILL_DAYS } from "@/lib/time-assistant/limits";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
-import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
+import { LockedTimesheetPeriodError } from "@/lib/time-entry-locks";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { applyDayPlanSchema } from "@/lib/validations/reconstruct.schema";
 
 /**
@@ -50,24 +49,6 @@ export async function POST(req: Request): Promise<Response> {
       return Response.json(
         { error: "Não é possível lançar horas em um dia futuro." },
         { status: 400 },
-      );
-    }
-
-    if (date < shiftDay(today, -MAX_BACKFILL_DAYS)) {
-      return Response.json(
-        { error: "Lançamentos limitados aos últimos 30 dias." },
-        { status: 400 },
-      );
-    }
-
-    const lockStatus = await getWeeklyTimesheetStatusForDate(
-      session.user.id,
-      date,
-    );
-    if (lockStatus.locked) {
-      return Response.json(
-        { error: "Esse dia pertence a um timesheet já submetido ou aprovado." },
-        { status: 409 },
       );
     }
 
@@ -131,7 +112,10 @@ export async function POST(req: Request): Promise<Response> {
   } catch (error) {
     if (error instanceof DayLimitError)
       return Response.json({ error: error.message }, { status: 400 });
-    if (error instanceof CallAlreadyAppliedError) {
+    if (
+      error instanceof CallAlreadyAppliedError ||
+      error instanceof LockedTimesheetPeriodError
+    ) {
       return Response.json({ error: error.message }, { status: 409 });
     }
     console.error("[POST /api/time-suggestions/reconstruct/apply]:", error);

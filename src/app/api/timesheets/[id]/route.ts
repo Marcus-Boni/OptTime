@@ -16,14 +16,23 @@ import type { CelebrationPayload } from "@/lib/gamification";
 import { awardWeekApproval, awardWeekSubmission } from "@/lib/gamification";
 import { getHolidaysInRange } from "@/lib/holidays/service";
 import {
+  assertTimesheetDatesUnlocked,
+  LockedTimesheetPeriodError,
+  lockTimesheetPeriod,
+} from "@/lib/time-entry-locks";
+import {
   getTimesheetPeriodLabel,
   isPeriodOpenAfter,
 } from "@/lib/timesheet-periods";
+import { isTimesheetSubmittableStatus } from "@/lib/timesheet-status";
 import { resolveClosedWeekAwardPeriod } from "@/lib/timesheet-week-closure";
 import { todayInAppTimeZone } from "@/lib/timezone";
 import { getPeriodRange } from "@/lib/utils";
 
 type RouteContext = { params: Promise<{ id: string }> };
+
+const TIMESHEET_STATUS_CHANGED =
+  "O timesheet mudou de status. Atualize a página.";
 
 const timesheetActionSchema = z.object({
   action: z.enum(["submit", "approve", "reject", "reopen"]),
@@ -215,7 +224,7 @@ export async function PATCH(
         return Response.json({ error: "Sem permissão." }, { status: 403 });
       }
 
-      if (ts.status !== "open" && ts.status !== "rejected") {
+      if (!isTimesheetSubmittableStatus(ts.status)) {
         return Response.json(
           {
             error:
@@ -228,6 +237,22 @@ export async function PATCH(
       const { start, end } = getPeriodRange(ts.period, ts.periodType);
 
       const updated = await db.transaction(async (tx) => {
+        await lockTimesheetPeriod(tx, ts.userId, ts.period, ts.periodType);
+        const current = await tx.query.timesheet.findFirst({
+          where: eq(timesheet.id, id),
+          columns: { status: true },
+        });
+        if (!isTimesheetSubmittableStatus(current?.status)) {
+          throw new Error(TIMESHEET_STATUS_CHANGED);
+        }
+
+        if (ts.periodType === "weekly") {
+          await assertTimesheetDatesUnlocked(tx, [
+            { userId: ts.userId, date: start },
+            { userId: ts.userId, date: end },
+          ]);
+        }
+
         await tx
           .update(timeEntry)
           .set({ timesheetId: id })
@@ -252,7 +277,7 @@ export async function PATCH(
             and(eq(timeEntry.timesheetId, id), isNull(timeEntry.deletedAt)),
           );
 
-        if ((totals?.entryCount ?? 0) === 0) {
+        if (Number(totals?.entryCount ?? 0) === 0) {
           throw new Error("EMPTY_TIMESHEET");
         }
 
@@ -350,8 +375,24 @@ export async function PATCH(
       }
 
       const updated = await db.transaction(async (tx) => {
-        if (ts.status === "open" || ts.status === "rejected") {
+        await lockTimesheetPeriod(tx, ts.userId, ts.period, ts.periodType);
+        const current = await tx.query.timesheet.findFirst({
+          where: eq(timesheet.id, id),
+          columns: { status: true },
+        });
+        const canSubmit = isTimesheetSubmittableStatus(current?.status);
+        if (!canSubmit && current?.status !== "submitted") {
+          throw new Error(TIMESHEET_STATUS_CHANGED);
+        }
+
+        if (canSubmit) {
           const { start, end } = getPeriodRange(ts.period, ts.periodType);
+          if (ts.periodType === "weekly") {
+            await assertTimesheetDatesUnlocked(tx, [
+              { userId: ts.userId, date: start },
+              { userId: ts.userId, date: end },
+            ]);
+          }
 
           await tx
             .update(timeEntry)
@@ -478,32 +519,36 @@ export async function PATCH(
       // Entries keep their timesheet link: the next submission re-collects
       // them and recomputes totals. XP already credited is not clawed back —
       // reopening is a correction path, not a penalty.
-      const [updated] = await db
-        .update(timesheet)
-        .set({
-          status: "open",
-          approvedBy: null,
-          approvedAt: null,
-          submittedAt: null,
-          rejectionReason: null,
-        })
-        .where(and(eq(timesheet.id, id), eq(timesheet.status, "approved")))
-        .returning();
+      const { updated, previous } = await db.transaction(async (tx) => {
+        await lockTimesheetPeriod(tx, ts.userId, ts.period, ts.periodType);
+        const previous = await tx.query.timesheet.findFirst({
+          where: and(eq(timesheet.id, id), eq(timesheet.status, "approved")),
+          columns: { approvedBy: true, approvedAt: true },
+        });
+        if (!previous) throw new Error(TIMESHEET_STATUS_CHANGED);
 
-      if (!updated) {
-        return Response.json(
-          { error: "O timesheet mudou de status. Atualize a página." },
-          { status: 409 },
-        );
-      }
+        const [updated] = await tx
+          .update(timesheet)
+          .set({
+            status: "open",
+            approvedBy: null,
+            approvedAt: null,
+            submittedAt: null,
+            rejectionReason: null,
+          })
+          .where(and(eq(timesheet.id, id), eq(timesheet.status, "approved")))
+          .returning();
+        if (!updated) throw new Error(TIMESHEET_STATUS_CHANGED);
+        return { updated, previous };
+      });
 
       console.info("[timesheet_reopened]", {
         timesheetId: id,
         ownerId: ts.userId,
         period: ts.period,
         reopenedBy: session.user.id,
-        previousApprovedBy: ts.approvedBy,
-        previousApprovedAt: ts.approvedAt?.toISOString() ?? null,
+        previousApprovedBy: previous.approvedBy,
+        previousApprovedAt: previous.approvedAt?.toISOString() ?? null,
         reason: body.reason ?? null,
       });
 
@@ -543,20 +588,36 @@ export async function PATCH(
         );
       }
 
-      const [updated] = await db
-        .update(timesheet)
-        .set({
-          status: "rejected",
-          rejectionReason: rejectionReason.trim(),
-        })
-        .where(eq(timesheet.id, id))
-        .returning();
+      const updated = await db.transaction(async (tx) => {
+        await lockTimesheetPeriod(tx, ts.userId, ts.period, ts.periodType);
+        const [updated] = await tx
+          .update(timesheet)
+          .set({
+            status: "rejected",
+            rejectionReason: rejectionReason.trim(),
+          })
+          .where(and(eq(timesheet.id, id), eq(timesheet.status, "submitted")))
+          .returning();
+        if (!updated) throw new Error(TIMESHEET_STATUS_CHANGED);
+        return updated;
+      });
 
       return Response.json({ timesheet: updated });
     }
 
     return Response.json({ error: "Ação inválida." }, { status: 400 });
   } catch (error) {
+    if (error instanceof LockedTimesheetPeriodError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
+
+    if (error instanceof Error && error.message === TIMESHEET_STATUS_CHANGED) {
+      return Response.json(
+        { error: TIMESHEET_STATUS_CHANGED },
+        { status: 409 },
+      );
+    }
+
     if (error instanceof Error && error.message === "EMPTY_TIMESHEET") {
       return Response.json(
         {

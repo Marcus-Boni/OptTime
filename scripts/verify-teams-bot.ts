@@ -213,15 +213,16 @@ async function main(): Promise<void> {
     assert.equal(parseDateText("sábado", context.today), "2026-10-03");
   });
 
-  await check("janela de datas do PRD (sem futuro, até 30 dias)", () => {
+  await check("datas antigas válidas e sem lançamentos futuros", () => {
     assert.equal(validateDraftDate("2026-10-06", context.today), null);
     assert.match(
       validateDraftDate("2026-10-07", context.today) ?? "",
       /futuras/,
     );
-    assert.match(
-      validateDraftDate("2026-09-01", context.today) ?? "",
-      /30 dias/,
+    assert.equal(validateDraftDate("2026-04-06", context.today), null);
+    assert.equal(
+      validateDraftDate("2026-02-30", context.today),
+      "Data inválida.",
     );
   });
 

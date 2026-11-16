@@ -7,6 +7,8 @@ import {
   timesheet,
   user,
 } from "@/lib/db/schema";
+import { TIMESHEET_PERIOD_LOCKED_MESSAGE } from "@/lib/time-entry-locks";
+import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 import { formatLocalDate, getWeekPeriod } from "@/lib/utils";
 import { runAssistantGatewayPhase } from "./assistant-gateway";
 import {
@@ -17,6 +19,7 @@ import {
   info,
   isServerUnreachable,
   makeProject,
+  makeSessionCookie,
   makeToken,
   makeUser,
   percentile,
@@ -29,6 +32,7 @@ import {
   timed,
   tool,
   warn,
+  web,
 } from "./harness";
 
 /**
@@ -61,6 +65,18 @@ async function main(): Promise<void> {
 
   console.log(`Servidor: ${getBaseUrl()}`);
   console.log(`Data: ${today}`);
+
+  const healthResponse = await fetch(`${getBaseUrl()}/api/health`);
+  const health = (await healthResponse.json()) as {
+    status?: string;
+    checks?: { database?: string };
+  };
+  check(
+    "health verifica a conexão com o banco",
+    healthResponse.status === 200 &&
+      health.status === "ok" &&
+      health.checks?.database === "up",
+  );
 
   const realAccount = await db.query.user.findFirst({
     where: eq(user.email, REAL_ACCOUNT_EMAIL),
@@ -537,15 +553,6 @@ async function main(): Promise<void> {
       },
     ],
     [
-      "data antiga demais",
-      {
-        projectId: raceProject.code,
-        durationMinutes: 30,
-        description: "x",
-        date: "2020-01-01",
-      },
-    ],
-    [
       "descrição vazia",
       { projectId: raceProject.code, durationMinutes: 30, description: "   " },
     ],
@@ -571,6 +578,132 @@ async function main(): Promise<void> {
     "toda entrada hostil rejeitada de forma controlada",
     hostileHandled === hostile.length,
     `${hostileHandled}/${hostile.length}`,
+  );
+
+  const historyDate = shiftDay(todayInAppTimeZone(), -90);
+  const historical = await tool(racer.token, "opt_time_log_time", {
+    projectId: raceProject.code,
+    durationMinutes: 30,
+    description: "Atividade histórica",
+    date: historyDate,
+  });
+  const historyId = (historical.data.entry as { id?: string })?.id ?? "";
+  check(
+    "MCP cria apontamento de 90 dias atrás em semana aberta",
+    !historical.isError && historyId !== "",
+    historical.errorCode ?? "",
+  );
+
+  const olderDate = shiftDay(historyDate, -100);
+  const editedHistorical = await tool(
+    racer.token,
+    "opt_time_update_time_entry",
+    {
+      entryId: historyId,
+      date: olderDate,
+      durationMinutes: 45,
+    },
+  );
+  const editedHistory = editedHistorical.data.entry as
+    | { date?: string; durationMinutes?: number }
+    | undefined;
+  check(
+    "MCP edita apontamento para uma semana aberta de mais de seis meses atrás",
+    !editedHistorical.isError &&
+      editedHistory?.date === olderDate &&
+      editedHistory.durationMinutes === 45,
+    editedHistorical.errorCode ?? "",
+  );
+
+  const deletedHistorical = await tool(
+    racer.token,
+    "opt_time_delete_time_entry",
+    {
+      entryId: historyId,
+    },
+  );
+  check(
+    "MCP exclui apontamento antigo em semana aberta",
+    !deletedHistorical.isError,
+    deletedHistorical.errorCode ?? "",
+  );
+
+  const cookie = await makeSessionCookie(racer.id);
+  const session = await web(cookie, "/api/auth/get-session");
+  const signedUser = session.body.user as { id?: string } | undefined;
+  check(
+    "Better Auth valida a sessão efêmera por HTTP",
+    session.status === 200 && signedUser?.id === racer.id,
+    String(session.status),
+  );
+
+  const webInput = {
+    projectId: raceProject.id,
+    duration: 30,
+    description: "Atividade histórica via TimeBot",
+    date: historyDate,
+  };
+  const webCreated = await web(cookie, "/api/time-entries", {
+    method: "POST",
+    body: JSON.stringify(webInput),
+  });
+  const webEntry = webCreated.body.entry as
+    | { id?: string; date?: string }
+    | undefined;
+  check(
+    "HTTP da confirmação do TimeBot aceita data de 90 dias atrás",
+    webCreated.status === 201 &&
+      !!webEntry?.id &&
+      webEntry.date === historyDate,
+    String(webCreated.status),
+  );
+  const webEntryPath = `/api/time-entries/${webEntry?.id ?? "missing"}`;
+  const webEdited = await web(cookie, webEntryPath, {
+    method: "PATCH",
+    body: JSON.stringify({ date: olderDate, duration: 45 }),
+  });
+  const webUpdated = webEdited.body.entry as
+    | { date?: string; duration?: number }
+    | undefined;
+  check(
+    "HTTP da confirmação do TimeBot aceita edição histórica",
+    webEdited.status === 200 &&
+      webUpdated?.date === olderDate &&
+      webUpdated.duration === 45,
+    String(webEdited.status),
+  );
+  const webDeleted = await web(cookie, webEntryPath, { method: "DELETE" });
+  check(
+    "HTTP da confirmação do TimeBot aceita exclusão histórica",
+    webDeleted.status === 200 && webDeleted.body.success === true,
+    String(webDeleted.status),
+  );
+
+  await db.insert(timesheet).values({
+    id: crypto.randomUUID(),
+    userId: racer.id,
+    period: olderDate.slice(0, 7),
+    periodType: "monthly",
+    status: "approved",
+  });
+  const webBlocked = await web(cookie, "/api/time-entries", {
+    method: "POST",
+    body: JSON.stringify({ ...webInput, date: olderDate }),
+  });
+  const mcpBlocked = await tool(racer.token, "opt_time_log_time", {
+    projectId: raceProject.id,
+    durationMinutes: webInput.duration,
+    description: webInput.description,
+    date: olderDate,
+  });
+  check(
+    "HTTP da confirmação do TimeBot e MCP bloqueiam a mesma competência",
+    webBlocked.status === 409 &&
+      webBlocked.body.error === TIMESHEET_PERIOD_LOCKED_MESSAGE &&
+      mcpBlocked.isError &&
+      mcpBlocked.errorCode === "PERIOD_LOCKED" &&
+      mcpBlocked.text.includes(TIMESHEET_PERIOD_LOCKED_MESSAGE),
+    `HTTP=${webBlocked.status}, MCP=${mcpBlocked.errorCode}`,
   );
 
   const tableStillThere = await db.query.timeEntry.findMany({

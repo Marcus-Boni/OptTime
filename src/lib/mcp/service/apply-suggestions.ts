@@ -2,6 +2,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import type { db } from "@/lib/db";
 import { timeEntry } from "@/lib/db/schema";
+import { rethrowAgentPeriodError } from "@/lib/mcp/service/period-locks";
 import {
   type ApplyPlanItem,
   applyDayPlanEntries,
@@ -438,6 +439,6 @@ export async function applySuggestions(
         hint: "Chame opt_time_suggest_daily_entries de novo: a chamada já virou um lançamento.",
       });
     }
-    throw error;
+    rethrowAgentPeriodError(error);
   }
 }

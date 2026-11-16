@@ -2278,7 +2278,7 @@ async function main(): Promise<void> {
     );
   });
 
-  await check("dia travado ou fora da janela vira erro do agente", async () => {
+  await check("dia bloqueado ou futuro vira erro do agente", async () => {
     const { DayPlanRejectedError } = await import(
       "@/lib/time-assistant/day-plan"
     );
@@ -2286,7 +2286,6 @@ async function main(): Promise<void> {
     for (const [reason, code] of [
       ["period_locked", "PERIOD_LOCKED"],
       ["future_date", "VALIDATION_ERROR"],
-      ["out_of_window", "VALIDATION_ERROR"],
     ] as const) {
       await assert.rejects(
         () =>

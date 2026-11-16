@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const reconstructDate = z.iso.date("Data válida no formato YYYY-MM-DD");
 
 export const reconstructDaySchema = z.object({
-  date: z.string().regex(datePattern, "Formato YYYY-MM-DD"),
+  date: reconstructDate,
 });
 
 export type ReconstructDayInput = z.infer<typeof reconstructDaySchema>;
@@ -20,7 +20,7 @@ const reconstructSourceSchema = z.enum([
 ]);
 
 export const applyDayPlanSchema = z.object({
-  date: z.string().regex(datePattern, "Formato YYYY-MM-DD"),
+  date: reconstructDate,
   items: z
     .array(
       z

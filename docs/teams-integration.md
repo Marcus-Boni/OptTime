@@ -360,7 +360,7 @@ Teams ──JWT──▶ POST /api/teams/bot ──▶ valida o token do Bot Con
   citado, com botão **Desfazer** no card.
 - **Mesmas regras do app**: o clique em *Registrar* passa pelo serviço do MCP
   (`logTime`), então acesso a projeto, semana travada e sincronização com o
-  Azure DevOps valem igual. Datas: sem futuro, até 30 dias para trás.
+  Azure DevOps valem igual. Datas até hoje são aceitas quando o período está aberto.
 - **Idempotência**: o id da proposta viaja no card e é reservado em
   `teams_bot_action` antes de gravar — clique duplo ou retry do Teams nunca
   duplicam o lançamento.

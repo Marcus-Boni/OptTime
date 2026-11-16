@@ -202,8 +202,8 @@ export function toAgentPlanError(error: unknown): unknown {
  * Builds the day plan for the principal without any presentation concerns.
  * Shared by `suggestDailyEntries` and `applySuggestions`.
  *
- * @throws {AgentError} `VALIDATION_ERROR` for future or out-of-window dates,
- * `PERIOD_LOCKED` when the week was already submitted or approved.
+ * @throws {AgentError} `VALIDATION_ERROR` for invalid or future dates,
+ * `PERIOD_LOCKED` when the timesheet period is locked.
  */
 export async function loadDayPlan(
   principal: AgentPrincipal,

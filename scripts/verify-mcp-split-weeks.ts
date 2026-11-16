@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { AgentError } from "@/lib/mcp/errors";
-import { resolveWeekPeriod } from "@/lib/mcp/format";
+import {
+  resolveEntryDate,
+  resolveLookupDate,
+  resolveWeekPeriod,
+} from "@/lib/mcp/format";
 import { getTimesheetPeriodForDate } from "@/lib/timesheet-periods";
 import { shiftDay, todayInAppTimeZone } from "@/lib/timezone";
 
@@ -20,6 +24,23 @@ assert.equal(
   resolveWeekPeriod("semana passada"),
   getTimesheetPeriodForDate(shiftDay(todayInAppTimeZone(), -7)),
 );
+
+const today = todayInAppTimeZone();
+for (const date of [
+  shiftDay(today, -90),
+  shiftDay(today, -190),
+  "2000-01-01",
+]) {
+  assert.equal(resolveEntryDate(date), date);
+  assert.equal(resolveLookupDate(date), date);
+}
+for (const date of ["2026-02-30", "31/12/2026", shiftDay(today, 1)]) {
+  assert.throws(
+    () => resolveEntryDate(date),
+    (error: unknown) =>
+      error instanceof AgentError && error.code === "VALIDATION_ERROR",
+  );
+}
 
 assert.throws(
   () => resolveWeekPeriod("2026-W40"),
@@ -50,5 +71,5 @@ for (const period of [
 }
 
 process.stdout.write(
-  "MCP: seleção de competência e rejeição de semanas ambíguas verificadas.\n",
+  "MCP: seleção de competência, datas históricas e validação de datas verificadas.\n",
 );

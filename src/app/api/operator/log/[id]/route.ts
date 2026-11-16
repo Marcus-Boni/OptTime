@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { getActiveSession } from "@/lib/access-control";
 import { db } from "@/lib/db";
 import { operatorActionLog, timeEntry } from "@/lib/db/schema";
-import { getWeeklyTimesheetStatusForDate } from "@/lib/time-entry-locks";
-import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
+import { LockedTimesheetPeriodError } from "@/lib/time-entry-locks";
+import { lockTimeEntryForMutation } from "@/lib/time-entry-timesheet";
 import { undoOperatorLogSchema } from "@/lib/validations/operator.schema";
 
 /** Actions we can genuinely put back the way they were. */
@@ -83,29 +83,20 @@ export async function PATCH(
         eq(timeEntry.id, log.resultId),
         eq(timeEntry.userId, session.user.id),
       ),
-      columns: { id: true, date: true, deletedAt: true },
+      columns: {
+        id: true,
+        userId: true,
+        date: true,
+        projectId: true,
+        deletedAt: true,
+        timesheetId: true,
+      },
     });
 
     if (!entry) {
       return Response.json(
         { error: "O lançamento não existe mais" },
         { status: 404 },
-      );
-    }
-
-    // The week may have been submitted since the action ran; undoing would
-    // silently change an already-approved timesheet.
-    const lock = await getWeeklyTimesheetStatusForDate(
-      session.user.id,
-      entry.date,
-    );
-
-    if (lock.locked && lock.status) {
-      return Response.json(
-        {
-          error: `A semana já foi ${getTimesheetStatusLabel(lock.status)} — não é possível desfazer.`,
-        },
-        { status: 409 },
       );
     }
 
@@ -125,7 +116,19 @@ export async function PATCH(
       );
     }
 
-    await db.transaction(async (tx) => {
+    const undone = await db.transaction(async (tx) => {
+      if (!(await lockTimeEntryForMutation(tx, entry))) return false;
+
+      const pending = await tx.query.operatorActionLog.findFirst({
+        where: and(
+          eq(operatorActionLog.id, log.id),
+          eq(operatorActionLog.status, "executed"),
+          isNull(operatorActionLog.undoneAt),
+        ),
+        columns: { id: true },
+      });
+      if (!pending) return false;
+
       await tx
         .update(timeEntry)
         .set({ deletedAt: restoring ? null : new Date() })
@@ -135,7 +138,19 @@ export async function PATCH(
         .update(operatorActionLog)
         .set({ status: "undone", undoneAt: new Date() })
         .where(eq(operatorActionLog.id, log.id));
+
+      return true;
     });
+
+    if (!undone) {
+      return Response.json(
+        {
+          error:
+            "O apontamento mudou durante a operação. Atualize e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
 
     return Response.json({
       undone: true,
@@ -143,6 +158,9 @@ export async function PATCH(
       entryId: entry.id,
     });
   } catch (error) {
+    if (error instanceof LockedTimesheetPeriodError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
     console.error("[PATCH /api/operator/log/[id]]:", error);
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }

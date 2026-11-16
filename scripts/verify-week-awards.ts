@@ -33,6 +33,7 @@ const schema = {
   userAchievement: table("achievement"),
   user: table("user"),
   timeEntry: table("entry"),
+  companyHoliday: table("holiday"),
 };
 
 // Model the database's row lock, including its transaction lifetime. Without

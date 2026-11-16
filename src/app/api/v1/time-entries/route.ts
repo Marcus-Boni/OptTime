@@ -22,7 +22,7 @@ import {
 } from "@/lib/integration/rate-limit";
 import { requireScope, SCOPES } from "@/lib/integration/scopes";
 import {
-  assertWeeklyTimesheetDateUnlocked,
+  assertTimesheetDatesUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
 
@@ -261,7 +261,7 @@ const createV1TimeEntrySchema = z.object({
     .min(1, "externalId must not be empty")
     .max(255, "externalId must be at most 255 characters")
     .optional(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "must be YYYY-MM-DD"),
+  date: z.iso.date("must be YYYY-MM-DD"),
   description: z.string().trim().min(1, "description must not be empty"),
   durationMinutes: z.number().int().min(1).optional(),
   billable: z.boolean().optional(),
@@ -377,16 +377,6 @@ export async function POST(req: Request): Promise<Response> {
       );
     }
 
-    // Check Timesheet Lock for targetUser and entry date (returns 409 if week is closed)
-    try {
-      await assertWeeklyTimesheetDateUnlocked(targetUser.id, data.date);
-    } catch (err) {
-      if (err instanceof LockedTimesheetPeriodError) {
-        throw new ApiError("LOCKED_PERIOD", err.message, 409);
-      }
-      throw err;
-    }
-
     // Validate targetProject exists and is active/open
     const targetProject = await db.query.project.findFirst({
       where: and(
@@ -431,21 +421,27 @@ export async function POST(req: Request): Promise<Response> {
       true;
 
     const id = crypto.randomUUID();
-    const [entry] = await db
-      .insert(timeEntry)
-      .values({
-        id,
-        externalId: data.externalId ?? null,
-        source: "opt-rh",
-        userId: targetUser.id,
-        projectId: targetProject.id,
-        description: data.description,
-        date: data.date,
-        duration,
-        billable,
-        azdoSyncStatus: "none",
-      })
-      .returning();
+    const [entry] = await db.transaction(async (tx) => {
+      await assertTimesheetDatesUnlocked(tx, [
+        { userId: targetUser.id, date: data.date },
+      ]);
+
+      return tx
+        .insert(timeEntry)
+        .values({
+          id,
+          externalId: data.externalId ?? null,
+          source: "opt-rh",
+          userId: targetUser.id,
+          projectId: targetProject.id,
+          description: data.description,
+          date: data.date,
+          duration,
+          billable,
+          azdoSyncStatus: "none",
+        })
+        .returning();
+    });
 
     const dto: TimeEntryDTO = {
       id: entry.id,
@@ -483,13 +479,17 @@ export async function POST(req: Request): Promise<Response> {
       },
     );
   } catch (error: unknown) {
+    const apiError =
+      error instanceof LockedTimesheetPeriodError
+        ? new ApiError("LOCKED_PERIOD", error.message, 409)
+        : error;
     logRequest({
       requestId,
       clientId,
       route: "POST /api/v1/time-entries",
       durationMs: Date.now() - start,
-      status: error instanceof ApiError ? error.status : 500,
+      status: apiError instanceof ApiError ? apiError.status : 500,
     });
-    return toErrorResponse(error, requestId);
+    return toErrorResponse(apiError, requestId);
   }
 }

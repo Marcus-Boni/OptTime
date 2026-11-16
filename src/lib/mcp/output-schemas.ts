@@ -60,7 +60,7 @@ const TIME_ENTRY_OUTPUT = {
     billable: boolean("Se as horas são faturáveis."),
     azureWorkItemId: nullableInteger("Work Item do Azure DevOps vinculado."),
     azureWorkItemTitle: nullableString("Título do Work Item vinculado."),
-    locked: boolean("Semana submetida ou aprovada: não pode mais ser editada."),
+    locked: boolean("A semana foi submetida ou o período está fechado."),
     project: {
       type: "object",
       required: ["id", "name", "code"],

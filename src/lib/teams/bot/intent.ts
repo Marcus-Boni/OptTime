@@ -15,9 +15,6 @@ import { parseDurationText } from "@/lib/ai/duration";
 import { parseTeamsCommand, type TeamsCommand } from "@/lib/teams/commands";
 import { shiftDay } from "@/lib/timezone";
 
-/** How far back an entry may be dated (PRD §6.1). */
-export const MAX_BACKDATE_DAYS = 30;
-
 export interface BotProject {
   id: string;
   name: string;
@@ -634,10 +631,7 @@ export async function interpretMessage(
 
 /** Validation the card runs before writing anything. */
 export function validateDraftDate(date: string, today: string): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "Data inválida.";
+  if (!z.iso.date().safeParse(date).success) return "Data inválida.";
   if (date > today) return "Não é possível lançar horas em datas futuras.";
-  if (date < shiftDay(today, -MAX_BACKDATE_DAYS)) {
-    return `Só é possível lançar até ${MAX_BACKDATE_DAYS} dias para trás.`;
-  }
   return null;
 }

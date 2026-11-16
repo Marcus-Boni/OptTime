@@ -4,10 +4,12 @@ import { auth } from "@/lib/auth";
 import { triggerCompletedWorkSync } from "@/lib/azure-devops/sync";
 import { db } from "@/lib/db";
 import { project, projectMember, timeEntry } from "@/lib/db/schema";
+import { LockedTimesheetPeriodError } from "@/lib/time-entry-locks";
 import {
-  assertWeeklyTimesheetDateUnlocked,
-  LockedTimesheetPeriodError,
-} from "@/lib/time-entry-locks";
+  getRetainedTimeEntryTimesheetId,
+  lockTimeEntryForMutation,
+} from "@/lib/time-entry-timesheet";
+import { todayInAppTimeZone } from "@/lib/timezone";
 import { updateTimeEntrySchema } from "@/lib/validations/time-entry.schema";
 
 type RouteContext = { params: Promise<{ id: string }> };
@@ -106,13 +108,15 @@ export async function PATCH(
     }
 
     const data = parsed.data;
+    if (data.date && data.date > todayInAppTimeZone()) {
+      return Response.json(
+        { error: "Não é possível lançar horas em um dia futuro." },
+        { status: 400 },
+      );
+    }
+
     const nextDate = data.date ?? existing.date;
     const nextProjectId = data.projectId ?? existing.projectId;
-
-    await assertWeeklyTimesheetDateUnlocked(session.user.id, existing.date);
-    if (nextDate !== existing.date) {
-      await assertWeeklyTimesheetDateUnlocked(session.user.id, nextDate);
-    }
 
     if (nextProjectId !== existing.projectId) {
       const targetProject = await db.query.project.findFirst({
@@ -151,39 +155,63 @@ export async function PATCH(
       }
     }
 
-    const workItemChanged =
-      data.azureWorkItemId !== undefined &&
-      data.azureWorkItemId !== existing.azureWorkItemId;
-    const durationChanged =
-      data.duration !== undefined && data.duration !== existing.duration;
-    const shouldSyncCompletedWork = workItemChanged || durationChanged;
-    const nextAzureWorkItemId =
-      data.azureWorkItemId !== undefined
-        ? data.azureWorkItemId
-        : existing.azureWorkItemId;
-    const nextAzdoSyncStatus = nextAzureWorkItemId
-      ? shouldSyncCompletedWork
-        ? "pending"
-        : existing.azdoSyncStatus
-      : "none";
+    const destination = { userId: session.user.id, date: nextDate };
+    const result = await db.transaction(async (tx) => {
+      const current = await lockTimeEntryForMutation(tx, existing, destination);
+      if (!current) return null;
 
-    const [updated] = await db
-      .update(timeEntry)
-      .set({
-        ...data,
-        azdoSyncStatus: nextAzdoSyncStatus,
-      })
-      .where(eq(timeEntry.id, id))
-      .returning();
+      const workItemChanged =
+        data.azureWorkItemId !== undefined &&
+        data.azureWorkItemId !== current.azureWorkItemId;
+      const durationChanged =
+        data.duration !== undefined && data.duration !== current.duration;
+      const shouldSyncCompletedWork = workItemChanged || durationChanged;
+      const nextAzureWorkItemId =
+        data.azureWorkItemId !== undefined
+          ? data.azureWorkItemId
+          : current.azureWorkItemId;
+      const nextAzdoSyncStatus = nextAzureWorkItemId
+        ? shouldSyncCompletedWork
+          ? "pending"
+          : current.azdoSyncStatus
+        : "none";
+      const timesheetId = await getRetainedTimeEntryTimesheetId(
+        tx,
+        current,
+        destination,
+      );
 
-    if (shouldSyncCompletedWork) {
+      const [updated] = await tx
+        .update(timeEntry)
+        .set({ ...data, timesheetId, azdoSyncStatus: nextAzdoSyncStatus })
+        .where(eq(timeEntry.id, id))
+        .returning();
+
+      return {
+        updated,
+        previousWorkItemId: current.azureWorkItemId,
+        shouldSyncCompletedWork,
+      };
+    });
+
+    if (!result) {
+      return Response.json(
+        {
+          error:
+            "O apontamento mudou durante a operação. Atualize e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
+
+    if (result.shouldSyncCompletedWork) {
       triggerCompletedWorkSync(session.user.id, [
-        existing.azureWorkItemId,
-        updated.azureWorkItemId,
+        result.previousWorkItemId,
+        result.updated.azureWorkItemId,
       ]);
     }
 
-    return Response.json({ entry: updated });
+    return Response.json({ entry: result.updated });
   } catch (error) {
     if (error instanceof LockedTimesheetPeriodError) {
       return Response.json({ error: error.message }, { status: 409 });
@@ -235,14 +263,28 @@ export async function DELETE(
       );
     }
 
-    await assertWeeklyTimesheetDateUnlocked(session.user.id, existing.date);
+    const deleted = await db.transaction(async (tx) => {
+      const current = await lockTimeEntryForMutation(tx, existing);
+      if (!current) return null;
 
-    await db
-      .update(timeEntry)
-      .set({ deletedAt: new Date() })
-      .where(eq(timeEntry.id, id));
+      await tx
+        .update(timeEntry)
+        .set({ deletedAt: new Date() })
+        .where(eq(timeEntry.id, id));
+      return current;
+    });
 
-    triggerCompletedWorkSync(session.user.id, [existing.azureWorkItemId]);
+    if (!deleted) {
+      return Response.json(
+        {
+          error:
+            "O apontamento mudou durante a operação. Atualize e tente novamente.",
+        },
+        { status: 409 },
+      );
+    }
+
+    triggerCompletedWorkSync(session.user.id, [deleted.azureWorkItemId]);
 
     return Response.json({ success: true });
   } catch (error) {

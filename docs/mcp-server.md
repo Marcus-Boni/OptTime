@@ -225,7 +225,7 @@ Todas as rotas exigem `Authorization: Bearer opt_tok_…`.
 | `NOT_FOUND`                  | 404  | Projeto, lançamento ou ferramenta inexistente     |
 | `AMBIGUOUS_PROJECT`          | 409  | Referência casa com mais de um projeto            |
 | `CONFLICT`                   | 409  | Estado incompatível (ex.: timer já pausado)       |
-| `PERIOD_LOCKED`              | 409  | Semana já submetida ou aprovada                   |
+| `PERIOD_LOCKED`              | 409  | Semana submetida ou aprovada, ou período fechado |
 | `INTEGRATION_NOT_CONFIGURED` | 412  | Azure DevOps não configurado (busca de work items) |
 | `AZURE_DEVOPS_NOT_CONFIGURED` | 412 | Sem PAT do Azure DevOps (`opt_time_list_my_work_items`) |
 | `MICROSOFT_NOT_CONNECTED`    | 412  | Sem conta Microsoft ligada, ou a conexão expirou — o `hint` manda entrar no OptTime com a conta Microsoft |
@@ -332,8 +332,9 @@ Entra: a leitura do Graph usa o token que o servidor já guarda
 2. O plano do dia é reconstruído no servidor; cada `suggestionId` é resolvido
    contra ele. Só projeto, duração, descrição e faturável podem ser editados, e
    tudo é revalidado (projeto acessível e ativo, 5 min no mínimo exceto chamadas
-   do Teams, teto de 24 h/dia, semana não submetida, janela de 30 dias).
-3. Uma transação toma um lock consultivo da chave, cria os lançamentos, grava o
+   do Teams, teto de 24 h/dia, data válida até hoje).
+3. Uma transação toma os locks consultivos da chave e do período, confirma que
+   o período está editável, cria os lançamentos, grava o
    feedback (`accepted`, `edited` ou `rejected`, com `agent: true` e o id do
    token) e registra a chave em `api_idempotency_key` — tudo ou nada.
 4. Mesma chave + mesma entrada → resposta guardada, `replayed: true`, nada
@@ -526,6 +527,6 @@ Duas garantias sustentam a suíte:
 | `MICROSOFT_NOT_CONNECTED` na agenda                 | Sem conta Microsoft ligada ou a conexão expirou. O usuário entra no OptTime com a conta Microsoft; no dev, confira `MICROSOFT_CLIENT_SECRET` (`invalid_client` no log = segredo vencido). Com `whoami` dizendo `connected: true`, olhe o log `[collaboration] background token failed`: ele lista, por `account.id`, o motivo de cada linha (`AADSTS…`, `invalid_grant`, `no_refresh_token`). |
 | `IDEMPOTENCY_CONFLICT` ao aplicar                   | A `idempotencyKey` foi reutilizada com outra entrada. Gere um UUID novo por operação.        |
 | `relation "api_idempotency_key" does not exist`     | Falta aplicar a migração `0031` (`pnpm run db:migrate`).                                    |
-| `PERIOD_LOCKED` ao registrar                        | A semana já foi submetida/aprovada. O gestor precisa rejeitar o timesheet antes.             |
+| `PERIOD_LOCKED` ao registrar                        | A semana está submetida ou aprovada, ou o período está fechado. Ajustes exigem reabertura pelo fluxo autorizado. |
 | Ferramentas somem depois de atualizar o servidor    | Pacote npm desatualizado. `doctor` avisa; atualize com `opt-time-mcp@latest`.        |
 | `405` ao abrir `/api/mcp` no navegador              | Esperado: o endpoint só responde a `POST` de JSON-RPC.                                      |

@@ -21,12 +21,14 @@ export const timeEntrySchema = z.object({
 
 export type TimeEntryFormData = z.infer<typeof timeEntrySchema>;
 
+const timeEntryDateSchema = z.iso.date({ error: "Formato YYYY-MM-DD" });
+
 /** Server-side schema for creating a time entry via API */
 export const createTimeEntrySchema = z.object({
   projectId: z.string().min(1),
   // Description is optional when coming from the DevOps extension
   description: z.string().max(2000, "Máximo de 2000 caracteres").default(""),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato YYYY-MM-DD"),
+  date: timeEntryDateSchema,
   duration: z.number().int().min(1).max(1440),
   billable: z.boolean().default(true),
   azureWorkItemId: z.number().int().positive().optional(),
@@ -45,10 +47,7 @@ export const updateTimeEntrySchema = z.object({
     .min(1)
     .max(2000, "Máximo de 2000 caracteres")
     .optional(),
-  date: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/)
-    .optional(),
+  date: timeEntryDateSchema.optional(),
   duration: z.number().int().min(1).max(1440).optional(),
   billable: z.boolean().optional(),
   azureWorkItemId: z.number().int().positive().nullable().optional(),

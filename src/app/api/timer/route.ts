@@ -10,6 +10,7 @@ import { db } from "@/lib/db";
 import { activeTimer, project, timeEntry } from "@/lib/db/schema";
 import { syncTimerPresence } from "@/lib/teams/presence";
 import {
+  assertTimesheetDatesUnlocked,
   assertWeeklyTimesheetDateUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
@@ -129,8 +130,17 @@ export async function POST(req: Request): Promise<Response> {
       where: eq(activeTimer.userId, session.user.id),
     });
 
-    if (existingTimer) {
-      await stopTimerAndSave(session.user.id, existingTimer, timezone);
+    if (
+      existingTimer &&
+      !(await stopTimerAndSave(session.user.id, existingTimer.id, timezone))
+    ) {
+      return Response.json(
+        {
+          error:
+            "O timer mudou durante a operação. Atualize e tente novamente.",
+        },
+        { status: 409 },
+      );
     }
 
     const id = crypto.randomUUID();
@@ -290,7 +300,14 @@ export async function DELETE(req: Request): Promise<Response> {
       return Response.json({ error: "Nenhum timer ativo." }, { status: 404 });
     }
 
-    const entry = await stopTimerAndSave(session.user.id, existing, timezone);
+    const entry = await stopTimerAndSave(
+      session.user.id,
+      existing.id,
+      timezone,
+    );
+    if (!entry) {
+      return Response.json({ error: "Nenhum timer ativo." }, { status: 404 });
+    }
 
     after(() =>
       syncTimerPresence(req.headers, session.user.id, { action: "stop" }),
@@ -309,22 +326,27 @@ export async function DELETE(req: Request): Promise<Response> {
 
 async function stopTimerAndSave(
   userId: string,
-  timer: typeof activeTimer.$inferSelect,
+  timerId: string,
   timezone: string,
-) {
+): Promise<typeof timeEntry.$inferSelect | null> {
   const now = new Date();
-  let totalMs = timer.accumulatedMs;
-
-  if (!timer.pausedAt) {
-    totalMs += now.getTime() - timer.startedAt.getTime();
-  }
-
-  const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
   const dateStr = formatDateInTimeZone(now, timezone);
 
-  await assertWeeklyTimesheetDateUnlocked(userId, dateStr);
-
   const entry = await db.transaction(async (tx) => {
+    await assertTimesheetDatesUnlocked(tx, [{ userId, date: dateStr }]);
+
+    const [timer] = await tx
+      .delete(activeTimer)
+      .where(eq(activeTimer.id, timerId))
+      .returning();
+    if (!timer) return null;
+
+    let totalMs = timer.accumulatedMs;
+    if (!timer.pausedAt) {
+      totalMs += now.getTime() - timer.startedAt.getTime();
+    }
+
+    const durationMinutes = Math.max(1, Math.round(totalMs / 60000));
     const entryId = crypto.randomUUID();
     const [createdEntry] = await tx
       .insert(timeEntry)
@@ -344,12 +366,10 @@ async function stopTimerAndSave(
       })
       .returning();
 
-    await tx.delete(activeTimer).where(eq(activeTimer.userId, userId));
-
     return createdEntry;
   });
 
-  triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
+  if (entry) triggerCompletedWorkSync(userId, [entry.azureWorkItemId]);
 
   return entry;
 }

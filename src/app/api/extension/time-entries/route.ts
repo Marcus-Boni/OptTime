@@ -9,7 +9,7 @@ import {
   resolveExtensionUser,
 } from "@/lib/extension-auth";
 import {
-  assertWeeklyTimesheetDateUnlocked,
+  assertTimesheetDatesUnlocked,
   LockedTimesheetPeriodError,
 } from "@/lib/time-entry-locks";
 import { createTimeEntrySchema } from "@/lib/validations/time-entry.schema";
@@ -46,8 +46,6 @@ export async function POST(req: Request): Promise<Response> {
   const data = parsed.data;
 
   try {
-    await assertWeeklyTimesheetDateUnlocked(extUser.id, data.date);
-
     const targetProject = await db.query.project.findFirst({
       where: eq(project.id, data.projectId),
       columns: { id: true, status: true },
@@ -79,21 +77,27 @@ export async function POST(req: Request): Promise<Response> {
     }
 
     const id = crypto.randomUUID();
-    const [entry] = await db
-      .insert(timeEntry)
-      .values({
-        id,
-        userId: extUser.id,
-        projectId: data.projectId,
-        description: data.description,
-        date: data.date,
-        duration: data.duration,
-        billable: data.billable,
-        azureWorkItemId: data.azureWorkItemId,
-        azureWorkItemTitle: data.azureWorkItemTitle,
-        azdoSyncStatus: data.azureWorkItemId ? "pending" : "none",
-      })
-      .returning();
+    const [entry] = await db.transaction(async (tx) => {
+      await assertTimesheetDatesUnlocked(tx, [
+        { userId: extUser.id, date: data.date },
+      ]);
+
+      return tx
+        .insert(timeEntry)
+        .values({
+          id,
+          userId: extUser.id,
+          projectId: data.projectId,
+          description: data.description,
+          date: data.date,
+          duration: data.duration,
+          billable: data.billable,
+          azureWorkItemId: data.azureWorkItemId,
+          azureWorkItemTitle: data.azureWorkItemTitle,
+          azdoSyncStatus: data.azureWorkItemId ? "pending" : "none",
+        })
+        .returning();
+    });
 
     triggerCompletedWorkSync(extUser.id, [entry.azureWorkItemId]);
 

@@ -260,7 +260,7 @@ export function isNarrativeUsable(text: string): boolean {
 
 function writeMemberFallback(digest: MemberDigest): string {
   if (digest.totalMinutes === 0) {
-    return `Você não registrou horas na ${digest.period.label}. Se trabalhou nesse período, vale lançar as horas retroativamente — o sistema aceita até 30 dias.`;
+    return `Você não registrou horas na ${digest.period.label}. Se trabalhou nesse período e ele estiver aberto, você pode lançar as horas retroativamente.`;
   }
 
   const parts: string[] = [];

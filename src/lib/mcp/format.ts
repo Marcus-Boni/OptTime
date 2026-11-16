@@ -109,12 +109,11 @@ const RELATIVE_DATES: Record<string, number> = {
 /**
  * Resolves an agent-supplied date into `YYYY-MM-DD`, defaulting to today.
  *
- * Future dates are rejected and anything older than 30 days is rejected, both
- * matching the product rules for manual entries.
+ * Manual entries reject future dates. Lookups may include future dates.
  */
 export function resolveEntryDate(
   input: unknown,
-  options?: { allowFuture?: boolean; maxPastDays?: number },
+  options?: { allowFuture?: boolean },
 ): string {
   const today = todayInAppTimeZone();
   if (input == null || input === "") return today;
@@ -152,22 +151,12 @@ export function resolveEntryDate(
     );
   }
 
-  const maxPastDays = options?.maxPastDays ?? 30;
-  const floor = shiftDay(today, -maxPastDays);
-  if (resolved < floor) {
-    throw new AgentError(
-      "VALIDATION_ERROR",
-      `Só é possível registrar horas nos últimos ${maxPastDays} dias (a partir de ${floor}).`,
-    );
-  }
-
   return resolved;
 }
 
 /** Resolves a date used only for reading — no past/future guard rails. */
 export function resolveLookupDate(input: unknown): string {
-  if (input == null || input === "") return todayInAppTimeZone();
-  return resolveEntryDate(input, { allowFuture: true, maxPastDays: 3650 });
+  return resolveEntryDate(input, { allowFuture: true });
 }
 
 const RELATIVE_PERIODS: Record<string, number> = {
