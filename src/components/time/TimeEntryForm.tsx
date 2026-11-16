@@ -2,8 +2,15 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useForm } from "react-hook-form";
+import { toast } from "sonner";
 import { z } from "zod";
 import { MeetingPickerDrawer } from "@/components/collaboration/MeetingPickerDrawer";
 import { TimeEntryDialogShell } from "@/components/time/TimeEntryDialogShell";
@@ -12,6 +19,7 @@ import {
   type TimeEntryFormValues,
 } from "@/components/time/TimeEntryFormFields";
 import { Button } from "@/components/ui/button";
+import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import type { TimeEntry } from "@/hooks/use-time-entries";
 import { useTimesheetStatus } from "@/hooks/use-timesheet-status";
 import { useUserTimePreferences } from "@/hooks/use-user-time-preferences";
@@ -22,6 +30,7 @@ import {
 } from "@/lib/time-preferences";
 import { getTimesheetStatusLabel } from "@/lib/timesheet-status";
 import { parseLocalDate } from "@/lib/utils";
+import { TIME_ENTRY_DESCRIPTION_MAX_LENGTH } from "@/lib/validations/time-entry.schema";
 import type { MeetingSignal } from "@/types/collaboration";
 
 const schema = z.object({
@@ -29,7 +38,10 @@ const schema = z.object({
   description: z
     .string()
     .min(1, "Adicione uma descrição")
-    .max(2000, "A descrição deve ter no máximo 2000 caracteres"),
+    .max(
+      TIME_ENTRY_DESCRIPTION_MAX_LENGTH,
+      `A descrição deve ter no máximo ${TIME_ENTRY_DESCRIPTION_MAX_LENGTH} caracteres`,
+    ),
   date: z.date(),
   duration: z.number().min(1, "Duração deve ser ao menos 1 minuto"),
   billable: z.boolean(),
@@ -140,6 +152,49 @@ export function TimeEntryForm({
     defaultValues: getDefaultValues(initialValues, preferences),
   });
 
+  function appendDictation(spoken: string) {
+    const description = form.getValues("description");
+    const separator = /\S$/u.test(description) ? " " : "";
+    const available =
+      TIME_ENTRY_DESCRIPTION_MAX_LENGTH - description.length - separator.length;
+
+    if (spoken.length > available) {
+      toast.warning(
+        `A descrição atingiu o limite de ${TIME_ENTRY_DESCRIPTION_MAX_LENGTH} caracteres.`,
+      );
+    }
+    if (available <= 0) return;
+
+    const dictatedText = spoken
+      .slice(0, available)
+      .replace(/\p{Surrogate}$/u, "")
+      .trimEnd();
+    if (!dictatedText) return;
+
+    setActiveDescriptionVariant(null);
+    form.setValue("description", description + separator + dictatedText, {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+  }
+
+  const dictation = useSpeechRecognition({
+    silenceTimeoutMs: 1800,
+    preserveTranscriptOnNetworkError: true,
+    onResult: appendDictation,
+  });
+  const cancelDictation = dictation.cancel;
+  const dictationBusy =
+    dictation.status === "starting" ||
+    dictation.status === "listening" ||
+    dictation.status === "stopping";
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) cancelDictation();
+    onOpenChange(nextOpen);
+  }
+
   const loadProjects = useCallback(async () => {
     try {
       const res = await fetch("/api/projects?status=active");
@@ -161,6 +216,7 @@ export function TimeEntryForm({
   useEffect(() => {
     if (!open) {
       if (wasOpenRef.current) {
+        cancelDictation();
         setOutlookOpen(false);
         wasOpenRef.current = false;
         prevInitialValuesRef.current = null;
@@ -175,6 +231,7 @@ export function TimeEntryForm({
 
     // Initialize or reset form only when modal opens or initial values actually change
     if (isFirstOpen || initialValuesChanged) {
+      cancelDictation();
       if (isFirstOpen) {
         wasOpenRef.current = true;
         void loadProjects();
@@ -205,6 +262,7 @@ export function TimeEntryForm({
     }
   }, [
     allowContinue,
+    cancelDictation,
     form,
     initialValues,
     initialValuesString,
@@ -220,6 +278,11 @@ export function TimeEntryForm({
   );
   const selectedDateLocked = selectedDateTimesheetStatus.locked;
   const selectedDateStatusPending = selectedDateTimesheetStatus.checking;
+  const saveDisabled =
+    submitting ||
+    dictationBusy ||
+    selectedDateLocked ||
+    selectedDateStatusPending;
   const selectedDateLockMessage = selectedDateTimesheetStatus.status
     ? `Não é possível registrar horas porque a semana desta data já foi ${getTimesheetStatusLabel(selectedDateTimesheetStatus.status)}.`
     : "Não é possível registrar horas nesta data.";
@@ -293,16 +356,13 @@ export function TimeEntryForm({
     [form, preferences.agendaProjectMap, projects],
   );
 
-  async function handleSubmit(values: TimeEntryFormValues) {
-    const latestTimesheetStatus = await selectedDateTimesheetStatus.refetch();
-
-    if (latestTimesheetStatus.locked) {
-      return;
-    }
-
+  async function handleSubmit(values: TimeEntryFormValues): Promise<void> {
     setSubmitting(true);
-
     try {
+      const latestTimesheetStatus = await selectedDateTimesheetStatus.refetch();
+      if (latestTimesheetStatus.locked) return;
+
+      cancelDictation();
       await onSubmit({
         projectId: values.projectId,
         description: values.description,
@@ -356,10 +416,19 @@ export function TimeEntryForm({
         return;
       }
 
-      onOpenChange(false);
+      handleOpenChange(false);
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleFormSubmit(event: FormEvent<HTMLFormElement>) {
+    if (submitting || dictationBusy) {
+      event.preventDefault();
+      return;
+    }
+
+    void form.handleSubmit(handleSubmit)(event);
   }
 
   const outlookDrawer = (
@@ -374,7 +443,7 @@ export function TimeEntryForm({
   return (
     <TimeEntryDialogShell
       open={open}
-      onOpenChange={onOpenChange}
+      onOpenChange={handleOpenChange}
       title={mode === "create" ? "Registrar horas trabalhadas" : "Editar horas"}
       description={
         mode === "create"
@@ -385,7 +454,7 @@ export function TimeEntryForm({
       asideOpen={outlookOpen}
     >
       <form
-        onSubmit={form.handleSubmit(handleSubmit)}
+        onSubmit={handleFormSubmit}
         onKeyDown={(e) => {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
             e.preventDefault();
@@ -408,6 +477,8 @@ export function TimeEntryForm({
             projects={projects}
             workItem={workItem}
             dateStatusChecking={selectedDateStatusPending}
+            dictation={dictation}
+            submitting={submitting}
             onWorkItemChange={setWorkItem}
             onOpenAgenda={() => setOutlookOpen(true)}
             descriptionVariants={initialValues?.descriptionVariants}
@@ -431,7 +502,7 @@ export function TimeEntryForm({
               type="button"
               variant="outline"
               className="rounded-full"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
             >
               Cancelar
             </Button>
@@ -440,11 +511,7 @@ export function TimeEntryForm({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <Button
                   type="submit"
-                  disabled={
-                    submitting ||
-                    selectedDateLocked ||
-                    selectedDateStatusPending
-                  }
+                  disabled={saveDisabled}
                   variant="outline"
                   className="rounded-full"
                   title={
@@ -464,11 +531,7 @@ export function TimeEntryForm({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={
-                    submitting ||
-                    selectedDateLocked ||
-                    selectedDateStatusPending
-                  }
+                  disabled={saveDisabled}
                   className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
                   title={
                     selectedDateLocked
@@ -489,9 +552,7 @@ export function TimeEntryForm({
             ) : (
               <Button
                 type="submit"
-                disabled={
-                  submitting || selectedDateLocked || selectedDateStatusPending
-                }
+                disabled={saveDisabled}
                 className="rounded-full bg-brand-500 text-white hover:bg-brand-600"
                 title={
                   selectedDateLocked

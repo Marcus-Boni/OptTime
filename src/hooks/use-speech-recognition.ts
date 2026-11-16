@@ -5,7 +5,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export type SpeechStatus =
   | "unsupported"
   | "idle"
+  | "starting"
   | "listening"
+  | "stopping"
   | "denied"
   | "error";
 
@@ -22,6 +24,8 @@ export interface UseSpeechRecognitionOptions {
    * keep listening until the user stops.
    */
   silenceTimeoutMs?: number;
+  /** Deliver confirmed speech if the browser loses its connection. */
+  preserveTranscriptOnNetworkError?: boolean;
   /** Called with the full transcript once listening ends with content. */
   onResult?: (transcript: string) => void;
 }
@@ -37,6 +41,7 @@ export interface SpeechRecognitionController {
   errorMessage: string | null;
   start: () => void;
   stop: () => void;
+  cancel: () => void;
   toggle: () => void;
   reset: () => void;
 }
@@ -69,6 +74,7 @@ export function useSpeechRecognition(
     locale = "pt-BR",
     continuous = true,
     silenceTimeoutMs,
+    preserveTranscriptOnNetworkError = false,
     onResult,
   } = options;
 
@@ -117,11 +123,36 @@ export function useSpeechRecognition(
     }
   }, []);
 
+  const releaseRecognition = useCallback(() => {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+
+    recognitionRef.current = null;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    recognition.onstart = null;
+    recognition.onspeechstart = null;
+    recognition.onspeechend = null;
+
+    try {
+      recognition.abort();
+    } catch {
+      // The engine may already be disconnected.
+    }
+  }, []);
+
   const finish = useCallback(() => {
     clearSilenceTimer();
     clearFinalResultTimer();
     wantsToListenRef.current = false;
-    setStatus((current) => (current === "listening" ? "idle" : current));
+    setStatus((current) =>
+      current === "starting" ||
+      current === "listening" ||
+      current === "stopping"
+        ? "idle"
+        : current,
+    );
     if (hasDeliveredResultRef.current) return;
 
     const full = [transcriptRef.current, interimRef.current]
@@ -148,18 +179,9 @@ export function useSpeechRecognition(
     if (recognition) {
       // stop() requests a final result asynchronously. Delivering here would
       // submit the interim text and discard the corrected last words.
+      setStatus("stopping");
       finalResultTimerRef.current = setTimeout(() => {
-        recognition.onresult = null;
-        recognition.onend = null;
-        recognition.onstart = null;
-        recognition.onerror = null;
-        recognition.onspeechstart = null;
-        recognition.onspeechend = null;
-        try {
-          recognition.abort();
-        } catch {
-          // It may already be disconnected without an end event.
-        }
+        releaseRecognition();
         finish();
       }, FINAL_RESULT_TIMEOUT_MS);
       try {
@@ -171,7 +193,7 @@ export function useSpeechRecognition(
     }
 
     finish();
-  }, [clearSilenceTimer, finish]);
+  }, [clearSilenceTimer, finish, releaseRecognition]);
 
   const start = useCallback(() => {
     const Constructor = resolveConstructor();
@@ -188,22 +210,7 @@ export function useSpeechRecognition(
     // the shared "wants to listen" flag, so an instance left alive restarts
     // itself the moment this session raises that flag — two engines then feed
     // the same transcript and the utterance is delivered twice.
-    const previous = recognitionRef.current;
-    if (previous) {
-      previous.onresult = null;
-      previous.onerror = null;
-      previous.onend = null;
-      previous.onstart = null;
-      previous.onspeechstart = null;
-      previous.onspeechend = null;
-      recognitionRef.current = null;
-
-      try {
-        previous.abort();
-      } catch {
-        // The instance may already be closed; nothing to release.
-      }
-    }
+    releaseRecognition();
 
     // A fresh instance per session avoids stale handlers from a denied attempt.
     const recognition = new Constructor();
@@ -216,12 +223,13 @@ export function useSpeechRecognition(
     transcriptRef.current = "";
     interimRef.current = "";
     wantsToListenRef.current = true;
+    setStatus("starting");
     setTranscript("");
     setInterim("");
     setErrorMessage(null);
 
     recognition.onstart = () => {
-      setStatus("listening");
+      if (wantsToListenRef.current) setStatus("listening");
     };
 
     recognition.onspeechstart = clearSilenceTimer;
@@ -288,16 +296,28 @@ export function useSpeechRecognition(
       wantsToListenRef.current = false;
       clearSilenceTimer();
       clearFinalResultTimer();
-      hasDeliveredResultRef.current = true;
+      const interruptedDictation =
+        event.error === "network" && preserveTranscriptOnNetworkError;
       setInterim("");
       setErrorMessage(
-        ERROR_MESSAGES[event.error] ?? "Não foi possível ouvir o microfone.",
+        interruptedDictation
+          ? "O reconhecimento de voz foi interrompido. Tente novamente."
+          : (ERROR_MESSAGES[event.error] ??
+              "Não foi possível ouvir o microfone."),
       );
       setStatus(
         event.error === "not-allowed" || event.error === "service-not-allowed"
           ? "denied"
           : "error",
       );
+      if (interruptedDictation) {
+        // Partial hypotheses may still change. Keep only confirmed text.
+        interimRef.current = "";
+        releaseRecognition();
+        finish();
+      } else {
+        hasDeliveredResultRef.current = true;
+      }
     };
 
     recognition.onend = () => {
@@ -337,6 +357,8 @@ export function useSpeechRecognition(
     continuous,
     finish,
     locale,
+    preserveTranscriptOnNetworkError,
+    releaseRecognition,
     silenceTimeoutMs,
     stop,
   ]);
@@ -358,48 +380,36 @@ export function useSpeechRecognition(
     setErrorMessage(null);
   }, []);
 
+  const cancel = useCallback(() => {
+    wantsToListenRef.current = false;
+    clearSilenceTimer();
+    clearFinalResultTimer();
+    releaseRecognition();
+    reset();
+    setStatus(resolveConstructor() ? "idle" : "unsupported");
+  }, [clearSilenceTimer, clearFinalResultTimer, releaseRecognition, reset]);
+
   // Releasing the microphone on unmount matters: a live session would keep the
   // browser's recording indicator on after the panel closes.
   useEffect(() => {
     return () => {
       wantsToListenRef.current = false;
-
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-      if (finalResultTimerRef.current) {
-        clearTimeout(finalResultTimerRef.current);
-        finalResultTimerRef.current = null;
-      }
-
-      const recognition = recognitionRef.current;
-      if (recognition) {
-        recognition.onresult = null;
-        recognition.onerror = null;
-        recognition.onend = null;
-        recognition.onstart = null;
-        recognition.onspeechstart = null;
-        recognition.onspeechend = null;
-
-        try {
-          recognition.abort();
-        } catch {
-          // The instance may already be closed; nothing to release.
-        }
-      }
+      clearSilenceTimer();
+      clearFinalResultTimer();
+      releaseRecognition();
     };
-  }, []);
+  }, [clearSilenceTimer, clearFinalResultTimer, releaseRecognition]);
 
   return {
     status,
     isSupported,
-    isListening: status === "listening",
+    isListening: status === "listening" || status === "stopping",
     transcript,
     interim,
     errorMessage,
     start,
     stop,
+    cancel,
     toggle,
     reset,
   };

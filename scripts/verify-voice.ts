@@ -1,6 +1,5 @@
 /** Real React/browser voice hand-off regression checks; synthetic APIs only. */
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { chromium, type Page } from "playwright-core";
@@ -43,23 +42,7 @@ async function main(): Promise<void> {
       },
     ],
   });
-  const server = createServer((req, res) => {
-    res.setHeader(
-      "Content-Type",
-      req.url === "/bundle.js"
-        ? "text/javascript; charset=utf-8"
-        : "text/html; charset=utf-8",
-    );
-    res.end(
-      req.url === "/bundle.js"
-        ? bundle.outputFiles[0].text
-        : '<!doctype html><html lang="pt-BR"><body><div id="root"></div><script src="/bundle.js"></script></body></html>',
-    );
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address();
-  assert.ok(address && typeof address === "object");
-  const port = address.port;
+  const fixtureOrigin = "http://127.0.0.1";
   const browser = await chromium.launch({
     ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
       ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH }
@@ -82,13 +65,26 @@ async function main(): Promise<void> {
       page.setDefaultTimeout(4_000);
       const errors: string[] = [];
       page.on("pageerror", (error) => errors.push(error.message));
-      await page.route("**/*", (route) =>
-        new URL(route.request().url()).hostname === "127.0.0.1"
-          ? route.continue()
-          : route.abort(),
-      );
+      await page.route("**/*", (route) => {
+        const url = new URL(route.request().url());
+        if (url.origin !== fixtureOrigin) return route.abort();
+
+        if (url.pathname === "/bundle.js") {
+          return route.fulfill({
+            contentType: "text/javascript; charset=utf-8",
+            body: bundle.outputFiles[0].text,
+          });
+        }
+        if (url.pathname === "/") {
+          return route.fulfill({
+            contentType: "text/html; charset=utf-8",
+            body: '<!doctype html><html lang="pt-BR"><body><div id="root"></div><script src="/bundle.js"></script></body></html>',
+          });
+        }
+        return route.abort();
+      });
       try {
-        await page.goto(`http://127.0.0.1:${port}`);
+        await page.goto(fixtureOrigin);
         await page.waitForFunction(() => Boolean(window.voiceHarness));
         await run(page);
         assert.deepEqual(errors, [], "Browser must not crash");
@@ -607,6 +603,125 @@ async function main(): Promise<void> {
       },
     );
     await check(
+      "Time entry appends the final dictation before saving",
+      async (page) => {
+        await page.evaluate(() =>
+          window.voiceHarness.mount({ timeEntry: true }),
+        );
+        const description = page.getByRole("textbox", { name: "Descrição" });
+        const save = page.getByRole("button", { name: "Criar e continuar" });
+        await page.getByRole("button", { name: "Ditar descrição" }).click();
+        await description.fill("Texto revisado durante o ditado");
+        await description.press("Control+Enter");
+        assert.equal(await save.isDisabled(), true);
+        await page.evaluate(() => {
+          window.voiceHarness.recognition.result("revisão do", false);
+        });
+        await page.getByRole("button", { name: "Parar ditado" }).click();
+        assert.equal(await save.isDisabled(), true);
+        await page.evaluate(() => {
+          window.voiceHarness.recognition.result("revisão do relatório", true);
+          window.voiceHarness.recognition.end();
+        });
+        await page.waitForFunction(
+          () =>
+            document.querySelector("textarea")?.value ===
+            "Texto revisado durante o ditado revisão do relatório",
+        );
+        assert.deepEqual(
+          await page.evaluate(() => window.voiceHarness.savedDescriptions),
+          [],
+        );
+        await save.click();
+        await page.waitForFunction(
+          () => document.querySelector("textarea")?.value === "",
+        );
+        assert.deepEqual(
+          await page.evaluate(() => window.voiceHarness.savedDescriptions),
+          ["Texto revisado durante o ditado revisão do relatório"],
+        );
+
+        await page.getByRole("button", { name: "Ditar descrição" }).click();
+        await page.evaluate(() => {
+          window.voiceHarness.recognition.result("organizei a pauta", true);
+          window.voiceHarness.recognition.speechEnd();
+        });
+        await page.waitForFunction(
+          () => window.voiceHarness.recognition.stats().stops === 2,
+        );
+        await page.evaluate(() => window.voiceHarness.recognition.end());
+        await page.waitForFunction(
+          () =>
+            document.querySelector("textarea")?.value === "organizei a pauta",
+        );
+      },
+    );
+
+    await check(
+      "Time entry keeps confirmed text when recognition loses its connection",
+      async (page): Promise<void> => {
+        await page.evaluate(() =>
+          window.voiceHarness.mount({ timeEntry: true }),
+        );
+        const description = page.getByRole("textbox", { name: "Descrição" });
+        await page.getByRole("button", { name: "Ditar descrição" }).click();
+        await page.evaluate(() => {
+          const recognition = window.voiceHarness.recognition;
+          recognition.result("trecho confirmado", true);
+          recognition.result("rascunho provisório", false);
+          recognition.error("network");
+          recognition.end();
+        });
+        await page
+          .getByText(
+            "O reconhecimento de voz foi interrompido. Tente novamente.",
+          )
+          .waitFor();
+        assert.equal(
+          await description.inputValue(),
+          "Texto inicial trecho confirmado",
+        );
+
+        await page
+          .getByRole("button", { name: "Tentar ditado novamente" })
+          .click();
+        await page.evaluate(() => {
+          const recognition = window.voiceHarness.recognition;
+          recognition.result("e complemento", true);
+          recognition.end();
+        });
+        await page.waitForFunction(
+          () =>
+            document.querySelector("textarea")?.value ===
+            "Texto inicial trecho confirmado e complemento",
+        );
+      },
+    );
+
+    await check(
+      "Time entry discards delayed dictation when closed",
+      async (page) => {
+        await page.evaluate(() =>
+          window.voiceHarness.mount({ timeEntry: true }),
+        );
+        await page.getByRole("button", { name: "Ditar descrição" }).click();
+        await page.evaluate(() =>
+          window.voiceHarness.recognition.result("rascunho", false),
+        );
+        await page.getByRole("button", { name: "Cancelar" }).click();
+        await page.getByRole("button", { name: "Novo Registro" }).click();
+        await page.evaluate(() => {
+          window.voiceHarness.recognition.result("frase descartada", true);
+          window.voiceHarness.recognition.end();
+        });
+        assert.equal(
+          await page.getByRole("textbox", { name: "Descrição" }).inputValue(),
+          "Texto inicial",
+        );
+      },
+    );
+
+    await check(
       "Migrates pre-existing localStorage threads to PostgreSQL via PUT /api/ai/threads",
       async (page): Promise<void> => {
         await page.evaluate(() => {
@@ -719,9 +834,6 @@ async function main(): Promise<void> {
     assert.deepEqual(failures, [], "Voice browser regressions must pass");
   } finally {
     await browser.close();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
   }
 }
 

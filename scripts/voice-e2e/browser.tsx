@@ -2,6 +2,7 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { VoiceCommandOverlay } from "@/components/ai/operator/VoiceCommandOverlay";
 import { TimeBotChat } from "@/components/ai/TimeBotChat";
+import { TimeEntryForm } from "@/components/time/TimeEntryForm";
 import { useSpeechRecognition } from "@/hooks/use-speech-recognition";
 import { DEFAULT_OPERATOR_SETTINGS } from "@/lib/ai/operator/types";
 import { queueVoiceCommand } from "@/lib/ai/operator/voice-events";
@@ -21,10 +22,12 @@ export interface VoiceHarnessApi {
     authReady?: boolean;
     overlay?: boolean;
     probe?: boolean;
+    timeEntry?: boolean;
   }) => void;
   queue: (text: string) => void;
   setAuth: (ready: boolean) => void;
   requests: TestRequest[];
+  savedDescriptions: string[];
   threadSyncPayloads: SyntheticThreadsState[];
   setServerThreads: (state: SyntheticThreadsState) => void;
   setResponseDelay: (milliseconds: number) => void;
@@ -101,6 +104,7 @@ function engine(): SyntheticRecognition {
   return current;
 }
 const requests: TestRequest[] = [];
+const savedDescriptions: string[] = [];
 const threadSyncPayloads: SyntheticThreadsState[] = [];
 let serverThreadsState: SyntheticThreadsState = {
   activeThreadId: "",
@@ -121,7 +125,20 @@ window.fetch = async (input, init): Promise<Response> => {
     });
   }
   if (url.pathname === "/api/projects") {
+    if (url.searchParams.get("status") === "active") {
+      return Response.json({
+        projects: [
+          { id: "project-test", name: "Projeto de teste", color: "#ea580c" },
+        ],
+      });
+    }
     return Response.json([]);
+  }
+  if (url.pathname === "/api/timesheets/status") {
+    return Response.json({ status: null });
+  }
+  if (url.pathname === "/api/user/profile") {
+    return Response.json({});
   }
   if (url.pathname === "/api/ai/threads") {
     if (init?.method === "PUT" && init.body) {
@@ -229,12 +246,37 @@ function Harness({ overlay, probe }: { overlay: boolean; probe: boolean }) {
   );
 }
 
+function TimeEntryHarness() {
+  const [open, setOpen] = useState(true);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Novo Registro
+      </button>
+      <TimeEntryForm
+        open={open}
+        onOpenChange={setOpen}
+        initialValues={{
+          projectId: "project-test",
+          description: "Texto inicial",
+          duration: 60,
+          billable: true,
+        }}
+        onSubmit={async ({ description }): Promise<void> => {
+          savedDescriptions.push(description);
+        }}
+      />
+    </>
+  );
+}
+
 const container = document.getElementById("root");
 if (!container) throw new Error("Missing test root");
 const root = createRoot(container);
 let generation = 0;
 window.voiceHarness = {
   requests,
+  savedDescriptions,
   threadSyncPayloads,
   setServerThreads: (state): void => {
     serverThreadsState = state;
@@ -247,12 +289,17 @@ window.voiceHarness = {
     authReady = true,
     overlay = false,
     probe = false,
+    timeEntry = false,
   } = {}): void => {
     window.voiceAuthReady = authReady;
     if (queued) queueVoiceCommand(queued);
     root.render(
       <StrictMode>
-        <Harness key={++generation} overlay={overlay} probe={probe} />
+        {timeEntry ? (
+          <TimeEntryHarness key={++generation} />
+        ) : (
+          <Harness key={++generation} overlay={overlay} probe={probe} />
+        )}
       </StrictMode>,
     );
   },

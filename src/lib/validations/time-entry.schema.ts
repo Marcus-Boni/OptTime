@@ -1,14 +1,20 @@
 import { z } from "zod";
 
+export const TIME_ENTRY_DESCRIPTION_MAX_LENGTH = 2000;
+
+const descriptionSchema = z
+  .string()
+  .max(
+    TIME_ENTRY_DESCRIPTION_MAX_LENGTH,
+    `Máximo de ${TIME_ENTRY_DESCRIPTION_MAX_LENGTH} caracteres`,
+  );
+
 /** Validation schema for creating/editing a time entry (form) */
 export const timeEntrySchema = z.object({
   projectId: z.string().min(1, "Selecione um projeto"),
   taskId: z.string().optional(),
   taskTitle: z.string().optional(),
-  description: z
-    .string()
-    .min(1, "Descrição é obrigatória")
-    .max(2000, "Máximo de 2000 caracteres"),
+  description: descriptionSchema.min(1, "Descrição é obrigatória"),
   date: z.string().min(1, "Data é obrigatória"),
   duration: z
     .number()
@@ -27,7 +33,7 @@ const timeEntryDateSchema = z.iso.date({ error: "Formato YYYY-MM-DD" });
 export const createTimeEntrySchema = z.object({
   projectId: z.string().min(1),
   // Description is optional when coming from the DevOps extension
-  description: z.string().max(2000, "Máximo de 2000 caracteres").default(""),
+  description: descriptionSchema.default(""),
   date: timeEntryDateSchema,
   duration: z.number().int().min(1).max(1440),
   billable: z.boolean().default(true),
@@ -42,11 +48,7 @@ export type CreateTimeEntryData = z.infer<typeof createTimeEntrySchema>;
 /** Server-side schema for updating a time entry via API */
 export const updateTimeEntrySchema = z.object({
   projectId: z.string().min(1).optional(),
-  description: z
-    .string()
-    .min(1)
-    .max(2000, "Máximo de 2000 caracteres")
-    .optional(),
+  description: descriptionSchema.min(1).optional(),
   date: timeEntryDateSchema.optional(),
   duration: z.number().int().min(1).max(1440).optional(),
   billable: z.boolean().optional(),
@@ -59,7 +61,7 @@ export type UpdateTimeEntryData = z.infer<typeof updateTimeEntrySchema>;
 /** Schema for starting a timer */
 export const startTimerSchema = z.object({
   projectId: z.string().min(1),
-  description: z.string().max(2000, "Máximo de 2000 caracteres").default(""),
+  description: descriptionSchema.default(""),
   billable: z.boolean().default(true),
   azureWorkItemId: z.number().int().positive().optional(),
   azureWorkItemTitle: z.string().max(500).optional(),
@@ -74,10 +76,7 @@ export const quickEntrySchema = z.object({
     .number()
     .min(0.25, "Mínimo de 15 minutos")
     .max(24, "Máximo de 24 horas"),
-  description: z
-    .string()
-    .min(1, "Descrição é obrigatória")
-    .max(2000, "Máximo de 2000 caracteres"),
+  description: descriptionSchema.min(1, "Descrição é obrigatória"),
 });
 
 export type QuickEntryFormData = z.infer<typeof quickEntrySchema>;

@@ -3,9 +3,11 @@
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarClock, CalendarIcon, Loader2 } from "lucide-react";
+import { useId } from "react";
 import type { UseFormReturn } from "react-hook-form";
 import { DurationInput } from "@/components/time/DurationInput";
 import { ProjectCombobox } from "@/components/time/ProjectCombobox";
+import { TimeEntryDictation } from "@/components/time/TimeEntryDictation";
 import { WorkItemCombobox } from "@/components/time/WorkItemCombobox";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -17,7 +19,9 @@ import {
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { SpeechRecognitionController } from "@/hooks/use-speech-recognition";
 import { cn } from "@/lib/utils";
+import { TIME_ENTRY_DESCRIPTION_MAX_LENGTH } from "@/lib/validations/time-entry.schema";
 
 export const durationPresets = [
   { label: "15m", minutes: 15 },
@@ -50,6 +54,8 @@ interface TimeEntryFormFieldsProps {
   projects: Project[];
   workItem: { id: number; title: string } | null;
   dateStatusChecking?: boolean;
+  dictation: SpeechRecognitionController;
+  submitting: boolean;
   onWorkItemChange: (value: { id: number; title: string } | null) => void;
   onOpenAgenda?: () => void;
   descriptionVariants?: {
@@ -66,6 +72,8 @@ export function TimeEntryFormFields({
   projects,
   workItem,
   dateStatusChecking = false,
+  dictation,
+  submitting,
   onWorkItemChange,
   onOpenAgenda,
   descriptionVariants,
@@ -85,6 +93,9 @@ export function TimeEntryFormFields({
   const selectedDuration = form.watch("duration");
   const billable = form.watch("billable");
   const description = form.watch("description");
+  const descriptionId = useId();
+  const descriptionError = form.formState.errors.description?.message;
+  const descriptionCount = `${description.length}/${TIME_ENTRY_DESCRIPTION_MAX_LENGTH} caracteres`;
 
   const hasDescriptionVariants =
     Boolean(descriptionVariants) &&
@@ -125,7 +136,7 @@ export function TimeEntryFormFields({
 
       <div className="space-y-1.5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <Label>Descrição *</Label>
+          <Label htmlFor={descriptionId}>Descrição *</Label>
           {hasDescriptionVariants && onDescriptionVariantChange ? (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -164,30 +175,40 @@ export function TimeEntryFormFields({
           ) : null}
         </div>
 
-        <Textarea
-          {...form.register("description")}
-          placeholder="Descreva de forma objetiva o que foi feito."
-          rows={4}
-          className="rounded-md bg-background/80"
-          onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.form?.requestSubmit();
+        <TimeEntryDictation
+          dictation={dictation}
+          disabled={submitting}
+          descriptionAtLimit={
+            description.length >= TIME_ENTRY_DESCRIPTION_MAX_LENGTH
+          }
+        >
+          <Textarea
+            {...form.register("description")}
+            id={descriptionId}
+            aria-invalid={Boolean(descriptionError)}
+            aria-describedby={
+              descriptionError ? `${descriptionId}-error` : undefined
             }
-          }}
-        />
+            placeholder="Descreva de forma objetiva o que foi feito."
+            rows={4}
+            className="min-h-20 rounded-md bg-background/80 pr-14"
+          />
+        </TimeEntryDictation>
 
-        {form.formState.errors.description ? (
-          <p className="mt-1.5 text-xs text-destructive">
-            {form.formState.errors.description.message}
+        {descriptionError ? (
+          <p
+            id={`${descriptionId}-error`}
+            className="mt-1.5 text-xs text-destructive"
+          >
+            {descriptionError}
           </p>
         ) : (
           <div className="mt-1.5 flex min-h-[22px] flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
             <p className="mr-2 text-xs text-muted-foreground">
               {hasDescriptionVariants
-                ? `${descriptionVariants?.sourceLabel ?? "Sugestão inteligente"} pronta para edição (${description.length}/2000 caracteres).`
+                ? `${descriptionVariants?.sourceLabel ?? "Sugestão inteligente"} pronta para edição (${descriptionCount}).`
                 : description.length > 0
-                  ? `${description.length}/2000 caracteres.`
+                  ? `${descriptionCount}.`
                   : "A agenda do Outlook pode preencher esse campo automaticamente."}
             </p>
             {onOpenAgenda ? (

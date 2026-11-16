@@ -9,6 +9,18 @@ const session = {
   },
 };
 
+export const authClient = {
+  async getSession(): Promise<{ data: typeof session }> {
+    return { data: session };
+  },
+};
+
+export const signIn = {
+  async social(): Promise<{ error: null }> {
+    return { error: null };
+  },
+};
+
 export function useSession() {
   const ready = useSyncExternalStore(
     (notify) => {

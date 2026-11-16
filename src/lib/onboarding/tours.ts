@@ -218,6 +218,14 @@ export const TOURS: readonly TourDefinition[] = [
         placement: "bottom",
       },
       {
+        id: "dictation",
+        title: "Dite a descrição",
+        description:
+          "Abra Novo Registro e toque no microfone do campo Descrição. Fale sobre o trabalho realizado e revise o texto antes de salvar.",
+        target: '[data-tour="header-quick-entry"]',
+        placement: "bottom",
+      },
+      {
         id: "timer",
         title: "Timer em tempo real",
         description:
